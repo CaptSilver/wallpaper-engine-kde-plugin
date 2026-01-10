@@ -4,6 +4,7 @@
 #include <QCoreApplication>
 #include <QHoverEvent>
 #include <QMouseEvent>
+#include <QtGlobal>
 
 using namespace wekde;
 
@@ -44,22 +45,40 @@ void MouseGrabber::sendEvent(QObject* target, QEvent* event) {
 
 void MouseGrabber::sendMouseEvent(QMouseEvent* event) {
     if (m_target) {
+#if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
+        QMouseEvent temp(event->type(),
+                         mapToItem(m_target, event->position()),
+                         event->globalPosition(),
+                         event->button(),
+                         event->buttons(),
+                         event->modifiers());
+#else
         QMouseEvent temp(event->type(),
                          mapToItem(m_target, event->localPos()),
                          event->screenPos(),
                          event->button(),
                          event->buttons(),
                          event->modifiers());
+#endif
         QCoreApplication::sendEvent(m_target, &temp);
     }
 }
 
 void MouseGrabber::sendHoverEvent(QHoverEvent* event) {
     if (m_target) {
+#if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
+        auto newPos = mapToItem(m_target, event->position());
+        QHoverEvent temp(event->type(),
+                         newPos,
+                         event->globalPosition(),
+                         mapToItem(m_target, event->oldPosF()),
+                         event->modifiers());
+#else
         QHoverEvent temp(event->type(),
                          mapToItem(m_target, event->posF()),
                          mapToItem(m_target, event->oldPosF()),
                          event->modifiers());
+#endif
         QCoreApplication::sendEvent(m_target, &temp);
     }
 }

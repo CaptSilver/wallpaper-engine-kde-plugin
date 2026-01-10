@@ -35,6 +35,9 @@
 //#ifdef ENABLE_X11
 #if (QT_VERSION < QT_VERSION_CHECK(6, 0, 0))
 #    include <QX11Info> // IWYU pragma: keep
+#elif (QT_VERSION < QT_VERSION_CHECK(6, 5, 0))
+// Qt 6.0-6.4: use platformNativeInterface for X11 (6.0-6.1) and Wayland (6.0-6.4)
+#    include <qpa/qplatformnativeinterface.h>
 #endif
 //#endif
 #endif
@@ -79,21 +82,24 @@ int CreateMpvContex(mpv_handle* mpv, mpv_render_context** mpv_gl) {
 #if defined(__linux__) || defined(__FreeBSD__)
     if (QGuiApplication::platformName().contains("xcb")) {
         params[2].type = MPV_RENDER_PARAM_X11_DISPLAY;
-#if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
+#if (QT_VERSION >= QT_VERSION_CHECK(6, 2, 0))
         if (auto* x11App = qGuiApp->nativeInterface<QNativeInterface::QX11Application>()) {
             params[2].data = x11App->display();
         }
+#elif (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
+        auto* native   = QGuiApplication::platformNativeInterface();
+        params[2].data = native->nativeResourceForWindow("display", nullptr);
 #else
         params[2].data = QX11Info::display();
 #endif
     }
     if (QGuiApplication::platformName().contains("wayland")) {
         params[2].type = MPV_RENDER_PARAM_WL_DISPLAY;
-    #if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
-            if (auto* waylandApp = qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>()) {
-                params[2].data = waylandApp->display();
-            }
-    #else
+#if (QT_VERSION >= QT_VERSION_CHECK(6, 5, 0))
+        if (auto* waylandApp = qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>()) {
+            params[2].data = waylandApp->display();
+        }
+#else
         auto* native   = QGuiApplication::platformNativeInterface();
         params[2].data = native->nativeResourceForWindow("display", nullptr);
 #endif

@@ -3,10 +3,15 @@ import "../style" as QQCC
 import QtQuick.Controls 2.12
 import QtQuick.Templates 2.12 as T
 import QtQuick.Layouts 1.10
+import org.kde.kirigami 2.4 as Kirigami
 import ".."
 
 T.Control {
     id: item_root
+
+    // Наследуем тему от родителя
+    Kirigami.Theme.inherit: true
+
     property alias icon: iconsvg.source
     property alias icon_color: iconsvg.color
     property alias text: text_label.text
@@ -66,7 +71,7 @@ T.Control {
                 Layout.leftMargin: 24
                 Layout.rightMargin: 16
 
-                color: Theme.textColor
+                color: Kirigami.Theme.textColor
                 textFormat: Text.PlainText
                 font.bold: false
                 wrapMode: Text.WordWrap

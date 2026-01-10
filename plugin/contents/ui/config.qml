@@ -3,13 +3,22 @@ import QtQuick.Controls 2.2
 import QtQuick.Layouts 1.5
 import org.kde.plasma.core 2.0 as PlasmaCore
 import org.kde.plasma.components 3.0 as PlasmaComponents
+import org.kde.kirigami 2.4 as Kirigami
 
 import "page"
 
 ColumnLayout {
     id: root
     spacing: 5
-    
+
+    // Устанавливаем тему для всех дочерних элементов
+    Kirigami.Theme.colorSet: Kirigami.Theme.Window
+    Kirigami.Theme.inherit: false
+
+    // Required by Plasma 6
+    property var configDialog
+    property var wallpaperConfiguration
+
     property string cfg_SteamLibraryPath
     property string cfg_WallpaperWorkShopId
     property string cfg_WallpaperSource
@@ -33,7 +42,7 @@ ColumnLayout {
     property int    cfg_PauseMode
     property int    cfg_VideoBackend
 
-    property bool   cfg_PerOptChanged
+    property int    cfg_PerOptChanged: 0
 
     //property alias  cfg_UseMpv
     //property string cfg_BackgroundColor: "black"

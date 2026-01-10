@@ -8,6 +8,7 @@ Item{
     property alias source: player.source
     property string assets: "assets"
     property int displayMode: background.displayMode
+    property string userPropsJson: background.userPropsJson
     property var volumeFade: Common.createVolumeFade(
         sceneItem, 
         Qt.binding(function() { return background.mute ? 0 : background.volume; }),
@@ -44,6 +45,7 @@ Item{
         muted: background.mute
         speed: background.speed
         assets: sceneItem.assets
+        userProperties: sceneItem.userPropsJson
         Component.onCompleted: {
             player.setAcceptMouse(true);
             player.setAcceptHover(true);

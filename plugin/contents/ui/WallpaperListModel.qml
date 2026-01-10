@@ -66,7 +66,11 @@ Item {
         root.playlists = {};
     
         return root._readfile(Common.urlNative(globalConfigPath)).then(value => {
-            var jsonData = JSON.parse(value);
+            var jsonData = Utils.parseJson(value);
+            if (jsonData === null) {
+                console.warn("Failed to parse playlists config, skipping playlists");
+                return Promise.resolve();
+            }
 
             // refreshing entries in the filter model is not thread safe, so we need to lock it
             var filterModel = Common.filterModel;
@@ -82,7 +86,8 @@ Item {
                     }
                 }
 
-                jsonData.steamuser.general.playlists.forEach(function(el) {
+                const playlists = jsonData?.steamuser?.general?.playlists || [];
+                playlists.forEach(function(el) {
                     // we're going to be using paths to match wallpapers to playlists, but the paths in the config will start with a Windows-style drive letter
                     // so we need to convert them to file:// URLs. In addition it appears that the paths are truncated to 110 chars elsewhere so we will do the same
                     // so that they can match later

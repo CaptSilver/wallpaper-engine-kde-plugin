@@ -39,10 +39,25 @@ Rectangle {
             return curOpt[key];
         return def;
     }
+
+    // Update all derived properties when curOpt changes
+    onCurOptChanged: {
+        console.log("main.qml onCurOptChanged, curOpt:", JSON.stringify(curOpt));
+        displayMode = get_opt_value('display_mode', wallpaper.configuration.DisplayMode);
+        mute = get_opt_value('mute_audio', wallpaper.configuration.MuteAudio);
+        volume = get_opt_value('volume', wallpaper.configuration.Volume);
+        speed = get_opt_value('speed', wallpaper.configuration.Speed);
+        const userProps = curOpt['user_props'];
+        userPropsJson = userProps ? JSON.stringify(userProps) : "";
+        console.log("main.qml updated: displayMode=", displayMode, "speed=", speed, "userPropsJson=", userPropsJson);
+    }
+
     property int    displayMode: get_opt_value('display_mode', wallpaper.configuration.DisplayMode)
     property bool   mute: get_opt_value('mute_audio', wallpaper.configuration.MuteAudio)
     property int    volume: get_opt_value('volume', wallpaper.configuration.Volume)
-    property real    speed: get_opt_value('speed', wallpaper.configuration.Speed)
+    property real   speed: get_opt_value('speed', wallpaper.configuration.Speed)
+    // User properties for scene wallpapers (JSON string format)
+    property string userPropsJson: ""
 
     // Reactive bindings for configuration changes
     Connections {
@@ -61,9 +76,13 @@ Rectangle {
         }
     }
 
-    property bool   perOptChanged: wallpaper.configuration.PerOptChanged
+    property int    perOptChanged: wallpaper.configuration.PerOptChanged
     onPerOptChangedChanged: {
-        pyext.read_wallpaper_config(workshopid).then((res) => this.curOpt = res);
+        console.log("main.qml onPerOptChangedChanged, perOptChanged:", perOptChanged, "workshopid:", workshopid);
+        pyext.read_wallpaper_config(workshopid).then((res) => {
+            console.log("main.qml read_wallpaper_config result:", JSON.stringify(res));
+            this.curOpt = res;
+        });
     }
 
     // auto pause

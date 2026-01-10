@@ -27,7 +27,7 @@ QtObject {
         Mpv
     }
 
-    readonly property string version: '0.5.5'
+    readonly property string version: '0.6.0'
 
     readonly property string repo_url: 'https://github.com/catsout/wallpaper-engine-kde-plugin'
 

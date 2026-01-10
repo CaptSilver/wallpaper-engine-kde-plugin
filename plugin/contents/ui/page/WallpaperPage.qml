@@ -21,6 +21,9 @@ import org.kde.kquickcontrolsaddons 2.0
 RowLayout {
     Layout.fillWidth: true
 
+    // Наследуем тему от родителя
+    Kirigami.Theme.inherit: true
+
     function saveConfig() {
         right_opts.save_changes();
     }
@@ -177,7 +180,12 @@ RowLayout {
                     wrapMode: Text.WordWrap
                     visible: picViewLoader.item && picViewLoader.item.view.count === 0
                     level: 2
-                    text: {
+                    text: { 
+                        if(!(libcheck.qtwebsockets && pyext))
+                            return `Please make sure qtwebsockets(qml module) installed, and open this again`
+                        if(!pyext.ok) {
+                            return `Python helper run failed: ${pyext.log}`;
+                        }
                         if(!cfg_SteamLibraryPath)
                             return "Select your steam library through the folder selecting button above";
                         if(wpListModel.countNoFilter > 0)
@@ -322,7 +330,7 @@ RowLayout {
         bottomPadding: 0
 
         background: Rectangle {
-            color: Theme.view.backgroundColor
+            color: Kirigami.Theme.backgroundColor
         }
 
         contentItem: Flickable {
@@ -365,7 +373,7 @@ RowLayout {
                     Layout.minimumHeight: implicitHeight
 
                     text: right_content.wpmodel.title
-                    color: Theme.view.textColor
+                    color: Kirigami.Theme.textColor
                     font.bold: true
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap
@@ -384,11 +392,11 @@ RowLayout {
                         bottomPadding: topPadding
 
                         background: Rectangle {
-                            color: Theme.view.positiveBackgroundColor
+                            color: Kirigami.Theme.positiveBackgroundColor
                             radius: 8
                         }
                         contentItem: Text {
-                            color: Theme.view.textColor
+                            color: Kirigami.Theme.textColor
                             font.capitalization: Font.Capitalize
                             text: right_content.wpmodel.type
                         }
@@ -404,11 +412,11 @@ RowLayout {
                         visible: false
 
                         background: Rectangle {
-                            color: Theme.view.positiveBackgroundColor
+                            color: Kirigami.Theme.positiveBackgroundColor
                             radius: 8
                         }
                         contentItem: Text {
-                            color: Theme.view.textColor
+                            color: Kirigami.Theme.textColor
                             font.capitalization: Font.Capitalize
                             readonly property bool _set_text: {
                                 const dir = right_content.wpmodel.path;
@@ -489,11 +497,11 @@ RowLayout {
                         bottomPadding: topPadding
 
                         background: Rectangle {
-                            color: Theme.activeBackgroundColor
+                            color: Kirigami.Theme.activeBackgroundColor
                             radius: 8
                         }
                         contentItem: Text {
-                            color: Theme.view.textColor
+                            color: Kirigami.Theme.textColor
                             text: model.key
                         }
                     }
@@ -502,12 +510,12 @@ RowLayout {
                 Component {
                     id: right_opt_combox
                     ComboBox {
-                        property int def_val
+                        property var def_val
 
                         textRole: "text"
                         onActivated: {}
 
-                        property int res_val: currentIndex && Common.cbCurrentValue(this)
+                        property var res_val: currentIndex >= 0 ? Common.cbCurrentValue(this) : def_val
                         function finish() {
                             currentIndex = Common.cbIndexOfValue(this, def_val);
                         }
@@ -553,28 +561,38 @@ RowLayout {
                     property var config_resets: new Set()
                     property var config_changes: ({})
                     property var config: ({})
-                    property bool _set_config: {
-                        if (workshopid)
-                            pyext.read_wallpaper_config(workshopid).then(res => { 
-                                this.config = res;
+
+                    onWorkshopidChanged: {
+                        if (workshopid) {
+                            pyext.read_wallpaper_config(workshopid).then(res => {
+                                config = res;
                             });
-                        return true;
+                        } else {
+                            config = {};
+                        }
+                    }
+                    Component.onCompleted: {
+                        if (workshopid) {
+                            pyext.read_wallpaper_config(workshopid).then(res => {
+                                config = res;
+                            });
+                        }
                     }
                     function save_changes() {
+                        console.log("save_changes called, config_changes:", JSON.stringify(config_changes));
                         config_resets.forEach((wid) => {
                             pyext.reset_wallpaper_config(wid).then(res => {});
                         });
                         Object.entries(config_changes).forEach(([wid, cfg]) => {
-                            pyext.write_wallpaper_config(wid, cfg).then(res => {
-                                if(wid == workshopid)
-                                    this.cofnig.update(this.config_changes);
-                                this.config_changes = {};
-                            });
+                            console.log("saving config for wid:", wid, "cfg:", JSON.stringify(cfg));
+                            pyext.write_wallpaper_config(wid, cfg);
                         });
-
+                        // Clear after saving
+                        config_changes = {};
                         config_resets.clear();
                     }
                     function set_config(key, val) {
+                        console.log("set_config called, key:", key, "val:", val, "workshopid:", workshopid);
                         if(!key || !workshopid) return;
 
                         if (!config_changes[workshopid])
@@ -582,13 +600,15 @@ RowLayout {
                         config_changes[workshopid][key] = val;
 
                         this.config_changesChanged();
-                        cfg_PerOptChanged = !cfg_PerOptChanged;
+                        console.log("set_config: cfg_PerOptChanged before:", cfg_PerOptChanged);
+                        cfg_PerOptChanged++;
+                        console.log("set_config: cfg_PerOptChanged after:", cfg_PerOptChanged);
                     }
                     function reset_config() {
                         config_resets.add(workshopid);
                         delete config_changes[workshopid];
                         config = {}
-                        cfg_PerOptChanged = !cfg_PerOptChanged;
+                        cfg_PerOptChanged++;
                     }
                     function in_config_changes(key) {
                         return config_changes.hasOwnProperty(workshopid) && config_changes[workshopid].hasOwnProperty(key);
@@ -606,9 +626,9 @@ RowLayout {
                     }
 
                     header.text: 'Option'
-                    header.text_color: Theme.view.textColor
+                    header.text_color: Kirigami.Theme.textColor
                     header.icon: '../../images/cheveron-down.svg'
-                    header.color: Theme.activeBackgroundColor
+                    header.color: Kirigami.Theme.activeBackgroundColor
 
                     header.actor: Kirigami.ActionToolBar {
                         Layout.fillWidth: true
@@ -683,7 +703,7 @@ RowLayout {
                         ]
                         OptionItem {
                             text: modelData.text
-                            text_color: Theme.view.textColor
+                            text_color: Kirigami.Theme.textColor
 
                             property bool is_changed: right_opts.config && 
                                 right_opts.config_changes && 
@@ -715,7 +735,246 @@ RowLayout {
                         }
                     }
                 }
+                // User Properties from project.json
+                Component {
+                    id: user_prop_color
+                    ColorButton { }
+                }
+
+                OptionGroup {
+                    id: user_props_group
+                    Layout.fillWidth: true
+                    visible: user_props_repeater.model.length > 0
+
+                    readonly property string workshopid: right_content.wpmodel.workshopid
+                    onWorkshopidChanged: {
+                        // Reset state when switching wallpapers
+                        userProperties = [];
+                        propConfig = {};
+                        propChanges = {};
+                    }
+
+                    property var userProperties: []
+                    property var propConfig: ({})
+                    property var propChanges: ({})
+
+                    property bool _loadProps: {
+                        // Force re-evaluation when workshopid changes
+                        const wid = workshopid;
+                        const wpPath = right_content.wpmodel.path;
+                        const projectPath = Common.getWpModelProjectPath(right_content.wpmodel);
+                        if (wid && wpPath && wpPath.match(Common.regex_path_check)) {
+                            pyext.readfile(Common.urlNative(projectPath)).then(value => {
+                                const project = Utils.parseJson(value);
+                                if (project && project.general && project.general.properties) {
+                                    const props = project.general.properties;
+                                    const arr = [];
+                                    // Helper to convert localization keys to readable text
+                                    function formatLabel(text, key) {
+                                        if (!text) return key;
+                                        // Convert "ui_browse_properties_XXX" to "Xxx Yyy"
+                                        if (text.startsWith('ui_browse_properties_')) {
+                                            const suffix = text.replace('ui_browse_properties_', '');
+                                            // Split by underscore, capitalize each word
+                                            return suffix.split('_').map(w =>
+                                                w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
+                                            ).join(' ');
+                                        }
+                                        return text;
+                                    }
+                                    for (const key in props) {
+                                        const prop = props[key];
+                                        if (prop.type) {
+                                            arr.push({
+                                                key: key,
+                                                text: formatLabel(prop.text, key),
+                                                type: prop.type,
+                                                value: prop.value,
+                                                min: prop.min,
+                                                max: prop.max,
+                                                options: prop.options
+                                            });
+                                        }
+                                    }
+                                    userProperties = arr;
+                                } else {
+                                    userProperties = [];
+                                }
+                            }).catch(reason => {
+                                console.error(`read project.json error: ${reason}`);
+                                userProperties = [];
+                            });
+                        } else {
+                            userProperties = [];
+                        }
+                        return true;
+                    }
+
+                    property bool _loadConfig: {
+                        if (workshopid) {
+                            pyext.read_wallpaper_config(workshopid).then(res => {
+                                propConfig = res || {};
+                            });
+                        }
+                        return true;
+                    }
+
+                    function savePropChange(key, val) {
+                        if (!workshopid) return;
+
+                        // Create new object to trigger QML binding update
+                        const newChanges = Object.assign({}, propChanges);
+                        newChanges[key] = val;
+                        propChanges = newChanges;
+
+                        // Build config to save: merge with existing under 'user_props' key
+                        const userPropsConfig = {};
+                        userPropsConfig['user_props'] = Object.assign({}, propConfig['user_props'] || {}, propChanges);
+                        pyext.write_wallpaper_config(workshopid, userPropsConfig);
+
+                        // Signal main.qml to reload config
+                        cfg_PerOptChanged++;
+                    }
+
+                    function getPropValue(key, defaultVal) {
+                        if (propChanges.hasOwnProperty(key)) return propChanges[key];
+                        if (propConfig['user_props'] && propConfig['user_props'].hasOwnProperty(key))
+                            return propConfig['user_props'][key];
+                        return defaultVal;
+                    }
+
+                    function resetUserProps() {
+                        propChanges = {};
+                        const resetConfig = { 'user_props': {} };
+                        pyext.write_wallpaper_config(workshopid, resetConfig);
+                        propConfig = {};
+
+                        // Signal main.qml to reload config
+                        cfg_PerOptChanged++;
+                    }
+
+                    header.text: 'User Properties'
+                    header.text_color: Kirigami.Theme.textColor
+                    header.icon: '../../images/cheveron-down.svg'
+                    header.color: Kirigami.Theme.activeBackgroundColor
+
+                    header.actor: Kirigami.ActionToolBar {
+                        Layout.fillWidth: true
+                        alignment: Qt.AlignRight
+                        flat: true
+                        actions: [
+                            Kirigami.Action {
+                                text: 'Reset'
+                                onTriggered: user_props_group.resetUserProps()
+                            }
+                        ]
+                    }
+
+                    Repeater {
+                        id: user_props_repeater
+                        model: user_props_group.userProperties
+
+                        OptionItem {
+                            text: modelData.text
+                            text_color: Kirigami.Theme.textColor
+
+                            property bool is_changed: user_props_group.propChanges.hasOwnProperty(modelData.key)
+                            icon: is_changed ? Qt.resolvedUrl('../../images/edit-pencil.svg') : ''
+
+                            actor: Loader {
+                                sourceComponent: {
+                                    switch(modelData.type) {
+                                        case 'bool':
+                                            return right_opt_switch;
+                                        case 'slider':
+                                            // Use int spinbox if min/max are integers
+                                            const hasDecimals = (modelData.min && modelData.min % 1 !== 0) ||
+                                                               (modelData.max && modelData.max % 1 !== 0) ||
+                                                               (modelData.value && modelData.value % 1 !== 0);
+                                            return hasDecimals ? right_opt_dspinbox : right_opt_spinbox;
+                                        case 'color':
+                                            return user_prop_color;
+                                        case 'combo':
+                                            return right_opt_combox;
+                                        default:
+                                            return null;
+                                    }
+                                }
+
+                                onLoaded: {
+                                    const savedVal = user_props_group.getPropValue(modelData.key, null);
+                                    const defVal = savedVal !== null ? savedVal : modelData.value;
+
+                                    switch(modelData.type) {
+                                        case 'bool':
+                                            this.item.def_val = Boolean(defVal);
+                                            break;
+                                        case 'slider':
+                                            const hasDecimals = (modelData.min && modelData.min % 1 !== 0) ||
+                                                               (modelData.max && modelData.max % 1 !== 0) ||
+                                                               (modelData.value && modelData.value % 1 !== 0);
+                                            if (hasDecimals) {
+                                                this.item.dFrom = modelData.min || 0;
+                                                this.item.dTo = modelData.max || 100;
+                                                this.item.dStepSize = (modelData.max - modelData.min) / 100 || 0.01;
+                                                this.item.def_val = defVal || 0;
+                                            } else {
+                                                this.item.from = Math.floor(modelData.min || 0);
+                                                this.item.to = Math.floor(modelData.max || 100);
+                                                this.item.stepSize = 1;
+                                                this.item.def_val = Math.floor(defVal || 0);
+                                            }
+                                            break;
+                                        case 'color':
+                                            // Color can be string "0.1 0.2 0.3" or object {r,g,b}
+                                            let colorVal = "#ffffff";
+                                            if (typeof defVal === 'string' && defVal.includes(' ')) {
+                                                const parts = defVal.split(' ').map(Number);
+                                                if (parts.length >= 3) {
+                                                    colorVal = Qt.rgba(parts[0], parts[1], parts[2], 1.0);
+                                                }
+                                            } else if (defVal && typeof defVal === 'string') {
+                                                colorVal = defVal;
+                                            }
+                                            this.item.def_val = colorVal;
+                                            this.item.colorValue = colorVal;
+                                            break;
+                                        case 'combo':
+                                            // Build model from options
+                                            if (modelData.options) {
+                                                const comboModel = [];
+                                                for (const opt of modelData.options) {
+                                                    let label = opt.label || opt.value;
+                                                    // Convert localization keys to readable text
+                                                    if (label && label.startsWith('ui_browse_properties_')) {
+                                                        const suffix = label.replace('ui_browse_properties_', '');
+                                                        label = suffix.split('_').map(w =>
+                                                            w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
+                                                        ).join(' ');
+                                                    }
+                                                    comboModel.push({
+                                                        text: label,
+                                                        value: opt.value
+                                                    });
+                                                }
+                                                this.item.model = comboModel;
+                                                this.item.def_val = defVal || 0;
+                                            }
+                                            break;
+                                    }
+
+                                    this.item.finish();
+                                    this.item.onRes_valChanged.connect(() => {
+                                        user_props_group.savePropChange(modelData.key, this.item.res_val);
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+
                 PlasmaComponents.TextArea {
+                    id: descriptionTextArea
                     Layout.alignment: Qt.AlignTop
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
@@ -723,20 +982,32 @@ RowLayout {
 
                     visible: false
                     text: ''
-                    color: Theme.view.textColor
-                    readonly property bool _set_text: {
-                        const path = Common.getWpModelProjectPath(right_content.wpmodel);
-                        if(path) {
-                            pyext.readfile(Common.urlNative(path)).then(value => {
-                                const project = Utils.parseJson(value);    
-                                const text = project && project.description ? project.description : '';
+                    color: Kirigami.Theme.textColor
 
-                                this.visible = text;
-                                if(this.visible) this.text = BBCode.parser.parse(text);
+                    function loadDescription() {
+                        const path = Common.getWpModelProjectPath(right_content.wpmodel);
+                        if (path) {
+                            pyext.readfile(Common.urlNative(path)).then(value => {
+                                const project = Utils.parseJson(value);
+                                const desc = project && project.description ? project.description : '';
+                                descriptionTextArea.visible = Boolean(desc);
+                                if (descriptionTextArea.visible) {
+                                    descriptionTextArea.text = BBCode.parser.parse(desc);
+                                }
                             }).catch(reason => console.error(`read '${path}' error\n`, reason));
-                        } else this.visible = false;
-                        return true;
+                        } else {
+                            descriptionTextArea.visible = false;
+                        }
                     }
+
+                    Connections {
+                        target: right_content
+                        function onWpmodelChanged() {
+                            descriptionTextArea.loadDescription();
+                        }
+                    }
+                    Component.onCompleted: loadDescription()
+
                     font.bold: false
  
                     wrapMode: Text.Wrap

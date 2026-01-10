@@ -7,9 +7,13 @@ import "../components"
 
 import org.kde.plasma.core 2.0 as PlasmaCore
 import org.kde.plasma.components 3.0 as PlasmaComponents
+import org.kde.kirigami 2.4 as Kirigami
 
 
 Flickable {
+    // Наследуем тему от родителя
+    Kirigami.Theme.inherit: true
+
     Layout.fillWidth: true
     ScrollBar.vertical: ScrollBar { id: scrollbar }
     //ScrollBar.horizontal: ScrollBar { }
@@ -27,13 +31,13 @@ Flickable {
 
         OptionItem {
             text: 'Requirements'
-            text_color: Theme.textColor
+            text_color: Kirigami.Theme.textColor
             icon: '../../images/information-outline.svg'
 
             contentBottom: ColumnLayout {
                 Text {
                     Layout.fillWidth: true
-                    color: Theme.disabledTextColor
+                    color: Kirigami.Theme.disabledTextColor
                     text: `
                         <ol>
                         <li><i>Wallpaper Engine</i> installed on Steam</li>
@@ -59,12 +63,12 @@ Flickable {
             visible: libcheck.wallpaper
 
             text: 'Fix Crashes'
-            text_color: Theme.textColor
+            text_color: Kirigami.Theme.textColor
             icon: '../../images/information-outline.svg'
             contentBottom: ColumnLayout {
                 Text {
                     Layout.fillWidth: true
-                    color: Theme.disabledTextColor
+                    color: Kirigami.Theme.disabledTextColor
                     text: `
                         <ol>
                         <li>Remove <i>WallpaperSource</i> line in <b>~/.config/plasma-org.kde.plasma.desktop-appletsrc</b></li>
@@ -79,7 +83,7 @@ Flickable {
         OptionItem {
             icon: '../../images/github.svg'
             text: 'Github Repo'
-            text_color: Theme.textColor
+            text_color: Kirigami.Theme.textColor
             MouseArea {
                 anchors.fill: parent
                 acceptedButtons: Qt.LeftButton
@@ -90,12 +94,12 @@ Flickable {
 
         OptionItem {
             text: 'Version'
-            text_color: Theme.textColor
+            text_color: Kirigami.Theme.textColor
             icon: '../../images/tag.svg'
             contentBottom: ColumnLayout {
                 Text {
                     Layout.fillWidth: true
-                    color: Theme.disabledTextColor
+                    color: Kirigami.Theme.disabledTextColor
                     text: `
                         <ul>
                         <li>plugin: ${Common.version}</li>
@@ -110,10 +114,10 @@ Flickable {
                 }
             }
         }
- 
+
         OptionItem {
             text: 'Lib Checking'
-            text_color: Theme.textColor
+            text_color: Kirigami.Theme.textColor
             icon: '../../images/checkmark.svg'
             contentBottom: ListView {
                 implicitHeight: contentItem.childrenRect.height
@@ -143,6 +147,12 @@ Flickable {
                     text: name
                     checked: ok
                     enabled: false
+                    contentItem: Text {
+                        text: parent.text
+                        color: Kirigami.Theme.disabledTextColor
+                        leftPadding: parent.indicator.width + parent.spacing
+                        verticalAlignment: Text.AlignVCenter
+                    }
                 }
             }
         }

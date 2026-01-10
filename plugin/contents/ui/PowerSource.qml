@@ -7,9 +7,11 @@ Item {
 	id: root
 	readonly property alias pm_data: pm_source.data
 
-	readonly property bool   st_battery_has: pm_data['Battery']['Has Battery']
-	readonly property string st_battery_state: pm_data['Battery']['State']
-	readonly property int    st_battery_percent: pm_data['Battery']['Percent']
+	// Safe accessors with fallback values for when data is not yet available
+	readonly property var batteryData: pm_data['Battery'] || {}
+	readonly property bool   st_battery_has: batteryData['Has Battery'] || false
+	readonly property string st_battery_state: batteryData['State'] || ""
+	readonly property int    st_battery_percent: batteryData['Percent'] || 0
 
 	// https://github.com/KDE/plasma-workspace/blob/master/dataengines/powermanagement/powermanagementengine.h
 	// https://github.com/KDE/plasma-workspace/blob/master/dataengines/powermanagement/powermanagementengine.cpp

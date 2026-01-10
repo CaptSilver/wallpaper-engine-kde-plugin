@@ -20,7 +20,7 @@ Item {
         return {
             result: value,
             then: function(callback) {
-                const res = callback({ result: value });
+                const res = callback(value);
                 // Return chainable promise
                 return _makePromise(res !== undefined ? res : value);
             },

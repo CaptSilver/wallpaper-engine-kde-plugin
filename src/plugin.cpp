@@ -6,6 +6,7 @@
 #include "MouseGrabber.hpp"
 #include "TTYSwitchMonitor.hpp"
 #include "PluginInfo.hpp"
+#include "FileHelper.hpp"
 
 constexpr std::array<uint, 2> WPVer { 1, 2 };
 
@@ -22,6 +23,7 @@ public:
         std::setlocale(LC_NUMERIC, "C");
         qmlRegisterType<mpv::MpvObject>(uri, WPVer[0], WPVer[1], "Mpv");
         qmlRegisterType<wekde::TTYSwitchMonitor>(uri, WPVer[0], WPVer[1], "TTYSwitchMonitor");
+        qmlRegisterType<wekde::FileHelper>(uri, WPVer[0], WPVer[1], "FileHelper");
     }
 };
 

@@ -94,8 +94,7 @@ RowLayout {
 
                     actions: [
                         Kirigami.Action {
-                            icon.source: Qt.resolvedUrl('../../images/folder-outline.svg')
-                            icon.color: Theme.textColor
+                            icon.name: "folder-symbolic"
                             text: 'Library'
                             tooltip: cfg_SteamLibraryPath ? cfg_SteamLibraryPath : 'Select steam library dir'
                             onTriggered: wpDialog.open()
@@ -103,8 +102,7 @@ RowLayout {
                         Kirigami.Action {
                             id: action_cb_filter
                             text: 'Filter'
-                            icon.source: Qt.resolvedUrl('../../images/filter.svg')
-                            icon.color: Theme.textColor
+                            icon.name: "view-filter"
                             property int currentIndex
                             readonly property var model: Common.filterModel
                             readonly property var modelValues: Common.filterModel.getValueArray(cfg_FilterStr)
@@ -118,8 +116,7 @@ RowLayout {
                         Kirigami.Action {
                             id: action_cb_sort
                             text: model[currentIndex].short
-                            icon.source: Qt.resolvedUrl('../../images/arrow-down.svg')
-                            icon.color: Theme.textColor
+                            icon.name: "view-sort-descending-symbolic"
                             property int currentIndex: Common.modelIndexOfValue(model, cfg_SortMode)
                             readonly property var model: [
                                 {
@@ -141,8 +138,7 @@ RowLayout {
                             children: model.map((el, index) => comp_action_sort.createObject(null, {text: el.text, act_value: el.value}))
                         },
                         Kirigami.Action {
-                            icon.source: Qt.resolvedUrl('../../images/refresh.svg')
-                            icon.color: Theme.textColor
+                            icon.name: "view-refresh-symbolic"
                             text: 'Refresh'
                             onTriggered: wpListModel.refresh()
                         }
@@ -181,12 +177,7 @@ RowLayout {
                     wrapMode: Text.WordWrap
                     visible: picViewLoader.item && picViewLoader.item.view.count === 0
                     level: 2
-                    text: { 
-                        if(!(libcheck.qtwebsockets && pyext))
-                            return `Please make sure qtwebsockets(qml module) installed, and open this again`
-                        if(!pyext.ok) {
-                            return `Python helper run failed: ${pyext.log}`;
-                        }
+                    text: {
                         if(!cfg_SteamLibraryPath)
                             return "Select your steam library through the folder selecting button above";
                         if(wpListModel.countNoFilter > 0)
@@ -374,7 +365,7 @@ RowLayout {
                     Layout.minimumHeight: implicitHeight
 
                     text: right_content.wpmodel.title
-                    color: Theme.textColor
+                    color: Theme.view.textColor
                     font.bold: true
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap
@@ -442,23 +433,23 @@ RowLayout {
                         actions: [
                             Kirigami.Action {
                                 id: right_act_favor
-                                icon.color: Theme.textColor
-                                icon.source: right_content.wpmodel.favor 
-                                    ? Qt.resolvedUrl('../../images/bookmark.svg')
-                                    : Qt.resolvedUrl('../../images/bookmark-outline-add.svg')
+                                
+                                icon.name: right_content.wpmodel.favor 
+                                    ? "bookmarks-symbolic"
+                                    : "bookmark-add-symbolic"
                                 tooltip: right_content.wpmodel.favor
                                     ? 'Remove from favorites'
                                     : 'Add to favorites'
                                 onTriggered: picViewLoader.item.toggleFavor(right_content.wpmodel)
                             },
                             Kirigami.Action {
-                                icon.source: Qt.resolvedUrl('../../images/link.svg')
+                                icon.name: "emblem-symbolic-link"
                                 tooltip: "Open Workshop Link"
                                 enabled: right_content.wpmodel.workshopid.match(Common.regex_workshop_online)
                                 onTriggered: Qt.openUrlExternally(Common.getWorkshopUrl(right_content.wpmodel.workshopid))
                             },
                             Kirigami.Action {
-                                icon.source: Qt.resolvedUrl('../../images/folder-outline.svg')
+                                icon.name: "folder-symbolic"
                                 tooltip: "Open Containing Folder"
                                 onTriggered: Qt.openUrlExternally(right_content.wpmodel.path) 
                             }
@@ -615,7 +606,7 @@ RowLayout {
                     }
 
                     header.text: 'Option'
-                    header.text_color: Theme.textColor
+                    header.text_color: Theme.view.textColor
                     header.icon: '../../images/cheveron-down.svg'
                     header.color: Theme.activeBackgroundColor
 
@@ -692,7 +683,7 @@ RowLayout {
                         ]
                         OptionItem {
                             text: modelData.text
-                            text_color: Theme.textColor
+                            text_color: Theme.view.textColor
 
                             property bool is_changed: right_opts.config && 
                                 right_opts.config_changes && 
@@ -732,7 +723,7 @@ RowLayout {
 
                     visible: false
                     text: ''
-                    color: Theme.textColor
+                    color: Theme.view.textColor
                     readonly property bool _set_text: {
                         const path = Common.getWpModelProjectPath(right_content.wpmodel);
                         if(path) {

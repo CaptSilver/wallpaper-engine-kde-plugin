@@ -102,7 +102,7 @@ Flickable {
                         <li>plugin lib: ${plugin_info.version}</li>
                         ${Common.version != plugin_info.version ? "<br><b>warning: The lib version is inconsistent with the plugin version</b>" : ""}
                         <li>kde: ${Qt.application.version}</li>
-                        <li>python: ${pyext ? pyext.version : '-'}</li>
+                        <li>file helper: native</li>
                         </ul>
                     `
                     wrapMode: Text.Wrap
@@ -122,14 +122,6 @@ Flickable {
                 clip: false
                 property var modelraw: {
                     const _model = [
-                        {
-                            ok: libcheck.qtwebsockets,
-                            name: "*qtwebsockets (qml)"
-                        },
-                        {
-                            ok: pyext && pyext.ok,
-                            name: "*python3-websockets"
-                        },
                         {
                             ok: libcheck.qtwebchannel,
                             name: "qtwebchannel (qml) (for web)"

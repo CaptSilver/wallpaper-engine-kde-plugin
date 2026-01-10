@@ -87,14 +87,11 @@ ColumnLayout {
     }
 
     property var pyext: {
-        if(!libcheck.qtwebsockets) {
-            pyext = null
-        } else {
-            pyext = Qt.createQmlObject(`
-                import QtQuick 2.0;
-                Pyext {}
-            `, this);
-        }
+        // FileHelper-based Pyext (no Python/WebSocket dependency)
+        pyext = Qt.createQmlObject(`
+            import QtQuick 2.0;
+            Pyext {}
+        `, this);
     }
 
     function saveConfig() {

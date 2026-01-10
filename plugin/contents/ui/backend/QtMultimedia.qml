@@ -22,6 +22,20 @@ Item{
             videoView.fillMode = VideoOutput.PreserveAspectCrop;
     }
 
+    // Force fillMode update on background.displayMode change
+    Timer {
+        id: displayModeFixTimer
+        interval: 50
+        repeat: false
+        onTriggered: videoItem.displayModeChanged()
+    }
+    Connections {
+        target: background
+        function onDisplayModeChanged() {
+            displayModeFixTimer.restart();
+        }
+    }
+
     VideoOutput {
         id: videoView
         //fillMode: wallpaper.configuration.FillMode

@@ -44,6 +44,23 @@ Rectangle {
     property int    volume: get_opt_value('volume', wallpaper.configuration.Volume)
     property real    speed: get_opt_value('speed', wallpaper.configuration.Speed)
 
+    // Reactive bindings for configuration changes
+    Connections {
+        target: wallpaper.configuration
+        function onDisplayModeChanged() {
+            background.displayMode = background.get_opt_value('display_mode', wallpaper.configuration.DisplayMode);
+        }
+        function onMuteAudioChanged() {
+            background.mute = background.get_opt_value('mute_audio', wallpaper.configuration.MuteAudio);
+        }
+        function onVolumeChanged() {
+            background.volume = background.get_opt_value('volume', wallpaper.configuration.Volume);
+        }
+        function onSpeedChanged() {
+            background.speed = background.get_opt_value('speed', wallpaper.configuration.Speed);
+        }
+    }
+
     property bool   perOptChanged: wallpaper.configuration.PerOptChanged
     onPerOptChangedChanged: {
         pyext.read_wallpaper_config(workshopid).then((res) => this.curOpt = res);

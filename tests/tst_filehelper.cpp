@@ -2,10 +2,7 @@
 // Unit tests for wekde::FileHelper
 //
 // getDirSize behaviour note (depth > 0):
-//   The loop at FileHelper.cpp:62-76 accumulates into totalSize but is then
-//   immediately overwritten by `totalSize = calcSize(path, 1)` at line 98.
-//   That loop is therefore dead code; only calcSize() determines the result.
-//   calcSize starts at currentDepth=1 and recurses while currentDepth < depth,
+//   calcSize() starts at currentDepth=1 and recurses while currentDepth < depth,
 //   so depth=N counts files up to N directory levels from the root.
 
 #include <QtTest>

@@ -258,6 +258,25 @@ private slots:
         QVERIFY(helper.readWallpaperConfig("__no_such_wallpaper__").isEmpty());
     }
 
+    void config_readCorruptJson_returnsEmpty() {
+        // Write a file with invalid JSON directly into the config dir so that
+        // readWallpaperConfig finds it but QJsonDocument::fromJson returns null.
+        FileHelper helper;
+        const QString id = "test_corrupt";
+        const QString path =
+            QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+            + "/wekde/wallpaper/" + id + ".json";
+        QDir().mkpath(QFileInfo(path).absolutePath());
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("not valid json {{{");
+        f.close();
+
+        QVERIFY(helper.readWallpaperConfig(id).isEmpty());
+
+        QFile::remove(path);
+    }
+
     void config_writeAndRead_roundTrip() {
         FileHelper helper;
         const QString id = "test_roundtrip";

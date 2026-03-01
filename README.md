@@ -19,6 +19,23 @@ yay -S wallpaper-engine-kde-plugin-git
 paru -S wallpaper-engine-kde-plugin-git
 ```
 
+### Fedora / rpm-ostree / Bazzite (RPM)
+
+Download the latest RPM from [Releases](https://github.com/CaptSilver/wallpaper-engine-kde-plugin/releases):
+
+```sh
+curl -LO https://github.com/CaptSilver/wallpaper-engine-kde-plugin/releases/download/v1.0/wallpaper-engine-kde-plugin-qt6-0-1.fc43.x86_64.rpm
+```
+
+Install:
+```sh
+# Standard Fedora
+sudo dnf install ./wallpaper-engine-kde-plugin-qt6-0-1.fc43.x86_64.rpm
+
+# rpm-ostree / Bazzite
+rpm-ostree install ./wallpaper-engine-kde-plugin-qt6-0-1.fc43.x86_64.rpm
+```
+
 ### Build from source
 
 #### Dependencies
@@ -95,12 +112,24 @@ rpmbuild --define="commit $(git rev-parse HEAD)" \
     -ba ./rpm/wek.spec
 
 sudo umount ~/rpmbuild/BUILD
-
 # Install (rpm-ostree example)
 rpm-ostree install ~/rpmbuild/RPMS/x86_64/wallpaper-engine-kde-plugin-qt6-*.rpm
 ```
 
-#### Uninstall
+## Activate in Plasma
+
+After installing via any method:
+
+1. Right-click the desktop → **Configure Desktop and Wallpaper...**
+2. Open the **Wallpaper Type** dropdown and select **Wallpaper Engine for KDE**
+3. Under **Steam Library**, point to the folder containing your `steamapps` directory
+   - Usually `~/.local/share/Steam`
+   - *Wallpaper Engine* must be installed in this library
+4. Your subscribed Workshop wallpapers will appear in the list — select one and click **Apply**
+
+> **Note:** After an rpm-ostree/Bazzite install you may need to reboot before the plugin starts working. For cmake installs, restarting plasmashell is enough: `systemctl --user restart plasma-plasmashell.service`
+
+### Uninstall
 1. Remove files listed in `build/install_manifest.txt`
 2. `kpackagetool6 -t Plasma/Wallpaper -r com.github.catsout.wallpaperEngineKde`
 

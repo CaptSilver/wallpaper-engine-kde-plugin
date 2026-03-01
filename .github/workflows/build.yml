@@ -20,7 +20,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Checkout submodules
-        run: git submodule update --init --force --recursive
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init --force --recursive
 
       - name: Install build dependencies
         run: |
@@ -61,7 +63,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Checkout submodules
-        run: git submodule update --init --force --recursive
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init --force --recursive
 
       - name: Enable RPM Fusion (needed for mpv)
         run: |

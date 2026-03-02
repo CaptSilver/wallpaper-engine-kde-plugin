@@ -103,6 +103,24 @@ jobs:
       - name: Build
         run: cmake --build build -j$(nproc)
 
+  # ── Lint ─────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format
+
+      - name: Check C++ formatting
+        run: |
+          find src -name "*.cpp" -o -name "*.hpp" | \
+            xargs clang-format --dry-run --Werror
+
   # ── Unit tests (Qt6 only, no KDE/Plasma/Vulkan deps) ────────────────────
   unit-tests:
     name: Unit Tests

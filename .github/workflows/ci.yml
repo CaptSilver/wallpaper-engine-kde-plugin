@@ -105,7 +105,7 @@ jobs:
 
   # ── Unit tests (Qt6 only, no KDE/Plasma/Vulkan deps) ────────────────────
   unit-tests:
-    name: Unit tests
+    name: Unit Tests
     runs-on: ubuntu-22.04
 
     steps:

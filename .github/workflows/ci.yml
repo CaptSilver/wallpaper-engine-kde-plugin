@@ -1,8 +1,8 @@
-name: Build
+name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
 
 jobs:
@@ -102,3 +102,46 @@ jobs:
 
       - name: Build
         run: cmake --build build -j$(nproc)
+
+  # ── Lint ─────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format
+
+      - name: Check C++ formatting
+        run: |
+          find src -name "*.cpp" -o -name "*.hpp" | \
+            xargs clang-format --dry-run --Werror
+
+  # ── Unit tests (Qt6 only, no KDE/Plasma/Vulkan deps) ────────────────────
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt6
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qt6-base-dev cmake ninja-build
+
+      - name: Configure (standalone test build)
+        run: |
+          cmake -B build/tests -S tests \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -G Ninja
+
+      - name: Build
+        run: cmake --build build/tests
+
+      - name: Run tests
+        run: ctest --test-dir build/tests --output-on-failure -V

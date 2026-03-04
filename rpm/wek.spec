@@ -25,6 +25,7 @@ Requires: mpv-libs
 Requires: lz4
 Requires: qt6-qtwebchannel
 Requires: qt6-qtwebsockets
+Requires: glew
 
 %global _enable_debug_package 0
 %global debug_package %{nil}

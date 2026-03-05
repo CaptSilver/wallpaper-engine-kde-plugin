@@ -156,6 +156,9 @@ After installing via any method:
 
 ## Support Status
 
+### Scene (3D)
+Not Supported! Limited 3D modeling capabilities. (WIP)
+
 ### Scene (2D)
 Supported by Vulkan 1.1. Requires *Wallpaper Engine* installed for assets.
 

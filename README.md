@@ -4,12 +4,6 @@ A wallpaper plugin integrating [Wallpaper Engine](https://store.steampowered.com
 
 > **This is a maintained fork** of the original [catsout/wallpaper-engine-kde-plugin](https://github.com/catsout/wallpaper-engine-kde-plugin) with improvements for Plasma 6.
 
-## Changes in this fork
-
-- **Removed Python dependency** — file operations now use native C++ (no more `python-websockets` issues)
-- **Fixed KDE 6.5+ theme reactivity** — UI elements no longer become invisible when switching between light/dark themes
-- **Plasma 6 / Qt6 support**
-
 ## Install
 
 ### Arch Linux (AUR)

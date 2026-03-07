@@ -773,26 +773,30 @@ RowLayout {
                                         // Convert "ui_browse_properties_XXX" to "Xxx Yyy"
                                         if (text.startsWith('ui_browse_properties_')) {
                                             const suffix = text.replace('ui_browse_properties_', '');
-                                            // Split by underscore, capitalize each word
                                             return suffix.split('_').map(w =>
                                                 w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
                                             ).join(' ');
                                         }
-                                        return text;
+                                        // Strip HTML tags
+                                        let cleaned = text.replace(/<[^>]*>/g, ' ');
+                                        // Collapse whitespace
+                                        cleaned = cleaned.replace(/\s+/g, ' ').trim();
+                                        return cleaned || key;
                                     }
                                     for (const key in props) {
                                         const prop = props[key];
-                                        if (prop.type) {
-                                            arr.push({
-                                                key: key,
-                                                text: formatLabel(prop.text, key),
-                                                type: prop.type,
-                                                value: prop.value,
-                                                min: prop.min,
-                                                max: prop.max,
-                                                options: prop.options
-                                            });
-                                        }
+                                        // Skip non-interactive types (info text, groups)
+                                        if (!prop.type || prop.type === 'text' || prop.type === 'group')
+                                            continue;
+                                        arr.push({
+                                            key: key,
+                                            text: formatLabel(prop.text, key),
+                                            type: prop.type,
+                                            value: prop.value,
+                                            min: prop.min,
+                                            max: prop.max,
+                                            options: prop.options
+                                        });
                                     }
                                     userProperties = arr;
                                 } else {
@@ -942,14 +946,16 @@ RowLayout {
                                             if (modelData.options) {
                                                 const comboModel = [];
                                                 for (const opt of modelData.options) {
-                                                    let label = opt.label || opt.value;
+                                                    let label = String(opt.label || opt.value);
                                                     // Convert localization keys to readable text
-                                                    if (label && label.startsWith('ui_browse_properties_')) {
+                                                    if (label.startsWith('ui_browse_properties_')) {
                                                         const suffix = label.replace('ui_browse_properties_', '');
                                                         label = suffix.split('_').map(w =>
                                                             w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
                                                         ).join(' ');
                                                     }
+                                                    // Strip HTML tags
+                                                    label = label.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
                                                     comboModel.push({
                                                         text: label,
                                                         value: opt.value

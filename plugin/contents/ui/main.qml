@@ -126,6 +126,14 @@ Rectangle {
     }
 
     function applySource() {
+        // Ensure user props are loaded for the current wallpaper before loading backend.
+        // When both WallpaperWorkShopId and WallpaperSource change simultaneously,
+        // QML may evaluate source first, so workshopid/curOpt/userPropsJson could be stale.
+        const wid = wallpaper.configuration.WallpaperWorkShopId;
+        if (wid) {
+            pyext.read_wallpaper_config(wid).then((res) => { curOpt = res; });
+        }
+
         const { path, type } = Common.unpackWallpaperSource(source);
         const path_changed = background.wallpaperPath !== path;
         const type_changed = background.wallpaperType !== type;
@@ -389,9 +397,12 @@ Rectangle {
                 backendLoader.loadInfoShow("Not supported wallpaper type");
                 return; 
         }
-        properties['source'] = background.wallpaperPath;
+        // Don't pass source as a constructor property — set it after load.
+        // This ensures QML bindings (e.g. userProperties) are evaluated first,
+        // so the C++ backend receives USER_PROPS before SOURCE/LOAD_SCENE.
         console.error("load backend: "+qmlsource);
         backendLoader.load(qmlsource, properties);
+        backendLoader.item.source = background.wallpaperPath;
         sourceCallback();
     }
    

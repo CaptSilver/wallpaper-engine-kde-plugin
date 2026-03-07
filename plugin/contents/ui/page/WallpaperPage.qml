@@ -598,6 +598,12 @@ RowLayout {
                         config_changes[workshopid][key] = val;
 
                         this.config_changesChanged();
+
+                        // Write to disk immediately (like savePropChange does)
+                        const cfg = {};
+                        cfg[key] = val;
+                        pyext.write_wallpaper_config(workshopid, cfg);
+
                         console.log("set_config: cfg_PerOptChanged before:", cfg_PerOptChanged);
                         cfg_PerOptChanged++;
                         console.log("set_config: cfg_PerOptChanged after:", cfg_PerOptChanged);
@@ -606,6 +612,8 @@ RowLayout {
                         config_resets.add(workshopid);
                         delete config_changes[workshopid];
                         config = {}
+                        // Write reset to disk immediately
+                        pyext.reset_wallpaper_config(workshopid);
                         cfg_PerOptChanged++;
                     }
                     function in_config_changes(key) {
@@ -746,10 +754,17 @@ RowLayout {
 
                     readonly property string workshopid: right_content.wpmodel.workshopid
                     onWorkshopidChanged: {
-                        // Reset state when switching wallpapers
-                        userProperties = [];
-                        propConfig = {};
+                        // Load saved config FIRST so it's available when Repeater creates delegates
                         propChanges = {};
+                        if (workshopid) {
+                            pyext.read_wallpaper_config(workshopid).then(res => {
+                                propConfig = res || {};
+                            });
+                        } else {
+                            propConfig = {};
+                        }
+                        // Clear last — this triggers _loadProps → userProperties → Repeater rebuild
+                        userProperties = [];
                     }
 
                     property var userProperties: []
@@ -808,15 +823,6 @@ RowLayout {
                             });
                         } else {
                             userProperties = [];
-                        }
-                        return true;
-                    }
-
-                    property bool _loadConfig: {
-                        if (workshopid) {
-                            pyext.read_wallpaper_config(workshopid).then(res => {
-                                propConfig = res || {};
-                            });
                         }
                         return true;
                     }

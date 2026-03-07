@@ -184,13 +184,30 @@ Rectangle {
     }
     function doHookMouse() {
         if(background.Window) {
+            let hookParent = null;
+            // Plasma 5: MouseEventListener → QQuickGridView
             const screenArea = Common.findItem(Window.contentItem, "MouseEventListener");
-            if(screenArea === null)
+            if(screenArea !== null) {
+                hookParent = Common.findItem(screenArea, "QQuickGridView");
+            }
+            // Plasma 6: AppletsLayout (desktop widget/icon area)
+            if(hookParent === null) {
+                hookParent = Common.findItem(Window.contentItem, "AppletsLayout");
+            }
+            // Plasma 6 fallback: FolderViewDropArea
+            if(hookParent === null) {
+                hookParent = Common.findItem(Window.contentItem, "FolderViewDropArea");
+            }
+            if(hookParent === null) {
+                if(hookTimer.tryTimes >= 9) {
+                    const tree = Common.genItemListStr(Window.contentItem, "  ", function(item) {
+                        return item.toString();
+                    });
+                    console.warn("[WEK] MouseHook: failed to find hook target. Item tree:\n" + tree);
+                }
                 return false;
-            const screenGrid = Common.findItem(screenArea, "QQuickGridView");
-            if(screenGrid === null)
-                return false;
-            console.error(screenGrid);
+            }
+            console.warn("[WEK] MouseHook: found target " + hookParent);
             if(background.mouseHooker) background.mouseHooker.destroy();
             background.mouseHooker = Qt.createQmlObject(`import QtQuick 2.12;
                     import com.github.catsout.wallpaperEngineKde 1.2
@@ -198,7 +215,7 @@ Rectangle {
                         z: -1
                         anchors.fill: parent
                     }
-            `, screenGrid);
+            `, hookParent);
             return true;
        }
        return false;
@@ -357,7 +374,7 @@ Rectangle {
                 break;
             case 'web':
                 qmlsource = "backend/QtWebView.qml";
-                properties = {readfile: pyext.readfile};
+                properties = {readfile: pyext.readfile, qwebChannelJs: pyext.qwebChannelSource(), patchedHtml: pyext.patchedHtml};
                 break;
             case 'scene':
                 if(background.hasLib) {

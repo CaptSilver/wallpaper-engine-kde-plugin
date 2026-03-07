@@ -41,6 +41,63 @@ QByteArray FileHelper::readFile(const QString& path) {
     return file.readAll();
 }
 
+QString FileHelper::qwebChannelSource() {
+    QFile file(":/qtwebchannel/qwebchannel.js");
+    if (! file.open(QIODevice::ReadOnly)) {
+        qWarning() << "FileHelper: Cannot open bundled qwebchannel.js resource";
+        return QString();
+    }
+    return QString::fromUtf8(file.readAll());
+}
+
+QString FileHelper::patchedHtml(const QString& path) {
+    QFile file(path);
+    if (! file.open(QIODevice::ReadOnly)) {
+        qWarning() << "FileHelper: Cannot open HTML file:" << path;
+        return QString();
+    }
+
+    QString html = QString::fromUtf8(file.readAll());
+
+    // Inject a script that patches History API to suppress SecurityError
+    // on file:// URLs.  Must run before any other scripts (e.g. Angular).
+    static const QString patch = QStringLiteral(
+        "<script>"
+        "(function(){"
+        // Global error handlers for diagnostics
+        "window.addEventListener('error',function(e){"
+        "console.warn('[WEK] ERROR:',e.message,'at',e.filename+':'+e.lineno+':'+e.colno);"
+        "if(e.error&&e.error.stack)console.warn('[WEK] STACK:',e.error.stack);"
+        "});"
+        "window.addEventListener('unhandledrejection',function(e){"
+        "console.warn('[WEK] REJECTION:',e.reason);"
+        "if(e.reason&&e.reason.stack)console.warn('[WEK] STACK:',e.reason.stack);"
+        "});"
+        // Patch History API to suppress SecurityError on file:// URLs
+        "var oR=history.replaceState,oP=history.pushState;"
+        "history.replaceState=function(){"
+        "try{return oR.apply(this,arguments)}"
+        "catch(e){if(e.name!=='SecurityError')throw e}"
+        "};"
+        "history.pushState=function(){"
+        "try{return oP.apply(this,arguments)}"
+        "catch(e){if(e.name!=='SecurityError')throw e}"
+        "}"
+        "})();"
+        "</script>");
+
+    // Insert after <head> so it runs before any other scripts
+    int idx = html.indexOf(QLatin1String("<head>"), 0, Qt::CaseInsensitive);
+    if (idx >= 0) {
+        html.insert(idx + 6, patch);
+    } else {
+        // No <head> tag — prepend to the document
+        html.prepend(patch);
+    }
+
+    return html;
+}
+
 qint64 FileHelper::getDirSize(const QString& path, int depth) {
     qint64 totalSize = 0;
     QDir   dir(path);

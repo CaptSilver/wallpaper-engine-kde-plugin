@@ -31,6 +31,14 @@ Item {
         };
     }
 
+    function qwebChannelSource() {
+        return fileHelper.qwebChannelSource();
+    }
+
+    function patchedHtml(path) {
+        return fileHelper.patchedHtml(path);
+    }
+
     function readfile(path) {
         const data = fileHelper.readFile(path);
         // Return as string (QML handles QByteArray to string conversion)

@@ -74,7 +74,6 @@ ColumnLayout {
 
     property var libcheck: ({
         wallpaper: Common.checklib_wallpaper(root),
-        qtwebsockets: Common.checklib_websockets(root),
         qtwebchannel: Common.checklib_webchannel(root)
     })
 

@@ -3,6 +3,7 @@ import QtWebEngine 1.10
 import QtWebChannel 1.10
 import ".."
 import "../js/utils.mjs" as Utils
+import "qwebchannel_source.mjs" as QWebChannelSource
 
 Item {
     id: webItem
@@ -100,12 +101,17 @@ Item {
         }
 
         Component.onCompleted: {
+            if (!QWebChannelSource.source || QWebChannelSource.source.length < 100)
+                console.error("[WEK] qwebchannel source missing or truncated (" + (QWebChannelSource.source ? QWebChannelSource.source.length : 0) + " chars)");
+            else
+                console.log("[WEK] qwebchannel source loaded (" + QWebChannelSource.source.length + " chars)");
+
             userScripts.insert([
                 {
                     injectionPoint: WebEngineScript.DocumentCreation,
                     worldId: WebEngineScript.MainWorld,
                     name: "QWebChannel",
-                    sourceUrl: "qrc:///qtwebchannel/qwebchannel.js"
+                    sourceCode: QWebChannelSource.source
                 },
                 {
                     injectionPoint: WebEngineScript.DocumentCreation,
@@ -125,7 +131,7 @@ Item {
                     injectionPoint: WebEngineScript.Deferred,
                     name: "ObjectInjector",
                     sourceCode: `
-                        new QWebChannel(qt.webChannelTransport, function(channel) {
+                        new window.QWebChannel(qt.webChannelTransport, function(channel) {
                             window.wpeQml = channel.objects.wpeQml;
                             const wpeQml = window.wpeQml;
                             const propertyListener = window.wallpaperPropertyListener;

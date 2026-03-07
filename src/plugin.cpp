@@ -17,6 +17,7 @@ class Port : public QQmlExtensionPlugin {
 public:
     void registerTypes(const char* uri) override {
         if (strcmp(uri, "com.github.catsout.wallpaperEngineKde") != 0) return;
+        qputenv("QML_XHR_ALLOW_FILE_READ", "1");
         qmlRegisterType<wekde::PluginInfo>(uri, WPVer[0], WPVer[1], "PluginInfo");
         qmlRegisterType<wekde::MouseGrabber>(uri, WPVer[0], WPVer[1], "MouseGrabber");
         qmlRegisterType<scenebackend::SceneObject>(uri, WPVer[0], WPVer[1], "SceneViewer");

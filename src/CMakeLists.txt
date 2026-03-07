@@ -17,6 +17,7 @@ add_library(${PROJECT_NAME}
 	PluginInfo.cpp
 	FileHelper.cpp
 	qmldir
+	qwebchannel.qrc
 )
 
 target_link_libraries(${PROJECT_NAME} 

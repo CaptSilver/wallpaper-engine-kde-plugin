@@ -26,10 +26,6 @@ sudo dnf builddep ./rpm/wek.spec
 # Initialise submodules
 git submodule update --init --force --recursive
 
-# Copy QML plugin files (required at runtime)
-mkdir -p ~/.local/share/plasma/wallpapers/com.github.catsout.wallpaperEngineKde/
-cp -R ./plugin/* ~/.local/share/plasma/wallpapers/com.github.catsout.wallpaperEngineKde/
-
 # Use tmpfs to speed up the build and avoid wearing disk
 sudo mount -t tmpfs tmpfs ~/rpmbuild/BUILD
 

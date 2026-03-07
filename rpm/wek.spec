@@ -17,14 +17,15 @@ BuildRequires: kf6-kpackage-devel
 BuildRequires: lz4-devel
 BuildRequires: mpv-libs-devel
 BuildRequires: qt6-qtbase-private-devel
-BuildRequires: qt6-qtwebchannel-devel qt6-qtwebsockets-devel
+BuildRequires: qt6-qtwebchannel-devel
+BuildRequires: freetype-devel
 
 Requires: plasma-workspace
 Requires: gstreamer1-libav
 Requires: mpv-libs
 Requires: lz4
 Requires: qt6-qtwebchannel
-Requires: qt6-qtwebsockets
+Requires: qt6-qtwebengine
 Requires: glew
 
 %global _enable_debug_package 0

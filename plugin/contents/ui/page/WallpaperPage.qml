@@ -180,9 +180,7 @@ RowLayout {
                     wrapMode: Text.WordWrap
                     visible: picViewLoader.item && picViewLoader.item.view.count === 0
                     level: 2
-                    text: { 
-                        if(!(libcheck.qtwebsockets && pyext))
-                            return `Please make sure qtwebsockets(qml module) installed, and open this again`
+                    text: {
                         if(!pyext.ok) {
                             return `Python helper run failed: ${pyext.log}`;
                         }

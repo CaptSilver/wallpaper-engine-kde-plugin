@@ -106,5 +106,9 @@
       <label>CustomConf</label>
       <default></default>
     </entry>
+    <entry name="HdrOutput" type="Bool">
+      <label>HDR Output</label>
+      <default>false</default>
+    </entry>
   </group>
 </kcfg>

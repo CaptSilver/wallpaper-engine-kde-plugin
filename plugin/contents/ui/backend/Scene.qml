@@ -46,6 +46,7 @@ Item{
         speed: background.speed
         assets: sceneItem.assets
         userProperties: sceneItem.userPropsJson
+        hdrOutput: background.hdrOutput
         Component.onCompleted: {
             player.setAcceptMouse(true);
             player.setAcceptHover(true);

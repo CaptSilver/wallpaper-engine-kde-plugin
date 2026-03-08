@@ -23,6 +23,7 @@ export function readTextFile(fileUrl) {
 */
 
 export function parseJson(str) {
+    if (!str) return null;
     let obj_j;
     try {
         obj_j = JSON.parse(str);
@@ -33,7 +34,7 @@ export function parseJson(str) {
         } else {
           throw e;  // re-throw the error unchanged
         }
-    } 
+    }
     return obj_j;
 }
 

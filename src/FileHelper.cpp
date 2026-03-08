@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QDirIterator>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>
@@ -228,6 +229,22 @@ void FileHelper::writeWallpaperConfig(const QString& id, const QVariantMap& chan
 void FileHelper::resetWallpaperConfig(const QString& id) {
     QString filePath = wallpaperConfigFile(id);
     QFile::remove(filePath);
+}
+
+QVariantList FileHelper::readActiveBindings(const QString& id) {
+    QString filePath = wallpaperConfigDir() + "/" + id + "_bindings.json";
+    QFile   file(filePath);
+
+    if (! file.exists() || ! file.open(QIODevice::ReadOnly)) {
+        return QVariantList();
+    }
+
+    QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    if (doc.isNull() || ! doc.isArray()) {
+        return QVariantList();
+    }
+
+    return doc.array().toVariantList();
 }
 
 } // namespace wekde

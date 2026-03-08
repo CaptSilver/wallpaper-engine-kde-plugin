@@ -1,5 +1,5 @@
 Name:    wallpaper-engine-kde-plugin-qt6
-Version: 0
+Version: 1.0.1
 Release: 1%{?dist}
 Summary: A KDE wallpaper plugin integrating Wallpaper Engine (Plasma 6)
 
@@ -60,6 +60,9 @@ DESTDIR=%{buildroot} cmake --install %{_builddir}/wek-build \
 %{_datadir}/*
 
 %changelog
+* Sat Mar 07 2026 packager - 1.0.1-1
+- Update to version 1.0.1
+
 * Sat Feb 28 2026 packager - 0-1
 - Add kf6-kcoreaddons-devel and kf6-kpackage-devel to BuildRequires
 - Port to RainyPixel fork: drop python3-websockets and Qt5 dep,

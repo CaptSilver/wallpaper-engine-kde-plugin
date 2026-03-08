@@ -71,4 +71,9 @@ Item {
         fileHelper.resetWallpaperConfig(id);
         return _makePromise(null);
     }
+
+    function read_active_bindings(id) {
+        const bindings = fileHelper.readActiveBindings(id);
+        return _makePromise(bindings);
+    }
 }

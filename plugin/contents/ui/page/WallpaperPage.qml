@@ -760,8 +760,12 @@ RowLayout {
                             pyext.read_wallpaper_config(workshopid).then(res => {
                                 propConfig = res || {};
                             });
+                            pyext.read_active_bindings(workshopid).then(res => {
+                                activeBindings = res || [];
+                            });
                         } else {
                             propConfig = {};
+                            activeBindings = [];
                         }
                         // Clear last — this triggers _loadProps → userProperties → Repeater rebuild
                         userProperties = [];
@@ -770,6 +774,7 @@ RowLayout {
                     property var userProperties: []
                     property var propConfig: ({})
                     property var propChanges: ({})
+                    property var activeBindings: []
 
                     property bool _loadProps: {
                         // Force re-evaluation when workshopid changes
@@ -885,6 +890,12 @@ RowLayout {
                         OptionItem {
                             text: modelData.text
                             text_color: Kirigami.Theme.textColor
+
+                            // Gray out properties not bound to any shader
+                            property bool isBound: user_props_group.activeBindings.length === 0
+                                || user_props_group.activeBindings.indexOf(modelData.key) >= 0
+                            enabled: isBound
+                            opacity: isBound ? 1.0 : 0.4
 
                             property bool is_changed: user_props_group.propChanges.hasOwnProperty(modelData.key)
                             icon: is_changed ? Qt.resolvedUrl('../../images/edit-pencil.svg') : ''

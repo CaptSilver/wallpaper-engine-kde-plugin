@@ -6,11 +6,38 @@ A wallpaper plugin integrating [Wallpaper Engine](https://store.steampowered.com
 
 ## Install
 
-### Arch Linux (AUR)
+### Ubuntu / Debian (.deb)
+
+> **Note:** Requires Ubuntu 24.10+ or Debian Trixie+ (KDE Plasma 6 / KF6 / Qt6). Ubuntu 24.04 LTS only ships Plasma 5 and does not have the required KF6 packages.
+
+Download the latest `.deb` from [Releases](https://github.com/CaptSilver/wallpaper-engine-kde-plugin/releases):
+
 ```sh
-yay -S wallpaper-engine-kde-plugin-git
-# or
-paru -S wallpaper-engine-kde-plugin-git
+sudo apt install ./wallpaper-engine-kde-plugin_*.deb
+```
+
+#### Build .deb from source
+
+```sh
+git clone https://github.com/captsilver/wallpaper-engine-kde-plugin.git
+cd wallpaper-engine-kde-plugin
+
+# Install build dependencies
+sudo apt install \
+    g++ cmake ninja-build extra-cmake-modules pkg-config debhelper fakeroot \
+    libvulkan-dev libkf6package-dev libplasma-dev \
+    plasma-workspace-dev qt6-base-dev qt6-base-private-dev \
+    qt6-declarative-dev qt6-websockets-dev qt6-webchannel-dev \
+    libmpv-dev liblz4-dev libfreetype-dev
+
+# Initialise submodules
+git submodule update --init --force --recursive
+
+# Build the .deb package
+dpkg-buildpackage -us -uc -b
+
+# Install
+sudo apt install ../wallpaper-engine-kde-plugin_*.deb
 ```
 
 ### Fedora / rpm-ostree / Bazzite (RPM)
@@ -33,6 +60,15 @@ rpm-ostree install ./wallpaper-engine-kde-plugin-qt6-0-1.fc43.x86_64.rpm
 ### Build from source
 
 #### Dependencies
+
+Ubuntu / Debian:
+```sh
+sudo apt install g++ cmake ninja-build extra-cmake-modules pkg-config \
+    libvulkan-dev libkf6package-dev libplasma-dev \
+    plasma-workspace-dev qt6-base-dev qt6-base-private-dev \
+    qt6-declarative-dev qt6-websockets-dev qt6-webchannel-dev \
+    libmpv-dev liblz4-dev libfreetype-dev
+```
 
 Arch:
 ```sh

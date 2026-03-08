@@ -1,0 +1,48 @@
+Source: wallpaper-engine-kde-plugin
+Section: kde
+Priority: optional
+Maintainer: CaptSilver <https://github.com/CaptSilver>
+Build-Depends:
+ debhelper-compat (= 13),
+ g++,
+ cmake (>= 3.16),
+ extra-cmake-modules,
+ ninja-build,
+ libvulkan-dev,
+ libkf6package-dev,
+ libplasma-dev,
+ plasma-workspace-dev,
+ qt6-base-dev,
+ qt6-base-private-dev,
+ qt6-declarative-dev,
+ qt6-websockets-dev,
+ qt6-webchannel-dev,
+ libmpv-dev,
+ liblz4-dev,
+ libfreetype-dev,
+ pkg-config,
+Standards-Version: 4.6.2
+Homepage: https://github.com/CaptSilver/wallpaper-engine-kde-plugin
+Vcs-Git: https://github.com/CaptSilver/wallpaper-engine-kde-plugin.git
+Vcs-Browser: https://github.com/CaptSilver/wallpaper-engine-kde-plugin
+Rules-Requires-Root: no
+
+Package: wallpaper-engine-kde-plugin
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ plasma-workspace,
+ libmpv2 | libmpv-dev,
+ liblz4-1,
+ qt6-websockets-dev | libqt6websockets6,
+ gstreamer1.0-libav,
+Description: Wallpaper Engine integration for KDE Plasma 6
+ A wallpaper plugin integrating Wallpaper Engine into KDE Plasma 6
+ wallpaper settings. Supports Scene (2D), Web, and Video wallpapers.
+ .
+ This is a maintained fork with native C++ file operations, fixed
+ KDE 6.5+ theme reactivity, and full Plasma 6 / Qt6 support.
+ .
+ Requires Wallpaper Engine installed on Steam and subscribed Workshop
+ wallpapers.

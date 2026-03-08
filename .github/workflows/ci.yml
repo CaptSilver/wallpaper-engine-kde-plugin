@@ -103,6 +103,58 @@ jobs:
       - name: Build
         run: cmake --build build -j$(nproc)
 
+  # ── Ubuntu (deb packaging target) ───────────────────────────────────────
+  build-ubuntu:
+    name: Full build — Ubuntu
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:25.04
+
+    steps:
+      - name: Install git
+        run: |
+          apt-get update
+          apt-get install -y git
+
+      - uses: actions/checkout@v4
+
+      - name: Checkout submodules
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init --force --recursive
+
+      - name: Install build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get install -y \
+            g++ \
+            cmake \
+            ninja-build \
+            extra-cmake-modules \
+            pkg-config \
+            libvulkan-dev \
+            libkf6package-dev \
+            libplasma-dev \
+            plasma-workspace-dev \
+            qt6-base-dev \
+            qt6-base-private-dev \
+            qt6-declarative-dev \
+            qt6-websockets-dev \
+            qt6-webchannel-dev \
+            libmpv-dev \
+            liblz4-dev \
+            libfreetype-dev
+
+      - name: Configure
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -G Ninja
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
   # ── Lint ─────────────────────────────────────────────────────────────────
   lint:
     name: Lint

@@ -33,9 +33,6 @@ Depends:
  ${shlibs:Depends},
  ${misc:Depends},
  plasma-workspace,
- libmpv2 | libmpv-dev,
- liblz4-1,
- qt6-websockets-dev | libqt6websockets6,
  gstreamer1.0-libav,
 Description: Wallpaper Engine integration for KDE Plasma 6
  A wallpaper plugin integrating Wallpaper Engine into KDE Plasma 6

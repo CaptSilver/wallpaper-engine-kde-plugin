@@ -1,10 +1,10 @@
-wallpaper-engine-kde-plugin (1.0.1-1) unstable; urgency=medium
+wallpaper-engine-kde-plugin (1.0.1) unstable; urgency=medium
 
   * Update to version 1.0.1.
 
  -- CaptSilver <https://github.com/CaptSilver>  Sat, 07 Mar 2026 00:00:00 +0000
 
-wallpaper-engine-kde-plugin (0.1.0-1) unstable; urgency=medium
+wallpaper-engine-kde-plugin (0.1.0) unstable; urgency=medium
 
   * Initial Debian packaging.
   * Plasma 6 / Qt6 / KF6 support.

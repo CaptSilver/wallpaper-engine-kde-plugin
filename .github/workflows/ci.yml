@@ -108,7 +108,7 @@ jobs:
     name: Full build — Ubuntu
     runs-on: ubuntu-latest
     container:
-      image: ubuntu:24.04
+      image: ubuntu:25.04
 
     steps:
       - name: Install git
@@ -159,7 +159,7 @@ jobs:
     name: Build .deb — Ubuntu
     runs-on: ubuntu-latest
     container:
-      image: ubuntu:24.04
+      image: ubuntu:25.04
 
     steps:
       - name: Install git and build tools

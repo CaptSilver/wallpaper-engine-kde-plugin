@@ -23,7 +23,7 @@ cd wallpaper-engine-kde-plugin
 # Install build dependencies
 sudo apt install \
     cmake ninja-build extra-cmake-modules pkg-config debhelper fakeroot \
-    libvulkan-dev vulkan-headers libkf6package-dev libplasma-dev \
+    libvulkan-dev libkf6package-dev libplasma-dev \
     plasma-workspace-dev qt6-base-dev qt6-base-private-dev \
     qt6-declarative-dev qt6-websockets-dev qt6-webchannel-dev \
     libmpv-dev liblz4-dev libfreetype-dev
@@ -62,7 +62,7 @@ rpm-ostree install ./wallpaper-engine-kde-plugin-qt6-0-1.fc43.x86_64.rpm
 Ubuntu / Debian:
 ```sh
 sudo apt install cmake ninja-build extra-cmake-modules pkg-config \
-    libvulkan-dev vulkan-headers libkf6package-dev libplasma-dev \
+    libvulkan-dev libkf6package-dev libplasma-dev \
     plasma-workspace-dev qt6-base-dev qt6-base-private-dev \
     qt6-declarative-dev qt6-websockets-dev qt6-webchannel-dev \
     libmpv-dev liblz4-dev libfreetype-dev

@@ -8,7 +8,6 @@ Build-Depends:
  extra-cmake-modules,
  ninja-build,
  libvulkan-dev,
- vulkan-headers,
  libkf6package-dev,
  libplasma-dev,
  plasma-workspace-dev,

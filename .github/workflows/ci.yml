@@ -133,7 +133,6 @@ jobs:
             extra-cmake-modules \
             pkg-config \
             libvulkan-dev \
-            vulkan-headers \
             libkf6package-dev \
             libplasma-dev \
             plasma-workspace-dev \
@@ -185,7 +184,6 @@ jobs:
             extra-cmake-modules \
             pkg-config \
             libvulkan-dev \
-            vulkan-headers \
             libkf6package-dev \
             libplasma-dev \
             plasma-workspace-dev \

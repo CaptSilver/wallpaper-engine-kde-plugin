@@ -23,8 +23,8 @@ public:
         // many workshop wallpapers rely on this for weather/API calls.
         {
             QByteArray flags = qgetenv("QTWEBENGINE_CHROMIUM_FLAGS");
-            if (!flags.contains("--disable-web-security")) {
-                if (!flags.isEmpty()) flags.append(' ');
+            if (! flags.contains("--disable-web-security")) {
+                if (! flags.isEmpty()) flags.append(' ');
                 flags.append("--disable-web-security");
                 qputenv("QTWEBENGINE_CHROMIUM_FLAGS", flags);
             }

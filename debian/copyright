@@ -1,0 +1,16 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: wallpaper-engine-kde-plugin
+Upstream-Contact: https://github.com/CaptSilver/wallpaper-engine-kde-plugin/issues
+Source: https://github.com/CaptSilver/wallpaper-engine-kde-plugin
+
+Files: *
+Copyright: 2021-2026 catsout and contributors
+License: GPL-2.0-only
+
+License: GPL-2.0-only
+ This program is free software; you can redistribute it and/or modify
+ it under the terms of the GNU General Public License version 2 as
+ published by the Free Software Foundation.
+ .
+ On Debian systems, the full text of the GNU General Public License
+ version 2 can be found in `/usr/share/common-licenses/GPL-2'.

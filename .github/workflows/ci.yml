@@ -103,6 +103,110 @@ jobs:
       - name: Build
         run: cmake --build build -j$(nproc)
 
+  # ── Ubuntu (deb packaging target) ───────────────────────────────────────
+  build-ubuntu:
+    name: Full build — Ubuntu
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:24.04
+
+    steps:
+      - name: Install git
+        run: |
+          apt-get update
+          apt-get install -y git
+
+      - uses: actions/checkout@v4
+
+      - name: Checkout submodules
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init --force --recursive
+
+      - name: Install build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get install -y \
+            cmake \
+            ninja-build \
+            extra-cmake-modules \
+            pkg-config \
+            libvulkan-dev \
+            vulkan-headers \
+            libkf6package-dev \
+            libplasma-dev \
+            plasma-workspace-dev \
+            qt6-base-dev \
+            qt6-base-private-dev \
+            qt6-declarative-dev \
+            qt6-websockets-dev \
+            qt6-webchannel-dev \
+            libmpv-dev \
+            liblz4-dev \
+            libfreetype-dev
+
+      - name: Configure
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -G Ninja
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+  # ── Ubuntu deb package build ──────────────────────────────────────────
+  build-deb:
+    name: Build .deb — Ubuntu
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:24.04
+
+    steps:
+      - name: Install git and build tools
+        run: |
+          apt-get update
+          apt-get install -y git dpkg-dev debhelper-compat fakeroot
+
+      - uses: actions/checkout@v4
+
+      - name: Checkout submodules
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init --force --recursive
+
+      - name: Install build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get install -y \
+            cmake \
+            ninja-build \
+            extra-cmake-modules \
+            pkg-config \
+            libvulkan-dev \
+            vulkan-headers \
+            libkf6package-dev \
+            libplasma-dev \
+            plasma-workspace-dev \
+            qt6-base-dev \
+            qt6-base-private-dev \
+            qt6-declarative-dev \
+            qt6-websockets-dev \
+            qt6-webchannel-dev \
+            libmpv-dev \
+            liblz4-dev \
+            libfreetype-dev
+
+      - name: Build .deb package
+        run: dpkg-buildpackage -us -uc -b
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-package
+          path: ../*.deb
+
   # ── Lint ─────────────────────────────────────────────────────────────────
   lint:
     name: Lint

@@ -31,6 +31,7 @@ Flickable {
 
     property alias cfg_PauseOnBatPower: chkbox_pauseOnBatPower.checked
     property alias cfg_PauseBatPercent: spin_pauseBatPercent.value
+    property alias cfg_HdrOutput: ckbox_hdrOutput.checked
 
 
     Layout.fillWidth: true
@@ -354,6 +355,21 @@ Flickable {
                     }
                 }
 
+            }
+            OptionItem {
+                text: 'HDR Output'
+                text_color: Kirigami.Theme.textColor
+                actor: Switch {
+                    id: ckbox_hdrOutput
+                }
+                contentBottom: ColumnLayout {
+                    Text {
+                        Layout.fillWidth: true
+                        color: Kirigami.Theme.disabledTextColor
+                        text: "Pass HDR colors to the compositor without tonemapping. Requires Plasma HDR support."
+                        wrapMode: Text.Wrap
+                    }
+                }
             }
             OptionItem {
                 text: 'Shader cache'

@@ -26,6 +26,7 @@ Rectangle {
 
     property bool   pauseOnBatPower: wallpaper.configuration.PauseOnBatPower
     property int    pauseBatPercent: wallpaper.configuration.PauseBatPercent
+    property bool   hdrOutput: wallpaper.configuration.HdrOutput
 
     
     property var curOpt: ({})

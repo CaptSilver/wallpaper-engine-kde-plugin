@@ -8,6 +8,8 @@ A wallpaper plugin integrating [Wallpaper Engine](https://store.steampowered.com
 
 ### Ubuntu / Debian (.deb)
 
+> **Note:** Requires Ubuntu 24.10+ or Debian Trixie+ (KDE Plasma 6 / KF6 / Qt6). Ubuntu 24.04 LTS only ships Plasma 5 and does not have the required KF6 packages.
+
 Download the latest `.deb` from [Releases](https://github.com/CaptSilver/wallpaper-engine-kde-plugin/releases):
 
 ```sh

@@ -22,10 +22,10 @@ public:
     Q_INVOKABLE QVariantMap getFolderList(const QString& path, const QVariantMap& opt = {});
 
     // Wallpaper config operations
-    Q_INVOKABLE QVariantMap   readWallpaperConfig(const QString& id);
-    Q_INVOKABLE void          writeWallpaperConfig(const QString& id, const QVariantMap& changed);
-    Q_INVOKABLE void          resetWallpaperConfig(const QString& id);
-    Q_INVOKABLE QVariantList  readActiveBindings(const QString& id);
+    Q_INVOKABLE QVariantMap  readWallpaperConfig(const QString& id);
+    Q_INVOKABLE void         writeWallpaperConfig(const QString& id, const QVariantMap& changed);
+    Q_INVOKABLE void         resetWallpaperConfig(const QString& id);
+    Q_INVOKABLE QVariantList readActiveBindings(const QString& id);
 
 private:
     QString configDir() const;

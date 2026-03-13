@@ -110,5 +110,9 @@
       <label>HDR Output</label>
       <default>false</default>
     </entry>
+    <entry name="SystemAudioCapture" type="Bool">
+      <label>System Audio Capture</label>
+      <default>false</default>
+    </entry>
   </group>
 </kcfg>

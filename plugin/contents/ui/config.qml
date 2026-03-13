@@ -39,6 +39,7 @@ ColumnLayout {
     property alias  cfg_PauseOnBatPower:     settingPage.cfg_PauseOnBatPower
     property alias  cfg_PauseBatPercent:     settingPage.cfg_PauseBatPercent
     property alias  cfg_HdrOutput:           settingPage.cfg_HdrOutput
+    property alias  cfg_SystemAudioCapture:  settingPage.cfg_SystemAudioCapture
     property int    cfg_DisplayMode
     property int    cfg_PauseMode
     property int    cfg_VideoBackend

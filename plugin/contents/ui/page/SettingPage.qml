@@ -32,6 +32,7 @@ Flickable {
     property alias cfg_PauseOnBatPower: chkbox_pauseOnBatPower.checked
     property alias cfg_PauseBatPercent: spin_pauseBatPercent.value
     property alias cfg_HdrOutput: ckbox_hdrOutput.checked
+    property alias cfg_SystemAudioCapture: ckbox_systemAudioCapture.checked
 
 
     Layout.fillWidth: true
@@ -263,6 +264,25 @@ Flickable {
                         to: 100
                         stepSize: 5.0
                         snapMode: Slider.SnapOnRelease
+                    }
+                }
+            }
+
+            OptionItem {
+                text: "System Audio Capture"
+                text_color: Kirigami.Theme.textColor
+                icon: '../../images/volume-up.svg'
+                actor: Switch {
+                    id: ckbox_systemAudioCapture
+                }
+                contentBottom: ColumnLayout {
+                    Text {
+                        Layout.fillWidth: true
+                        text: "When enabled, audio-reactive wallpapers respond to all system audio (music, videos, games). When disabled, only the wallpaper's own background music is used."
+                        color: Kirigami.Theme.disabledTextColor
+                        wrapMode: Text.WordWrap
+                        font.italic: true
+                        font.pointSize: Kirigami.Theme.smallFont.pointSize
                     }
                 }
             }

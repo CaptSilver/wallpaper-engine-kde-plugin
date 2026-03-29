@@ -8,7 +8,7 @@ URL:     https://github.com/captsilver/wallpaper-engine-kde-plugin
 
 # Built from a live git checkout.
 
-BuildRequires: cmake extra-cmake-modules
+BuildRequires: cmake extra-cmake-modules clang
 BuildRequires: vulkan-headers
 BuildRequires: plasma-workspace-devel libplasma-devel
 BuildRequires: kf6-plasma-devel
@@ -46,6 +46,8 @@ support.
 #   git submodule update --init --force --recursive
 
 %build
+export CC=clang
+export CXX=clang++
 cmake -B %{_builddir}/wek-build \
       -S %{reporoot} \
       -DCMAKE_BUILD_TYPE=Release

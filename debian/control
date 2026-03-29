@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: CaptSilver <https://github.com/CaptSilver>
 Build-Depends:
  debhelper-compat (= 13),
- g++,
+ clang,
  cmake (>= 3.16),
  extra-cmake-modules,
  ninja-build,

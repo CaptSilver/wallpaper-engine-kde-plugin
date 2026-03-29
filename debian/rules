@@ -1,6 +1,8 @@
 #!/usr/bin/make -f
 
 export DH_VERBOSE = 1
+export CC  = clang
+export CXX = clang++
 
 %:
 	dh $@

@@ -1,0 +1,19 @@
+mutators:
+  - cxx_add_to_sub
+  - cxx_sub_to_add
+  - cxx_mul_to_div
+  - cxx_div_to_mul
+  - cxx_assign_const
+  - cxx_init_const
+  - cxx_remove_void_call
+  - cxx_lt_to_le
+  - cxx_le_to_lt
+  - cxx_gt_to_ge
+  - cxx_ge_to_gt
+  - cxx_eq_to_ne
+  - cxx_ne_to_eq
+  - cxx_logical_and_to_or
+  - cxx_logical_or_to_and
+  - negate_cond
+
+timeout: 5000

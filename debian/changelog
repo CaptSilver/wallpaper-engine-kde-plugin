@@ -1,3 +1,13 @@
+wallpaper-engine-kde-plugin (1.1) unstable; urgency=medium
+
+  * Planar reflection, MSAA, HDR, geometry shaders, blur effects.
+  * SceneScript: scene property control, timers, device detection, cursor events.
+  * System audio capture, audio decoder fix.
+  * Default compiler switched to Clang, 589 unit tests.
+  * MDL/PKG v0023 support, text layer fixes.
+
+ -- CaptSilver <https://github.com/CaptSilver>  Sat, 29 Mar 2026 00:00:00 +0000
+
 wallpaper-engine-kde-plugin (1.0.1) unstable; urgency=medium
 
   * Update to version 1.0.1.

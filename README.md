@@ -21,16 +21,16 @@ sudo apt install ./wallpaper-engine-kde-plugin_*.deb
 Download the latest RPM from [Releases](https://github.com/CaptSilver/wallpaper-engine-kde-plugin/releases):
 
 ```sh
-curl -LO https://github.com/CaptSilver/wallpaper-engine-kde-plugin/releases/download/v1.0/wallpaper-engine-kde-plugin-qt6-0-1.fc43.x86_64.rpm
+curl -LO https://github.com/CaptSilver/wallpaper-engine-kde-plugin/releases/download/v1.1/wallpaper-engine-kde-plugin-qt6-1.1-1.fc43.x86_64.rpm
 ```
 
 Install:
 ```sh
 # Standard Fedora
-sudo dnf install ./wallpaper-engine-kde-plugin-qt6-0-1.fc43.x86_64.rpm
+sudo dnf install ./wallpaper-engine-kde-plugin-qt6-1.1-1.fc43.x86_64.rpm
 
 # rpm-ostree / Bazzite
-rpm-ostree install ./wallpaper-engine-kde-plugin-qt6-0-1.fc43.x86_64.rpm
+rpm-ostree install ./wallpaper-engine-kde-plugin-qt6-1.1-1.fc43.x86_64.rpm
 ```
 
 ### Build from source

@@ -165,6 +165,21 @@ private slots:
         FileHelper helper;
         QVariantMap result = helper.getFolderList("/tmp/wekde_test_nodir_xyz");
         QVERIFY(result.isEmpty());
+        // QML guard: empty map must not contain "items" — otherwise
+        // `folder.items.forEach(...)` crashes because `!folder` is false
+        // for truthy empty objects in JavaScript.
+        QVERIFY(!result.contains("items"));
+    }
+
+    void getFolderList_nonExistentDirAllFallbacksMissing() {
+        FileHelper helper;
+        QVariantMap opts;
+        opts["fallbacks"] = QStringList{
+            "/tmp/wekde_no_dir_a", "/tmp/wekde_no_dir_b"};
+        QVariantMap result = helper.getFolderList("/tmp/wekde_no_dir_c", opts);
+        QVERIFY(result.isEmpty());
+        QVERIFY(!result.contains("items"));
+        QVERIFY(!result.contains("folder"));
     }
 
     void getFolderList_existingDir_returnsItems() {

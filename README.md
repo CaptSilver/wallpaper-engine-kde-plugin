@@ -39,7 +39,7 @@ rpm-ostree install ./wallpaper-engine-kde-plugin-qt6-0-1.fc43.x86_64.rpm
 
 Ubuntu / Debian:
 ```sh
-sudo apt install g++ cmake ninja-build extra-cmake-modules pkg-config \
+sudo apt install clang cmake ninja-build extra-cmake-modules pkg-config \
     libvulkan-dev libkf6package-dev libplasma-dev \
     plasma-workspace-dev qt6-base-dev qt6-base-private-dev \
     qt6-declarative-dev qt6-websockets-dev qt6-webchannel-dev \
@@ -97,28 +97,33 @@ Useful for rpm-ostree/Bazzite systems where layered packages survive updates.
 git clone https://github.com/captsilver/wallpaper-engine-kde-plugin.git
 cd wallpaper-engine-kde-plugin
 
-# Install build dependencies from spec
+# Install build dependencies from spec (includes clang, cmake, Qt6, Vulkan, etc.)
 sudo dnf builddep ./rpm/wek.spec
+
+# RPM Fusion is required for mpv-libs-devel
+sudo dnf install -y \
+    https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm \
+    https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+sudo dnf swap -y ffmpeg-free ffmpeg --allowerasing
+sudo dnf install -y ffmpeg-devel --allowerasing
 
 # Initialise submodules
 git submodule update --init --force --recursive
 
-# Copy QML plugin files (required at runtime)
-mkdir -p ~/.local/share/plasma/wallpapers/com.github.catsout.wallpaperEngineKde/
-cp -R ./plugin/* ~/.local/share/plasma/wallpapers/com.github.catsout.wallpaperEngineKde/
-
-# Use tmpfs for the build directory to avoid slow disk writes
+# Optional: use tmpfs for faster builds
 sudo mount -t tmpfs tmpfs ~/rpmbuild/BUILD
 
-# Build the RPM
+# Build the RPM (builds from the live checkout)
 rpmbuild --define="commit $(git rev-parse HEAD)" \
     --define="reporoot $(pwd)" \
-    --define="glslang_ver 11.8.0" \
-    --undefine=_disable_source_fetch \
     -ba ./rpm/wek.spec
 
 sudo umount ~/rpmbuild/BUILD
-# Install (rpm-ostree example)
+
+# Install
+sudo dnf install ~/rpmbuild/RPMS/x86_64/wallpaper-engine-kde-plugin-qt6-*.rpm
+
+# rpm-ostree / Bazzite
 rpm-ostree install ~/rpmbuild/RPMS/x86_64/wallpaper-engine-kde-plugin-qt6-*.rpm
 ```
 
@@ -130,7 +135,7 @@ cd wallpaper-engine-kde-plugin
 
 # Install build dependencies
 sudo apt install \
-    g++ cmake ninja-build extra-cmake-modules pkg-config debhelper fakeroot \
+    clang cmake ninja-build extra-cmake-modules pkg-config debhelper fakeroot \
     libvulkan-dev libkf6package-dev libplasma-dev \
     plasma-workspace-dev qt6-base-dev qt6-base-private-dev \
     qt6-declarative-dev qt6-websockets-dev qt6-webchannel-dev \
@@ -175,7 +180,7 @@ After installing via any method:
 - KDE Plasma 6
 - Qt 6
 - Vulkan 1.1+
-- C++20 (GCC 10+)
+- C++20 compiler (Clang recommended, GCC 10+ also works)
 - [Vulkan driver](https://wiki.archlinux.org/title/Vulkan#Installation) installed (AMD users: use RADV)
 
 ## Known Issues
@@ -186,18 +191,39 @@ After installing via any method:
 
 ## Support Status
 
-### Scene (3D)
-Not Supported! Limited 3D modeling capabilities. (WIP)
+### Scene Wallpapers
+Supported via a custom Vulkan 1.1 renderer. Requires *Wallpaper Engine* installed for assets. Both 2D (orthographic) and 3D (perspective) scenes are supported.
 
-### Scene (2D)
-Supported by Vulkan 1.1. Requires *Wallpaper Engine* installed for assets.
+**Rendering:**
+- Layer compositing with blend modes (normal, translucent, additive)
+- Particle systems (emitters, modifiers, trails, sprite sheets)
+- Bloom, blur, and multi-pass post-processing effects
+- Planar reflection
+- HDR content pipeline (RGBA16F render targets, tonemapping)
+- Geometry shaders (HLSL-to-GLSL translation)
+- Puppet/skeletal animation
+- Camera shake and parallax
+- MSAA
+
+**SceneScript (JavaScript):**
+- Property scripts driving layer transforms, visibility, alpha, and colors at 30Hz
+- Scene property control (bloom strength/threshold, clear color, camera, ambient/skylight lighting, point lights)
+- Sound layer control (play/stop/pause/volume, audio spectrum via FFT)
+- Timer API (setTimeout/setInterval), device detection, shared inter-script state
+- Text layer dynamic content (clock/date scripts)
+- Cursor events (click, enter, leave, down, up, move)
+- User property overrides persisted per-wallpaper
+
+**Text Layers:**
+- FreeType rasterization with runtime font size control
+- Script-driven dynamic text updates
 
 ### Web
-Basic web APIs supported. WebGL may not work properly.
+Supported via QtWebEngine. HTML patching, Plasma 6 mouse input, and user property updates through QWebChannel.
 
 ### Video
-- **QtMultimedia** (default) — uses GStreamer
-- **MPV** — requires plugin lib compilation
+- **MPV** (default) — libmpv playback
+- **QtMultimedia** — GStreamer fallback
 
 ## Acknowledgments
 - RainyPixel fork: [RainyPixel/wallpaper-engine-kde-plugin](https://github.com/rainypixel/wallpaper-engine-kde-plugin)

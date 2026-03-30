@@ -355,6 +355,137 @@ private slots:
 
         helper.resetWallpaperConfig(id);
     }
+
+    // ── patchedHtml ──────────────────────────────────────────────────────────
+    void patchedHtml_injectsAfterHead() {
+        QString path = m_tmp.filePath("test.html");
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("<html><head><title>Test</title></head><body></body></html>");
+        f.close();
+
+        FileHelper helper;
+        QString result = helper.patchedHtml(path);
+        // Script must appear right after <head>
+        int headIdx = result.indexOf("<head>");
+        int scriptIdx = result.indexOf("<script>", headIdx);
+        QCOMPARE(scriptIdx, headIdx + 6);
+        // Must contain the History API patch
+        QVERIFY(result.contains("history.replaceState"));
+        QVERIFY(result.contains("history.pushState"));
+        // Original content preserved
+        QVERIFY(result.contains("<title>Test</title>"));
+        QVERIFY(result.contains("<body></body>"));
+    }
+
+    void patchedHtml_caseInsensitiveHead() {
+        QString path = m_tmp.filePath("upper.html");
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("<HTML><HEAD><TITLE>Upper</TITLE></HEAD><BODY></BODY></HTML>");
+        f.close();
+
+        FileHelper helper;
+        QString result = helper.patchedHtml(path);
+        int headIdx = result.indexOf("<HEAD>");
+        int scriptIdx = result.indexOf("<script>", headIdx);
+        QCOMPARE(scriptIdx, headIdx + 6);
+    }
+
+    void patchedHtml_noHeadTag_prepends() {
+        QString path = m_tmp.filePath("nohead.html");
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("<body>Hello</body>");
+        f.close();
+
+        FileHelper helper;
+        QString result = helper.patchedHtml(path);
+        // Script prepended at the start
+        QVERIFY(result.startsWith("<script>"));
+        QVERIFY(result.contains("<body>Hello</body>"));
+    }
+
+    void patchedHtml_nonExistentFile_returnsEmpty() {
+        FileHelper helper;
+        QString result = helper.patchedHtml("/tmp/wekde_nonexistent.html");
+        QVERIFY(result.isEmpty());
+    }
+
+    void patchedHtml_containsErrorHandlers() {
+        QString path = m_tmp.filePath("errhandler.html");
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("<html><head></head></html>");
+        f.close();
+
+        FileHelper helper;
+        QString result = helper.patchedHtml(path);
+        QVERIFY(result.contains("window.addEventListener('error'"));
+        QVERIFY(result.contains("unhandledrejection"));
+        QVERIFY(result.contains("SecurityError"));
+    }
+
+    // ── readActiveBindings ───────────────────────────────────────────────────
+    void bindings_readNonExistent_returnsEmpty() {
+        FileHelper helper;
+        QVERIFY(helper.readActiveBindings("__no_such_id__").isEmpty());
+    }
+
+    void bindings_readValidArray() {
+        FileHelper helper;
+        const QString id = "test_bindings";
+        const QString path =
+            QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+            + "/wekde/wallpaper/" + id + "_bindings.json";
+        QDir().mkpath(QFileInfo(path).absolutePath());
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(R"(["volume","speed","color"])");
+        f.close();
+
+        QVariantList result = helper.readActiveBindings(id);
+        QCOMPARE(result.size(), 3);
+        QCOMPARE(result[0].toString(), QString("volume"));
+        QCOMPARE(result[1].toString(), QString("speed"));
+        QCOMPARE(result[2].toString(), QString("color"));
+
+        QFile::remove(path);
+    }
+
+    void bindings_readCorruptJson_returnsEmpty() {
+        FileHelper helper;
+        const QString id = "test_bindings_corrupt";
+        const QString path =
+            QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+            + "/wekde/wallpaper/" + id + "_bindings.json";
+        QDir().mkpath(QFileInfo(path).absolutePath());
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("{not an array}");
+        f.close();
+
+        QVERIFY(helper.readActiveBindings(id).isEmpty());
+
+        QFile::remove(path);
+    }
+
+    void bindings_readObjectNotArray_returnsEmpty() {
+        FileHelper helper;
+        const QString id = "test_bindings_object";
+        const QString path =
+            QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+            + "/wekde/wallpaper/" + id + "_bindings.json";
+        QDir().mkpath(QFileInfo(path).absolutePath());
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(R"({"key": "value"})");
+        f.close();
+
+        QVERIFY(helper.readActiveBindings(id).isEmpty());
+
+        QFile::remove(path);
+    }
 };
 
 QTEST_MAIN(TestFileHelper)

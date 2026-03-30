@@ -15,6 +15,11 @@ endif()
 find_package(Qt6 REQUIRED COMPONENTS Core Test)
 set(CMAKE_AUTOMOC ON)
 
+option(MUTATION_TESTING "Enable Mull mutation testing instrumentation" OFF)
+if(MUTATION_TESTING)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/../src/backend_scene/cmake/FetchMull.cmake)
+endif()
+
 # ── FileHelper unit tests ──────────────────────────────────────────────────────
 add_executable(tst_filehelper
     tst_filehelper.cpp
@@ -22,4 +27,12 @@ add_executable(tst_filehelper
 )
 target_include_directories(tst_filehelper PRIVATE ${WEKDE_SRC_DIR})
 target_link_libraries(tst_filehelper PRIVATE Qt6::Core Qt6::Test)
+
+if(MUTATION_TESTING)
+    target_compile_options(tst_filehelper PRIVATE
+        -fpass-plugin=${MULL_PLUGIN_PATH}
+        -g -grecord-command-line
+    )
+endif()
+
 add_test(NAME tst_filehelper COMMAND tst_filehelper -v2)

@@ -247,7 +247,7 @@ void MprisMonitor::onArtDownloaded() {
     extractColors(img);
 }
 
-void MprisMonitor::extractColors(const QImage& img) {
+QVariantList wekde::extractDominantColors(const QImage& img) {
     // Scale to 16x16 for fast color extraction
     QImage small = img.scaled(16, 16, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
                       .convertToFormat(QImage::Format_RGB32);
@@ -324,6 +324,10 @@ void MprisMonitor::extractColors(const QImage& img) {
     for (auto c : {primary, secondary, tertiary, text, contrast}) {
         colors << c[0] << c[1] << c[2];
     }
+    return colors;
+}
 
+void MprisMonitor::extractColors(const QImage& img) {
+    QVariantList colors = wekde::extractDominantColors(img);
     emit thumbnailChanged(true, colors);
 }

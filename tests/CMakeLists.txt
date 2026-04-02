@@ -36,3 +36,16 @@ if(MUTATION_TESTING)
 endif()
 
 add_test(NAME tst_filehelper COMMAND tst_filehelper -v2)
+
+# ── MprisMonitor color extraction tests ───────────────────────────────────────
+find_package(Qt6 COMPONENTS Gui Network DBus Quick QUIET)
+if(Qt6Gui_FOUND AND Qt6Quick_FOUND)
+    add_executable(tst_mpriscolors
+        tst_mpriscolors.cpp
+        ${WEKDE_SRC_DIR}/MprisMonitor.cpp
+    )
+    target_include_directories(tst_mpriscolors PRIVATE ${WEKDE_SRC_DIR})
+    target_link_libraries(tst_mpriscolors PRIVATE
+        Qt6::Core Qt6::Test Qt6::Gui Qt6::Network Qt6::DBus Qt6::Quick)
+    add_test(NAME tst_mpriscolors COMMAND tst_mpriscolors -v2)
+endif()

@@ -8,6 +8,11 @@
 namespace wekde
 {
 
+// Extract dominant colors from an image. Returns flat QVariantList of 15 floats:
+// [primaryR,G,B, secondaryR,G,B, tertiaryR,G,B, textR,G,B, contrastR,G,B]
+// All values in 0-1 range. Pure function, no Qt Quick dependency — testable.
+QVariantList extractDominantColors(const QImage& img);
+
 class MprisMonitor : public QQuickItem {
     Q_OBJECT
 

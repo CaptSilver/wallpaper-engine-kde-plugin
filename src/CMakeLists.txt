@@ -9,25 +9,29 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
+find_package(Qt6 COMPONENTS Network QUIET)
+
 add_library(${PROJECT_NAME}
 	SHARED
 	plugin.cpp
 	MouseGrabber.cpp
 	TTYSwitchMonitor.cpp
+	MprisMonitor.cpp
 	PluginInfo.cpp
 	FileHelper.cpp
 	qmldir
 	qwebchannel.qrc
 )
 
-target_link_libraries(${PROJECT_NAME} 
+target_link_libraries(${PROJECT_NAME}
 	PRIVATE
 	Qt::Quick
-	Qt::Qml 
+	Qt::Qml
 	mpvbackend
 	wescene-renderer-qml
 	Qt::Core
 	Qt::DBus
+	Qt::Network
 )
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_VISIBILITY_PRESET hidden)
 set_target_properties(${PROJECT_NAME}

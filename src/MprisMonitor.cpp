@@ -19,21 +19,24 @@ static const char* DBUS_PROPS_IF   = "org.freedesktop.DBus.Properties";
 
 static int toPlaybackState(const QString& status) {
     if (status == "Playing") return 1;
-    if (status == "Paused")  return 2;
+    if (status == "Paused") return 2;
     return 0; // Stopped or unknown
 }
 
 MprisMonitor::MprisMonitor(QQuickItem* parent)
     : QQuickItem(parent), m_sessionBus(QDBusConnection::sessionBus()) {
-    if (!m_sessionBus.isConnected()) {
+    if (! m_sessionBus.isConnected()) {
         qWarning("MprisMonitor: cannot connect to session D-Bus");
         return;
     }
 
     // Watch for MPRIS player services appearing/disappearing
-    m_sessionBus.connect("org.freedesktop.DBus", "/org/freedesktop/DBus",
-                         "org.freedesktop.DBus", "NameOwnerChanged",
-                         this, SLOT(handleNameOwnerChanged(QString, QString, QString)));
+    m_sessionBus.connect("org.freedesktop.DBus",
+                         "/org/freedesktop/DBus",
+                         "org.freedesktop.DBus",
+                         "NameOwnerChanged",
+                         this,
+                         SLOT(handleNameOwnerChanged(QString, QString, QString)));
 
     // Position polling timer (1 Hz while playing)
     m_positionTimer.setInterval(1000);
@@ -45,16 +48,15 @@ MprisMonitor::MprisMonitor(QQuickItem* parent)
 
 void MprisMonitor::findActivePlayer() {
     QDBusMessage msg = QDBusMessage::createMethodCall(
-        "org.freedesktop.DBus", "/org/freedesktop/DBus",
-        "org.freedesktop.DBus", "ListNames");
+        "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "ListNames");
     QDBusReply<QStringList> reply = m_sessionBus.call(msg);
-    if (!reply.isValid()) return;
+    if (! reply.isValid()) return;
 
     QString bestService;
     for (const QString& name : reply.value()) {
-        if (!name.startsWith(MPRIS_PREFIX)) continue;
+        if (! name.startsWith(MPRIS_PREFIX)) continue;
         // Prefer a player that's currently playing
-        QDBusInterface iface(name, MPRIS_PATH, DBUS_PROPS_IF, m_sessionBus);
+        QDBusInterface       iface(name, MPRIS_PATH, DBUS_PROPS_IF, m_sessionBus);
         QDBusReply<QVariant> statusReply = iface.call("Get", MPRIS_PLAYER_IF, "PlaybackStatus");
         if (statusReply.isValid() && statusReply.value().toString() == "Playing") {
             bestService = name;
@@ -63,7 +65,7 @@ void MprisMonitor::findActivePlayer() {
         if (bestService.isEmpty()) bestService = name;
     }
 
-    if (!bestService.isEmpty()) {
+    if (! bestService.isEmpty()) {
         connectToPlayer(bestService);
     }
 }
@@ -73,8 +75,11 @@ void MprisMonitor::connectToPlayer(const QString& service) {
     disconnectFromPlayer();
 
     m_activeService = service;
-    m_sessionBus.connect(service, MPRIS_PATH, DBUS_PROPS_IF,
-                         "PropertiesChanged", this,
+    m_sessionBus.connect(service,
+                         MPRIS_PATH,
+                         DBUS_PROPS_IF,
+                         "PropertiesChanged",
+                         this,
                          SLOT(handlePropertiesChanged(QString, QVariantMap, QStringList)));
 
     m_enabled = true;
@@ -86,8 +91,11 @@ void MprisMonitor::connectToPlayer(const QString& service) {
 
 void MprisMonitor::disconnectFromPlayer() {
     if (m_activeService.isEmpty()) return;
-    m_sessionBus.disconnect(m_activeService, MPRIS_PATH, DBUS_PROPS_IF,
-                            "PropertiesChanged", this,
+    m_sessionBus.disconnect(m_activeService,
+                            MPRIS_PATH,
+                            DBUS_PROPS_IF,
+                            "PropertiesChanged",
+                            this,
                             SLOT(handlePropertiesChanged(QString, QVariantMap, QStringList)));
     m_activeService.clear();
     m_positionTimer.stop();
@@ -108,8 +116,10 @@ void MprisMonitor::fetchAllProperties() {
             if (state != m_playbackState) {
                 m_playbackState = state;
                 emit playbackStateChanged(state);
-                if (state == 1) m_positionTimer.start();
-                else m_positionTimer.stop();
+                if (state == 1)
+                    m_positionTimer.start();
+                else
+                    m_positionTimer.stop();
             }
         }
     }
@@ -118,14 +128,14 @@ void MprisMonitor::fetchAllProperties() {
     {
         QDBusReply<QVariant> r = iface.call("Get", MPRIS_PLAYER_IF, "Metadata");
         if (r.isValid()) {
-            QVariantMap meta = qdbus_cast<QVariantMap>(r.value().value<QDBusArgument>());
-            QString title      = meta.value("xesam:title").toString();
-            QStringList artists = meta.value("xesam:artist").toStringList();
-            QString artist     = artists.isEmpty() ? QString() : artists.join(", ");
-            QString album      = meta.value("xesam:album").toString();
-            QString albumArtist = meta.value("xesam:albumArtist").toStringList().join(", ");
-            QString genres     = meta.value("xesam:genre").toStringList().join(", ");
-            m_duration = meta.value("mpris:length", 0).toLongLong() / 1e6; // µs → s
+            QVariantMap meta        = qdbus_cast<QVariantMap>(r.value().value<QDBusArgument>());
+            QString     title       = meta.value("xesam:title").toString();
+            QStringList artists     = meta.value("xesam:artist").toStringList();
+            QString     artist      = artists.isEmpty() ? QString() : artists.join(", ");
+            QString     album       = meta.value("xesam:album").toString();
+            QString     albumArtist = meta.value("xesam:albumArtist").toStringList().join(", ");
+            QString     genres      = meta.value("xesam:genre").toStringList().join(", ");
+            m_duration              = meta.value("mpris:length", 0).toLongLong() / 1e6; // µs → s
 
             emit propertiesChanged(title, artist, album, albumArtist, genres);
 
@@ -147,8 +157,7 @@ void MprisMonitor::fetchAllProperties() {
     }
 }
 
-void MprisMonitor::handlePropertiesChanged(const QString& interface,
-                                           const QVariantMap& changed,
+void MprisMonitor::handlePropertiesChanged(const QString& interface, const QVariantMap& changed,
                                            const QStringList& /*invalidated*/) {
     if (interface != MPRIS_PLAYER_IF) return;
 
@@ -157,20 +166,22 @@ void MprisMonitor::handlePropertiesChanged(const QString& interface,
         if (state != m_playbackState) {
             m_playbackState = state;
             emit playbackStateChanged(state);
-            if (state == 1) m_positionTimer.start();
-            else m_positionTimer.stop();
+            if (state == 1)
+                m_positionTimer.start();
+            else
+                m_positionTimer.stop();
         }
     }
 
     if (changed.contains("Metadata")) {
-        QVariantMap meta = qdbus_cast<QVariantMap>(changed["Metadata"].value<QDBusArgument>());
-        QString title      = meta.value("xesam:title").toString();
+        QVariantMap meta    = qdbus_cast<QVariantMap>(changed["Metadata"].value<QDBusArgument>());
+        QString     title   = meta.value("xesam:title").toString();
         QStringList artists = meta.value("xesam:artist").toStringList();
-        QString artist     = artists.isEmpty() ? QString() : artists.join(", ");
-        QString album      = meta.value("xesam:album").toString();
-        QString albumArtist = meta.value("xesam:albumArtist").toStringList().join(", ");
-        QString genres     = meta.value("xesam:genre").toStringList().join(", ");
-        m_duration = meta.value("mpris:length", 0).toLongLong() / 1e6;
+        QString     artist  = artists.isEmpty() ? QString() : artists.join(", ");
+        QString     album   = meta.value("xesam:album").toString();
+        QString     albumArtist = meta.value("xesam:albumArtist").toStringList().join(", ");
+        QString     genres      = meta.value("xesam:genre").toStringList().join(", ");
+        m_duration              = meta.value("mpris:length", 0).toLongLong() / 1e6;
 
         emit propertiesChanged(title, artist, album, albumArtist, genres);
 
@@ -184,9 +195,9 @@ void MprisMonitor::handlePropertiesChanged(const QString& interface,
 
 void MprisMonitor::handleNameOwnerChanged(const QString& name, const QString& oldOwner,
                                           const QString& newOwner) {
-    if (!name.startsWith(MPRIS_PREFIX)) return;
+    if (! name.startsWith(MPRIS_PREFIX)) return;
 
-    if (!newOwner.isEmpty() && m_activeService.isEmpty()) {
+    if (! newOwner.isEmpty() && m_activeService.isEmpty()) {
         // New player appeared and we have no active one
         connectToPlayer(name);
     } else if (name == m_activeService && newOwner.isEmpty()) {
@@ -198,7 +209,7 @@ void MprisMonitor::handleNameOwnerChanged(const QString& name, const QString& ol
 
 void MprisMonitor::pollPosition() {
     if (m_activeService.isEmpty()) return;
-    QDBusInterface iface(m_activeService, MPRIS_PATH, DBUS_PROPS_IF, m_sessionBus);
+    QDBusInterface       iface(m_activeService, MPRIS_PATH, DBUS_PROPS_IF, m_sessionBus);
     QDBusReply<QVariant> r = iface.call("Get", MPRIS_PLAYER_IF, "Position");
     if (r.isValid()) {
         m_lastPosition = r.value().toLongLong() / 1e6;
@@ -215,7 +226,7 @@ void MprisMonitor::processArtUrl(const QString& artUrl) {
     QUrl url(artUrl);
     if (url.isLocalFile()) {
         QImage img(url.toLocalFile());
-        if (!img.isNull()) {
+        if (! img.isNull()) {
             extractColors(img);
         } else {
             emit thumbnailChanged(false, {});
@@ -230,7 +241,7 @@ void MprisMonitor::processArtUrl(const QString& artUrl) {
 
 void MprisMonitor::onArtDownloaded() {
     auto* reply = qobject_cast<QNetworkReply*>(sender());
-    if (!reply) return;
+    if (! reply) return;
     reply->deleteLater();
 
     if (reply->error() != QNetworkReply::NoError) {
@@ -250,10 +261,13 @@ void MprisMonitor::onArtDownloaded() {
 QVariantList wekde::extractDominantColors(const QImage& img) {
     // Scale to 16x16 for fast color extraction
     QImage small = img.scaled(16, 16, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
-                      .convertToFormat(QImage::Format_RGB32);
+                       .convertToFormat(QImage::Format_RGB32);
 
     // Collect pixels into hue buckets (6 hue × 3 brightness = 18 bins)
-    struct Bucket { double r {0}, g {0}, b {0}; int count {0}; };
+    struct Bucket {
+        double r { 0 }, g { 0 }, b { 0 };
+        int    count { 0 };
+    };
     Bucket bins[18];
 
     for (int y = 0; y < small.height(); y++) {
@@ -261,13 +275,13 @@ QVariantList wekde::extractDominantColors(const QImage& img) {
             QColor c(small.pixelColor(x, y));
             double r = c.redF(), g = c.greenF(), b = c.blueF();
             // Hue bucket (0-5)
-            int h = c.hsvHue(); // 0-359, -1 for achromatic
+            int h       = c.hsvHue(); // 0-359, -1 for achromatic
             int hBucket = (h < 0) ? 0 : (h * 6 / 360);
-            hBucket = std::clamp(hBucket, 0, 5);
+            hBucket     = std::clamp(hBucket, 0, 5);
             // Brightness bucket (0-2)
-            double lum = 0.299 * r + 0.587 * g + 0.114 * b;
-            int bBucket = (lum < 0.33) ? 0 : (lum < 0.66) ? 1 : 2;
-            int idx = hBucket * 3 + bBucket;
+            double lum     = 0.299 * r + 0.587 * g + 0.114 * b;
+            int    bBucket = (lum < 0.33) ? 0 : (lum < 0.66) ? 1 : 2;
+            int    idx     = hBucket * 3 + bBucket;
             bins[idx].r += r;
             bins[idx].g += g;
             bins[idx].b += b;
@@ -307,21 +321,24 @@ QVariantList wekde::extractDominantColors(const QImage& img) {
 
     // highContrastColor: bucket most distant from primary in RGB space
     double maxDist = 0;
-    int maxIdx = order[0];
+    int    maxIdx  = order[0];
     for (int i = 0; i < 18; i++) {
         if (bins[i].count == 0) continue;
         double cr[3];
         avgColor(i, cr);
         double dr = cr[0] - primary[0], dg = cr[1] - primary[1], db = cr[2] - primary[2];
         double dist = dr * dr + dg * dg + db * db;
-        if (dist > maxDist) { maxDist = dist; maxIdx = i; }
+        if (dist > maxDist) {
+            maxDist = dist;
+            maxIdx  = i;
+        }
     }
     double contrast[3];
     avgColor(maxIdx, contrast);
 
     // Pack as flat QVariantList: [r0,g0,b0, r1,g1,b1, ...]
     QVariantList colors;
-    for (auto c : {primary, secondary, tertiary, text, contrast}) {
+    for (auto c : { primary, secondary, tertiary, text, contrast }) {
         colors << c[0] << c[1] << c[2];
     }
     return colors;
@@ -329,5 +346,5 @@ QVariantList wekde::extractDominantColors(const QImage& img) {
 
 void MprisMonitor::extractColors(const QImage& img) {
     QVariantList colors = wekde::extractDominantColors(img);
-    emit thumbnailChanged(true, colors);
+    emit         thumbnailChanged(true, colors);
 }

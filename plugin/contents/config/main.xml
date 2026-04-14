@@ -74,6 +74,10 @@
       <label>Mouse Input</label>
       <default>true</default>
     </entry>
+    <entry name="AnimatedPreview" type="Bool">
+      <label>Animated Preview</label>
+      <default>true</default>
+    </entry>
     <entry name="Fps" type="Int">
       <label>Fps</label>
       <default>30</default>

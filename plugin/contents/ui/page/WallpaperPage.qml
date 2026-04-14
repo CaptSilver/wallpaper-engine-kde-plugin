@@ -226,24 +226,53 @@ RowLayout {
                         ]
                         thumbnail: Rectangle {
                             anchors.fill: parent
+                            color: "transparent"
+
                             Kirigami.Icon {
                                 anchors.centerIn: parent
                                 width: root.iconSizes.large
                                 height: width
                                 source: "view-preview"
-                                visible: !imgPre.visible
+                                visible: imgPre.status !== Loader.Ready || (imgPre.item && !imgPre.item.visible)
                             }
-                            Image {
+
+                            Loader {
                                 id: imgPre
                                 anchors.fill: parent
-                                source: Common.getWpModelPreviewSource(model);
-                                sourceSize.width: parent.width
-                                sourceSize.height: parent.height
-                                fillMode: Image.PreserveAspectCrop//Image.Stretch
-                                cache: false
-                                asynchronous: true
-                                smooth: true
-                                visible: Boolean(preview)
+                                sourceComponent: cfg_AnimatedPreview ? animatedPre : staticPre
+                            }
+
+                            Component {
+                                id: animatedPre
+                                AnimatedImage {
+                                    anchors.fill: parent
+                                    source: Common.getWpModelPreviewSource(model);
+                                    sourceSize.width: parent.width
+                                    fillMode: Image.PreserveAspectCrop
+                                    clip: true
+                                    cache: false
+                                    asynchronous: true
+                                    smooth: true
+                                    visible: true
+                                    paused: false
+                                    onVisibleChanged: paused = !visible
+                                    onStatusChanged: playing = (status == AnimatedImage.Ready)
+                                }
+                            }
+
+                            Component {
+                                id: staticPre
+                                Image {
+                                    anchors.fill: parent
+                                    source: Common.getWpModelPreviewSource(model);
+                                    sourceSize.width: parent.width
+                                    sourceSize.height: parent.height
+                                    fillMode: Image.PreserveAspectCrop
+                                    cache: false
+                                    asynchronous: true
+                                    smooth: true
+                                    visible: Boolean(preview)
+                                }
                             }
                         }
                         onClicked: {

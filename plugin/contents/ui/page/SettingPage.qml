@@ -23,6 +23,7 @@ Flickable {
     property alias cfg_Speed: spin_speed.dValue
     property alias cfg_MuteAudio: ckbox_muteAudio.checked
     property alias cfg_MouseInput: ckbox_mouseInput.checked
+    property alias cfg_AnimatedPreview: ckbox_animatedPreview.checked
     property alias cfg_ResumeTime: resumeSpin.value
     property alias cfg_SwitchTimer: randomSpin.value
     property alias cfg_RandomizeWallpaper: ckbox_randomizeWallpaper.checked
@@ -294,6 +295,15 @@ Flickable {
                 icon: '../../images/mouse.svg'
                 actor: Switch {
                     id: ckbox_mouseInput
+                }
+            }
+
+            OptionItem {
+                text_color: Kirigami.Theme.textColor
+                text: "Animated Preview"
+                icon: '../../images/gif.svg'
+                actor: Switch {
+                    id: ckbox_animatedPreview
                 }
             }
        }

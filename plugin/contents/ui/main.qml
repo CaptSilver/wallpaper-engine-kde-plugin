@@ -22,6 +22,7 @@ Rectangle {
     property bool   randomizeWallpaper: wallpaper.configuration.RandomizeWallpaper
     property bool   noRandomWhilePaused: wallpaper.configuration.NoRandomWhilePaused
     property bool   mouseInput: wallpaper.configuration.MouseInput
+    property bool   animatedPreview: wallpaper.configuration.AnimatedPreview
     property bool   mpvStats: wallpaper.configuration.MpvStats
 
     property bool   pauseOnBatPower: wallpaper.configuration.PauseOnBatPower

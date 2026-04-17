@@ -63,10 +63,11 @@ sudo dnf install -y \
 sudo dnf swap -y ffmpeg-free ffmpeg --allowerasing
 sudo dnf install -y ffmpeg-devel --allowerasing
 
-sudo dnf install vulkan-headers plasma-workspace-devel kf6-plasma-devel \
-    kf6-kcoreaddons-devel kf6-kpackage-devel gstreamer1-libav \
-    lz4-devel mpv-libs-devel qt6-qtbase-private-devel libplasma-devel \
-    qt6-qtwebchannel-devel qt6-qtwebsockets-devel cmake extra-cmake-modules
+sudo dnf install -y clang cmake extra-cmake-modules vulkan-headers \
+    plasma-workspace-devel libplasma-devel kf6-plasma-devel \
+    kf6-kcoreaddons-devel kf6-kpackage-devel \
+    lz4-devel mpv-libs-devel freetype-devel glfw-devel \
+    qt6-qtbase-private-devel qt6-qtwebchannel-devel
 ```
 
 #### Build and Install

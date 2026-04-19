@@ -25,14 +25,14 @@ int wekde::toPlaybackState(const QString& status) {
 
 MprisMetadata wekde::parseMprisMetadata(const QVariantMap& meta) {
     MprisMetadata out;
-    out.title       = meta.value("xesam:title").toString();
+    out.title           = meta.value("xesam:title").toString();
     QStringList artists = meta.value("xesam:artist").toStringList();
-    out.artist      = artists.isEmpty() ? QString() : artists.join(", ");
-    out.album       = meta.value("xesam:album").toString();
-    out.albumArtist = meta.value("xesam:albumArtist").toStringList().join(", ");
-    out.genres      = meta.value("xesam:genre").toStringList().join(", ");
-    out.artUrl      = meta.value("mpris:artUrl").toString();
-    out.duration    = meta.value("mpris:length", 0).toLongLong() / 1e6; // µs → s
+    out.artist          = artists.isEmpty() ? QString() : artists.join(", ");
+    out.album           = meta.value("xesam:album").toString();
+    out.albumArtist     = meta.value("xesam:albumArtist").toStringList().join(", ");
+    out.genres          = meta.value("xesam:genre").toStringList().join(", ");
+    out.artUrl          = meta.value("mpris:artUrl").toString();
+    out.duration        = meta.value("mpris:length", 0).toLongLong() / 1e6; // µs → s
     return out;
 }
 
@@ -191,7 +191,7 @@ void MprisMonitor::handlePropertiesChanged(const QString& interface, const QVari
         // QVariantMap wrapper (not a real QDBusArgument).  Handle both: if it's
         // a QDBusArgument, unmarshal via qdbus_cast; otherwise take the map
         // directly.
-        QVariantMap meta;
+        QVariantMap     meta;
         const QVariant& v = changed["Metadata"];
         if (v.canConvert<QDBusArgument>()) {
             meta = qdbus_cast<QVariantMap>(v.value<QDBusArgument>());
@@ -199,8 +199,8 @@ void MprisMonitor::handlePropertiesChanged(const QString& interface, const QVari
         if (meta.isEmpty()) {
             meta = v.toMap();
         }
-        auto md      = parseMprisMetadata(meta);
-        m_duration   = md.duration;
+        auto md    = parseMprisMetadata(meta);
+        m_duration = md.duration;
         emit propertiesChanged(md.title, md.artist, md.album, md.albumArtist, md.genres);
         if (md.artUrl != m_lastArtUrl) {
             m_lastArtUrl = md.artUrl;
@@ -235,9 +235,7 @@ void MprisMonitor::pollPosition() {
 
 void MprisMonitor::processArtUrl(const QString& artUrl) {
     switch (classifyArtUrl(artUrl)) {
-    case MprisArtUrlKind::Empty:
-        emit thumbnailChanged(false, {});
-        return;
+    case MprisArtUrlKind::Empty: emit thumbnailChanged(false, {}); return;
     case MprisArtUrlKind::LocalFile: {
         QImage img(QUrl(artUrl).toLocalFile());
         if (! img.isNull())
@@ -251,9 +249,7 @@ void MprisMonitor::processArtUrl(const QString& artUrl) {
         connect(reply, &QNetworkReply::finished, this, &MprisMonitor::onArtDownloaded);
         return;
     }
-    case MprisArtUrlKind::Unknown:
-        emit thumbnailChanged(false, {});
-        return;
+    case MprisArtUrlKind::Unknown: emit thumbnailChanged(false, {}); return;
     }
 }
 

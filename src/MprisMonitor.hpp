@@ -28,7 +28,13 @@ struct MprisMetadata {
 MprisMetadata parseMprisMetadata(const QVariantMap& meta);
 
 // Classify an art URL into categories the monitor handles differently.
-enum class MprisArtUrlKind { Empty, LocalFile, Http, Unknown };
+enum class MprisArtUrlKind
+{
+    Empty,
+    LocalFile,
+    Http,
+    Unknown
+};
 MprisArtUrlKind classifyArtUrl(const QString& artUrl);
 
 // Convert MPRIS PlaybackStatus string to the int state the QML layer expects.

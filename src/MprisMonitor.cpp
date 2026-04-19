@@ -17,10 +17,31 @@ static const char* MPRIS_PATH      = "/org/mpris/MediaPlayer2";
 static const char* MPRIS_PLAYER_IF = "org.mpris.MediaPlayer2.Player";
 static const char* DBUS_PROPS_IF   = "org.freedesktop.DBus.Properties";
 
-static int toPlaybackState(const QString& status) {
+int wekde::toPlaybackState(const QString& status) {
     if (status == "Playing") return 1;
     if (status == "Paused") return 2;
     return 0; // Stopped or unknown
+}
+
+MprisMetadata wekde::parseMprisMetadata(const QVariantMap& meta) {
+    MprisMetadata out;
+    out.title       = meta.value("xesam:title").toString();
+    QStringList artists = meta.value("xesam:artist").toStringList();
+    out.artist      = artists.isEmpty() ? QString() : artists.join(", ");
+    out.album       = meta.value("xesam:album").toString();
+    out.albumArtist = meta.value("xesam:albumArtist").toStringList().join(", ");
+    out.genres      = meta.value("xesam:genre").toStringList().join(", ");
+    out.artUrl      = meta.value("mpris:artUrl").toString();
+    out.duration    = meta.value("mpris:length", 0).toLongLong() / 1e6; // µs → s
+    return out;
+}
+
+MprisArtUrlKind wekde::classifyArtUrl(const QString& artUrl) {
+    if (artUrl.isEmpty()) return MprisArtUrlKind::Empty;
+    QUrl url(artUrl);
+    if (url.isLocalFile()) return MprisArtUrlKind::LocalFile;
+    if (url.scheme() == "http" || url.scheme() == "https") return MprisArtUrlKind::Http;
+    return MprisArtUrlKind::Unknown;
 }
 
 MprisMonitor::MprisMonitor(QQuickItem* parent)
@@ -128,21 +149,13 @@ void MprisMonitor::fetchAllProperties() {
     {
         QDBusReply<QVariant> r = iface.call("Get", MPRIS_PLAYER_IF, "Metadata");
         if (r.isValid()) {
-            QVariantMap meta        = qdbus_cast<QVariantMap>(r.value().value<QDBusArgument>());
-            QString     title       = meta.value("xesam:title").toString();
-            QStringList artists     = meta.value("xesam:artist").toStringList();
-            QString     artist      = artists.isEmpty() ? QString() : artists.join(", ");
-            QString     album       = meta.value("xesam:album").toString();
-            QString     albumArtist = meta.value("xesam:albumArtist").toStringList().join(", ");
-            QString     genres      = meta.value("xesam:genre").toStringList().join(", ");
-            m_duration              = meta.value("mpris:length", 0).toLongLong() / 1e6; // µs → s
-
-            emit propertiesChanged(title, artist, album, albumArtist, genres);
-
-            QString artUrl = meta.value("mpris:artUrl").toString();
-            if (artUrl != m_lastArtUrl) {
-                m_lastArtUrl = artUrl;
-                processArtUrl(artUrl);
+            QVariantMap meta = qdbus_cast<QVariantMap>(r.value().value<QDBusArgument>());
+            auto        md   = parseMprisMetadata(meta);
+            m_duration       = md.duration;
+            emit propertiesChanged(md.title, md.artist, md.album, md.albumArtist, md.genres);
+            if (md.artUrl != m_lastArtUrl) {
+                m_lastArtUrl = md.artUrl;
+                processArtUrl(md.artUrl);
             }
         }
     }
@@ -174,21 +187,24 @@ void MprisMonitor::handlePropertiesChanged(const QString& interface, const QVari
     }
 
     if (changed.contains("Metadata")) {
-        QVariantMap meta    = qdbus_cast<QVariantMap>(changed["Metadata"].value<QDBusArgument>());
-        QString     title   = meta.value("xesam:title").toString();
-        QStringList artists = meta.value("xesam:artist").toStringList();
-        QString     artist  = artists.isEmpty() ? QString() : artists.join(", ");
-        QString     album   = meta.value("xesam:album").toString();
-        QString     albumArtist = meta.value("xesam:albumArtist").toStringList().join(", ");
-        QString     genres      = meta.value("xesam:genre").toStringList().join(", ");
-        m_duration              = meta.value("mpris:length", 0).toLongLong() / 1e6;
-
-        emit propertiesChanged(title, artist, album, albumArtist, genres);
-
-        QString artUrl = meta.value("mpris:artUrl").toString();
-        if (artUrl != m_lastArtUrl) {
-            m_lastArtUrl = artUrl;
-            processArtUrl(artUrl);
+        // handlePropertiesChanged may be invoked from tests with a plain
+        // QVariantMap wrapper (not a real QDBusArgument).  Handle both: if it's
+        // a QDBusArgument, unmarshal via qdbus_cast; otherwise take the map
+        // directly.
+        QVariantMap meta;
+        const QVariant& v = changed["Metadata"];
+        if (v.canConvert<QDBusArgument>()) {
+            meta = qdbus_cast<QVariantMap>(v.value<QDBusArgument>());
+        }
+        if (meta.isEmpty()) {
+            meta = v.toMap();
+        }
+        auto md      = parseMprisMetadata(meta);
+        m_duration   = md.duration;
+        emit propertiesChanged(md.title, md.artist, md.album, md.albumArtist, md.genres);
+        if (md.artUrl != m_lastArtUrl) {
+            m_lastArtUrl = md.artUrl;
+            processArtUrl(md.artUrl);
         }
     }
 }
@@ -218,24 +234,26 @@ void MprisMonitor::pollPosition() {
 }
 
 void MprisMonitor::processArtUrl(const QString& artUrl) {
-    if (artUrl.isEmpty()) {
+    switch (classifyArtUrl(artUrl)) {
+    case MprisArtUrlKind::Empty:
         emit thumbnailChanged(false, {});
         return;
-    }
-
-    QUrl url(artUrl);
-    if (url.isLocalFile()) {
-        QImage img(url.toLocalFile());
-        if (! img.isNull()) {
+    case MprisArtUrlKind::LocalFile: {
+        QImage img(QUrl(artUrl).toLocalFile());
+        if (! img.isNull())
             extractColors(img);
-        } else {
+        else
             emit thumbnailChanged(false, {});
-        }
-    } else if (url.scheme() == "http" || url.scheme() == "https") {
-        QNetworkReply* reply = m_nam.get(QNetworkRequest(url));
+        return;
+    }
+    case MprisArtUrlKind::Http: {
+        QNetworkReply* reply = m_nam.get(QNetworkRequest(QUrl(artUrl)));
         connect(reply, &QNetworkReply::finished, this, &MprisMonitor::onArtDownloaded);
-    } else {
+        return;
+    }
+    case MprisArtUrlKind::Unknown:
         emit thumbnailChanged(false, {});
+        return;
     }
 }
 

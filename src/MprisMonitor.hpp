@@ -13,6 +13,28 @@ namespace wekde
 // All values in 0-1 range. Pure function, no Qt Quick dependency — testable.
 QVariantList extractDominantColors(const QImage& img);
 
+// MPRIS metadata extracted from a QVariantMap (the "Metadata" dbus property).
+// Title/artist/album/albumArtist/genres are joined strings; duration is seconds.
+// Pure helper; lives outside the QObject so it can be unit-tested without DBus.
+struct MprisMetadata {
+    QString title;
+    QString artist;
+    QString album;
+    QString albumArtist;
+    QString genres;
+    QString artUrl;
+    double  duration { 0 };
+};
+MprisMetadata parseMprisMetadata(const QVariantMap& meta);
+
+// Classify an art URL into categories the monitor handles differently.
+enum class MprisArtUrlKind { Empty, LocalFile, Http, Unknown };
+MprisArtUrlKind classifyArtUrl(const QString& artUrl);
+
+// Convert MPRIS PlaybackStatus string to the int state the QML layer expects.
+// 0 = stopped, 1 = playing, 2 = paused, 0 for anything else.
+int toPlaybackState(const QString& status);
+
 class MprisMonitor : public QQuickItem {
     Q_OBJECT
 

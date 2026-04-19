@@ -20,6 +20,15 @@ if(MUTATION_TESTING)
     include(${CMAKE_CURRENT_SOURCE_DIR}/../src/backend_scene/cmake/FetchMull.cmake)
 endif()
 
+option(COVERAGE "Enable Clang source-based coverage instrumentation" OFF)
+if(COVERAGE)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "COVERAGE requires Clang (found ${CMAKE_CXX_COMPILER_ID})")
+    endif()
+    set(_cov_compile_flags -fprofile-instr-generate -fcoverage-mapping -g -O0)
+    set(_cov_link_flags -fprofile-instr-generate)
+endif()
+
 # ── FileHelper unit tests ──────────────────────────────────────────────────────
 add_executable(tst_filehelper
     tst_filehelper.cpp
@@ -35,6 +44,11 @@ if(MUTATION_TESTING)
     )
 endif()
 
+if(COVERAGE)
+    target_compile_options(tst_filehelper PRIVATE ${_cov_compile_flags})
+    target_link_options(tst_filehelper PRIVATE ${_cov_link_flags})
+endif()
+
 add_test(NAME tst_filehelper COMMAND tst_filehelper -v2)
 
 # ── MprisMonitor color extraction tests ───────────────────────────────────────
@@ -47,5 +61,57 @@ if(Qt6Gui_FOUND AND Qt6Quick_FOUND)
     target_include_directories(tst_mpriscolors PRIVATE ${WEKDE_SRC_DIR})
     target_link_libraries(tst_mpriscolors PRIVATE
         Qt6::Core Qt6::Test Qt6::Gui Qt6::Network Qt6::DBus Qt6::Quick)
+    if(COVERAGE)
+        target_compile_options(tst_mpriscolors PRIVATE ${_cov_compile_flags})
+        target_link_options(tst_mpriscolors PRIVATE ${_cov_link_flags})
+    endif()
     add_test(NAME tst_mpriscolors COMMAND tst_mpriscolors -v2)
+endif()
+
+# ── Coverage report target ────────────────────────────────────────────────────
+if(COVERAGE)
+    find_program(LLVM_PROFDATA llvm-profdata REQUIRED)
+    find_program(LLVM_COV      llvm-cov      REQUIRED)
+
+    set(_cov_dir  ${CMAKE_BINARY_DIR}/coverage)
+    set(_cov_prof ${_cov_dir}/merged.profdata)
+    set(_cov_objs $<TARGET_FILE:tst_filehelper>)
+    set(_cov_tests tst_filehelper)
+    if(TARGET tst_mpriscolors)
+        list(APPEND _cov_objs -object=$<TARGET_FILE:tst_mpriscolors>)
+        list(APPEND _cov_tests tst_mpriscolors)
+    endif()
+
+    # Ignore everything outside src/ (Qt headers, system libs, tests themselves,
+    # MOC-generated code under _autogen/, and third_party).
+    set(_cov_ignore
+        -ignore-filename-regex=\(^/usr/\|/Qt6/\|/tests/tst_\|_autogen/\|/moc_\|third_party\)
+    )
+
+    add_custom_target(coverage
+        COMMAND ${CMAKE_COMMAND} -E rm -rf ${_cov_dir}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${_cov_dir}
+        COMMAND ${CMAKE_COMMAND} -E env
+                LLVM_PROFILE_FILE=${_cov_dir}/%p.profraw
+                ${CMAKE_CTEST_COMMAND} --output-on-failure
+        COMMAND ${CMAKE_COMMAND} -E env bash -c
+                "${LLVM_PROFDATA} merge -sparse ${_cov_dir}/*.profraw -o ${_cov_prof}"
+        COMMAND ${LLVM_COV} report ${_cov_objs}
+                -instr-profile=${_cov_prof} ${_cov_ignore}
+        DEPENDS ${_cov_tests}
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        COMMENT "Running tests with coverage and generating report"
+        VERBATIM
+        USES_TERMINAL
+    )
+
+    add_custom_target(coverage-html
+        COMMAND ${LLVM_COV} show ${_cov_objs}
+                -instr-profile=${_cov_prof} ${_cov_ignore}
+                -format=html -output-dir=${_cov_dir}/html
+                -show-line-counts-or-regions
+        DEPENDS coverage
+        COMMENT "Generating HTML coverage report in ${_cov_dir}/html"
+        VERBATIM
+    )
 endif()

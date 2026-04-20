@@ -181,7 +181,9 @@ jobs:
 
       - name: Check C++ formatting
         run: |
-          find src -name "*.cpp" -o -name "*.hpp" | \
+          find src \
+            \( -path '*/third_party/*' -o -path '*/build/*' -o -name '*_autogen' \) -prune -o \
+            \( -name '*.cpp' -o -name '*.hpp' \) -print | \
             xargs clang-format --dry-run --Werror
 
   # ── Unit tests (Qt6 only, no KDE/Plasma/Vulkan deps) ────────────────────

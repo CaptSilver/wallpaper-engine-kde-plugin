@@ -119,7 +119,9 @@ void MouseGrabber::hoverMoveEvent(QHoverEvent* event) {
         auto pos = event->posF();
 #endif
         qInfo("[WEK] MouseGrabber::hoverMoveEvent pos=(%.1f,%.1f) target=%p",
-              pos.x(), pos.y(), (void*)m_target);
+              pos.x(),
+              pos.y(),
+              (void*)m_target);
     }
     sendHoverEvent(event);
     event->ignore();

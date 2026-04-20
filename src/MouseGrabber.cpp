@@ -118,9 +118,8 @@ void MouseGrabber::hoverMoveEvent(QHoverEvent* event) {
 #else
         auto pos = event->posF();
 #endif
-        qCInfo(QLoggingCategory::defaultCategory(),
-               "[WEK] MouseGrabber::hoverMoveEvent pos=(%.1f,%.1f) target=%p",
-               pos.x(), pos.y(), m_target);
+        qInfo("[WEK] MouseGrabber::hoverMoveEvent pos=(%.1f,%.1f) target=%p",
+              pos.x(), pos.y(), (void*)m_target);
     }
     sendHoverEvent(event);
     event->ignore();

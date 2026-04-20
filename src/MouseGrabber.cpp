@@ -106,6 +106,22 @@ void MouseGrabber::mouseDoubleClickEvent(QMouseEvent* event) {
 }
 
 void MouseGrabber::hoverMoveEvent(QHoverEvent* event) {
+    // Sample log once per ~120 hover events so we can tell from journalctl
+    // whether hover is actually reaching the wallpaper.  If this log is
+    // absent in the user's journal, the MouseGrabber isn't hooked up
+    // correctly (e.g. hookParent not found, or a sibling item swallowing
+    // hover events at a higher z-index).
+    static int s_hover_log = 0;
+    if (++s_hover_log % 120 == 1) {
+#if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
+        auto pos = event->position();
+#else
+        auto pos = event->posF();
+#endif
+        qCInfo(QLoggingCategory::defaultCategory(),
+               "[WEK] MouseGrabber::hoverMoveEvent pos=(%.1f,%.1f) target=%p",
+               pos.x(), pos.y(), m_target);
+    }
     sendHoverEvent(event);
     event->ignore();
 }

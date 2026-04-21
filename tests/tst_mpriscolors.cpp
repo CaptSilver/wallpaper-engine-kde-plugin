@@ -68,6 +68,20 @@ private slots:
     void handleNameOwnerChanged_mprisNameAppears_entersConnectBranch();
     void handlePropsChanged_metadataHttpArtUrl_createsRequest();
     void pollPosition_noActiveService_noSignals();
+
+    // mapShortcutToMpris — SceneScript usershortcut name → MPRIS method
+    void shortcut_bplay_PlayPause();
+    void shortcut_bpause_PlayPause();
+    void shortcut_bplaypause_PlayPause();
+    void shortcut_bnext_Next();
+    void shortcut_bprev_Previous();
+    void shortcut_bstop_Stop();
+    void shortcut_solarB11_Next();
+    void shortcut_solarB12_Previous();
+    void shortcut_caseInsensitive();
+    void shortcut_unknownNameReturnsEmpty();
+    void shortcut_emptyReturnsEmpty();
+    void shortcut_arbitraryNumericDoesNotLeak();
 };
 
 // Helper: create a solid-color image
@@ -571,6 +585,60 @@ void TestMprisColors::pollPosition_noActiveService_noSignals() {
     QSignalSpy   spy(&m, &MprisMonitor::timelineChanged);
     invokeSlot(&m, "pollPosition");
     QVERIFY(spy.count() == 0 || spy.count() == 1);
+}
+
+// -------- mapShortcutToMpris --------
+
+void TestMprisColors::shortcut_bplay_PlayPause() {
+    QCOMPARE(wekde::mapShortcutToMpris("bplay"), QString("PlayPause"));
+}
+void TestMprisColors::shortcut_bpause_PlayPause() {
+    QCOMPARE(wekde::mapShortcutToMpris("bpause"), QString("PlayPause"));
+}
+void TestMprisColors::shortcut_bplaypause_PlayPause() {
+    QCOMPARE(wekde::mapShortcutToMpris("bplaypause"), QString("PlayPause"));
+}
+void TestMprisColors::shortcut_bnext_Next() {
+    QCOMPARE(wekde::mapShortcutToMpris("bnext"), QString("Next"));
+}
+void TestMprisColors::shortcut_bprev_Previous() {
+    QCOMPARE(wekde::mapShortcutToMpris("bprev"), QString("Previous"));
+    QCOMPARE(wekde::mapShortcutToMpris("bprevious"), QString("Previous"));
+}
+void TestMprisColors::shortcut_bstop_Stop() {
+    QCOMPARE(wekde::mapShortcutToMpris("bstop"), QString("Stop"));
+}
+void TestMprisColors::shortcut_solarB11_Next() {
+    // Solar system wallpaper 3662790108: usershortcut `b11` is "下一首 Next".
+    QCOMPARE(wekde::mapShortcutToMpris("b11"), QString("Next"));
+}
+void TestMprisColors::shortcut_solarB12_Previous() {
+    // Solar system wallpaper 3662790108: usershortcut `b12` is "上一首 Previous".
+    QCOMPARE(wekde::mapShortcutToMpris("b12"), QString("Previous"));
+}
+void TestMprisColors::shortcut_caseInsensitive() {
+    // WE names are author-chosen and mixed-case — matcher lowercases both sides.
+    QCOMPARE(wekde::mapShortcutToMpris("BPlay"), QString("PlayPause"));
+    QCOMPARE(wekde::mapShortcutToMpris("BNEXT"), QString("Next"));
+}
+void TestMprisColors::shortcut_unknownNameReturnsEmpty() {
+    // Solar's `i1`..`i17` icon-shortcuts (planet focus buttons) aren't media
+    // controls — they must NOT map to any MPRIS method so the scene-bus
+    // event path runs instead of quietly skipping a track.
+    QCOMPARE(wekde::mapShortcutToMpris("i1"), QString());
+    QCOMPARE(wekde::mapShortcutToMpris("i17"), QString());
+    QCOMPARE(wekde::mapShortcutToMpris("bogus"), QString());
+}
+void TestMprisColors::shortcut_emptyReturnsEmpty() {
+    QCOMPARE(wekde::mapShortcutToMpris(""), QString());
+}
+void TestMprisColors::shortcut_arbitraryNumericDoesNotLeak() {
+    // Only the specific solar aliases (b11/b12) are recognized.  Adjacent
+    // numeric names stay unmapped so an unrelated wallpaper that happens to
+    // name a shortcut "b13" doesn't accidentally trigger a media action.
+    QCOMPARE(wekde::mapShortcutToMpris("b10"), QString());
+    QCOMPARE(wekde::mapShortcutToMpris("b13"), QString());
+    QCOMPARE(wekde::mapShortcutToMpris("b1"), QString());
 }
 
 QTEST_GUILESS_MAIN(TestMprisColors)

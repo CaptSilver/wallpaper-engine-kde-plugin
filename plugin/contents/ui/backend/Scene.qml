@@ -77,6 +77,14 @@ Item{
             function onFirstFrame() {
                 background.sig_backendFirstFrame('scene');
             }
+            // Route SceneScript engine.openUserShortcut(name) to MPRIS for
+            // well-known media-control names (bplay/bnext/bprev and the
+            // numeric aliases solar system uses). Unmapped names still fire
+            // the `userShortcut` scene-bus event so wallpapers can handle
+            // their own custom shortcuts in-script.
+            function onUserShortcutRequested(name) {
+                mprisMonitor.invokeShortcut(name);
+            }
         }
     }
 

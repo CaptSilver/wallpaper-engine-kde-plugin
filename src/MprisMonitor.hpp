@@ -41,11 +41,30 @@ MprisArtUrlKind classifyArtUrl(const QString& artUrl);
 // 0 = stopped, 1 = playing, 2 = paused, 0 for anything else.
 int toPlaybackState(const QString& status);
 
+// Map a SceneScript user-shortcut name to a standard MPRIS Player method.
+// WE wallpaper authors pick arbitrary names (solar's `b11`/`b12`/`bplay`,
+// generic `bnext`/`bprev`/`bplaypause` etc.) — we recognize the common
+// media-control patterns and return the MPRIS2 method to invoke.  Empty
+// string means the name isn't a recognized media control (caller falls
+// back to the scene event bus).  Pure helper so it's unit-testable
+// without the DBus session.
+QString mapShortcutToMpris(const QString& name);
+
 class MprisMonitor : public QQuickItem {
     Q_OBJECT
 
 public:
     MprisMonitor(QQuickItem* parent = nullptr);
+
+    // Invoke a method on the currently-tracked player's MPRIS2 Player
+    // interface.  Safe no-op when no player is connected.  Used by Scene.qml
+    // to route SceneScript engine.openUserShortcut() calls to media actions.
+    Q_INVOKABLE void invokePlayer(const QString& method);
+    // Convenience: map a SceneScript usershortcut name to an MPRIS method
+    // and invoke if recognized.  Returns true when a media action was sent,
+    // false for names the helper doesn't know (Scene.qml can then fall back
+    // to logging / scene-bus event).
+    Q_INVOKABLE bool invokeShortcut(const QString& name);
 
 signals:
     void playbackStateChanged(int state); // 0=stopped, 1=playing, 2=paused

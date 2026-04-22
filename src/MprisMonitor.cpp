@@ -296,23 +296,30 @@ void MprisMonitor::processArtUrl(const QString& artUrl) {
     }
 }
 
+bool wekde::decodeArtReplyBytes(const QByteArray& data, bool networkError,
+                                QVariantList& outColors) {
+    outColors.clear();
+    if (networkError) return false;
+    QImage img;
+    img.loadFromData(data);
+    if (img.isNull()) return false;
+    outColors = extractDominantColors(img);
+    return true;
+}
+
 void MprisMonitor::onArtDownloaded() {
     auto* reply = qobject_cast<QNetworkReply*>(sender());
     if (! reply) return;
     reply->deleteLater();
 
-    if (reply->error() != QNetworkReply::NoError) {
+    QVariantList colors;
+    if (decodeArtReplyBytes(reply->readAll(),
+                            reply->error() != QNetworkReply::NoError,
+                            colors)) {
+        emit thumbnailChanged(true, colors);
+    } else {
         emit thumbnailChanged(false, {});
-        return;
     }
-
-    QImage img;
-    img.loadFromData(reply->readAll());
-    if (img.isNull()) {
-        emit thumbnailChanged(false, {});
-        return;
-    }
-    extractColors(img);
 }
 
 QVariantList wekde::extractDominantColors(const QImage& img) {

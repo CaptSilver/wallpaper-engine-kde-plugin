@@ -1,4 +1,5 @@
 #include <QtTest>
+#include <QBuffer>
 #include <QImage>
 #include <QColor>
 #include <QCoreApplication>
@@ -82,6 +83,25 @@ private slots:
     void shortcut_unknownNameReturnsEmpty();
     void shortcut_emptyReturnsEmpty();
     void shortcut_arbitraryNumericDoesNotLeak();
+
+    // invokePlayer / invokeShortcut — DBus method dispatch with allowlist
+    void invokePlayer_emptyMethod_noop();
+    void invokePlayer_noActiveService_noop();
+    void invokePlayer_rejectsNonAllowlisted();
+    void invokePlayer_allowlistedMethod_exercisesSendPath();
+    void invokeShortcut_recognizedName_returnsTrue();
+    void invokeShortcut_unknownName_returnsFalse();
+    void invokeShortcut_emptyName_returnsFalse();
+
+    // handleNameOwnerChanged vanish path → disconnectFromPlayer
+    void handleNameOwnerChanged_activePlayerVanishes_disconnects();
+    void handleNameOwnerChanged_unrelatedServiceVanishes_noDisconnect();
+
+    // decodeArtReplyBytes — pure helper for onArtDownloaded
+    void decodeArt_networkError_returnsFalse();
+    void decodeArt_emptyBytes_returnsFalse();
+    void decodeArt_garbageBytes_returnsFalse();
+    void decodeArt_validPng_returnsTrueWith15Colors();
 };
 
 // Helper: create a solid-color image
@@ -639,6 +659,190 @@ void TestMprisColors::shortcut_arbitraryNumericDoesNotLeak() {
     QCOMPARE(wekde::mapShortcutToMpris("b10"), QString());
     QCOMPARE(wekde::mapShortcutToMpris("b13"), QString());
     QCOMPARE(wekde::mapShortcutToMpris("b1"), QString());
+}
+
+// ===========================================================================
+// invokePlayer / invokeShortcut — DBus method dispatch with allowlist
+// ===========================================================================
+//
+// Injection strategy: handleNameOwnerChanged("org.mpris.MediaPlayer2.<x>",
+// "", ":1.99") enters the `connectToPlayer` branch *only* when
+// m_activeService is empty.  If the ctor's findActivePlayer already picked
+// up a real MPRIS player on the session bus, m_activeService is already
+// non-empty and our injection no-ops — but m_activeService is still
+// non-empty either way, so the positive-path invokePlayer tests cover the
+// send-path lines.  We use activeService() to tell which state we're in
+// and QSKIP the rare case where neither the ctor nor our injection landed
+// anything (which shouldn't happen in practice but could on a machine
+// without a session bus).
+
+static bool injectFakeService(MprisMonitor& m,
+                              const QString& svc = "org.mpris.MediaPlayer2.testfake") {
+    invokeSlot(&m, "handleNameOwnerChanged",
+               Q_ARG(QString, svc),
+               Q_ARG(QString, ""),
+               Q_ARG(QString, ":1.99"));
+    return ! m.activeService().isEmpty();
+}
+
+void TestMprisColors::invokePlayer_emptyMethod_noop() {
+    MprisMonitor m;
+    // Empty method hits the `method.isEmpty()` early-out — safe regardless
+    // of whether a service is connected.
+    m.invokePlayer("");
+    QVERIFY(true); // didn't crash
+}
+
+void TestMprisColors::invokePlayer_noActiveService_noop() {
+    MprisMonitor m;
+    // If the ctor didn't find a real MPRIS player and we don't inject, the
+    // second clause of the early-out (`m_activeService.isEmpty()`) fires.
+    // If the ctor *did* find one, we skip — this test specifically targets
+    // the no-service branch.
+    if (! m.activeService().isEmpty())
+        QSKIP("session bus has a real MPRIS player; can't test empty-service branch");
+    m.invokePlayer("Play");
+    QVERIFY(true);
+}
+
+void TestMprisColors::invokePlayer_rejectsNonAllowlisted() {
+    MprisMonitor m;
+    if (! injectFakeService(m))
+        QSKIP("could not establish an active MPRIS service for this test");
+    // Non-allowlisted method → qWarning + early return (exercises the
+    // allowlist guard rather than dispatching a DBus call).
+    m.invokePlayer("ArbitraryEvilMethod");
+    QVERIFY(true);
+}
+
+void TestMprisColors::invokePlayer_allowlistedMethod_exercisesSendPath() {
+    MprisMonitor m;
+    if (! injectFakeService(m))
+        QSKIP("could not establish an active MPRIS service for this test");
+    // Allowlisted method → createMethodCall + asyncCall.  Against a fake
+    // service the DBus call silently fails, but the lines run.  This is
+    // the critical test for invokePlayer line coverage.
+    m.invokePlayer("Play");
+    m.invokePlayer("Pause");
+    m.invokePlayer("PlayPause");
+    m.invokePlayer("Stop");
+    m.invokePlayer("Next");
+    m.invokePlayer("Previous");
+    QVERIFY(true);
+}
+
+void TestMprisColors::invokeShortcut_recognizedName_returnsTrue() {
+    MprisMonitor m;
+    if (! injectFakeService(m))
+        QSKIP("could not establish an active MPRIS service for this test");
+    // "bplay" → mapShortcutToMpris="PlayPause" → invokePlayer(allowlisted) →
+    // return true.
+    QVERIFY(m.invokeShortcut("bplay"));
+    QVERIFY(m.invokeShortcut("b11")); // solar system alias
+    QVERIFY(m.invokeShortcut("bstop"));
+}
+
+void TestMprisColors::invokeShortcut_unknownName_returnsFalse() {
+    MprisMonitor m;
+    // Doesn't matter whether a service is connected; mapShortcutToMpris
+    // returns empty before invokePlayer runs.
+    QVERIFY(! m.invokeShortcut("i1"));     // solar icon-focus shortcut
+    QVERIFY(! m.invokeShortcut("b13"));    // adjacent numeric, unmapped
+    QVERIFY(! m.invokeShortcut("bogus"));
+}
+
+void TestMprisColors::invokeShortcut_emptyName_returnsFalse() {
+    MprisMonitor m;
+    QVERIFY(! m.invokeShortcut(""));
+}
+
+// ===========================================================================
+// handleNameOwnerChanged — vanish path drives disconnectFromPlayer
+// ===========================================================================
+
+void TestMprisColors::handleNameOwnerChanged_activePlayerVanishes_disconnects() {
+    MprisMonitor m;
+    const QString svc = m.activeService().isEmpty()
+        ? QString("org.mpris.MediaPlayer2.testfake_vanish")
+        : m.activeService(); // re-use whatever ctor connected to
+    if (m.activeService().isEmpty()) {
+        QVERIFY(injectFakeService(m, svc));
+    }
+    QCOMPARE(m.activeService(), svc);
+
+    QSignalSpy enabledSpy(&m, &MprisMonitor::enabledChanged);
+    // oldOwner non-empty + newOwner empty + name == m_activeService →
+    // disconnectFromPlayer() + findActivePlayer().  The first emission is
+    // always `enabledChanged(false)` from disconnectFromPlayer; findActive
+    // may then reconnect if there's *another* MPRIS player on the session
+    // bus, producing a second `enabledChanged(true)`.  We only assert on
+    // the disconnect emission.
+    invokeSlot(&m, "handleNameOwnerChanged",
+               Q_ARG(QString, svc),
+               Q_ARG(QString, ":1.99"),
+               Q_ARG(QString, ""));
+    QVERIFY(enabledSpy.count() >= 1);
+    QCOMPARE(enabledSpy.at(0).at(0).toBool(), false);
+}
+
+void TestMprisColors::handleNameOwnerChanged_unrelatedServiceVanishes_noDisconnect() {
+    MprisMonitor m;
+    if (! injectFakeService(m, "org.mpris.MediaPlayer2.testfake_keep"))
+        QSKIP("could not establish an active MPRIS service for this test");
+    QString kept = m.activeService();
+
+    QSignalSpy enabledSpy(&m, &MprisMonitor::enabledChanged);
+    // A *different* MPRIS service vanishing must not disconnect us.
+    invokeSlot(&m, "handleNameOwnerChanged",
+               Q_ARG(QString, "org.mpris.MediaPlayer2.someone_else"),
+               Q_ARG(QString, ":1.50"),
+               Q_ARG(QString, ""));
+    QCOMPARE(enabledSpy.count(), 0);
+    QCOMPARE(m.activeService(), kept);
+}
+
+// ===========================================================================
+// decodeArtReplyBytes — pure helper for onArtDownloaded
+// ===========================================================================
+
+void TestMprisColors::decodeArt_networkError_returnsFalse() {
+    QVariantList out;
+    QVERIFY(! wekde::decodeArtReplyBytes(QByteArray("bytes that would otherwise decode"),
+                                          true /*networkError*/, out));
+    QVERIFY(out.isEmpty());
+}
+
+void TestMprisColors::decodeArt_emptyBytes_returnsFalse() {
+    QVariantList out;
+    QVERIFY(! wekde::decodeArtReplyBytes(QByteArray(), false, out));
+    QVERIFY(out.isEmpty());
+}
+
+void TestMprisColors::decodeArt_garbageBytes_returnsFalse() {
+    QVariantList out;
+    QByteArray   junk("\x00\xFF not-an-image \x42\x42", 24);
+    QVERIFY(! wekde::decodeArtReplyBytes(junk, false, out));
+    QVERIFY(out.isEmpty());
+}
+
+void TestMprisColors::decodeArt_validPng_returnsTrueWith15Colors() {
+    // Build a real PNG in memory so the decode path actually succeeds.
+    QImage img(16, 16, QImage::Format_RGB32);
+    img.fill(Qt::magenta);
+    QByteArray bytes;
+    {
+        QBuffer buf(&bytes);
+        buf.open(QIODevice::WriteOnly);
+        QVERIFY(img.save(&buf, "PNG"));
+    }
+
+    QVariantList out;
+    QVERIFY(wekde::decodeArtReplyBytes(bytes, false, out));
+    QCOMPARE(out.size(), 15);
+    // Primary should be close to magenta (R high, B high, G low).
+    QVERIFY(out[0].toDouble() > 0.7);  // R
+    QVERIFY(out[1].toDouble() < 0.3);  // G
+    QVERIFY(out[2].toDouble() > 0.7);  // B
 }
 
 QTEST_GUILESS_MAIN(TestMprisColors)

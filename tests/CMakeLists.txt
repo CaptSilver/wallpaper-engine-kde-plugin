@@ -66,6 +66,20 @@ if(Qt6Gui_FOUND AND Qt6Quick_FOUND)
         target_link_options(tst_mpriscolors PRIVATE ${_cov_link_flags})
     endif()
     add_test(NAME tst_mpriscolors COMMAND tst_mpriscolors -v2)
+
+    # ── MouseGrabber event forwarding tests ───────────────────────────────────
+    add_executable(tst_mousegrabber
+        tst_mousegrabber.cpp
+        ${WEKDE_SRC_DIR}/MouseGrabber.cpp
+    )
+    target_include_directories(tst_mousegrabber PRIVATE ${WEKDE_SRC_DIR})
+    target_link_libraries(tst_mousegrabber PRIVATE
+        Qt6::Core Qt6::Test Qt6::Gui Qt6::Quick)
+    if(COVERAGE)
+        target_compile_options(tst_mousegrabber PRIVATE ${_cov_compile_flags})
+        target_link_options(tst_mousegrabber PRIVATE ${_cov_link_flags})
+    endif()
+    add_test(NAME tst_mousegrabber COMMAND tst_mousegrabber -v2)
 endif()
 
 # ── Coverage report target ────────────────────────────────────────────────────
@@ -80,6 +94,10 @@ if(COVERAGE)
     if(TARGET tst_mpriscolors)
         list(APPEND _cov_objs -object=$<TARGET_FILE:tst_mpriscolors>)
         list(APPEND _cov_tests tst_mpriscolors)
+    endif()
+    if(TARGET tst_mousegrabber)
+        list(APPEND _cov_objs -object=$<TARGET_FILE:tst_mousegrabber>)
+        list(APPEND _cov_tests tst_mousegrabber)
     endif()
 
     # Ignore everything outside src/ (Qt headers, system libs, tests themselves,

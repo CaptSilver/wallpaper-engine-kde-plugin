@@ -50,6 +50,13 @@ int toPlaybackState(const QString& status);
 // without the DBus session.
 QString mapShortcutToMpris(const QString& name);
 
+// Decode the bytes from an MPRIS artUrl HTTP fetch into a flat color list.
+// Returns true + fills `outColors` (15 floats) when the payload decoded into
+// a valid QImage; returns false + clears `outColors` for network errors,
+// empty payloads, and undecodable bytes.  Pure helper — no QObject / DBus
+// dependency, directly unit-testable without spinning up QNetworkAccessManager.
+bool decodeArtReplyBytes(const QByteArray& data, bool networkError, QVariantList& outColors);
+
 class MprisMonitor : public QQuickItem {
     Q_OBJECT
 
@@ -65,6 +72,12 @@ public:
     // false for names the helper doesn't know (Scene.qml can then fall back
     // to logging / scene-bus event).
     Q_INVOKABLE bool invokeShortcut(const QString& name);
+
+    // Currently-tracked MPRIS service name (e.g. "org.mpris.MediaPlayer2.vlc"),
+    // or empty when no player is connected.  QML can surface this as a
+    // "now tracking <source>" label; tests use it to introspect the state
+    // after handleNameOwnerChanged / connectToPlayer runs.
+    Q_INVOKABLE QString activeService() const { return m_activeService; }
 
 signals:
     void playbackStateChanged(int state); // 0=stopped, 1=playing, 2=paused

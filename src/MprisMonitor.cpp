@@ -33,8 +33,7 @@ QString wekde::mapShortcutToMpris(const QString& name) {
     // "下一首 Next" / "上一首 Previous" labels).  If more wallpapers show up
     // with different conventions this map grows; unknown names fall through
     // to the scene event bus so scripts can still self-handle them.
-    if (n == "bplay" || n == "bplaypause" || n == "bpause" || n == "playpause")
-        return "PlayPause";
+    if (n == "bplay" || n == "bplaypause" || n == "bpause" || n == "playpause") return "PlayPause";
     if (n == "bplayonly" || n == "play") return "Play";
     if (n == "bstop" || n == "stop") return "Stop";
     if (n == "bnext" || n == "next" || n == "b11") return "Next";
@@ -46,15 +45,13 @@ void MprisMonitor::invokePlayer(const QString& method) {
     if (method.isEmpty() || m_activeService.isEmpty()) return;
     // Only allow the well-known MPRIS2 Player methods — defense against a
     // compromised scene JS smuggling arbitrary DBus calls through the shim.
-    static const QSet<QString> allowed {
-        "PlayPause", "Play", "Pause", "Stop", "Next", "Previous"
-    };
+    static const QSet<QString> allowed { "PlayPause", "Play", "Pause", "Stop", "Next", "Previous" };
     if (! allowed.contains(method)) {
         qWarning() << "MprisMonitor::invokePlayer: rejecting non-allowlisted method" << method;
         return;
     }
-    QDBusMessage msg = QDBusMessage::createMethodCall(
-        m_activeService, MPRIS_PATH, MPRIS_PLAYER_IF, method);
+    QDBusMessage msg =
+        QDBusMessage::createMethodCall(m_activeService, MPRIS_PATH, MPRIS_PLAYER_IF, method);
     // Async send — we don't need the reply, just the side effect.
     m_sessionBus.asyncCall(msg);
 }
@@ -313,9 +310,7 @@ void MprisMonitor::onArtDownloaded() {
     reply->deleteLater();
 
     QVariantList colors;
-    if (decodeArtReplyBytes(reply->readAll(),
-                            reply->error() != QNetworkReply::NoError,
-                            colors)) {
+    if (decodeArtReplyBytes(reply->readAll(), reply->error() != QNetworkReply::NoError, colors)) {
         emit thumbnailChanged(true, colors);
     } else {
         emit thumbnailChanged(false, {});

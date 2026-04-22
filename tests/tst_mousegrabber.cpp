@@ -13,9 +13,9 @@
 // the scene via this subclass.
 class TestableMouseGrabber : public wekde::MouseGrabber {
 public:
-    using wekde::MouseGrabber::MouseGrabber;
     using wekde::MouseGrabber::hoverMoveEvent;
     using wekde::MouseGrabber::mouseDoubleClickEvent;
+    using wekde::MouseGrabber::MouseGrabber;
     using wekde::MouseGrabber::mouseMoveEvent;
     using wekde::MouseGrabber::mousePressEvent;
     using wekde::MouseGrabber::mouseReleaseEvent;
@@ -27,8 +27,8 @@ public:
 // type + position for each mouse/hover event and lets them continue.
 class EventCapturingFilter : public QObject {
 public:
-    QList<QEvent::Type> types;
-    QList<QPointF>      positions;
+    QList<QEvent::Type>    types;
+    QList<QPointF>         positions;
     QList<Qt::MouseButton> buttons;
 
     bool eventFilter(QObject* /*watched*/, QEvent* ev) override {
@@ -59,8 +59,8 @@ public:
         case QEvent::MouseMove:
         case QEvent::MouseButtonRelease:
         case QEvent::MouseButtonDblClick:
-        case QEvent::HoverMove:    return true;
-        default:                   return false;
+        case QEvent::HoverMove: return true;
+        default: return false;
         }
     }
 };
@@ -213,8 +213,7 @@ static QMouseEvent mkMouse(QEvent::Type type, QPointF pos = { 0, 0 },
                            Qt::MouseButton btn = Qt::LeftButton) {
     return QMouseEvent(type, pos, pos, btn, btn, Qt::NoModifier);
 }
-static QHoverEvent mkHover(QPointF pos    = { 0, 0 },
-                           QPointF oldPos = { 0, 0 }) {
+static QHoverEvent mkHover(QPointF pos = { 0, 0 }, QPointF oldPos = { 0, 0 }) {
     return QHoverEvent(QEvent::HoverMove, pos, pos, oldPos, Qt::NoModifier);
 }
 

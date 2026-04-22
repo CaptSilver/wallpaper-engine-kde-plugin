@@ -676,9 +676,10 @@ void TestMprisColors::shortcut_arbitraryNumericDoesNotLeak() {
 // anything (which shouldn't happen in practice but could on a machine
 // without a session bus).
 
-static bool injectFakeService(MprisMonitor& m,
+static bool injectFakeService(MprisMonitor&  m,
                               const QString& svc = "org.mpris.MediaPlayer2.testfake") {
-    invokeSlot(&m, "handleNameOwnerChanged",
+    invokeSlot(&m,
+               "handleNameOwnerChanged",
                Q_ARG(QString, svc),
                Q_ARG(QString, ""),
                Q_ARG(QString, ":1.99"));
@@ -707,8 +708,7 @@ void TestMprisColors::invokePlayer_noActiveService_noop() {
 
 void TestMprisColors::invokePlayer_rejectsNonAllowlisted() {
     MprisMonitor m;
-    if (! injectFakeService(m))
-        QSKIP("could not establish an active MPRIS service for this test");
+    if (! injectFakeService(m)) QSKIP("could not establish an active MPRIS service for this test");
     // Non-allowlisted method → qWarning + early return (exercises the
     // allowlist guard rather than dispatching a DBus call).
     m.invokePlayer("ArbitraryEvilMethod");
@@ -717,8 +717,7 @@ void TestMprisColors::invokePlayer_rejectsNonAllowlisted() {
 
 void TestMprisColors::invokePlayer_allowlistedMethod_exercisesSendPath() {
     MprisMonitor m;
-    if (! injectFakeService(m))
-        QSKIP("could not establish an active MPRIS service for this test");
+    if (! injectFakeService(m)) QSKIP("could not establish an active MPRIS service for this test");
     // Allowlisted method → createMethodCall + asyncCall.  Against a fake
     // service the DBus call silently fails, but the lines run.  This is
     // the critical test for invokePlayer line coverage.
@@ -733,8 +732,7 @@ void TestMprisColors::invokePlayer_allowlistedMethod_exercisesSendPath() {
 
 void TestMprisColors::invokeShortcut_recognizedName_returnsTrue() {
     MprisMonitor m;
-    if (! injectFakeService(m))
-        QSKIP("could not establish an active MPRIS service for this test");
+    if (! injectFakeService(m)) QSKIP("could not establish an active MPRIS service for this test");
     // "bplay" → mapShortcutToMpris="PlayPause" → invokePlayer(allowlisted) →
     // return true.
     QVERIFY(m.invokeShortcut("bplay"));
@@ -746,8 +744,8 @@ void TestMprisColors::invokeShortcut_unknownName_returnsFalse() {
     MprisMonitor m;
     // Doesn't matter whether a service is connected; mapShortcutToMpris
     // returns empty before invokePlayer runs.
-    QVERIFY(! m.invokeShortcut("i1"));     // solar icon-focus shortcut
-    QVERIFY(! m.invokeShortcut("b13"));    // adjacent numeric, unmapped
+    QVERIFY(! m.invokeShortcut("i1"));  // solar icon-focus shortcut
+    QVERIFY(! m.invokeShortcut("b13")); // adjacent numeric, unmapped
     QVERIFY(! m.invokeShortcut("bogus"));
 }
 
@@ -761,10 +759,10 @@ void TestMprisColors::invokeShortcut_emptyName_returnsFalse() {
 // ===========================================================================
 
 void TestMprisColors::handleNameOwnerChanged_activePlayerVanishes_disconnects() {
-    MprisMonitor m;
+    MprisMonitor  m;
     const QString svc = m.activeService().isEmpty()
-        ? QString("org.mpris.MediaPlayer2.testfake_vanish")
-        : m.activeService(); // re-use whatever ctor connected to
+                            ? QString("org.mpris.MediaPlayer2.testfake_vanish")
+                            : m.activeService(); // re-use whatever ctor connected to
     if (m.activeService().isEmpty()) {
         QVERIFY(injectFakeService(m, svc));
     }
@@ -777,7 +775,8 @@ void TestMprisColors::handleNameOwnerChanged_activePlayerVanishes_disconnects() 
     // may then reconnect if there's *another* MPRIS player on the session
     // bus, producing a second `enabledChanged(true)`.  We only assert on
     // the disconnect emission.
-    invokeSlot(&m, "handleNameOwnerChanged",
+    invokeSlot(&m,
+               "handleNameOwnerChanged",
                Q_ARG(QString, svc),
                Q_ARG(QString, ":1.99"),
                Q_ARG(QString, ""));
@@ -793,7 +792,8 @@ void TestMprisColors::handleNameOwnerChanged_unrelatedServiceVanishes_noDisconne
 
     QSignalSpy enabledSpy(&m, &MprisMonitor::enabledChanged);
     // A *different* MPRIS service vanishing must not disconnect us.
-    invokeSlot(&m, "handleNameOwnerChanged",
+    invokeSlot(&m,
+               "handleNameOwnerChanged",
                Q_ARG(QString, "org.mpris.MediaPlayer2.someone_else"),
                Q_ARG(QString, ":1.50"),
                Q_ARG(QString, ""));
@@ -807,8 +807,8 @@ void TestMprisColors::handleNameOwnerChanged_unrelatedServiceVanishes_noDisconne
 
 void TestMprisColors::decodeArt_networkError_returnsFalse() {
     QVariantList out;
-    QVERIFY(! wekde::decodeArtReplyBytes(QByteArray("bytes that would otherwise decode"),
-                                          true /*networkError*/, out));
+    QVERIFY(! wekde::decodeArtReplyBytes(
+        QByteArray("bytes that would otherwise decode"), true /*networkError*/, out));
     QVERIFY(out.isEmpty());
 }
 
@@ -840,9 +840,9 @@ void TestMprisColors::decodeArt_validPng_returnsTrueWith15Colors() {
     QVERIFY(wekde::decodeArtReplyBytes(bytes, false, out));
     QCOMPARE(out.size(), 15);
     // Primary should be close to magenta (R high, B high, G low).
-    QVERIFY(out[0].toDouble() > 0.7);  // R
-    QVERIFY(out[1].toDouble() < 0.3);  // G
-    QVERIFY(out[2].toDouble() > 0.7);  // B
+    QVERIFY(out[0].toDouble() > 0.7); // R
+    QVERIFY(out[1].toDouble() < 0.3); // G
+    QVERIFY(out[2].toDouble() > 0.7); // B
 }
 
 QTEST_GUILESS_MAIN(TestMprisColors)

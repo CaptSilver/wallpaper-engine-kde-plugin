@@ -6,7 +6,19 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(KF_MIN_VERSION "5.68.0")
 
-project("WallpaperEngineKde")
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" WEK_PROJECT_VERSION)
+string(STRIP "${WEK_PROJECT_VERSION}" WEK_PROJECT_VERSION)
+
+project("WallpaperEngineKde" VERSION ${WEK_PROJECT_VERSION})
+
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/plugin/metadata.json.in"
+  "${CMAKE_CURRENT_SOURCE_DIR}/plugin/metadata.json"
+  @ONLY)
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/plugin/metadata.desktop.in"
+  "${CMAKE_CURRENT_SOURCE_DIR}/plugin/metadata.desktop"
+  @ONLY)
 
 
 set(CMAKE_SKIP_INSTALL_ALL_DEPENDENCY true)

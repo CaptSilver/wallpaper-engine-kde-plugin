@@ -12,4 +12,4 @@ X-KDE-PluginInfo-Name=com.github.catsout.wallpaperEngineKde
 X-KDE-PluginInfo-Author=catsout
 X-KDE-PluginInfo-Category=
 X-KDE-PluginInfo-License=GPLv2+
-X-KDE-PluginInfo-Version=
+X-KDE-PluginInfo-Version=@PROJECT_VERSION@

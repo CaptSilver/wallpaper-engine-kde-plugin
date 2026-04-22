@@ -4,6 +4,15 @@ export DH_VERBOSE = 1
 export CC  = clang
 export CXX = clang++
 
+# Regenerate debian/changelog from debian/changelog.in + snapshot stanza.
+# Run this BEFORE dpkg-buildpackage (dpkg reads debian/changelog up front to
+# determine the source version, so it must already contain the snapshot
+# stanza by the time dpkg is invoked):
+#     debian/rules snapshot-changelog && dpkg-buildpackage -uc -us
+.PHONY: snapshot-changelog
+snapshot-changelog:
+	$(CURDIR)/scripts/gen-debian-changelog.sh
+
 %:
 	dh $@
 

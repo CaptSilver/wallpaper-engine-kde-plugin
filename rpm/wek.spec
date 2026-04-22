@@ -1,5 +1,5 @@
 Name:    wallpaper-engine-kde-plugin-qt6
-Version: 1.1
+Version: %(cat %{reporoot}/VERSION 2>/dev/null | tr -d '[:space:]')
 Release: 1%{?dist}
 Summary: A KDE wallpaper plugin integrating Wallpaper Engine (Plasma 6)
 
@@ -62,7 +62,13 @@ DESTDIR=%{buildroot} cmake --install %{_builddir}/wek-build \
 %{_datadir}/*
 
 %changelog
-* Sat Mar 29 2026 packager - 1.1-1
+* %(date +'%a %b %d %Y') packager - %{version}-%{release}.git%{shortcommit}
+- Snapshot build from commit %{shortcommit} on %(date +'%Y-%m-%d %H:%M %Z')
+
+* Wed Apr 22 2026 packager - 1.2-1
+- Version bump to 1.2
+
+* Sun Mar 29 2026 packager - 1.1-1
 - Planar reflection, MSAA, HDR, geometry shaders, blur effects
 - SceneScript: scene property control, timers, device detection, cursor events
 - System audio capture, audio decoder fix

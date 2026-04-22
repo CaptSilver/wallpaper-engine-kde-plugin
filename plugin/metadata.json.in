@@ -15,7 +15,7 @@
         "ServiceTypes": [
             "Plasma/Wallpaper"
         ],
-        "Version": ""
+        "Version": "@PROJECT_VERSION@"
     },
     "X-KDE-ParentApp": "org.kde.plasmashell",
     "X-Plasma-MainScript": "ui/main.qml"

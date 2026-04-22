@@ -115,17 +115,17 @@ void TestMprisColors::solidRedImage() {
     QVariantList colors = wekde::extractDominantColors(solidImage(Qt::red));
     QCOMPARE(colors.size(), 15);
     // Primary should be close to (1, 0, 0)
-    QVERIFY(colors[0].toDouble() > 0.8);  // R
-    QVERIFY(colors[1].toDouble() < 0.2);  // G
-    QVERIFY(colors[2].toDouble() < 0.2);  // B
+    QVERIFY(colors[0].toDouble() > 0.8); // R
+    QVERIFY(colors[1].toDouble() < 0.2); // G
+    QVERIFY(colors[2].toDouble() < 0.2); // B
 }
 
 void TestMprisColors::solidBlueImage() {
     QVariantList colors = wekde::extractDominantColors(solidImage(Qt::blue));
     QCOMPARE(colors.size(), 15);
-    QVERIFY(colors[0].toDouble() < 0.2);  // R
-    QVERIFY(colors[1].toDouble() < 0.2);  // G
-    QVERIFY(colors[2].toDouble() > 0.8);  // B
+    QVERIFY(colors[0].toDouble() < 0.2); // R
+    QVERIFY(colors[1].toDouble() < 0.2); // G
+    QVERIFY(colors[2].toDouble() > 0.8); // B
 }
 
 void TestMprisColors::blackImage() {
@@ -145,7 +145,7 @@ void TestMprisColors::whiteImage() {
     QVariantList colors = wekde::extractDominantColors(solidImage(Qt::white));
     QCOMPARE(colors.size(), 15);
     // Text color should be black for bright image
-    QVERIFY(colors[9].toDouble() < 0.1);  // text R
+    QVERIFY(colors[9].toDouble() < 0.1); // text R
     QVERIFY(colors[10].toDouble() < 0.1);
     QVERIFY(colors[11].toDouble() < 0.1);
 }
@@ -176,8 +176,7 @@ void TestMprisColors::valuesInZeroOneRange() {
     QImage img(64, 64, QImage::Format_RGB32);
     // Random-ish gradient
     for (int y = 0; y < 64; y++)
-        for (int x = 0; x < 64; x++)
-            img.setPixelColor(x, y, QColor(x * 4, y * 4, (x + y) * 2));
+        for (int x = 0; x < 64; x++) img.setPixelColor(x, y, QColor(x * 4, y * 4, (x + y) * 2));
     QVariantList colors = wekde::extractDominantColors(img);
     for (int i = 0; i < colors.size(); i++) {
         double v = colors[i].toDouble();
@@ -205,9 +204,9 @@ void TestMprisColors::highContrastDiffersFromPrimary() {
         for (int x = 0; x < 32; x++)
             img.setPixelColor(x, y, y < 16 ? QColor(255, 0, 0) : QColor(0, 255, 255));
     QVariantList colors = wekde::extractDominantColors(img);
-    double pr = colors[0].toDouble(), pg = colors[1].toDouble(), pb = colors[2].toDouble();
-    double cr = colors[12].toDouble(), cg = colors[13].toDouble(), cb = colors[14].toDouble();
-    double dist = std::sqrt((pr-cr)*(pr-cr) + (pg-cg)*(pg-cg) + (pb-cb)*(pb-cb));
+    double       pr = colors[0].toDouble(), pg = colors[1].toDouble(), pb = colors[2].toDouble();
+    double       cr = colors[12].toDouble(), cg = colors[13].toDouble(), cb = colors[14].toDouble();
+    double dist = std::sqrt((pr - cr) * (pr - cr) + (pg - cg) * (pg - cg) + (pb - cb) * (pb - cb));
     QVERIFY(dist > 0.5);
 }
 
@@ -233,21 +232,13 @@ void TestMprisColors::largeImage() {
 // toPlaybackState — pure string → int mapping
 // ===========================================================================
 
-void TestMprisColors::toPlaybackState_Playing() {
-    QCOMPARE(wekde::toPlaybackState("Playing"), 1);
-}
-void TestMprisColors::toPlaybackState_Paused() {
-    QCOMPARE(wekde::toPlaybackState("Paused"), 2);
-}
-void TestMprisColors::toPlaybackState_Stopped() {
-    QCOMPARE(wekde::toPlaybackState("Stopped"), 0);
-}
+void TestMprisColors::toPlaybackState_Playing() { QCOMPARE(wekde::toPlaybackState("Playing"), 1); }
+void TestMprisColors::toPlaybackState_Paused() { QCOMPARE(wekde::toPlaybackState("Paused"), 2); }
+void TestMprisColors::toPlaybackState_Stopped() { QCOMPARE(wekde::toPlaybackState("Stopped"), 0); }
 void TestMprisColors::toPlaybackState_Unknown() {
     QCOMPARE(wekde::toPlaybackState("BogusStateValue"), 0);
 }
-void TestMprisColors::toPlaybackState_Empty() {
-    QCOMPARE(wekde::toPlaybackState(""), 0);
-}
+void TestMprisColors::toPlaybackState_Empty() { QCOMPARE(wekde::toPlaybackState(""), 0); }
 
 // ===========================================================================
 // parseMprisMetadata — pure QVariantMap → struct
@@ -267,21 +258,21 @@ void TestMprisColors::parseMetadata_empty() {
 void TestMprisColors::parseMetadata_title() {
     QVariantMap m;
     m["xesam:title"] = "Great Song";
-    auto md = wekde::parseMprisMetadata(m);
+    auto md          = wekde::parseMprisMetadata(m);
     QCOMPARE(md.title, QString("Great Song"));
 }
 
 void TestMprisColors::parseMetadata_multipleArtistsJoinWithComma() {
     QVariantMap m;
     m["xesam:artist"] = QStringList { "A", "B", "C" };
-    auto md = wekde::parseMprisMetadata(m);
+    auto md           = wekde::parseMprisMetadata(m);
     QCOMPARE(md.artist, QString("A, B, C"));
 }
 
 void TestMprisColors::parseMetadata_singleArtist() {
     QVariantMap m;
     m["xesam:artist"] = QStringList { "Solo" };
-    auto md = wekde::parseMprisMetadata(m);
+    auto md           = wekde::parseMprisMetadata(m);
     QCOMPARE(md.artist, QString("Solo"));
 }
 
@@ -290,7 +281,7 @@ void TestMprisColors::parseMetadata_album_albumArtist_genres() {
     m["xesam:album"]       = "The Album";
     m["xesam:albumArtist"] = QStringList { "Artist1", "Artist2" };
     m["xesam:genre"]       = QStringList { "Rock", "Pop" };
-    auto md = wekde::parseMprisMetadata(m);
+    auto md                = wekde::parseMprisMetadata(m);
     QCOMPARE(md.album, QString("The Album"));
     QCOMPARE(md.albumArtist, QString("Artist1, Artist2"));
     QCOMPARE(md.genres, QString("Rock, Pop"));
@@ -299,21 +290,21 @@ void TestMprisColors::parseMetadata_album_albumArtist_genres() {
 void TestMprisColors::parseMetadata_durationUsecToSec() {
     QVariantMap m;
     m["mpris:length"] = qint64(60'000'000); // 60s in µs
-    auto md = wekde::parseMprisMetadata(m);
+    auto md           = wekde::parseMprisMetadata(m);
     QCOMPARE(md.duration, 60.0);
 }
 
 void TestMprisColors::parseMetadata_zeroDuration() {
     QVariantMap m;
     m["mpris:length"] = qint64(0);
-    auto md = wekde::parseMprisMetadata(m);
+    auto md           = wekde::parseMprisMetadata(m);
     QCOMPARE(md.duration, 0.0);
 }
 
 void TestMprisColors::parseMetadata_artUrl() {
     QVariantMap m;
     m["mpris:artUrl"] = "file:///tmp/cover.png";
-    auto md = wekde::parseMprisMetadata(m);
+    auto md           = wekde::parseMprisMetadata(m);
     QCOMPARE(md.artUrl, QString("file:///tmp/cover.png"));
 }
 
@@ -331,18 +322,15 @@ void TestMprisColors::classifyArt_http() {
     QCOMPARE(wekde::classifyArtUrl("http://example.com/a.png"), wekde::MprisArtUrlKind::Http);
 }
 void TestMprisColors::classifyArt_https() {
-    QCOMPARE(wekde::classifyArtUrl("https://cdn.example/cover.jpg"),
-             wekde::MprisArtUrlKind::Http);
+    QCOMPARE(wekde::classifyArtUrl("https://cdn.example/cover.jpg"), wekde::MprisArtUrlKind::Http);
 }
 void TestMprisColors::classifyArt_unknownScheme() {
-    QCOMPARE(wekde::classifyArtUrl("ftp://server/file.png"),
-             wekde::MprisArtUrlKind::Unknown);
+    QCOMPARE(wekde::classifyArtUrl("ftp://server/file.png"), wekde::MprisArtUrlKind::Unknown);
 }
 void TestMprisColors::classifyArt_nonUrlJunk() {
     // "not_a_url" has no scheme → QUrl::isLocalFile() returns false, scheme() is
     // empty, so it falls through to Unknown.
-    QCOMPARE(wekde::classifyArtUrl("not_a_url"),
-             wekde::MprisArtUrlKind::Unknown);
+    QCOMPARE(wekde::classifyArtUrl("not_a_url"), wekde::MprisArtUrlKind::Unknown);
 }
 
 // ===========================================================================
@@ -352,10 +340,8 @@ void TestMprisColors::classifyArt_nonUrlJunk() {
 using namespace wekde;
 
 // Helper: build a QVariantMap that mimics an MPRIS "Metadata" property.
-static QVariantMap mkMeta(const QString& title      = {},
-                          const QStringList& artists = {},
-                          qint64 lengthUs            = 0,
-                          const QString& artUrl      = {}) {
+static QVariantMap mkMeta(const QString& title = {}, const QStringList& artists = {},
+                          qint64 lengthUs = 0, const QString& artUrl = {}) {
     QVariantMap m;
     if (! title.isEmpty()) m["xesam:title"] = title;
     if (! artists.isEmpty()) m["xesam:artist"] = artists;
@@ -379,7 +365,8 @@ void TestMprisColors::handlePropsChanged_wrongInterface_noSignals() {
     QVariantMap changed;
     changed["PlaybackStatus"] = "Playing";
 
-    QVERIFY(invokeSlot(&m, "handlePropertiesChanged",
+    QVERIFY(invokeSlot(&m,
+                       "handlePropertiesChanged",
                        Q_ARG(QString, "org.bogus.Interface"),
                        Q_ARG(QVariantMap, changed),
                        Q_ARG(QStringList, QStringList())));
@@ -392,7 +379,8 @@ void TestMprisColors::handlePropsChanged_playbackPlaying_emitsState1() {
     QSignalSpy   spy(&m, &MprisMonitor::playbackStateChanged);
     QVariantMap  c;
     c["PlaybackStatus"] = "Playing";
-    invokeSlot(&m, "handlePropertiesChanged",
+    invokeSlot(&m,
+               "handlePropertiesChanged",
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c),
                Q_ARG(QStringList, QStringList()));
@@ -405,7 +393,8 @@ void TestMprisColors::handlePropsChanged_playbackPaused_emitsState2() {
     QSignalSpy   spy(&m, &MprisMonitor::playbackStateChanged);
     QVariantMap  c;
     c["PlaybackStatus"] = "Paused";
-    invokeSlot(&m, "handlePropertiesChanged",
+    invokeSlot(&m,
+               "handlePropertiesChanged",
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c),
                Q_ARG(QStringList, QStringList()));
@@ -419,14 +408,16 @@ void TestMprisColors::handlePropsChanged_playbackStopped_emitsState0() {
     // Default state is 0. Set to Playing first, then Stopped to see a transition.
     QVariantMap playing;
     playing["PlaybackStatus"] = "Playing";
-    invokeSlot(&m, "handlePropertiesChanged",
+    invokeSlot(&m,
+               "handlePropertiesChanged",
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, playing),
                Q_ARG(QStringList, QStringList()));
 
     QVariantMap stopped;
     stopped["PlaybackStatus"] = "Stopped";
-    invokeSlot(&m, "handlePropertiesChanged",
+    invokeSlot(&m,
+               "handlePropertiesChanged",
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, stopped),
                Q_ARG(QStringList, QStringList()));
@@ -439,11 +430,13 @@ void TestMprisColors::handlePropsChanged_sameState_noDuplicateEmit() {
     QSignalSpy   spy(&m, &MprisMonitor::playbackStateChanged);
     QVariantMap  c;
     c["PlaybackStatus"] = "Playing";
-    invokeSlot(&m, "handlePropertiesChanged",
+    invokeSlot(&m,
+               "handlePropertiesChanged",
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c),
                Q_ARG(QStringList, QStringList()));
-    invokeSlot(&m, "handlePropertiesChanged",
+    invokeSlot(&m,
+               "handlePropertiesChanged",
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c),
                Q_ARG(QStringList, QStringList()));
@@ -456,7 +449,8 @@ void TestMprisColors::handlePropsChanged_metadataMap_emitsPropertiesChanged() {
     QVariantMap  meta = mkMeta("Song", { "A", "B" }, 30'000'000);
     QVariantMap  c;
     c["Metadata"] = meta; // plain QVariantMap-in-QVariant (test path)
-    invokeSlot(&m, "handlePropertiesChanged",
+    invokeSlot(&m,
+               "handlePropertiesChanged",
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c),
                Q_ARG(QStringList, QStringList()));
@@ -472,7 +466,8 @@ void TestMprisColors::handlePropsChanged_metadataEmptyArtUrl_thumbnailFalse() {
     c["Metadata"] = mkMeta("T", {}, 0, "/* default empty */");
     // Use an actual empty-string artUrl — different from the default absent field
     c["Metadata"] = mkMeta("T", {}, 0, ""); // absent → empty
-    invokeSlot(&m, "handlePropertiesChanged",
+    invokeSlot(&m,
+               "handlePropertiesChanged",
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c),
                Q_ARG(QStringList, QStringList()));
@@ -494,7 +489,8 @@ void TestMprisColors::handlePropsChanged_metadataLocalFileArtUrl_thumbnailTrue()
     QSignalSpy   spy(&m, &MprisMonitor::thumbnailChanged);
     QVariantMap  c;
     c["Metadata"] = mkMeta("T", {}, 0, QUrl::fromLocalFile(f.fileName()).toString());
-    invokeSlot(&m, "handlePropertiesChanged",
+    invokeSlot(&m,
+               "handlePropertiesChanged",
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c),
                Q_ARG(QStringList, QStringList()));
@@ -509,7 +505,8 @@ void TestMprisColors::handlePropsChanged_metadataBadLocalArtUrl_thumbnailFalse()
     QSignalSpy   spy(&m, &MprisMonitor::thumbnailChanged);
     QVariantMap  c;
     c["Metadata"] = mkMeta("T", {}, 0, "file:///tmp/definitely_nonexistent_420.png");
-    invokeSlot(&m, "handlePropertiesChanged",
+    invokeSlot(&m,
+               "handlePropertiesChanged",
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c),
                Q_ARG(QStringList, QStringList()));
@@ -522,7 +519,8 @@ void TestMprisColors::handlePropsChanged_metadataUnknownScheme_thumbnailFalse() 
     QSignalSpy   spy(&m, &MprisMonitor::thumbnailChanged);
     QVariantMap  c;
     c["Metadata"] = mkMeta("T", {}, 0, "ftp://host/file.png");
-    invokeSlot(&m, "handlePropertiesChanged",
+    invokeSlot(&m,
+               "handlePropertiesChanged",
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c),
                Q_ARG(QStringList, QStringList()));
@@ -543,14 +541,16 @@ void TestMprisColors::handlePropsChanged_sameArtUrl_doesNotReprocess() {
     QSignalSpy   spy(&m, &MprisMonitor::thumbnailChanged);
     QVariantMap  c;
     c["Metadata"] = mkMeta("T", {}, 0, QUrl::fromLocalFile(f.fileName()).toString());
-    invokeSlot(&m, "handlePropertiesChanged",
+    invokeSlot(&m,
+               "handlePropertiesChanged",
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c),
                Q_ARG(QStringList, QStringList()));
     int before = spy.count();
 
     // Same URL → processArtUrl must NOT be called again.
-    invokeSlot(&m, "handlePropertiesChanged",
+    invokeSlot(&m,
+               "handlePropertiesChanged",
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c),
                Q_ARG(QStringList, QStringList()));
@@ -561,7 +561,8 @@ void TestMprisColors::handleNameOwnerChanged_nonMprisName_ignored() {
     MprisMonitor m;
     QSignalSpy   spy(&m, &MprisMonitor::enabledChanged);
     // Anything not starting with "org.mpris.MediaPlayer2." → early return.
-    invokeSlot(&m, "handleNameOwnerChanged",
+    invokeSlot(&m,
+               "handleNameOwnerChanged",
                Q_ARG(QString, "org.some.Other.Service"),
                Q_ARG(QString, ""),
                Q_ARG(QString, ":1.5"));
@@ -574,7 +575,8 @@ void TestMprisColors::handleNameOwnerChanged_mprisNameAppears_entersConnectBranc
     // code path runs (call may fail silently without a live service; that's OK).
     // If test env already found an active player, `m_activeService.isEmpty()`
     // is false, so the branch is skipped — no assertion beyond no-crash.
-    invokeSlot(&m, "handleNameOwnerChanged",
+    invokeSlot(&m,
+               "handleNameOwnerChanged",
                Q_ARG(QString, "org.mpris.MediaPlayer2.testfakeplayer"),
                Q_ARG(QString, ""),
                Q_ARG(QString, ":1.99"));
@@ -588,7 +590,8 @@ void TestMprisColors::handlePropsChanged_metadataHttpArtUrl_createsRequest() {
     // exercise the line without waiting for it.
     QVariantMap c;
     c["Metadata"] = mkMeta("T", {}, 0, "http://localhost:1/fake-cover.png");
-    invokeSlot(&m, "handlePropertiesChanged",
+    invokeSlot(&m,
+               "handlePropertiesChanged",
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c),
                Q_ARG(QStringList, QStringList()));

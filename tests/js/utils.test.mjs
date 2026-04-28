@@ -1,0 +1,87 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+    parseJson,
+    basename,
+    dirname,
+    trimCharR,
+    strToIntArray,
+    intArrayToStr,
+    prettyBytes,
+} from '../../plugin/contents/ui/js/utils.mjs';
+
+test('parseJson: valid JSON shapes', () => {
+    assert.deepEqual(parseJson('{"a":1}'), { a: 1 });
+    assert.deepEqual(parseJson('[1,2,3]'), [1, 2, 3]);
+    assert.equal(parseJson('"hello"'), 'hello');
+    assert.equal(parseJson('42'), 42);
+    assert.equal(parseJson('true'), true);
+    assert.equal(parseJson('null'), null);
+});
+
+test('parseJson: empty / falsy returns null', () => {
+    assert.equal(parseJson(''), null);
+    assert.equal(parseJson(null), null);
+    assert.equal(parseJson(undefined), null);
+});
+
+test('parseJson: SyntaxError swallowed → null', () => {
+    assert.equal(parseJson('{not valid}'), null);
+    assert.equal(parseJson('{"a": }'), null);
+    assert.equal(parseJson('[1,2,'), null);
+});
+
+test('basename: trailing path component', () => {
+    assert.equal(basename('/foo/bar/baz.txt'), 'baz.txt');
+    assert.equal(basename('baz.txt'), 'baz.txt');
+    assert.equal(basename('a/b/c'), 'c');
+});
+
+test('basename: trailing slash returns empty string', () => {
+    assert.equal(basename('/foo/bar/'), '');
+});
+
+test('dirname: directory portion (regression: utils.mjs#L46 referenced undefined `str`)', () => {
+    assert.equal(dirname('/foo/bar/baz.txt'), '/foo/bar');
+    assert.equal(dirname('a/b/c'), 'a/b');
+    assert.equal(dirname('/single'), '');
+});
+
+test('dirname: no slash returns empty', () => {
+    assert.equal(dirname('baz.txt'), '');
+});
+
+test('trimCharR: strips trailing instances of the given char', () => {
+    assert.equal(trimCharR('foo/', '/'), 'foo');
+    assert.equal(trimCharR('foo//', '/'), 'foo');
+    assert.equal(trimCharR('foo///', '/'), 'foo');
+    assert.equal(trimCharR('foo', '/'), 'foo');
+    assert.equal(trimCharR('///', '/'), '');
+});
+
+test('strToIntArray / intArrayToStr round-trip on digit strings', () => {
+    assert.deepEqual(strToIntArray('12345'), [1, 2, 3, 4, 5]);
+    assert.deepEqual(strToIntArray('0'), [0]);
+    assert.equal(intArrayToStr([1, 2, 3, 4, 5]), '12345');
+    assert.equal(intArrayToStr([0]), '0');
+});
+
+test('prettyBytes: scales to human-readable units', () => {
+    assert.equal(prettyBytes(0), '0 B');
+    assert.equal(prettyBytes(1023), '1023 B');
+    assert.equal(prettyBytes(1024), '1 kB');
+    assert.equal(prettyBytes(1024 * 1024), '1 MB');
+    assert.equal(prettyBytes(1024 ** 3), '1 GB');
+});
+
+test('prettyBytes: maxFrac controls fractional digits', () => {
+    assert.equal(prettyBytes(1500, 1), '1.5 kB');
+    assert.equal(prettyBytes(1500, 2), '1.46 kB');
+    assert.equal(prettyBytes(1500, 0), '1 kB');
+});
+
+test('prettyBytes: negative numbers carry the sign', () => {
+    assert.match(prettyBytes(-1024), /^-/);
+    assert.equal(prettyBytes(-1024), '-1 kB');
+});

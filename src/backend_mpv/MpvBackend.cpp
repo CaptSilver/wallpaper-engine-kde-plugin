@@ -191,8 +191,12 @@ MpvObject::Status MpvObject::status() const {
 QUrl MpvObject::source() const { return m_source; }
 
 bool MpvObject::mute() const {
-    QString aid = getProperty("aid").toString();
-    return aid == "no";
+    QVariant aid = getProperty("aid");
+    // mpv reports `aid` as either a string ("auto", "no", "1", …) or
+    // as a boolean flag (FORMAT_FLAG) once the value has settled —
+    // qthelper unwraps the flag to a bool QVariant. Accept either form.
+    if (aid.typeId() == QMetaType::Bool) return ! aid.toBool();
+    return aid.toString() == QLatin1String("no");
 }
 
 QString MpvObject::logfile() const { return getProperty("log-file").toString(); }
@@ -347,15 +351,20 @@ MpvObject::MpvObject(QQuickItem* parent)
     : QQuickFramebufferObject(parent), m_shared_mpv(std::make_shared<MpvHandle>(mpv_create())) {
     m_mpv = m_shared_mpv.get()->handle;
 
-    if (! m_mpv) _Q_DEBUG() << "could not create mpv context";
+    if (! m_mpv) {
+        _Q_DEBUG() << "could not create mpv context";
+        return;
+    }
+    // All options must be set BEFORE mpv_initialize: post-init the option
+    // surface becomes read-only and these calls would silently no-op.
     mpv_set_option_string(m_mpv, "terminal", "no");
     mpv_set_option_string(m_mpv, "msg-level", "all=info");
-    if (mpv_initialize(m_mpv) < 0) _Q_DEBUG() << "could not initialize mpv context";
-
     mpv_set_option_string(m_mpv, "config", "no");
     mpv_set_option_string(m_mpv, "hwdec", "auto");
     mpv_set_option_string(m_mpv, "vo", "libmpv");
     mpv_set_option_string(m_mpv, "loop", "inf");
+
+    if (mpv_initialize(m_mpv) < 0) _Q_DEBUG() << "could not initialize mpv context";
 }
 
 MpvObject::~MpvObject() {}

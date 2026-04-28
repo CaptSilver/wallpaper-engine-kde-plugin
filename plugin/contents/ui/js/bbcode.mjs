@@ -68,21 +68,21 @@ _parser.add('\\[h5\\](.+?)\\[/h5\\]', '<h5>$1</h5>');
 _parser.add('\\[h6\\](.+?)\\[/h6\\]', '<h6>$1</h6>');
 
 _parser.add('\\[p\\](.+?)\\[/p\\]', '<p>$1</p>');
-_parser.add('\\[color=(.+?)\\](.+?)\\[/color\\]',  '<span style="color,$1">$2</span>');
-_parser.add('\\[size=([0-9]+)\\](.+?)\\[/size\\]', '<span style="font-size,$1px">$2</span>');
+_parser.add('\\[color=(.+?)\\](.+?)\\[/color\\]',  '<span style="color:$1">$2</span>');
+_parser.add('\\[size=([0-9]+)\\](.+?)\\[/size\\]', '<span style="font-size:$1px">$2</span>');
 
 _parser.add('\\[img\\](.+?)\\[/img\\]', '<img src="$1">');
 _parser.add('\\[img=(.+?)\\]',          '<img src="$1">');
 
-_parser.add('\\[email\\](.+?)\\[/email\\]',       '<a href="mailto,$1">$1</a>');
-_parser.add('\\[email=(.+?)\\](.+?)\\[/email\\]', '<a href="mailto,$1">$2</a>');
+_parser.add('\\[email\\](.+?)\\[/email\\]',       '<a href="mailto:$1">$1</a>');
+_parser.add('\\[email=(.+?)\\](.+?)\\[/email\\]', '<a href="mailto:$1">$2</a>');
 
-_parser.add('\\[url\\](.+?)\\[/url\\]',                    '<a href="$1">$1</a>');
-_parser.add('\\[url=(.+?)starget=(.+?)\\](.+?)\\[/url\\]', '<a href="$1" target="$2">$3</a>');
-_parser.add('\\[url=(.+?)\\](.+?)\\[/url\\]',              '<a href="$1">$2</a>');
+_parser.add('\\[url\\](.+?)\\[/url\\]',                       '<a href="$1">$1</a>');
+_parser.add('\\[url=(.+?)\\s+target=(.+?)\\](.+?)\\[/url\\]', '<a href="$1" target="$2">$3</a>');
+_parser.add('\\[url=(.+?)\\](.+?)\\[/url\\]',                 '<a href="$1">$2</a>');
 
 _parser.add('\\[a=(.+?)\\](.+?)\\[/a\\]', '<a href="$1" name="$1">$2</a>');
 _parser.add('\\[list\\](.+?)\\[/list\\]', '<ul>$1</ul>');
-_parser.add('\\[*\\](.+?)\\[/*\\]',   '<li>$1</li>');
+_parser.add('\\[\\*\\](.+?)\\[/\\*\\]',   '<li>$1</li>');
 
 export const parser = _parser;

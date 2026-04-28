@@ -1,0 +1,223 @@
+// Headless integration tests for MpvObject's Q_PROPERTY surface and the
+// command/setProperty/getProperty wrappers around libmpv.
+//
+// These tests construct a real MpvObject (which spins up libmpv) but never
+// open a video file or build an OpenGL context, so the render path
+// (`createRenderer`, `renderFrame`) is intentionally out of scope.
+//
+// Run under QT_QPA_PLATFORM=offscreen so QGuiApplication can attach without
+// a display.
+
+#include <QtTest>
+#include <QGuiApplication>
+#include <QSignalSpy>
+#include <QUrl>
+#include <QVariant>
+
+#include <clocale>
+
+#include "MpvBackend.hpp"
+
+using mpv::MpvObject;
+
+class TestMpvBackend : public QObject {
+    Q_OBJECT
+
+private slots:
+    // libmpv refuses to initialize when LC_NUMERIC isn't "C"; QGuiApplication
+    // pulls in the user's locale, so we have to reset it before constructing
+    // any MpvObject.
+    void initTestCase() { std::setlocale(LC_NUMERIC, "C"); }
+
+    void initialState_defaultsAreSensible();
+
+    // mute ⇄ aid round-trip
+    void setMute_true_thenMuteReturnsTrue();
+    void setMute_false_thenMuteReturnsFalse();
+    void mute_handlesBothStringAndFlagAidEncodings();
+
+    // volume round-trip
+    void setVolume_roundTrip();
+    void volume_clampedByMpv();
+
+    // logfile round-trip
+    void setLogfile_roundTrip();
+
+    // setProperty / getProperty boundaries
+    void getProperty_emptyName_returnsInvalid();
+    void getProperty_unknownProperty_failsOk();
+    void getProperty_okPointer_setOnSuccess();
+    void getProperty_okPointer_clearedOnFailure();
+
+    // command error reporting
+    void command_unknownVerb_returnsFalse();
+
+    // setSource preconditions (no file actually loaded)
+    void setSource_emptyUrl_clearsAndStops();
+    void setSource_invalidUrl_isNoop();
+    void setSource_beforeInit_storesButDefersLoad();
+
+    // status() derives from idle-active + pause
+    void status_initially_stopped();
+
+    // play/pause guards (no-op outside the matching state)
+    void play_whenStopped_isNoop();
+    void pause_whenStopped_isNoop();
+
+    // Regression: constructor used to set `loop`, `vo`, `hwdec`, `config`
+    // *after* mpv_initialize(), where mpv silently drops them.
+    void constructor_setsLoopOptionBeforeInit();
+};
+
+namespace
+{
+std::unique_ptr<MpvObject> makeObject() {
+    return std::make_unique<MpvObject>(nullptr);
+}
+} // namespace
+
+void TestMpvBackend::initialState_defaultsAreSensible() {
+    auto obj = makeObject();
+    QCOMPARE(obj->source(), QUrl());
+    QVERIFY(obj->logfile().isEmpty());
+    QCOMPARE(obj->status(), MpvObject::Stopped);
+}
+
+void TestMpvBackend::setMute_true_thenMuteReturnsTrue() {
+    auto obj = makeObject();
+    obj->setMute(true);
+    QVERIFY(obj->mute());
+}
+
+void TestMpvBackend::setMute_false_thenMuteReturnsFalse() {
+    auto obj = makeObject();
+    obj->setMute(false);
+    QVERIFY(! obj->mute());
+}
+
+// Regression: mpv encodes `aid=no` either as the literal string "no" or as
+// a boolean flag depending on internal state. mute() must accept both.
+void TestMpvBackend::mute_handlesBothStringAndFlagAidEncodings() {
+    auto obj = makeObject();
+    QVERIFY(obj->setProperty("aid", QStringLiteral("no")));
+    QVERIFY(obj->mute());
+    QVERIFY(obj->setProperty("aid", QStringLiteral("auto")));
+    QVERIFY(! obj->mute());
+}
+
+void TestMpvBackend::setVolume_roundTrip() {
+    auto obj = makeObject();
+    obj->setVolume(42);
+    QCOMPARE(obj->volume(), 42);
+    obj->setVolume(0);
+    QCOMPARE(obj->volume(), 0);
+    obj->setVolume(100);
+    QCOMPARE(obj->volume(), 100);
+}
+
+void TestMpvBackend::volume_clampedByMpv() {
+    auto obj = makeObject();
+    // mpv silently clamps into its accepted range; we only assert the
+    // value is finite and non-negative after a round-trip.
+    obj->setVolume(99999);
+    QVERIFY(obj->volume() >= 0);
+}
+
+void TestMpvBackend::setLogfile_roundTrip() {
+    auto obj = makeObject();
+    obj->setLogfile(QStringLiteral("/tmp/wekde-mpv-test.log"));
+    QCOMPARE(obj->logfile(), QStringLiteral("/tmp/wekde-mpv-test.log"));
+}
+
+void TestMpvBackend::getProperty_emptyName_returnsInvalid() {
+    auto obj = makeObject();
+    bool     ok = true;
+    QVariant v  = obj->getProperty(QString {}, &ok);
+    QVERIFY(! v.isValid());
+    QVERIFY(! ok);
+}
+
+void TestMpvBackend::getProperty_unknownProperty_failsOk() {
+    auto obj = makeObject();
+    bool ok = true;
+    obj->getProperty(QStringLiteral("definitely-not-a-real-mpv-property"), &ok);
+    QVERIFY(! ok);
+}
+
+void TestMpvBackend::getProperty_okPointer_setOnSuccess() {
+    auto obj = makeObject();
+    bool ok = false;
+    obj->getProperty(QStringLiteral("volume"), &ok);
+    QVERIFY(ok);
+}
+
+void TestMpvBackend::getProperty_okPointer_clearedOnFailure() {
+    auto obj = makeObject();
+    bool ok = true;
+    obj->getProperty(QStringLiteral("nope-not-here"), &ok);
+    QVERIFY(! ok);
+}
+
+void TestMpvBackend::command_unknownVerb_returnsFalse() {
+    auto obj = makeObject();
+    QVERIFY(! obj->command(QVariantList { QStringLiteral("definitely-not-a-verb") }));
+}
+
+void TestMpvBackend::setSource_emptyUrl_clearsAndStops() {
+    auto obj = makeObject();
+    obj->initCallback(); // mark as inited so setSource takes the live path
+    QSignalSpy spy(obj.get(), &MpvObject::sourceChanged);
+    obj->setSource(QUrl {});
+    // status() must remain Stopped; source() must be empty.
+    QCOMPARE(obj->source(), QUrl());
+    QCOMPARE(obj->status(), MpvObject::Stopped);
+}
+
+void TestMpvBackend::setSource_invalidUrl_isNoop() {
+    auto obj = makeObject();
+    obj->initCallback();
+    const QUrl before = obj->source();
+    QUrl invalid;
+    invalid.setUrl(QStringLiteral("::not a url::"), QUrl::StrictMode);
+    QVERIFY(! invalid.isValid());
+    obj->setSource(invalid);
+    QCOMPARE(obj->source(), before);
+}
+
+void TestMpvBackend::setSource_beforeInit_storesButDefersLoad() {
+    auto obj = makeObject();
+    // Without initCallback() the object is not "inited"; setSource should
+    // store the URL but not issue a loadfile command.
+    const QUrl url = QUrl::fromLocalFile(QStringLiteral("/tmp/does-not-exist.mp4"));
+    obj->setSource(url);
+    QCOMPARE(obj->source(), url);
+    QCOMPARE(obj->status(), MpvObject::Stopped);
+}
+
+void TestMpvBackend::status_initially_stopped() {
+    auto obj = makeObject();
+    QCOMPARE(obj->status(), MpvObject::Stopped);
+}
+
+void TestMpvBackend::play_whenStopped_isNoop() {
+    auto obj = makeObject();
+    obj->play();
+    QCOMPARE(obj->status(), MpvObject::Stopped);
+}
+
+void TestMpvBackend::pause_whenStopped_isNoop() {
+    auto obj = makeObject();
+    obj->pause();
+    QCOMPARE(obj->status(), MpvObject::Stopped);
+}
+
+// Regression: the previous constructor set `loop`/`vo`/`hwdec`/`config` *after*
+// mpv_initialize(), which silently dropped them.  After moving the calls
+// before init, `loop` should read back as "inf" rather than its libmpv default.
+void TestMpvBackend::constructor_setsLoopOptionBeforeInit() {
+    auto obj = makeObject();
+    QCOMPARE(obj->getProperty("loop").toString(), QStringLiteral("inf"));
+}
+
+QTEST_MAIN(TestMpvBackend)
+#include "tst_mpvbackend.moc"

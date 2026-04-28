@@ -82,6 +82,59 @@ if(Qt6Gui_FOUND AND Qt6Quick_FOUND)
     add_test(NAME tst_mousegrabber COMMAND tst_mousegrabber -v2)
 endif()
 
+# ── MpvBackend Q_PROPERTY round-trip tests ────────────────────────────────────
+find_package(Qt6 COMPONENTS Gui Quick QUIET)
+find_package(PkgConfig QUIET)
+if(Qt6Gui_FOUND AND Qt6Quick_FOUND AND PkgConfig_FOUND)
+    pkg_check_modules(MPV mpv)
+    if(MPV_FOUND)
+        add_executable(tst_mpvbackend
+            tst_mpvbackend.cpp
+            ${WEKDE_SRC_DIR}/backend_mpv/MpvBackend.cpp
+        )
+        target_include_directories(tst_mpvbackend PRIVATE
+            ${WEKDE_SRC_DIR}/backend_mpv
+            ${MPV_INCLUDE_DIRS})
+        target_link_libraries(tst_mpvbackend PRIVATE
+            Qt6::Core Qt6::Test Qt6::Gui Qt6::Quick ${MPV_LIBRARIES})
+        target_compile_options(tst_mpvbackend PRIVATE ${MPV_CFLAGS_OTHER})
+        if(COVERAGE)
+            target_compile_options(tst_mpvbackend PRIVATE ${_cov_compile_flags})
+            target_link_options(tst_mpvbackend PRIVATE ${_cov_link_flags})
+        endif()
+        # Offscreen Qt platform — these tests must not need a display.
+        add_test(NAME tst_mpvbackend COMMAND tst_mpvbackend -v2)
+        set_tests_properties(tst_mpvbackend PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    else()
+        message(STATUS "libmpv not found — skipping MpvBackend tests")
+    endif()
+endif()
+
+# ── QML tests (qmltestrunner) ─────────────────────────────────────────────────
+find_program(QMLTESTRUNNER NAMES qmltestrunner-qt6 qmltestrunner)
+if(QMLTESTRUNNER)
+    add_test(NAME tst_qml
+        COMMAND ${QMLTESTRUNNER} -input ${CMAKE_CURRENT_SOURCE_DIR}/qml
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(tst_qml PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+else()
+    message(STATUS "qmltestrunner not found — skipping QML tests")
+endif()
+
+# ── JavaScript tests (Node.js) ────────────────────────────────────────────────
+find_program(NODE_EXECUTABLE NAMES node nodejs)
+if(NODE_EXECUTABLE)
+    file(GLOB _js_test_files
+        "${CMAKE_CURRENT_SOURCE_DIR}/js/*.test.mjs")
+    add_test(NAME tst_js
+        COMMAND ${NODE_EXECUTABLE} --test ${_js_test_files}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+else()
+    message(STATUS "node not found — skipping JavaScript tests")
+endif()
+
 # ── Coverage report target ────────────────────────────────────────────────────
 if(COVERAGE)
     find_program(LLVM_PROFDATA llvm-profdata REQUIRED)

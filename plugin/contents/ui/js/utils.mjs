@@ -43,7 +43,7 @@ export function basename(path) {
 }
 
 export function dirname(path) {
-    return path.substring(0, str.lastIndexOf("/"));
+    return path.substring(0, path.lastIndexOf("/"));
 }
 
 export function trimCharR(str, c) {
@@ -76,13 +76,14 @@ const BYTE_UNITS = [
 
 export function prettyBytes(number, maxFrac=0) {
     const UNITS = BYTE_UNITS;
-	const exponent = number < 1 
-        ? 0 
-        : Math.min(Math.floor(Math.log(number) / Math.log(1024)), UNITS.length - 1);
+    const abs = Math.abs(number);
+    const exponent = abs < 1
+        ? 0
+        : Math.min(Math.floor(Math.log(abs) / Math.log(1024)), UNITS.length - 1);
     const unit = UNITS[exponent];
     const prefix = number < 0 ? '-' : '';
 
-	const num_str = (number / 1024 ** exponent).toFixed(maxFrac);
-    return `${prefix}${num_str} ${unit}`; 
+    const num_str = (abs / 1024 ** exponent).toFixed(maxFrac);
+    return `${prefix}${num_str} ${unit}`;
 }
 

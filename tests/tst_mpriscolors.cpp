@@ -102,6 +102,18 @@ private slots:
     void decodeArt_emptyBytes_returnsFalse();
     void decodeArt_garbageBytes_returnsFalse();
     void decodeArt_validPng_returnsTrueWith15Colors();
+
+    // ── Additional gap-fillers ────────────────────────────────────────────────
+    // disconnectFromPlayer no-op early return
+    void disconnect_whenInactive_isSafeNoop();
+    // handleNameOwnerChanged when already-connected sees a different MPRIS
+    // service: must NOT switch.
+    void handleNameOwnerChanged_alreadyConnectedIgnoresOther();
+    // dedup gate fires again when artUrl actually changes.
+    void handlePropsChanged_changedArtUrl_reprocesses();
+    // bplayonly / 'play' / 'stop' / 'next' / 'previous' direct-name aliases
+    // (not just b-prefixed forms) round through invokeShortcut as well.
+    void shortcut_canonicalNamesAlsoMap();
 };
 
 // Helper: create a solid-color image
@@ -846,6 +858,97 @@ void TestMprisColors::decodeArt_validPng_returnsTrueWith15Colors() {
     QVERIFY(out[0].toDouble() > 0.7); // R
     QVERIFY(out[1].toDouble() < 0.3); // G
     QVERIFY(out[2].toDouble() > 0.7); // B
+}
+
+// ===========================================================================
+// Additional gap-fillers
+// ===========================================================================
+
+void TestMprisColors::disconnect_whenInactive_isSafeNoop() {
+    MprisMonitor m;
+    if (! m.activeService().isEmpty())
+        QSKIP("session bus has a real MPRIS player; can't test inactive branch");
+    QSignalSpy enabledSpy(&m, &MprisMonitor::enabledChanged);
+    // disconnectFromPlayer is private — drive it indirectly via the vanish
+    // path with a name we never connected to.  The handler's first guard
+    // (`name.startsWith(MPRIS_PREFIX)`) passes; the second
+    // (`name == m_activeService`) fails because m_activeService is empty,
+    // so we hit no branch.  No emissions, no crash.
+    invokeSlot(&m,
+               "handleNameOwnerChanged",
+               Q_ARG(QString, "org.mpris.MediaPlayer2.notconnected"),
+               Q_ARG(QString, ":1.42"),
+               Q_ARG(QString, ""));
+    QCOMPARE(enabledSpy.count(), 0);
+}
+
+void TestMprisColors::handleNameOwnerChanged_alreadyConnectedIgnoresOther() {
+    MprisMonitor m;
+    if (! injectFakeService(m, "org.mpris.MediaPlayer2.first"))
+        QSKIP("could not establish an active MPRIS service for this test");
+    QString first = m.activeService();
+
+    QSignalSpy enabledSpy(&m, &MprisMonitor::enabledChanged);
+    // A second MPRIS service appearing while we already have one MUST NOT
+    // switch — the connect branch is gated on `m_activeService.isEmpty()`.
+    invokeSlot(&m,
+               "handleNameOwnerChanged",
+               Q_ARG(QString, "org.mpris.MediaPlayer2.second"),
+               Q_ARG(QString, ""),
+               Q_ARG(QString, ":1.50"));
+    QCOMPARE(m.activeService(), first); // unchanged
+    QCOMPARE(enabledSpy.count(), 0);    // no enabledChanged
+}
+
+void TestMprisColors::handlePropsChanged_changedArtUrl_reprocesses() {
+    QTemporaryFile a, b;
+    a.setAutoRemove(true);
+    b.setAutoRemove(true);
+    QVERIFY(a.open());
+    QVERIFY(b.open());
+    QImage imgA(8, 8, QImage::Format_RGB32);
+    imgA.fill(Qt::yellow);
+    QImage imgB(8, 8, QImage::Format_RGB32);
+    imgB.fill(Qt::darkBlue);
+    QVERIFY(imgA.save(a.fileName(), "PNG"));
+    QVERIFY(imgB.save(b.fileName(), "PNG"));
+    a.close();
+    b.close();
+
+    MprisMonitor m;
+    QSignalSpy   spy(&m, &MprisMonitor::thumbnailChanged);
+
+    QVariantMap c1;
+    c1["Metadata"] = mkMeta("T", {}, 0, QUrl::fromLocalFile(a.fileName()).toString());
+    invokeSlot(&m,
+               "handlePropertiesChanged",
+               Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
+               Q_ARG(QVariantMap, c1),
+               Q_ARG(QStringList, QStringList()));
+    QCOMPARE(spy.count(), 1);
+
+    // Different artUrl → must reprocess and re-emit, even though we already
+    // have a thumbnail.
+    QVariantMap c2;
+    c2["Metadata"] = mkMeta("T", {}, 0, QUrl::fromLocalFile(b.fileName()).toString());
+    invokeSlot(&m,
+               "handlePropertiesChanged",
+               Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
+               Q_ARG(QVariantMap, c2),
+               Q_ARG(QStringList, QStringList()));
+    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.at(1).at(0).toBool(), true);
+}
+
+void TestMprisColors::shortcut_canonicalNamesAlsoMap() {
+    // mapShortcutToMpris also accepts non-b-prefixed canonical names —
+    // covers the second alternative on each branch.
+    QCOMPARE(wekde::mapShortcutToMpris("play"), QString("Play"));
+    QCOMPARE(wekde::mapShortcutToMpris("playpause"), QString("PlayPause"));
+    QCOMPARE(wekde::mapShortcutToMpris("stop"), QString("Stop"));
+    QCOMPARE(wekde::mapShortcutToMpris("next"), QString("Next"));
+    QCOMPARE(wekde::mapShortcutToMpris("previous"), QString("Previous"));
+    QCOMPARE(wekde::mapShortcutToMpris("bplayonly"), QString("Play"));
 }
 
 QTEST_GUILESS_MAIN(TestMprisColors)

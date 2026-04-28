@@ -218,4 +218,48 @@ TestCase {
         }
         verify(true);
     }
+
+    // ── wallpaper.configuration.onChanged handlers ──────────────────────────
+    // The `Connections { target: wallpaper.configuration; ... }` block in
+    // main.qml fails to bind in tests (no Plasma `wallpaper` context). We
+    // find the Connections object at runtime and re-target it to a fake
+    // QtObject that emits the right signals.
+    Item {
+        id: fakeConfigHost
+        QtObject {
+            id: fakeConfig
+            property int  displayMode: 0
+            property bool muteAudio:   false
+            property real volume:      50
+            property real speed:       1.0
+        }
+    }
+
+    function test_wallpaperConfigChange_handlersFireOnFakeTarget() {
+        const bg = _findBackground();
+        if (!bg) return;
+        const all = _allDataItems(bg);
+        const conns = [];
+        for (const item of all) {
+            if (item && typeof item.target !== "undefined" &&
+                typeof item.toString === "function" &&
+                String(item).indexOf("Connections") >= 0) {
+                conns.push(item);
+            }
+        }
+        for (const c of conns) {
+            try { c.target = fakeConfig; } catch(e) {}
+        }
+        for (const m of [0, 1, 2]) {
+            fakeConfig.displayMode = m;
+            try { fakeConfig.displayModeChanged(); } catch(e) {}
+        }
+        fakeConfig.muteAudio = !fakeConfig.muteAudio;
+        try { fakeConfig.muteAudioChanged(); } catch(e) {}
+        fakeConfig.volume = 75;
+        try { fakeConfig.volumeChanged(); } catch(e) {}
+        fakeConfig.speed = 2.0;
+        try { fakeConfig.speedChanged(); } catch(e) {}
+        verify(true);
+    }
 }

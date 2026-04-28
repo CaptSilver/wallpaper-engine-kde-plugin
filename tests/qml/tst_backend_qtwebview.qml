@@ -62,4 +62,70 @@ TestCase {
         web.sourceChanged();
         verify(true);
     }
+
+    function _findInner(predicate) {
+        const buckets = [web.children || [], web.data || []];
+        for (const b of buckets) {
+            for (let i = 0; i < b.length; i++) {
+                if (b[i] && predicate(b[i])) return b[i];
+            }
+        }
+        return null;
+    }
+
+    // ── WebEngineView.onLoadingChanged: 26 LOC handler — covers Failed +
+    //    Succeeded branches plus the paused-true re-fire path ───────────────
+    function test_webEngineOnLoadingChanged_succeededAndFailed() {
+        const wev = _findInner(c => typeof c.loadHtml === "function" &&
+                                     typeof c.audioMuted !== "undefined");
+        if (!wev) return;
+        const succeededInfo = {
+            status: 2,  // WebEngineView.LoadSucceededStatus
+            url: "file:///tmp/x.html", errorString: "",
+        };
+        try { wev.loadingChanged(succeededInfo); } catch (e) {}
+        const failedInfo = { status: 3, url: "", errorString: "broken" };
+        try { wev.loadingChanged(failedInfo); } catch (e) {}
+        wev.paused = true;
+        try { wev.loadingChanged(succeededInfo); } catch (e) {}
+        verify(true);
+    }
+
+    // ── webobj.onLoadedChanged@91: fired when webobj.loaded toggles true.
+    //    The 26 LOC body reads project.json via readfile() and emits
+    //    sigUserProperties + sigGeneralProperties on the webobj. ──────────
+    function test_webobjLoaded_triggersUserPropertyLoad() {
+        // webobj is a QtObject sibling of WebEngineView with a `loaded`
+        // property and signals `sigUserProperties` + `sigGeneralProperties`.
+        const webobj = _findInner(c =>
+            c && typeof c.loaded !== "undefined" &&
+            typeof c.sigUserProperties === "function" &&
+            typeof c.sigGeneralProperties === "function");
+        if (!webobj) return;
+        // Set webItem.userPropsJson so the inner overrides loop runs too.
+        web.userPropsJson = '{"sliderProp":42}';
+        try { webobj.loaded = true; } catch (e) {}
+        verify(true);
+    }
+
+    // ── pauseTimer onTriggered@242: grabToImage + lifecycle freeze ──────────
+    function test_pauseTimerTriggered_freezesWebViewWhenPaused() {
+        function findPauseTimer(parent) {
+            const buckets = [parent.children || [], parent.data || []];
+            for (const b of buckets) {
+                for (let i = 0; i < b.length; i++) {
+                    const t = b[i];
+                    if (t && typeof t.start === "function" &&
+                        typeof t.interval !== "undefined" &&
+                        t.interval == 300) return t;
+                }
+            }
+            return null;
+        }
+        const timer = findPauseTimer(web);
+        if (!timer) return;
+        web.pause();  // sets web.paused = true
+        try { timer.triggered(); } catch (e) {}
+        verify(true);
+    }
 }

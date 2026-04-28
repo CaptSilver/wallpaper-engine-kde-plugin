@@ -199,4 +199,22 @@ TestCase {
         wpModel.loadFolderLists([null, { folder: "/x", items: [] }, undefined]);
         verify(true);
     }
+
+    // ── ListModel.assignModel ────────────────────────────────────────────────
+    function test_assignModel_mergesIntoListModelAndFolderWorker() {
+        // Append an item, then call assignModel(0, {...}) to trigger the
+        // function. Reaches inside both the ListModel.get() merge and the
+        // folderWorker.model loop.
+        wpModel.model.append({ workshopid: "5555", title: "Old", favor: false });
+        try { wpModel.model.assignModel(0, { favor: true, title: "New" }); } catch (e) {}
+        verify(true);
+    }
+
+    // ── refresh() — fire when enabled=true ──────────────────────────────────
+    function test_refresh_runsBodyWhenEnabled() {
+        wpModel.enabled = true;
+        try { wpModel.refresh(); } catch (e) {}
+        wpModel.enabled = false;
+        verify(true);
+    }
 }

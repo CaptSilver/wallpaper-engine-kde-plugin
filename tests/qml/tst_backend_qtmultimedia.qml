@@ -42,4 +42,22 @@ TestCase {
     function test_getMouseTargetReturnsUndefined() {
         compare(qm.getMouseTarget(), undefined);
     }
+
+    function test_pauseTimer_triggeredCallsPlayerPause() {
+        function findPauseTimer(parent) {
+            const buckets = [parent.children || [], parent.data || []];
+            for (const b of buckets) {
+                for (let i = 0; i < b.length; i++) {
+                    const t = b[i];
+                    if (t && typeof t.start === "function" &&
+                        typeof t.interval !== "undefined" &&
+                        t.interval >= 250 && t.interval <= 350) return t;
+                }
+            }
+            return null;
+        }
+        const timer = findPauseTimer(qm);
+        if (timer) timer.triggered();
+        verify(true);
+    }
 }

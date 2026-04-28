@@ -6,7 +6,13 @@ Item {
     property url url: ""
     property string html: ""
     property string title: ""
-    property bool   loading: false
+    // Real WebEngineView declares `loadingChanged(loadRequest)` as a custom
+    // signal that doubles as the change signal for `loading`. Declaring
+    // both `property bool loading` and the explicit signal collides under
+    // QML's "duplicate signal" rule, so we drop the property and keep just
+    // the explicit signal — production code reads `loadingInfo.status`,
+    // never `web.loading` directly.
+    signal loadingChanged(var loadRequest)
     property bool   audioMuted: false
     property var    settings: ({
         javascriptEnabled: true,

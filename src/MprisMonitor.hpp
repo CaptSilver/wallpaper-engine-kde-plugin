@@ -111,6 +111,7 @@ private:
     int             m_playbackState { 0 }; // 0=stopped
     bool            m_enabled { false };
     QString         m_lastArtUrl;
+    bool            m_artUrlEverProcessed { false };
 
     QNetworkAccessManager m_nam;
 };

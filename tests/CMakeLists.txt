@@ -136,7 +136,7 @@ if(QMLTESTRUNNER)
     set(_qmlcov_cat   "${_qmlcov_dir}/catalog.json")
     set(_qmlcov_log   "${_qmlcov_dir}/runlog.txt")
     set(_qmlcov_json  "${_qmlcov_dir}/report.json")
-    set(_qmlcov_threshold "0.80")
+    set(_qmlcov_threshold "0.90")
 
     add_custom_target(qmlcov
         COMMAND ${CMAKE_COMMAND} -E rm -rf "${_qmlcov_dir}"

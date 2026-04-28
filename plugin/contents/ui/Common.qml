@@ -316,27 +316,48 @@ QtObject {
     }
 
     function findItem(item, typename) {
-        const name = item.toString();
-        if(name.substring(0, typename.length) == typename) {
-            return item;
-        }
-        for (let i = 0; i < item.children.length; i++) {
-            let re = findItem(item.children[i], typename); 
-            if(re !== null) {
-                return re;
+        // Cycle guard: stops at any node we've seen before. `.children` is
+        // visual-children-only and currently tree-shaped, but a future Plasma
+        // version could reparent or share Items — the guard is cheap and the
+        // alternative is an infinite-recursion hang on plasmashell startup.
+        const seen = new Set();
+        function _walk(node) {
+            if (!node || seen.has(node)) return null;
+            seen.add(node);
+            const name = node.toString();
+            if (name.substring(0, typename.length) == typename) {
+                return node;
             }
+            for (let i = 0; i < node.children.length; i++) {
+                const re = _walk(node.children[i]);
+                if (re !== null) return re;
+            }
+            return null;
         }
-        return null;
+        return _walk(item);
     }
     function genItemListStr(item, indent0, tostr) {
-        function gen(item, indent) {
-            let res = `${indent}${tostr(item)}\n`
-            for (let i = 0; i < item.children.length; i++) {
-                res += gen(item.children[i], indent + indent0); 
+        // Cycle guard + depth cap: this function builds a string of the
+        // entire subtree (no early return) and is called from
+        // main.qml::doHookMouse only on the tryTimes>=9 failure branch.
+        // Capping prevents pathological tree dumps from allocating
+        // megabyte-scale strings if Plasma's contentItem ever balloons.
+        const seen = new Set();
+        const maxDepth = 50;
+        function gen(node, indent, depth) {
+            if (!node) return "";
+            if (seen.has(node)) return `${indent}<cycle: ${tostr(node)}>\n`;
+            seen.add(node);
+            if (depth >= maxDepth) {
+                return `${indent}... (truncated at depth ${maxDepth})\n`;
+            }
+            let res = `${indent}${tostr(node)}\n`;
+            for (let i = 0; i < node.children.length; i++) {
+                res += gen(node.children[i], indent + indent0, depth + 1);
             }
             return res;
         }
-        return gen(item, "");
+        return gen(item, "", 0);
     }
     function createVolumeFade(qobj, volume, changePlayerVolum) {
         const timer = Qt.createQmlObject(`import QtQuick 2.0; Timer {

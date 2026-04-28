@@ -384,6 +384,52 @@ TestCase {
         verify(s.split("\n").length >= 1);
     }
 
+    // ── findItem cycle guard: must not infinite-loop on a cyclic graph ──────
+    function test_findItem_cycleGuardBreaksOnRevisit() {
+        // Fake tree: a.children[0] = b, b.children[0] = a.
+        // Without the cycle guard this would recurse forever.
+        const a = { children: [], toString: function() { return "QQuickA(...)"; } };
+        const b = { children: [], toString: function() { return "QQuickB(...)"; } };
+        a.children.push(b);
+        b.children.push(a);
+        const found = Plugin.Common.findItem(a, "QQuickB");
+        verify(found === b);
+    }
+
+    function test_findItem_cycleGuardReturnsNullForAbsentType() {
+        const a = { children: [], toString: function() { return "QQuickA(...)"; } };
+        const b = { children: [], toString: function() { return "QQuickB(...)"; } };
+        a.children.push(b);
+        b.children.push(a);
+        compare(Plugin.Common.findItem(a, "ZZZ_Missing"), null);
+    }
+
+    // ── genItemListStr: cycle marker + depth cap ─────────────────────────────
+    function test_genItemListStr_cycleMarkerEmitted() {
+        const a = { children: [], toString: function() { return "A"; } };
+        const b = { children: [a], toString: function() { return "B"; } };
+        a.children.push(b);
+        const out = Plugin.Common.genItemListStr(
+            a, "  ", function(it) { return it.toString(); });
+        verify(out.indexOf("A") >= 0);
+        verify(out.indexOf("B") >= 0);
+        verify(out.toLowerCase().indexOf("cycle") >= 0);
+    }
+
+    function test_genItemListStr_truncatesDeepLinearChain() {
+        // 60-deep linked list — exceeds the maxDepth=50 cap.
+        let root = { children: [], toString: function() { return "root"; } };
+        let cur = root;
+        for (let i = 0; i < 60; i++) {
+            const next = { children: [], toString: (function(j) { return function() { return "n" + j; }; })(i) };
+            cur.children.push(next);
+            cur = next;
+        }
+        const out = Plugin.Common.genItemListStr(
+            root, "  ", function(it) { return it.toString(); });
+        verify(out.indexOf("truncated at depth 50") >= 0);
+    }
+
     // ── createVolumeFade — start/stop wrappers ────────────────────────────────
     function test_createVolumeFade_returnsStartStopHandle() {
         // The fade timer interval is 300ms and ramps in steps of 5; we don't

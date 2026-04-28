@@ -1,0 +1,2 @@
+module Cov
+singleton Cov 1.0 Cov.qml

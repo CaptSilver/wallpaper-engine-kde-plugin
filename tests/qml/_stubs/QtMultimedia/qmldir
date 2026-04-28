@@ -1,0 +1,4 @@
+module QtMultimedia
+VideoOutput 1.0 VideoOutput.qml
+AudioOutput 1.0 AudioOutput.qml
+MediaPlayer 1.0 MediaPlayer.qml

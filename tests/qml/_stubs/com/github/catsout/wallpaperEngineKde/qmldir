@@ -1,0 +1,8 @@
+module com.github.catsout.wallpaperEngineKde
+FileHelper 1.2 FileHelper.qml
+PluginInfo 1.2 PluginInfo.qml
+MouseGrabber 1.2 MouseGrabber.qml
+MprisMonitor 1.2 MprisMonitor.qml
+TTYSwitchMonitor 1.2 TTYSwitchMonitor.qml
+SceneViewer 1.2 SceneViewer.qml
+Mpv 1.2 Mpv.qml

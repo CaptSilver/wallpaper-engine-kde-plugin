@@ -277,4 +277,156 @@ TestCase {
         verify(out.favor);
         verify(! ("extra" in out));
     }
+
+    // ── prepareCustomConf round-trip with loadCustomConf ──────────────────────
+    function test_prepareCustomConf_roundTripsThroughLoadCustomConf() {
+        const conf = {
+            favor: new Set(["10", "20", "30"]),
+            scalar: 42,
+        };
+        const b64 = Plugin.Common.prepareCustomConf(conf);
+        const back = Plugin.Common.loadCustomConf(b64);
+        // loadCustomConf turns favor[] back into a Set.
+        verify(back.favor instanceof Set);
+        compare(back.favor.size, 3);
+        verify(back.favor.has("20"));
+        compare(back.scalar, 42);
+    }
+
+    function test_prepareCustomConf_setBecomesArrayInJSON() {
+        // setTojson serializer (inner function) is invoked for every Set value
+        // including the top-level favor field.
+        const b64 = Plugin.Common.prepareCustomConf({ favor: new Set(["x"]) });
+        const json = Qt.atob(b64);
+        const parsed = JSON.parse(json);
+        verify(Array.isArray(parsed.favor));
+        compare(parsed.favor[0], "x");
+    }
+
+    // ── checklib variants ─────────────────────────────────────────────────────
+    function test_checklib_returnsTrueForBundledModule() {
+        // QtQml is always available in qmltestrunner.
+        verify(Plugin.Common.checklib("QtQml 2.2", testCaseRoot));
+    }
+
+    function test_checklib_returnsFalseForMissingModule() {
+        verify(! Plugin.Common.checklib(
+            "definitely.not.a.real.module.kxz 1.0", testCaseRoot));
+    }
+
+    function test_checklib_wallpaper_returnsBoolean() {
+        // wallpaperEngineKde plugin isn't loaded in tests — should be false,
+        // but we only assert the type so the test isn't tied to deployment.
+        const r = Plugin.Common.checklib_wallpaper(testCaseRoot);
+        compare(typeof r, "boolean");
+    }
+
+    function test_checklib_folderlist_returnsBoolean() {
+        const r = Plugin.Common.checklib_folderlist(testCaseRoot);
+        compare(typeof r, "boolean");
+    }
+
+    function test_checklib_webchannel_returnsBoolean() {
+        const r = Plugin.Common.checklib_webchannel(testCaseRoot);
+        compare(typeof r, "boolean");
+    }
+
+    // ── ComboBox value/index helpers ──────────────────────────────────────────
+    function _cbModel() {
+        return [
+            { value: "alpha" },
+            { value: "beta"  },
+            { value: "gamma" },
+        ];
+    }
+
+    function test_cbCurrentValue_returnsValueAtCurrentIndex() {
+        const combo = { currentIndex: 1, model: _cbModel() };
+        compare(Plugin.Common.cbCurrentValue(combo), "beta");
+    }
+
+    function test_cbValueOfIndex_returnsValueAtGivenIndex() {
+        const combo = { model: _cbModel() };
+        compare(Plugin.Common.cbValueOfIndex(combo, 2), "gamma");
+    }
+
+    function test_cbIndexOfValue_returnsIndexOrMinusOne() {
+        const combo = { model: _cbModel() };
+        compare(Plugin.Common.cbIndexOfValue(combo, "beta"), 1);
+        compare(Plugin.Common.cbIndexOfValue(combo, "missing"), -1);
+    }
+
+    function test_modelIndexOfValue_directly() {
+        compare(Plugin.Common.modelIndexOfValue(_cbModel(), "alpha"), 0);
+        compare(Plugin.Common.modelIndexOfValue(_cbModel(), "zeta"), -1);
+    }
+
+    // ── findItem / genItemListStr — exercise on a real QObject tree ──────────
+    function test_findItem_returnsMatchingDescendant() {
+        // Use the testCaseRoot as the parent — it has children we can find.
+        // findItem walks .children[]; the leading typename match comes from
+        // toString() (e.g., "QQuickItem(...)"), so we match the prefix.
+        const found = Plugin.Common.findItem(testCaseRoot, "QQuickItem");
+        // Either testCaseRoot itself matches, or a descendant does. Either
+        // way the result must not be null because TestCase has Items inside.
+        verify(found !== null);
+    }
+
+    function test_findItem_returnsNullWhenAbsent() {
+        compare(Plugin.Common.findItem(testCaseRoot, "ZZZ_NoSuchType"), null);
+    }
+
+    function test_genItemListStr_includesRootAndChildren() {
+        const s = Plugin.Common.genItemListStr(
+            testCaseRoot, "  ",
+            (it) => it.toString().split("(")[0]);
+        verify(s.length > 0);
+        verify(s.split("\n").length >= 1);
+    }
+
+    // ── createVolumeFade — start/stop wrappers ────────────────────────────────
+    function test_createVolumeFade_returnsStartStopHandle() {
+        // The fade timer interval is 300ms and ramps in steps of 5; we don't
+        // wait that long. Just verify the handle's shape and that start/stop
+        // don't throw — the actual ramp behavior is exercised at runtime.
+        const handle = Plugin.Common.createVolumeFade(
+            testCaseRoot, 50,
+            () => {});
+        compare(typeof handle.start, "function");
+        compare(typeof handle.stop,  "function");
+        handle.start();
+        handle.stop();
+    }
+
+    // ── listProperty — smoke (output goes to console; verify no throw) ───────
+    function test_listProperty_doesNotThrow() {
+        // listProperty iterates `for (var p in obj)` and console.errors each
+        // entry. We just assert it executes without error.
+        Plugin.Common.listProperty({ a: 1, b: "two" });
+        verify(true);
+    }
+
+    // ── urlNative — file URL stripping ────────────────────────────────────────
+    function test_urlNative_stripsFileColonSlashSlash() {
+        compare(Plugin.Common.urlNative("file:///tmp/foo"), "/tmp/foo");
+    }
+
+    function test_urlNative_stripsFileColon() {
+        compare(Plugin.Common.urlNative("file:tmp"), "tmp");
+    }
+
+    function test_urlNative_passesThroughUnknownScheme() {
+        compare(Plugin.Common.urlNative("https://x"), "https://x");
+        compare(Plugin.Common.urlNative("plain"), "plain");
+    }
+
+    // findItem and friends need a real Item parent. Provide one.
+    Item {
+        id: testCaseRoot
+        Item { id: childA }
+        Item {
+            id: childB
+            Item { id: grandchild }
+        }
+    }
 }

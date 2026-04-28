@@ -1,0 +1,3 @@
+module QtWebEngine
+WebEngineView 1.10 WebEngineView.qml
+WebEngineScript 1.10 WebEngineScript.qml

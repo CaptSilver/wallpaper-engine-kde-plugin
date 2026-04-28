@@ -118,7 +118,64 @@ if(QMLTESTRUNNER)
         COMMAND ${QMLTESTRUNNER} -input ${CMAKE_CURRENT_SOURCE_DIR}/qml
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     set_tests_properties(tst_qml PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QML2_IMPORT_PATH=${CMAKE_CURRENT_SOURCE_DIR}/qml/_stubs:${CMAKE_CURRENT_SOURCE_DIR}/qml")
+
+    # ── QML coverage (custom homegrown tracer, target: ≥80%) ──────────────────
+    # Re-runs qml tests against an instrumented mirror of plugin/contents/ui,
+    # collects per-function hits, and reports per-file/total coverage.
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+        set(_wekde_repo_root "${CMAKE_CURRENT_SOURCE_DIR}/..")
+    else()
+        set(_wekde_repo_root "${CMAKE_SOURCE_DIR}")
+    endif()
+    set(_qmlcov_dir   "${CMAKE_BINARY_DIR}/_qmlcov")
+    set(_qmlcov_root  "${_qmlcov_dir}/root")
+    set(_qmlcov_inst  "${_qmlcov_root}/plugin/contents/ui")
+    set(_qmlcov_tests "${_qmlcov_root}/tests/qml")
+    set(_qmlcov_cat   "${_qmlcov_dir}/catalog.json")
+    set(_qmlcov_log   "${_qmlcov_dir}/runlog.txt")
+    set(_qmlcov_json  "${_qmlcov_dir}/report.json")
+    set(_qmlcov_threshold "0.80")
+
+    add_custom_target(qmlcov
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${_qmlcov_dir}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${_qmlcov_root}/tests"
+        COMMAND ${Python3_EXECUTABLE}
+                "${_wekde_repo_root}/tools/qmlcov/instrument.py"
+                --src     "${_wekde_repo_root}/plugin/contents/ui"
+                --out     "${_qmlcov_inst}"
+                --catalog "${_qmlcov_cat}"
+        # Copy (not symlink): Qt canonicalizes symlinks before resolving `..`
+        # in QML imports, which would defeat the instrumented mirror.
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/qml" "${_qmlcov_tests}"
+        # Point the QML disk cache to a fresh per-run dir, then run.
+        # QML_DISABLE_DISK_CACHE alone isn't enough — qmltestrunner-qt6 still
+        # consults its cache dir on read, so we redirect it to a clean dir.
+        # QML2_IMPORT_PATH order:
+        #   _stubs/    — fake versions of native modules (wek-plugin, plasma5support,
+        #                taskmanager, QtWebEngine) so production imports resolve
+        #   _helpers/  — Helpers module providing test fakes (BackgroundFake)
+        #   tests/qml  — Cov singleton (instrumentation tracer)
+        COMMAND ${CMAKE_COMMAND} -E env
+                QT_QPA_PLATFORM=offscreen
+                "QML2_IMPORT_PATH=${_qmlcov_tests}/_stubs:${_qmlcov_tests}"
+                QML_DISABLE_DISK_CACHE=1
+                QV4_DISABLE_DISK_CACHE=1
+                XDG_CACHE_HOME=${_qmlcov_dir}/cache
+                bash -c "${QMLTESTRUNNER} -input ${_qmlcov_tests} > ${_qmlcov_log} 2>&1; cat ${_qmlcov_log}; true"
+        COMMAND ${Python3_EXECUTABLE}
+                "${_wekde_repo_root}/tools/qmlcov/report.py"
+                --catalog   "${_qmlcov_cat}"
+                --runlog    "${_qmlcov_log}"
+                --threshold "${_qmlcov_threshold}"
+                --json-out  "${_qmlcov_json}"
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        COMMENT "Computing QML coverage (target ≥${_qmlcov_threshold})"
+        VERBATIM
+        USES_TERMINAL
+    )
 else()
     message(STATUS "qmltestrunner not found — skipping QML tests")
 endif()

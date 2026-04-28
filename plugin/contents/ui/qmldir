@@ -5,3 +5,4 @@ WindowModel WindowModel.qml
 PowerSource PowerSource.qml
 WindowListModel WindowListModel.qml
 Pyext Pyext.qml
+VideoListModel VideoListModel.qml

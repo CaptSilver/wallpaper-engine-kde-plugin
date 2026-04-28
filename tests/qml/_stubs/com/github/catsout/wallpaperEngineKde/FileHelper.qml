@@ -2,8 +2,12 @@
 // or empty objects so production code can run through happy paths in tests.
 import QtQuick
 QtObject {
+    id: stub
     property var _readReturns: ""
     property var _patchedHtmlReturns: ""
+    property var _scanVideoFolderReturns: []
+
+    signal thumbnailReady(string videoPath, string outPath, bool ok)
 
     function readFile(path)              { return _readReturns; }
     function patchedHtml(path)           { return _patchedHtmlReturns; }
@@ -14,4 +18,10 @@ QtObject {
     function writeWallpaperConfig(id, c) { return; }
     function resetWallpaperConfig(id)    { return; }
     function readActiveBindings(id)      { return ({}); }
+    function scanVideoFolder(path)       { return _scanVideoFolderReturns; }
+    function generateThumbnail(videoPath, outPath, atSeconds) {
+        // Fire the signal synchronously in the stub so tests can resolve
+        // promises immediately without a QSignalSpy/wait.
+        Qt.callLater(() => stub.thumbnailReady(videoPath, outPath, true));
+    }
 }

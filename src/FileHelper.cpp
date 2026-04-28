@@ -1,4 +1,5 @@
 #include "FileHelper.hpp"
+#include "backend_mpv/ThumbnailGrabber.hpp"
 #include <QFile>
 #include <QDir>
 #include <QDirIterator>
@@ -8,6 +9,8 @@
 #include <QJsonObject>
 #include <QStandardPaths>
 #include <QDateTime>
+#include <QMutexLocker>
+#include <QThreadPool>
 
 namespace wekde
 {
@@ -245,6 +248,62 @@ QVariantList FileHelper::readActiveBindings(const QString& id) {
     }
 
     return doc.array().toVariantList();
+}
+
+void FileHelper::generateThumbnail(const QString& videoPath,
+                                   const QString& outPath,
+                                   double atSeconds) {
+    // Short-circuit if cached thumbnail already exists.
+    if (QFileInfo::exists(outPath) && QFileInfo(outPath).size() > 0) {
+        QMetaObject::invokeMethod(this, [this, videoPath, outPath]() {
+            emit thumbnailReady(videoPath, outPath, true);
+        }, Qt::QueuedConnection);
+        return;
+    }
+    {
+        QMutexLocker lock(&m_inflightMutex);
+        if (m_inflight.contains(videoPath)) return;
+        m_inflight.insert(videoPath);
+    }
+    QThreadPool::globalInstance()->start([this, videoPath, outPath, atSeconds]() {
+        // Ensure cache dir exists before libmpv writes the JPEG.
+        QDir().mkpath(QFileInfo(outPath).absolutePath());
+        wekde::ThumbnailGrabber grabber;
+        const bool ok = grabber.grab(videoPath, outPath, atSeconds);
+        {
+            QMutexLocker lock(&m_inflightMutex);
+            m_inflight.remove(videoPath);
+        }
+        QMetaObject::invokeMethod(this, [this, videoPath, outPath, ok]() {
+            emit thumbnailReady(videoPath, outPath, ok);
+        }, Qt::QueuedConnection);
+    });
+}
+
+QVariantList FileHelper::scanVideoFolder(const QString& path) {
+    static const QStringList kExtensions = {
+        "mp4", "mkv", "webm", "mov", "avi", "m4v"
+    };
+    QVariantList out;
+    QDir root(path);
+    if (! root.exists()) return out;
+
+    QDirIterator it(root.absolutePath(),
+                    QDir::Files | QDir::NoDotAndDotDot,
+                    QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
+    while (it.hasNext()) {
+        const QString full = it.next();
+        const QFileInfo fi(full);
+        if (! kExtensions.contains(fi.suffix().toLower())) continue;
+
+        QVariantMap entry;
+        entry["path"]  = fi.absoluteFilePath();
+        entry["name"]  = fi.fileName();
+        entry["mtime"] = fi.lastModified().toSecsSinceEpoch();
+        entry["size"]  = fi.size();
+        out.append(entry);
+    }
+    return out;
 }
 
 } // namespace wekde

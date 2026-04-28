@@ -85,4 +85,24 @@ TestCase {
         pyext.read_active_bindings("12345").then(v => { observed = v; });
         compare(typeof observed, "object");
     }
+
+    function test_scan_video_folder_returnsPromise() {
+        let observed = null;
+        pyext.scan_video_folder("/tmp").then(v => { observed = v; });
+        verify(Array.isArray(observed));
+    }
+
+    function test_generate_thumbnail_returnsRealPromise() {
+        const p = pyext.generate_thumbnail("/x.mp4", "/tmp/out.jpg", 0.5);
+        verify(p && typeof p.then === "function");
+    }
+
+    function test_generate_thumbnail_resolvesOnSignal() {
+        let resolvedWith = null;
+        const p = pyext.generate_thumbnail("/x.mp4", "/tmp/out.jpg", 0.5);
+        p.then((outPath) => { resolvedWith = outPath; });
+        // Stub's Qt.callLater fires the signal — wait one event loop turn.
+        wait(50);
+        compare(resolvedWith, "/tmp/out.jpg");
+    }
 }

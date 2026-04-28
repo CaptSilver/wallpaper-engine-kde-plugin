@@ -8,6 +8,7 @@
 #include <QtTest>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
@@ -510,6 +511,73 @@ private slots:
         QVERIFY(helper.readActiveBindings(id).isEmpty());
 
         QFile::remove(path);
+    }
+
+    // ── scanVideoFolder ──────────────────────────────────────────────────────
+    void scanVideoFolder_emptyDirReturnsEmpty() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        FileHelper helper;
+        QVariantList result = helper.scanVideoFolder(d.path());
+        QCOMPARE(result.size(), 0);
+    }
+
+    void scanVideoFolder_filtersByExtensionAllowlist() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        QFile::copy("/dev/null", d.filePath("a.mp4"));
+        QFile::copy("/dev/null", d.filePath("b.MKV"));   // case-insensitive
+        QFile::copy("/dev/null", d.filePath("c.txt"));   // excluded
+        QFile::copy("/dev/null", d.filePath("d.jpg"));   // excluded
+        QFile::copy("/dev/null", d.filePath("e.webm"));
+
+        FileHelper helper;
+        QVariantList result = helper.scanVideoFolder(d.path());
+        QCOMPARE(result.size(), 3);
+        QStringList names;
+        for (const auto& v : result) names << v.toMap().value("name").toString();
+        QVERIFY(names.contains("a.mp4"));
+        QVERIFY(names.contains("b.MKV"));
+        QVERIFY(names.contains("e.webm"));
+        QVERIFY(!names.contains("c.txt"));
+    }
+
+    void scanVideoFolder_recurses() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        QDir(d.path()).mkpath("nested/deep");
+        QFile::copy("/dev/null", d.filePath("top.mp4"));
+        QFile::copy("/dev/null", d.filePath("nested/mid.mkv"));
+        QFile::copy("/dev/null", d.filePath("nested/deep/bottom.webm"));
+
+        FileHelper helper;
+        QVariantList result = helper.scanVideoFolder(d.path());
+        QCOMPARE(result.size(), 3);
+    }
+
+    void scanVideoFolder_returnsAbsolutePathAndMtime() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        QFile f(d.filePath("x.mp4"));
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("a");
+        f.close();
+
+        FileHelper helper;
+        QVariantList result = helper.scanVideoFolder(d.path());
+        QCOMPARE(result.size(), 1);
+        auto m = result.first().toMap();
+        QCOMPARE(m.value("name").toString(), QStringLiteral("x.mp4"));
+        QVERIFY(m.value("path").toString().endsWith("/x.mp4"));
+        QVERIFY(QFileInfo(m.value("path").toString()).isAbsolute());
+        QVERIFY(m.value("mtime").toLongLong() > 0);
+        QVERIFY(m.value("size").toLongLong() >= 1);
+    }
+
+    void scanVideoFolder_nonexistentReturnsEmpty() {
+        FileHelper helper;
+        QVariantList result = helper.scanVideoFolder("/tmp/wekde_nonexistent_xyz");
+        QCOMPARE(result.size(), 0);
     }
 };
 

@@ -24,6 +24,7 @@ ColumnLayout {
     property string cfg_WallpaperSource
     property string cfg_FilterStr
     property int    cfg_SortMode
+    property string cfg_VideoFolderPath
 
     property alias  cfg_Fps:                 settingPage.cfg_Fps
     property alias  cfg_Volume:              settingPage.cfg_Volume
@@ -135,9 +136,12 @@ ColumnLayout {
     // Content
     PlasmaComponents.TabBar {
         id: bar
-        implicitWidth: font.pixelSize*8 * 3
+        implicitWidth: font.pixelSize*8 * 4
         PlasmaComponents.TabButton {
             text: "Wallpapers"
+        }
+        PlasmaComponents.TabButton {
+            text: "Videos"
         }
         PlasmaComponents.TabButton {
             text: "Settings"
@@ -154,6 +158,19 @@ ColumnLayout {
 
         WallpaperPage {
             id: wallpaperPage
+        }
+
+        VideoPage {
+            id: videoPage
+            cfg_VideoFolderPath: root.cfg_VideoFolderPath
+            activeWorkshopId: root.cfg_WallpaperWorkShopId
+            cachePath: root.plugin_info ? (root.plugin_info.cache_path || "") : ""
+            pyext: root.pyext
+            onCfg_VideoFolderPathChanged: root.cfg_VideoFolderPath = videoPage.cfg_VideoFolderPath
+            onCommitWallpaper: (item) => {
+                root.cfg_WallpaperWorkShopId = item.workshopid;
+                root.cfg_WallpaperSource = Common.packWallpaperSource(item);
+            }
         }
 
         SettingPage {

@@ -12,7 +12,8 @@ set(CMAKE_AUTOUIC ON)
 
 add_library(${PROJECT_NAME}
 	STATIC
-	MpvBackend.cpp  
+	MpvBackend.cpp
+	ThumbnailGrabber.cpp
 	qthelper.hpp
 )
 target_link_libraries(${PROJECT_NAME} 

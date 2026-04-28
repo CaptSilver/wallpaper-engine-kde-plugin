@@ -31,6 +31,8 @@ QtObject {
 
     readonly property string repo_url: 'https://github.com/catsout/wallpaper-engine-kde-plugin'
 
+    readonly property var videoExtensions: [".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v"]
+
     readonly property var wpitem_template: ({
         workshopid: "",
         path: "", // need convert to qurl
@@ -221,7 +223,13 @@ QtObject {
     
     // wallpaper list modle
     function getWpModelPreviewSource(model) {
-        return model.preview ? `${model.path}/${model.preview}` : '';
+        if (! model.preview) return '';
+        // Absolute path or URL — return as-is (used by VideoListModel which
+        // produces absolute thumbnail cache paths).
+        if (model.preview.indexOf('/') === 0 || model.preview.indexOf('://') > 0)
+            return model.preview;
+        // Relative — join under model.path (WE wallpaper convention).
+        return `${model.path}/${model.preview}`;
     }
     function getWpModelFileSource(model) {
         return model.path ? `${model.path}/${model.file}+${model.type}` : '';

@@ -118,5 +118,9 @@
       <label>System Audio Capture</label>
       <default>false</default>
     </entry>
+    <entry name="VideoFolderPath" type="Path">
+      <label>Plain video wallpapers folder</label>
+      <default></default>
+    </entry>
   </group>
 </kcfg>

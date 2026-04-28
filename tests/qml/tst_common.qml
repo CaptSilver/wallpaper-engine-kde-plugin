@@ -466,6 +466,22 @@ TestCase {
         compare(Plugin.Common.urlNative("plain"), "plain");
     }
 
+    function test_videoExtensions_lowercaseDotPrefixed() {
+        verify(Array.isArray(Plugin.Common.videoExtensions));
+        verify(Plugin.Common.videoExtensions.length >= 6);
+        for (let i = 0; i < Plugin.Common.videoExtensions.length; i++) {
+            const ext = Plugin.Common.videoExtensions[i];
+            verify(ext.indexOf(".") === 0, "extension missing dot: " + ext);
+            compare(ext, ext.toLowerCase(), "extension not lowercase: " + ext);
+        }
+        verify(Plugin.Common.videoExtensions.indexOf(".mp4") >= 0);
+        verify(Plugin.Common.videoExtensions.indexOf(".mkv") >= 0);
+        verify(Plugin.Common.videoExtensions.indexOf(".webm") >= 0);
+        verify(Plugin.Common.videoExtensions.indexOf(".mov") >= 0);
+        verify(Plugin.Common.videoExtensions.indexOf(".avi") >= 0);
+        verify(Plugin.Common.videoExtensions.indexOf(".m4v") >= 0);
+    }
+
     // findItem and friends need a real Item parent. Provide one.
     Item {
         id: testCaseRoot

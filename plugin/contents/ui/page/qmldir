@@ -1,3 +1,4 @@
 WallpaperPage WallpaperPage.qml
 SettingPage SettingPage.qml
 AboutPage AboutPage.qml
+VideoPage VideoPage.qml

@@ -30,12 +30,22 @@ if(COVERAGE)
 endif()
 
 # ── FileHelper unit tests ──────────────────────────────────────────────────────
+# FileHelper::generateThumbnail uses ThumbnailGrabber (libmpv); link them in.
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(FHMPV REQUIRED mpv)
+
 add_executable(tst_filehelper
     tst_filehelper.cpp
     ${WEKDE_SRC_DIR}/FileHelper.cpp
+    ${WEKDE_SRC_DIR}/backend_mpv/ThumbnailGrabber.cpp
 )
-target_include_directories(tst_filehelper PRIVATE ${WEKDE_SRC_DIR})
-target_link_libraries(tst_filehelper PRIVATE Qt6::Core Qt6::Test)
+target_include_directories(tst_filehelper PRIVATE
+    ${WEKDE_SRC_DIR}
+    ${WEKDE_SRC_DIR}/backend_mpv
+    ${FHMPV_INCLUDE_DIRS})
+target_link_libraries(tst_filehelper PRIVATE
+    Qt6::Core Qt6::Test ${FHMPV_LIBRARIES})
+target_compile_options(tst_filehelper PRIVATE ${FHMPV_CFLAGS_OTHER})
 
 if(MUTATION_TESTING)
     target_compile_options(tst_filehelper PRIVATE
@@ -106,6 +116,29 @@ if(Qt6Gui_FOUND AND Qt6Quick_FOUND AND PkgConfig_FOUND)
         add_test(NAME tst_mpvbackend COMMAND tst_mpvbackend -v2)
         set_tests_properties(tst_mpvbackend PROPERTIES
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+        # ── ThumbnailGrabber tests (and async FileHelper::generateThumbnail) ──
+        add_executable(tst_thumbnail_grabber
+            tst_thumbnail_grabber.cpp
+            ${WEKDE_SRC_DIR}/FileHelper.cpp
+            ${WEKDE_SRC_DIR}/backend_mpv/ThumbnailGrabber.cpp
+        )
+        target_include_directories(tst_thumbnail_grabber PRIVATE
+            ${WEKDE_SRC_DIR}
+            ${WEKDE_SRC_DIR}/backend_mpv
+            ${MPV_INCLUDE_DIRS})
+        target_link_libraries(tst_thumbnail_grabber PRIVATE
+            Qt6::Core Qt6::Test Qt6::Gui ${MPV_LIBRARIES})
+        target_compile_options(tst_thumbnail_grabber PRIVATE ${MPV_CFLAGS_OTHER})
+        if(COVERAGE)
+            target_compile_options(tst_thumbnail_grabber PRIVATE ${_cov_compile_flags})
+            target_link_options(tst_thumbnail_grabber PRIVATE ${_cov_link_flags})
+        endif()
+        add_test(NAME tst_thumbnail_grabber
+                 COMMAND tst_thumbnail_grabber -v2)
+        set_tests_properties(tst_thumbnail_grabber PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     else()
         message(STATUS "libmpv not found — skipping MpvBackend tests")
     endif()

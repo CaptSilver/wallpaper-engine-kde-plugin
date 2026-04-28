@@ -33,7 +33,7 @@ RowLayout {
         Layout.fillWidth: true
         Layout.fillHeight: true
         topPadding: 8
-        leftPadding: 0
+        leftPadding: Kirigami.Units.largeSpacing
         rightPadding: 0
         bottomPadding: 0
 
@@ -193,134 +193,25 @@ RowLayout {
                     opacity: 0.5
                 }
             }
-            Component { 
+            Component {
                 id: picViewCom
-                KCM.GridView {
+                WallpaperGrid {
                     id: picViewGrid
                     anchors.fill: parent
 
-                    readonly property var currentModel: view.model.get(view.currentIndex)
-                    readonly property var defaultModel: ListModel {}
-                    visible: view.count > 0
+                    activeWorkshopId: cfg_WallpaperWorkShopId
+                    iconSize: root.iconSizes.large
+                    animatedPreviewActive: cfg_AnimatedPreview
+                    showFavorites: true
+                    showWorkshopLink: true
+                    customConf: root.customConf
+                    autoCommitOnIndexResolve: !cfg_WallpaperSource
 
-                    // from org.kde.image
-                    view.implicitCellWidth: Screen.width / 10 + Kirigami.Units.smallSpacing * 2
-                    view.implicitCellHeight: Screen.height / 10 + Kirigami.Units.smallSpacing * 2 + Kirigami.Units.gridUnit * 3
-                    view.model: defaultModel
-                    view.delegate: KCM.GridDelegate {
-                        // path is file://, safe to concat with '/'
-                        text: title
-                        hoverEnabled: true
-                        actions: [
-                            Kirigami.Action {
-                                icon.name: favor?"user-bookmarks-symbolic":"bookmark-add-symbolic"
-                                tooltip: favor?"Remove from favorites":"Add to favorites"
-                                onTriggered: picViewLoader.item.toggleFavor(model, index)
-                            },
-                            Kirigami.Action {
-                                icon.name: "folder-remote-symbolic"
-                                tooltip: "Open Workshop Link"
-                                enabled: workshopid.match(Common.regex_workshop_online)
-                                onTriggered: Qt.openUrlExternally(Common.getWorkshopUrl(workshopid))
-                            }
-                        ]
-                        thumbnail: Rectangle {
-                            anchors.fill: parent
-                            color: "transparent"
-
-                            Kirigami.Icon {
-                                anchors.centerIn: parent
-                                width: root.iconSizes.large
-                                height: width
-                                source: "view-preview"
-                                visible: imgPre.status !== Loader.Ready || (imgPre.item && !imgPre.item.visible)
-                            }
-
-                            Loader {
-                                id: imgPre
-                                anchors.fill: parent
-                                sourceComponent: cfg_AnimatedPreview ? animatedPre : staticPre
-                            }
-
-                            Component {
-                                id: animatedPre
-                                AnimatedImage {
-                                    anchors.fill: parent
-                                    source: Common.getWpModelPreviewSource(model);
-                                    sourceSize.width: parent.width
-                                    fillMode: Image.PreserveAspectCrop
-                                    clip: true
-                                    cache: false
-                                    asynchronous: true
-                                    smooth: true
-                                    visible: true
-                                    paused: false
-                                    onVisibleChanged: paused = !visible
-                                    onStatusChanged: playing = (status == AnimatedImage.Ready)
-                                }
-                            }
-
-                            Component {
-                                id: staticPre
-                                Image {
-                                    anchors.fill: parent
-                                    source: Common.getWpModelPreviewSource(model);
-                                    sourceSize.width: parent.width
-                                    sourceSize.height: parent.height
-                                    fillMode: Image.PreserveAspectCrop
-                                    cache: false
-                                    asynchronous: true
-                                    smooth: true
-                                    visible: Boolean(preview)
-                                }
-                            }
-                        }
-                        onClicked: {
-                            cfg_WallpaperSource = Common.packWallpaperSource(model);
-                            cfg_WallpaperWorkShopId = workshopid;
-                            view.currentIndex = index;
-                        }
+                    onItemClicked: (item, index) => {
+                        cfg_WallpaperSource = Common.packWallpaperSource(item);
+                        cfg_WallpaperWorkShopId = item.workshopid;
                     }
-
-     
-                    function backtoBegin() {
-                        view.model = defaultModel
-                        //view.positionViewAtBeginning();
-                    }
-
-                    function setCurIndex(model) {
-                        // model, ListModel
-                        new Promise((reoslve, reject) => {
-                            for(let i=0;i < model.count;i++) {
-                                if(model.get(i).workshopid === cfg_WallpaperWorkShopId) {
-                                    view.currentIndex = i;
-                                    break;
-                                }
-                            }
-                            if(view.currentIndex == -1 && model.count != 0)
-                                view.currentIndex = 0;
-
-                            if(!cfg_WallpaperSource)
-                                if(view.currentIndex != -1)
-                                    view.currentItem.onClicked();
-
-                            resolve();
-                        });
-                    }
-                    function toggleFavor(model, index) {
-                        if(!index) index = view.currentIndex;
-
-                        if(model.favor) {
-                            root.customConf.favor.delete(model.workshopid);
-                        } else {
-                            root.customConf.favor.add(model.workshopid);
-                        }
-                        this.view.model.assignModel(index, {favor: !model.favor});
-                        root.saveCustomConf();
-
-                        if(index == view.currentIndex) this.view.currentIndexChanged();
-                    }
-
+                    onSaveCustomConfRequested: root.saveCustomConf()
                 }
             }
 

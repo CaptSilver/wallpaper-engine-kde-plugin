@@ -166,18 +166,45 @@ jobs:
       - name: Build
         run: cmake --build build -j$(nproc)
 
-  # ── Unit tests (Qt6 only, no KDE/Plasma/Vulkan deps) ────────────────────
+  # ── Unit tests (Fedora, full Qt6 + KDE QML modules + libmpv) ───────────
   unit-tests:
     name: Unit Tests
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
+    env:
+      CC: clang
+      CXX: clang++
 
     steps:
+      - name: Install git
+        run: dnf install -y git
+
       - uses: actions/checkout@v4
 
-      - name: Install Qt6
+      - name: Enable RPM Fusion (needed for mpv)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y qt6-base-dev cmake ninja-build
+          dnf install -y \
+            "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
+            "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"
+          dnf swap -y ffmpeg-free ffmpeg --allowerasing
+
+      - name: Install test dependencies
+        run: |
+          dnf install -y \
+            clang \
+            cmake \
+            ninja-build \
+            pkgconf-pkg-config \
+            qt6-qtbase-devel \
+            qt6-qtdeclarative-devel \
+            qt6-qtwebsockets-devel \
+            qt6-qtwebchannel-devel \
+            mpv-libs-devel \
+            kf6-kirigami-desktop \
+            kf6-kcmutils \
+            plasma-workspace \
+            nodejs
 
       - name: Configure (standalone test build)
         run: |

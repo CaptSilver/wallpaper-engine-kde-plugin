@@ -159,7 +159,11 @@ if(Qt6Gui_FOUND AND Qt6Quick_FOUND AND PkgConfig_FOUND)
 endif()
 
 # ── QML tests (qmltestrunner) ─────────────────────────────────────────────────
-find_program(QMLTESTRUNNER NAMES qmltestrunner-qt6 qmltestrunner)
+# Prefer Qt6-specific binary names. The bare `qmltestrunner` on some Debian/
+# Ubuntu images is a qtchooser proxy that fails at runtime when no default Qt
+# is selected ("could not find a Qt installation of ''") — keep it as a last-
+# resort fallback only.
+find_program(QMLTESTRUNNER NAMES qmltestrunner-qt6 qmltestrunner6 qmltestrunner)
 if(QMLTESTRUNNER)
     add_test(NAME tst_qml
         COMMAND ${QMLTESTRUNNER} -input ${CMAKE_CURRENT_SOURCE_DIR}/qml

@@ -30,22 +30,35 @@ if(COVERAGE)
 endif()
 
 # ── FileHelper unit tests ──────────────────────────────────────────────────────
-# FileHelper::generateThumbnail uses ThumbnailGrabber (libmpv); link them in.
+# FileHelper::generateThumbnail uses ThumbnailGrabber (libmpv) when WEKDE_HAS_MPV
+# is defined; otherwise it stubs to thumbnailReady(ok=false). CI without
+# libmpv-devel still builds and exercises every other FileHelper code path.
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(FHMPV REQUIRED mpv)
+pkg_check_modules(FHMPV mpv)
 
-add_executable(tst_filehelper
-    tst_filehelper.cpp
-    ${WEKDE_SRC_DIR}/FileHelper.cpp
-    ${WEKDE_SRC_DIR}/backend_mpv/ThumbnailGrabber.cpp
-)
-target_include_directories(tst_filehelper PRIVATE
-    ${WEKDE_SRC_DIR}
-    ${WEKDE_SRC_DIR}/backend_mpv
-    ${FHMPV_INCLUDE_DIRS})
-target_link_libraries(tst_filehelper PRIVATE
-    Qt6::Core Qt6::Test ${FHMPV_LIBRARIES})
-target_compile_options(tst_filehelper PRIVATE ${FHMPV_CFLAGS_OTHER})
+if(FHMPV_FOUND)
+    add_executable(tst_filehelper
+        tst_filehelper.cpp
+        ${WEKDE_SRC_DIR}/FileHelper.cpp
+        ${WEKDE_SRC_DIR}/backend_mpv/ThumbnailGrabber.cpp
+    )
+    target_include_directories(tst_filehelper PRIVATE
+        ${WEKDE_SRC_DIR}
+        ${WEKDE_SRC_DIR}/backend_mpv
+        ${FHMPV_INCLUDE_DIRS})
+    target_link_libraries(tst_filehelper PRIVATE
+        Qt6::Core Qt6::Test ${FHMPV_LIBRARIES})
+    target_compile_options(tst_filehelper PRIVATE ${FHMPV_CFLAGS_OTHER})
+    target_compile_definitions(tst_filehelper PRIVATE WEKDE_HAS_MPV)
+else()
+    message(STATUS "libmpv not found — building tst_filehelper without thumbnail support")
+    add_executable(tst_filehelper
+        tst_filehelper.cpp
+        ${WEKDE_SRC_DIR}/FileHelper.cpp
+    )
+    target_include_directories(tst_filehelper PRIVATE ${WEKDE_SRC_DIR})
+    target_link_libraries(tst_filehelper PRIVATE Qt6::Core Qt6::Test)
+endif()
 
 if(MUTATION_TESTING)
     target_compile_options(tst_filehelper PRIVATE
@@ -130,6 +143,7 @@ if(Qt6Gui_FOUND AND Qt6Quick_FOUND AND PkgConfig_FOUND)
         target_link_libraries(tst_thumbnail_grabber PRIVATE
             Qt6::Core Qt6::Test Qt6::Gui ${MPV_LIBRARIES})
         target_compile_options(tst_thumbnail_grabber PRIVATE ${MPV_CFLAGS_OTHER})
+        target_compile_definitions(tst_thumbnail_grabber PRIVATE WEKDE_HAS_MPV)
         if(COVERAGE)
             target_compile_options(tst_thumbnail_grabber PRIVATE ${_cov_compile_flags})
             target_link_options(tst_thumbnail_grabber PRIVATE ${_cov_link_flags})

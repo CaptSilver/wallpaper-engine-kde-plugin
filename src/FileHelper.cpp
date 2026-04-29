@@ -1,5 +1,4 @@
 #include "FileHelper.hpp"
-#include "backend_mpv/ThumbnailGrabber.hpp"
 #include <QFile>
 #include <QDir>
 #include <QDirIterator>
@@ -11,6 +10,10 @@
 #include <QDateTime>
 #include <QMutexLocker>
 #include <QThreadPool>
+
+#ifdef WEKDE_HAS_MPV
+#include "backend_mpv/ThumbnailGrabber.hpp"
+#endif
 
 namespace wekde
 {
@@ -260,6 +263,14 @@ void FileHelper::generateThumbnail(const QString& videoPath,
         }, Qt::QueuedConnection);
         return;
     }
+#ifndef WEKDE_HAS_MPV
+    // Built without libmpv (e.g. CI without libmpv-devel). Synthesize a
+    // failure so callers see thumbnailReady(ok=false) and can fall back.
+    Q_UNUSED(atSeconds);
+    QMetaObject::invokeMethod(this, [this, videoPath, outPath]() {
+        emit thumbnailReady(videoPath, outPath, false);
+    }, Qt::QueuedConnection);
+#else
     {
         QMutexLocker lock(&m_inflightMutex);
         if (m_inflight.contains(videoPath)) return;
@@ -278,6 +289,7 @@ void FileHelper::generateThumbnail(const QString& videoPath,
             emit thumbnailReady(videoPath, outPath, ok);
         }, Qt::QueuedConnection);
     });
+#endif
 }
 
 QVariantList FileHelper::scanVideoFolder(const QString& path) {

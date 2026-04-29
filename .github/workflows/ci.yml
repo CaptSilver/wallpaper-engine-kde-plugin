@@ -80,7 +80,7 @@ jobs:
             "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
             "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"
           dnf swap -y ffmpeg-free ffmpeg --allowerasing
-          dnf install -y ffmpeg-devel --allowerasing
+          dnf install -y --skip-unavailable ffmpeg-devel --allowerasing
 
       - name: Install build dependencies
         run: |

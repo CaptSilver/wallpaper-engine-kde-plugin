@@ -33,6 +33,7 @@ target_link_libraries(${PROJECT_NAME}
 	Qt::DBus
 	Qt::Network
 )
+target_compile_definitions(${PROJECT_NAME} PRIVATE WEKDE_HAS_MPV)
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_VISIBILITY_PRESET hidden)
 set_target_properties(${PROJECT_NAME}
                        PROPERTIES LINK_FLAGS "-Wl,--exclude-libs,ALL")

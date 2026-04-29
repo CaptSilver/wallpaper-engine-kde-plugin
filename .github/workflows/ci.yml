@@ -191,7 +191,7 @@ jobs:
 
       - name: Install test dependencies
         run: |
-          dnf install -y \
+          dnf install -y --skip-unavailable \
             clang \
             cmake \
             ninja-build \
@@ -201,9 +201,11 @@ jobs:
             qt6-qtwebsockets-devel \
             qt6-qtwebchannel-devel \
             mpv-libs-devel \
-            kf6-kirigami-desktop \
+            kf6-kirigami-devel \
             kf6-kcmutils \
             plasma-workspace \
+            libplasma-devel \
+            plasma-workspace-devel \
             nodejs
 
       - name: Configure (standalone test build)

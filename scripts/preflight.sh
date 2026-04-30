@@ -6,11 +6,19 @@
 #   scripts/preflight.sh --fix        # auto-format then build + tests (one-shot for push)
 #   scripts/preflight.sh --lint-only  # just clang-format check (fast)
 #   scripts/preflight.sh --no-build   # skip cmake builds, run existing tests only
+#   scripts/preflight.sh --bootstrap  # (re-)provision fedora distrobox + deps and exit
 #
 # Auto-runs on `git push` if hooks are installed:
 #   git config core.hooksPath scripts/git-hooks   # enable
 #   git push --no-verify                          # skip once
 #   git config --unset core.hooksPath             # disable
+#
+# Distrobox bootstrap:
+#   On the first run (or with --bootstrap) preflight will create the fedora
+#   distrobox if missing and install every dependency listed in DEPS_FEDORA
+#   below. The list mirrors the README, the RPM/Deb specs, the CI workflows,
+#   plus libasan/libubsan/vulkan-validation-layers/vulkan-tools/gdb for
+#   sanitizer + Vulkan-debug builds (not yet wired into CI but documented).
 
 set -euo pipefail
 
@@ -23,8 +31,9 @@ for arg in "$@"; do
         --lint-only) MODE=lint ;;
         --fix)       MODE=fix ;;
         --no-build)  MODE=test-only ;;
+        --bootstrap) MODE=bootstrap ;;
         -h|--help)
-            sed -n '2,15p' "$0"
+            sed -n '2,21p' "$0"
             exit 0
             ;;
         *) echo "unknown flag: $arg" >&2; exit 2 ;;
@@ -43,22 +52,97 @@ ok()   { printf '%s  ok%s  %s\n' "$GREEN" "$RESET" "$*"; }
 warn() { printf '%s  warn%s %s\n' "$YELLOW" "$RESET" "$*"; }
 fail() { printf '\n%sFAIL:%s %s\n' "$RED" "$RESET" "$*" >&2; exit 1; }
 
+# ── Fedora dependency manifest ───────────────────────────────────────────────
+# Single source of truth for packages required to build, test, and debug the
+# project on a fresh fedora-toolbox. Mirrors README + rpm/wek.spec +
+# debian/control + .github/workflows/ci.yml, with extras for ASAN runs and
+# Vulkan validation that are documented in CLAUDE.md but not yet in CI.
+CONTAINER_NAME="fedora"
+CONTAINER_IMAGE="registry.fedoraproject.org/fedora-toolbox:latest"
+DEPS_FEDORA=(
+    # core toolchain
+    clang cmake extra-cmake-modules ninja-build pkgconf-pkg-config git nodejs gdb
+
+    # Vulkan (headers + loader devel for cmake's FindVulkan, validation + tools for debug)
+    vulkan-headers vulkan-loader-devel vulkan-validation-layers vulkan-tools
+
+    # KDE Plasma 6 / KF6
+    plasma-workspace plasma-workspace-devel libplasma-devel
+    kf6-kcoreaddons-devel kf6-kpackage-devel kf6-kirigami-devel kf6-kcmutils
+
+    # Qt 6
+    qt6-qtbase-devel qt6-qtbase-private-devel
+    qt6-qtdeclarative-devel qt6-qtwebchannel-devel qt6-qtwebsockets-devel
+
+    # native libs
+    lz4-devel mpv-devel freetype-devel glfw-devel
+
+    # sanitizer runtimes (libasan.so.8 lives only inside distrobox per CLAUDE.md)
+    libasan libubsan
+)
+
+# ── Distrobox detection + bootstrap ──────────────────────────────────────────
+inside_fedora() {
+    [[ -f /run/.containerenv ]] && grep -q 'name="fedora"' /run/.containerenv 2>/dev/null
+}
+
+container_exists() {
+    distrobox list 2>/dev/null | grep -qE "^\S+\s*\|\s*${CONTAINER_NAME}\s"
+}
+
+bootstrap_fedora() {
+    step "Bootstrap: fedora distrobox + dependencies"
+
+    # In-container bootstrap: just refresh deps via dnf directly.
+    if inside_fedora; then
+        warn "running inside fedora distrobox — installing/refreshing deps in place"
+        sudo dnf install -y "${DEPS_FEDORA[@]}" \
+            || fail "dnf install failed"
+        ok "${#DEPS_FEDORA[@]} packages installed"
+        return
+    fi
+
+    if ! command -v distrobox >/dev/null; then
+        fail "distrobox not found on host (needed for builds; install distrobox or re-run from inside the fedora distrobox)"
+    fi
+
+    if container_exists; then
+        ok "fedora distrobox already exists"
+    else
+        warn "fedora distrobox missing — creating from ${CONTAINER_IMAGE} (this may take a few minutes)"
+        distrobox create --yes -i "$CONTAINER_IMAGE" -n "$CONTAINER_NAME" \
+            || fail "distrobox create failed"
+        ok "container created"
+    fi
+
+    step "Installing fedora deps (${#DEPS_FEDORA[@]} packages — first run can take several minutes)"
+    distrobox enter "$CONTAINER_NAME" -- bash -lc "sudo dnf install -y ${DEPS_FEDORA[*]}" \
+        || fail "dnf install inside container failed"
+    ok "dependencies installed"
+}
+
 # ── Distrobox wrapper ────────────────────────────────────────────────────────
-# Builds need Fedora dev packages that live inside the `fedora` distrobox.
-# Auto-detect: if we're already inside it, run commands directly.
-if [[ -f /run/.containerenv ]] && grep -q 'name="fedora"' /run/.containerenv 2>/dev/null; then
+# Builds need Fedora dev packages. If we're already inside the fedora
+# distrobox, run commands directly; otherwise wrap them in `distrobox enter`.
+# Auto-bootstrap when the container is missing so `preflight.sh` works on a
+# fresh checkout without manual setup.
+if inside_fedora; then
     DBOX_PREFIX=()
+    [[ "$MODE" == "bootstrap" ]] && bootstrap_fedora
     ok "running inside fedora distrobox"
 else
-    if ! command -v distrobox >/dev/null; then
-        fail "distrobox not found on host (needed for builds; install or run inside fedora distrobox)"
+    if [[ "$MODE" == "bootstrap" ]] || ! container_exists; then
+        bootstrap_fedora
     fi
-    if ! distrobox list 2>/dev/null | grep -qE '^\S+\s*\|\s*fedora\s'; then
-        fail "fedora distrobox not found (create with: distrobox create -i registry.fedoraproject.org/fedora-toolbox:latest -n fedora)"
-    fi
-    DBOX_PREFIX=(distrobox enter fedora --)
+    DBOX_PREFIX=(distrobox enter "$CONTAINER_NAME" --)
 fi
 dbox() { "${DBOX_PREFIX[@]}" bash -lc "$*"; }
+
+# Bootstrap-only mode: don't run lint/build/tests.
+if [[ "$MODE" == "bootstrap" ]]; then
+    printf '\n%sBootstrap complete — re-run without --bootstrap to lint/build/test.%s\n' "$GREEN" "$RESET"
+    exit 0
+fi
 
 # ── 1. Lint: clang-format ─────────────────────────────────────────────────────
 step "Lint (clang-format)"

@@ -12,7 +12,7 @@
 #include <QThreadPool>
 
 #ifdef WEKDE_HAS_MPV
-#include "backend_mpv/ThumbnailGrabber.hpp"
+#    include "backend_mpv/ThumbnailGrabber.hpp"
 #endif
 
 namespace wekde
@@ -253,23 +253,28 @@ QVariantList FileHelper::readActiveBindings(const QString& id) {
     return doc.array().toVariantList();
 }
 
-void FileHelper::generateThumbnail(const QString& videoPath,
-                                   const QString& outPath,
+void FileHelper::generateThumbnail(const QString& videoPath, const QString& outPath,
                                    double atSeconds) {
     // Short-circuit if cached thumbnail already exists.
     if (QFileInfo::exists(outPath) && QFileInfo(outPath).size() > 0) {
-        QMetaObject::invokeMethod(this, [this, videoPath, outPath]() {
-            emit thumbnailReady(videoPath, outPath, true);
-        }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(
+            this,
+            [this, videoPath, outPath]() {
+                emit thumbnailReady(videoPath, outPath, true);
+            },
+            Qt::QueuedConnection);
         return;
     }
 #ifndef WEKDE_HAS_MPV
     // Built without libmpv (e.g. CI without libmpv-devel). Synthesize a
     // failure so callers see thumbnailReady(ok=false) and can fall back.
     Q_UNUSED(atSeconds);
-    QMetaObject::invokeMethod(this, [this, videoPath, outPath]() {
-        emit thumbnailReady(videoPath, outPath, false);
-    }, Qt::QueuedConnection);
+    QMetaObject::invokeMethod(
+        this,
+        [this, videoPath, outPath]() {
+            emit thumbnailReady(videoPath, outPath, false);
+        },
+        Qt::QueuedConnection);
 #else
     {
         QMutexLocker lock(&m_inflightMutex);
@@ -280,31 +285,32 @@ void FileHelper::generateThumbnail(const QString& videoPath,
         // Ensure cache dir exists before libmpv writes the JPEG.
         QDir().mkpath(QFileInfo(outPath).absolutePath());
         wekde::ThumbnailGrabber grabber;
-        const bool ok = grabber.grab(videoPath, outPath, atSeconds);
+        const bool              ok = grabber.grab(videoPath, outPath, atSeconds);
         {
             QMutexLocker lock(&m_inflightMutex);
             m_inflight.remove(videoPath);
         }
-        QMetaObject::invokeMethod(this, [this, videoPath, outPath, ok]() {
-            emit thumbnailReady(videoPath, outPath, ok);
-        }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(
+            this,
+            [this, videoPath, outPath, ok]() {
+                emit thumbnailReady(videoPath, outPath, ok);
+            },
+            Qt::QueuedConnection);
     });
 #endif
 }
 
 QVariantList FileHelper::scanVideoFolder(const QString& path) {
-    static const QStringList kExtensions = {
-        "mp4", "mkv", "webm", "mov", "avi", "m4v"
-    };
-    QVariantList out;
-    QDir root(path);
+    static const QStringList kExtensions = { "mp4", "mkv", "webm", "mov", "avi", "m4v" };
+    QVariantList             out;
+    QDir                     root(path);
     if (! root.exists()) return out;
 
     QDirIterator it(root.absolutePath(),
                     QDir::Files | QDir::NoDotAndDotDot,
                     QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
     while (it.hasNext()) {
-        const QString full = it.next();
+        const QString   full = it.next();
         const QFileInfo fi(full);
         if (! kExtensions.contains(fi.suffix().toLower())) continue;
 

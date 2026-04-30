@@ -71,9 +71,7 @@ private slots:
 
 namespace
 {
-std::unique_ptr<MpvObject> makeObject() {
-    return std::make_unique<MpvObject>(nullptr);
-}
+std::unique_ptr<MpvObject> makeObject() { return std::make_unique<MpvObject>(nullptr); }
 } // namespace
 
 void TestMpvBackend::initialState_defaultsAreSensible() {
@@ -130,30 +128,30 @@ void TestMpvBackend::setLogfile_roundTrip() {
 }
 
 void TestMpvBackend::getProperty_emptyName_returnsInvalid() {
-    auto obj = makeObject();
-    bool     ok = true;
-    QVariant v  = obj->getProperty(QString {}, &ok);
+    auto     obj = makeObject();
+    bool     ok  = true;
+    QVariant v   = obj->getProperty(QString {}, &ok);
     QVERIFY(! v.isValid());
     QVERIFY(! ok);
 }
 
 void TestMpvBackend::getProperty_unknownProperty_failsOk() {
     auto obj = makeObject();
-    bool ok = true;
+    bool ok  = true;
     obj->getProperty(QStringLiteral("definitely-not-a-real-mpv-property"), &ok);
     QVERIFY(! ok);
 }
 
 void TestMpvBackend::getProperty_okPointer_setOnSuccess() {
     auto obj = makeObject();
-    bool ok = false;
+    bool ok  = false;
     obj->getProperty(QStringLiteral("volume"), &ok);
     QVERIFY(ok);
 }
 
 void TestMpvBackend::getProperty_okPointer_clearedOnFailure() {
     auto obj = makeObject();
-    bool ok = true;
+    bool ok  = true;
     obj->getProperty(QStringLiteral("nope-not-here"), &ok);
     QVERIFY(! ok);
 }
@@ -177,7 +175,7 @@ void TestMpvBackend::setSource_invalidUrl_isNoop() {
     auto obj = makeObject();
     obj->initCallback();
     const QUrl before = obj->source();
-    QUrl invalid;
+    QUrl       invalid;
     invalid.setUrl(QStringLiteral("::not a url::"), QUrl::StrictMode);
     QVERIFY(! invalid.isValid());
     obj->setSource(invalid);

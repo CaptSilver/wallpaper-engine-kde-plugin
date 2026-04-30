@@ -1,7 +1,8 @@
 #pragma once
 #include <QString>
 
-namespace wekde {
+namespace wekde
+{
 
 // Headless libmpv frame grabber. Synchronous API — for async consumption use
 // FileHelper::generateThumbnail which wraps this on a QThreadPool task.

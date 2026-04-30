@@ -17,10 +17,10 @@ public:
     virtual ~FileHelper();
 
     // File operations
-    Q_INVOKABLE QByteArray  readFile(const QString& path);
-    Q_INVOKABLE QString     qwebChannelSource();
-    Q_INVOKABLE QString     patchedHtml(const QString& path);
-    Q_INVOKABLE qint64      getDirSize(const QString& path, int depth = 3);
+    Q_INVOKABLE QByteArray   readFile(const QString& path);
+    Q_INVOKABLE QString      qwebChannelSource();
+    Q_INVOKABLE QString      patchedHtml(const QString& path);
+    Q_INVOKABLE qint64       getDirSize(const QString& path, int depth = 3);
     Q_INVOKABLE QVariantMap  getFolderList(const QString& path, const QVariantMap& opt = {});
     Q_INVOKABLE QVariantList scanVideoFolder(const QString& path);
 
@@ -33,14 +33,11 @@ public:
     // Asynchronous thumbnail generation. Submits work to QThreadPool and emits
     // thumbnailReady when done. Concurrent requests for the same videoPath are
     // coalesced — only one libmpv grab runs at a time per input.
-    Q_INVOKABLE void generateThumbnail(const QString& videoPath,
-                                       const QString& outPath,
+    Q_INVOKABLE void generateThumbnail(const QString& videoPath, const QString& outPath,
                                        double atSeconds);
 
 signals:
-    void thumbnailReady(const QString& videoPath,
-                        const QString& outPath,
-                        bool ok);
+    void thumbnailReady(const QString& videoPath, const QString& outPath, bool ok);
 
 private:
     QString configDir() const;
@@ -48,7 +45,7 @@ private:
     QString wallpaperConfigFile(const QString& id) const;
 
     QMutex        m_inflightMutex;
-    QSet<QString> m_inflight;   // key = videoPath
+    QSet<QString> m_inflight; // key = videoPath
 };
 
 } // namespace wekde

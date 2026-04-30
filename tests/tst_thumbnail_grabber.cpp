@@ -9,8 +9,8 @@
 #include "ThumbnailGrabber.hpp"
 #include "FileHelper.hpp"
 
-using wekde::ThumbnailGrabber;
 using wekde::FileHelper;
+using wekde::ThumbnailGrabber;
 
 class TestThumbnailGrabber : public QObject {
     Q_OBJECT
@@ -23,21 +23,20 @@ private slots:
         const QString out = d.filePath("thumb.jpg");
 
         ThumbnailGrabber grabber;
-        const bool ok = grabber.grab(
-            QFINDTESTDATA("fixtures/tiny.webm"), out, /*atSeconds=*/0.5);
+        const bool ok = grabber.grab(QFINDTESTDATA("fixtures/tiny.webm"), out, /*atSeconds=*/0.5);
         if (! ok) QSKIP("libmpv could not init or seek failed in this environment");
 
         QVERIFY(QFile::exists(out));
         QVERIFY(QFileInfo(out).size() > 256);
         QImage img(out);
         QVERIFY(! img.isNull());
-        QVERIFY(img.width()  > 0);
+        QVERIFY(img.width() > 0);
         QVERIFY(img.height() > 0);
     }
 
     void grab_rejectsMissingInput() {
-        QTemporaryDir d;
-        const QString out = d.filePath("thumb.jpg");
+        QTemporaryDir    d;
+        const QString    out = d.filePath("thumb.jpg");
         ThumbnailGrabber grabber;
         QCOMPARE(grabber.grab("/tmp/wekde_no_such_video.webm", out, 0.5), false);
         QVERIFY(! QFile::exists(out));
@@ -51,12 +50,12 @@ private slots:
         QVERIFY(d.isValid());
         // A plain text file mpv can't decode as a media stream.
         const QString in = d.filePath("not_a_video.txt");
-        QFile f(in);
+        QFile         f(in);
         QVERIFY(f.open(QIODevice::WriteOnly));
         f.write("definitely not media content");
         f.close();
 
-        const QString out = d.filePath("thumb.jpg");
+        const QString    out = d.filePath("thumb.jpg");
         ThumbnailGrabber grabber;
         QCOMPARE(grabber.grab(in, out, 0.5), false);
         QVERIFY(! QFile::exists(out));
@@ -70,8 +69,7 @@ private slots:
         QTemporaryDir d;
         QVERIFY(d.isValid());
         const QString in = QFINDTESTDATA("fixtures/tiny.webm");
-        if (! QFileInfo::exists(in))
-            QSKIP("fixtures/tiny.webm missing in this environment");
+        if (! QFileInfo::exists(in)) QSKIP("fixtures/tiny.webm missing in this environment");
         const QString out = d.filePath("seek_past_end.jpg");
 
         ThumbnailGrabber grabber;
@@ -103,8 +101,7 @@ private slots:
         const QList<QVariant> args = spy.takeFirst();
         QCOMPARE(args.at(0).toString(), in);
         QCOMPARE(args.at(1).toString(), out);
-        if (! args.at(2).toBool())
-            QSKIP("libmpv unable to grab in this environment");
+        if (! args.at(2).toBool()) QSKIP("libmpv unable to grab in this environment");
         QVERIFY(QFile::exists(out));
     }
 
@@ -151,7 +148,7 @@ private slots:
 
     void generateThumbnail_createsCacheDirIfMissing() {
         QTemporaryDir d;
-        const QString in  = QFINDTESTDATA("fixtures/tiny.webm");
+        const QString in = QFINDTESTDATA("fixtures/tiny.webm");
         // Output under a directory that does not exist yet.
         const QString out = d.filePath("nested/sub/thumb.jpg");
         QVERIFY(! QFileInfo::exists(QFileInfo(out).absolutePath()));

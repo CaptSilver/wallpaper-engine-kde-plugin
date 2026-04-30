@@ -348,10 +348,12 @@ private slots:
         // with "FileHelper: Cannot write config".
         const QFile::Permissions origPerms = QFile(cfgDir).permissions();
         struct PermsGuard {
-            QString path;
+            QString            path;
             QFile::Permissions perms;
-            bool restored { false };
-            ~PermsGuard() { if (! restored) QFile::setPermissions(path, perms); }
+            bool               restored { false };
+            ~PermsGuard() {
+                if (! restored) QFile::setPermissions(path, perms);
+            }
         } guard { cfgDir, origPerms, false };
         QVERIFY(QFile::setPermissions(cfgDir, QFile::ReadOwner | QFile::ReadUser));
 
@@ -619,7 +621,7 @@ private slots:
     void scanVideoFolder_emptyDirReturnsEmpty() {
         QTemporaryDir d;
         QVERIFY(d.isValid());
-        FileHelper helper;
+        FileHelper   helper;
         QVariantList result = helper.scanVideoFolder(d.path());
         QCOMPARE(result.size(), 0);
     }
@@ -628,12 +630,12 @@ private slots:
         QTemporaryDir d;
         QVERIFY(d.isValid());
         QFile::copy("/dev/null", d.filePath("a.mp4"));
-        QFile::copy("/dev/null", d.filePath("b.MKV"));   // case-insensitive
-        QFile::copy("/dev/null", d.filePath("c.txt"));   // excluded
-        QFile::copy("/dev/null", d.filePath("d.jpg"));   // excluded
+        QFile::copy("/dev/null", d.filePath("b.MKV")); // case-insensitive
+        QFile::copy("/dev/null", d.filePath("c.txt")); // excluded
+        QFile::copy("/dev/null", d.filePath("d.jpg")); // excluded
         QFile::copy("/dev/null", d.filePath("e.webm"));
 
-        FileHelper helper;
+        FileHelper   helper;
         QVariantList result = helper.scanVideoFolder(d.path());
         QCOMPARE(result.size(), 3);
         QStringList names;
@@ -641,7 +643,7 @@ private slots:
         QVERIFY(names.contains("a.mp4"));
         QVERIFY(names.contains("b.MKV"));
         QVERIFY(names.contains("e.webm"));
-        QVERIFY(!names.contains("c.txt"));
+        QVERIFY(! names.contains("c.txt"));
     }
 
     void scanVideoFolder_recurses() {
@@ -652,7 +654,7 @@ private slots:
         QFile::copy("/dev/null", d.filePath("nested/mid.mkv"));
         QFile::copy("/dev/null", d.filePath("nested/deep/bottom.webm"));
 
-        FileHelper helper;
+        FileHelper   helper;
         QVariantList result = helper.scanVideoFolder(d.path());
         QCOMPARE(result.size(), 3);
     }
@@ -665,7 +667,7 @@ private slots:
         f.write("a");
         f.close();
 
-        FileHelper helper;
+        FileHelper   helper;
         QVariantList result = helper.scanVideoFolder(d.path());
         QCOMPARE(result.size(), 1);
         auto m = result.first().toMap();
@@ -677,7 +679,7 @@ private slots:
     }
 
     void scanVideoFolder_nonexistentReturnsEmpty() {
-        FileHelper helper;
+        FileHelper   helper;
         QVariantList result = helper.scanVideoFolder("/tmp/wekde_nonexistent_xyz");
         QCOMPARE(result.size(), 0);
     }

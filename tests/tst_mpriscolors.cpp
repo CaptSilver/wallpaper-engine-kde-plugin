@@ -988,14 +988,13 @@ public:
           m_artists(artists) {}
 
     QString introspect(const QString& /*path*/) const override {
-        return QStringLiteral(
-            "<interface name=\"org.freedesktop.DBus.Properties\">"
-            "  <method name=\"Get\">"
-            "    <arg direction=\"in\"  name=\"interface\" type=\"s\"/>"
-            "    <arg direction=\"in\"  name=\"name\"      type=\"s\"/>"
-            "    <arg direction=\"out\" name=\"value\"     type=\"v\"/>"
-            "  </method>"
-            "</interface>");
+        return QStringLiteral("<interface name=\"org.freedesktop.DBus.Properties\">"
+                              "  <method name=\"Get\">"
+                              "    <arg direction=\"in\"  name=\"interface\" type=\"s\"/>"
+                              "    <arg direction=\"in\"  name=\"name\"      type=\"s\"/>"
+                              "    <arg direction=\"out\" name=\"value\"     type=\"v\"/>"
+                              "  </method>"
+                              "</interface>");
     }
 
     bool handleMessage(const QDBusMessage& message, const QDBusConnection& connection) override {
@@ -1058,11 +1057,10 @@ private:
 };
 
 void TestMprisColors::findActivePlayer_picksUpRegisteredFakeService() {
-    FakeMprisService     svc("Playing", /*lengthUs=*/120'000'000, /*positionUs=*/5'000'000,
-                          "Hello", { "World" });
+    FakeMprisService svc(
+        "Playing", /*lengthUs=*/120'000'000, /*positionUs=*/5'000'000, "Hello", { "World" });
     FakeMprisRegistration reg(&svc, "find_active");
-    if (! reg.ok())
-        QSKIP("session bus or service registration unavailable in this env");
+    if (! reg.ok()) QSKIP("session bus or service registration unavailable in this env");
 
     // Constructing a fresh MprisMonitor calls findActivePlayer() in the ctor,
     // which will iterate ListNames, find our fake, call Get(PlaybackStatus),
@@ -1146,14 +1144,16 @@ void TestMprisColors::handlePropsChanged_metadataAsQDBusArgument_unmarshalsAndEm
 // ----- HTTP path: real local QTcpServer that returns a valid PNG --------
 class FakePngHttpServer : public QObject {
 public:
-    explicit FakePngHttpServer(const QByteArray& body) : m_body(body) {
+    explicit FakePngHttpServer(const QByteArray& body): m_body(body) {
         connect(&m_server, &QTcpServer::newConnection, this, [this] {
             QTcpSocket* sock = m_server.nextPendingConnection();
-            connect(sock, &QTcpSocket::readyRead, this, [this, sock] { writeReply(sock); });
+            connect(sock, &QTcpSocket::readyRead, this, [this, sock] {
+                writeReply(sock);
+            });
             connect(sock, &QTcpSocket::disconnected, sock, &QObject::deleteLater);
         });
     }
-    bool listen() { return m_server.listen(QHostAddress::LocalHost, 0); }
+    bool    listen() { return m_server.listen(QHostAddress::LocalHost, 0); }
     quint16 port() const { return m_server.serverPort(); }
 
 private:
@@ -1192,8 +1192,7 @@ void TestMprisColors::processArtUrl_http_downloadsAndEmits() {
     QSignalSpy   spy(&m, &MprisMonitor::thumbnailChanged);
 
     QVariantMap c;
-    c["Metadata"] = mkMeta("T", {}, 0,
-                           QString("http://127.0.0.1:%1/cover.png").arg(server.port()));
+    c["Metadata"] = mkMeta("T", {}, 0, QString("http://127.0.0.1:%1/cover.png").arg(server.port()));
     invokeSlot(&m,
                "handlePropertiesChanged",
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
@@ -1222,8 +1221,8 @@ void TestMprisColors::processArtUrl_http_returnsGarbage_emitsThumbnailFalse() {
     QSignalSpy   spy(&m, &MprisMonitor::thumbnailChanged);
 
     QVariantMap c;
-    c["Metadata"] = mkMeta("T", {}, 0,
-                           QString("http://127.0.0.1:%1/garbage.png").arg(server.port()));
+    c["Metadata"] =
+        mkMeta("T", {}, 0, QString("http://127.0.0.1:%1/garbage.png").arg(server.port()));
     invokeSlot(&m,
                "handlePropertiesChanged",
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),

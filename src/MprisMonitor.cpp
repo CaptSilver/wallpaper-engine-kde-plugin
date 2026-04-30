@@ -194,7 +194,7 @@ void MprisMonitor::fetchAllProperties() {
             m_duration       = md.duration;
             emit propertiesChanged(md.title, md.artist, md.album, md.albumArtist, md.genres);
             if (md.artUrl != m_lastArtUrl || ! m_artUrlEverProcessed) {
-                m_lastArtUrl           = md.artUrl;
+                m_lastArtUrl          = md.artUrl;
                 m_artUrlEverProcessed = true;
                 processArtUrl(md.artUrl);
             }
@@ -244,7 +244,7 @@ void MprisMonitor::handlePropertiesChanged(const QString& interface, const QVari
         m_duration = md.duration;
         emit propertiesChanged(md.title, md.artist, md.album, md.albumArtist, md.genres);
         if (md.artUrl != m_lastArtUrl || ! m_artUrlEverProcessed) {
-            m_lastArtUrl           = md.artUrl;
+            m_lastArtUrl          = md.artUrl;
             m_artUrlEverProcessed = true;
             processArtUrl(md.artUrl);
         }

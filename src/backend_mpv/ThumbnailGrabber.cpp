@@ -4,24 +4,25 @@
 #include <clocale>
 #include <mpv/client.h>
 
-namespace wekde {
+namespace wekde
+{
 
 struct ThumbnailGrabber::Impl {
-    mpv_handle* mpv {nullptr};
+    mpv_handle* mpv { nullptr };
 
     Impl() {
         // libmpv requires LC_NUMERIC=C; calling here is idempotent and safe.
         std::setlocale(LC_NUMERIC, "C");
         mpv = mpv_create();
         if (! mpv) return;
-        mpv_set_option_string(mpv, "vo",                     "null");
-        mpv_set_option_string(mpv, "ao",                     "null");
-        mpv_set_option_string(mpv, "audio",                  "no");
-        mpv_set_option_string(mpv, "hwdec",                  "no");
+        mpv_set_option_string(mpv, "vo", "null");
+        mpv_set_option_string(mpv, "ao", "null");
+        mpv_set_option_string(mpv, "audio", "no");
+        mpv_set_option_string(mpv, "hwdec", "no");
         mpv_set_option_string(mpv, "input-default-bindings", "no");
-        mpv_set_option_string(mpv, "input-vo-keyboard",      "no");
-        mpv_set_option_string(mpv, "screenshot-format",      "jpg");
-        mpv_set_option_string(mpv, "screenshot-jpeg-quality","80");
+        mpv_set_option_string(mpv, "input-vo-keyboard", "no");
+        mpv_set_option_string(mpv, "screenshot-format", "jpg");
+        mpv_set_option_string(mpv, "screenshot-jpeg-quality", "80");
         if (mpv_initialize(mpv) < 0) {
             mpv_destroy(mpv);
             mpv = nullptr;
@@ -32,12 +33,10 @@ struct ThumbnailGrabber::Impl {
     }
 };
 
-ThumbnailGrabber::ThumbnailGrabber() : d(new Impl) {}
+ThumbnailGrabber::ThumbnailGrabber(): d(new Impl) {}
 ThumbnailGrabber::~ThumbnailGrabber() { delete d; }
 
-bool ThumbnailGrabber::grab(const QString& videoPath,
-                            const QString& outPath,
-                            double atSeconds) {
+bool ThumbnailGrabber::grab(const QString& videoPath, const QString& outPath, double atSeconds) {
     if (! d->mpv) return false;
     if (! QFileInfo::exists(videoPath)) return false;
 
@@ -52,8 +51,10 @@ bool ThumbnailGrabber::grab(const QString& videoPath,
     bool loaded = false;
     for (int i = 0; i < 50 && ! loaded; i++) {
         mpv_event* ev = mpv_wait_event(d->mpv, 0.1);
-        if (ev->event_id == MPV_EVENT_FILE_LOADED) loaded = true;
-        else if (ev->event_id == MPV_EVENT_END_FILE) return false;
+        if (ev->event_id == MPV_EVENT_FILE_LOADED)
+            loaded = true;
+        else if (ev->event_id == MPV_EVENT_END_FILE)
+            return false;
     }
     if (! loaded) return false;
 
@@ -64,8 +65,10 @@ bool ThumbnailGrabber::grab(const QString& videoPath,
     bool seeked = false;
     for (int i = 0; i < 50 && ! seeked; i++) {
         mpv_event* ev = mpv_wait_event(d->mpv, 0.1);
-        if (ev->event_id == MPV_EVENT_PLAYBACK_RESTART) seeked = true;
-        else if (ev->event_id == MPV_EVENT_END_FILE) return false;
+        if (ev->event_id == MPV_EVENT_PLAYBACK_RESTART)
+            seeked = true;
+        else if (ev->event_id == MPV_EVENT_END_FILE)
+            return false;
     }
 
     const char* shotcmd[] = { "screenshot-to-file", op.constData(), "video", nullptr };

@@ -74,14 +74,6 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git submodule update --init --force --recursive
 
-      - name: Enable RPM Fusion (needed for mpv)
-        run: |
-          dnf install -y \
-            "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
-            "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"
-          dnf swap -y ffmpeg-free ffmpeg --allowerasing
-          dnf install -y --skip-unavailable ffmpeg-devel --allowerasing
-
       - name: Install build dependencies
         run: |
           dnf install -y \
@@ -95,7 +87,7 @@ jobs:
             kf6-kcoreaddons-devel \
             kf6-kpackage-devel \
             lz4-devel \
-            mpv-libs-devel \
+            mpv-devel \
             qt6-qtbase-private-devel \
             libplasma-devel \
             qt6-qtwebchannel-devel \
@@ -182,13 +174,6 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - name: Enable RPM Fusion (needed for mpv)
-        run: |
-          dnf install -y \
-            "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
-            "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"
-          dnf swap -y ffmpeg-free ffmpeg --allowerasing
-
       - name: Install test dependencies
         run: |
           dnf install -y --skip-unavailable \
@@ -200,7 +185,7 @@ jobs:
             qt6-qtdeclarative-devel \
             qt6-qtwebsockets-devel \
             qt6-qtwebchannel-devel \
-            mpv-libs-devel \
+            mpv-devel \
             kf6-kirigami-devel \
             kf6-kcmutils \
             plasma-workspace \

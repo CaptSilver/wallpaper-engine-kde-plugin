@@ -114,6 +114,10 @@
       <label>HDR Output</label>
       <default>false</default>
     </entry>
+    <entry name="PostProcessing" type="String">
+      <label>Postprocessing override (empty=scene default, ultra=HDR mip-chain bloom)</label>
+      <default></default>
+    </entry>
     <entry name="SystemAudioCapture" type="Bool">
       <label>System Audio Capture</label>
       <default>false</default>

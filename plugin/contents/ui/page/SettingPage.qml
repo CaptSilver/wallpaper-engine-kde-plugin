@@ -33,6 +33,7 @@ Flickable {
     property alias cfg_PauseOnBatPower: chkbox_pauseOnBatPower.checked
     property alias cfg_PauseBatPercent: spin_pauseBatPercent.value
     property alias cfg_HdrOutput: ckbox_hdrOutput.checked
+    property string cfg_PostProcessing: ""
     property alias cfg_SystemAudioCapture: ckbox_systemAudioCapture.checked
 
 
@@ -397,6 +398,38 @@ Flickable {
                         Layout.fillWidth: true
                         color: Kirigami.Theme.disabledTextColor
                         text: "Pass HDR colors to the compositor without tonemapping. Requires Plasma HDR support."
+                        wrapMode: Text.Wrap
+                    }
+                }
+            }
+            OptionItem {
+                text: 'Postprocessing'
+                text_color: Kirigami.Theme.textColor
+                actor: ComboBox {
+                    id: cb_postProcessing
+                    model: [
+                        { text: "Scene default", value: "" },
+                        { text: "Low (LDR)", value: "low" },
+                        { text: "Medium (LDR)", value: "medium" },
+                        { text: "Ultra (HDR mip-chain bloom)", value: "ultra" },
+                        { text: "Display HDR", value: "displayhdr" }
+                    ]
+                    textRole: "text"
+                    onActivated: cfg_PostProcessing = model[currentIndex].value
+                    Component.onCompleted: {
+                        for (var i = 0; i < model.length; ++i) {
+                            if (model[i].value === cfg_PostProcessing) {
+                                currentIndex = i;
+                                break;
+                            }
+                        }
+                    }
+                }
+                contentBottom: ColumnLayout {
+                    Text {
+                        Layout.fillWidth: true
+                        color: Kirigami.Theme.disabledTextColor
+                        text: "Override the bloom pipeline scenes use. 'Ultra' enables the HDR 5-level mip-chain pipeline; effective when the scene also declares hdr+bloom (otherwise the legacy 4-pass LDR path runs). Forces a scene reload."
                         wrapMode: Text.Wrap
                     }
                 }

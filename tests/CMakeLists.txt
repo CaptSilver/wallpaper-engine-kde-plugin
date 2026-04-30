@@ -14,6 +14,7 @@ endif()
 
 find_package(Qt6 REQUIRED COMPONENTS Core Test)
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 
 option(MUTATION_TESTING "Enable Mull mutation testing instrumentation" OFF)
 if(MUTATION_TESTING)
@@ -41,6 +42,7 @@ if(FHMPV_FOUND)
         tst_filehelper.cpp
         ${WEKDE_SRC_DIR}/FileHelper.cpp
         ${WEKDE_SRC_DIR}/backend_mpv/ThumbnailGrabber.cpp
+        ${WEKDE_SRC_DIR}/qwebchannel.qrc
     )
     target_include_directories(tst_filehelper PRIVATE
         ${WEKDE_SRC_DIR}
@@ -55,6 +57,7 @@ else()
     add_executable(tst_filehelper
         tst_filehelper.cpp
         ${WEKDE_SRC_DIR}/FileHelper.cpp
+        ${WEKDE_SRC_DIR}/qwebchannel.qrc
     )
     target_include_directories(tst_filehelper PRIVATE ${WEKDE_SRC_DIR})
     target_link_libraries(tst_filehelper PRIVATE Qt6::Core Qt6::Test)
@@ -88,6 +91,11 @@ if(Qt6Gui_FOUND AND Qt6Quick_FOUND)
         target_compile_options(tst_mpriscolors PRIVATE ${_cov_compile_flags})
         target_link_options(tst_mpriscolors PRIVATE ${_cov_link_flags})
     endif()
+    if(MUTATION_TESTING)
+        target_compile_options(tst_mpriscolors PRIVATE
+            -fpass-plugin=${MULL_PLUGIN_PATH}
+            -g -grecord-command-line)
+    endif()
     add_test(NAME tst_mpriscolors COMMAND tst_mpriscolors -v2)
 
     # ── MouseGrabber event forwarding tests ───────────────────────────────────
@@ -101,6 +109,11 @@ if(Qt6Gui_FOUND AND Qt6Quick_FOUND)
     if(COVERAGE)
         target_compile_options(tst_mousegrabber PRIVATE ${_cov_compile_flags})
         target_link_options(tst_mousegrabber PRIVATE ${_cov_link_flags})
+    endif()
+    if(MUTATION_TESTING)
+        target_compile_options(tst_mousegrabber PRIVATE
+            -fpass-plugin=${MULL_PLUGIN_PATH}
+            -g -grecord-command-line)
     endif()
     add_test(NAME tst_mousegrabber COMMAND tst_mousegrabber -v2)
 endif()
@@ -125,6 +138,11 @@ if(Qt6Gui_FOUND AND Qt6Quick_FOUND AND PkgConfig_FOUND)
             target_compile_options(tst_mpvbackend PRIVATE ${_cov_compile_flags})
             target_link_options(tst_mpvbackend PRIVATE ${_cov_link_flags})
         endif()
+        if(MUTATION_TESTING)
+            target_compile_options(tst_mpvbackend PRIVATE
+                -fpass-plugin=${MULL_PLUGIN_PATH}
+                -g -grecord-command-line)
+        endif()
         # Offscreen Qt platform — these tests must not need a display.
         add_test(NAME tst_mpvbackend COMMAND tst_mpvbackend -v2)
         set_tests_properties(tst_mpvbackend PROPERTIES
@@ -147,6 +165,11 @@ if(Qt6Gui_FOUND AND Qt6Quick_FOUND AND PkgConfig_FOUND)
         if(COVERAGE)
             target_compile_options(tst_thumbnail_grabber PRIVATE ${_cov_compile_flags})
             target_link_options(tst_thumbnail_grabber PRIVATE ${_cov_link_flags})
+        endif()
+        if(MUTATION_TESTING)
+            target_compile_options(tst_thumbnail_grabber PRIVATE
+                -fpass-plugin=${MULL_PLUGIN_PATH}
+                -g -grecord-command-line)
         endif()
         add_test(NAME tst_thumbnail_grabber
                  COMMAND tst_thumbnail_grabber -v2)
@@ -260,11 +283,24 @@ if(COVERAGE)
         list(APPEND _cov_objs -object=$<TARGET_FILE:tst_mousegrabber>)
         list(APPEND _cov_tests tst_mousegrabber)
     endif()
+    if(TARGET tst_mpvbackend)
+        list(APPEND _cov_objs -object=$<TARGET_FILE:tst_mpvbackend>)
+        list(APPEND _cov_tests tst_mpvbackend)
+    endif()
+    if(TARGET tst_thumbnail_grabber)
+        list(APPEND _cov_objs -object=$<TARGET_FILE:tst_thumbnail_grabber>)
+        list(APPEND _cov_tests tst_thumbnail_grabber)
+    endif()
 
-    # Ignore everything outside src/ (Qt headers, system libs, tests themselves,
-    # MOC-generated code under _autogen/, and third_party).
+    # Ignore everything outside the user-facing "main project" scope:
+    #   - Qt / system headers, tests themselves, MOC-generated code, third_party
+    #   - backend_mpv/MpvBackend.cpp + qthelper.hpp: tested in isolation by
+    #     tst_mpvbackend but with significant fixed-platform code paths
+    #     (renderer init, GL bindings, libmpv embed) that aren't part of the
+    #     "main project C++ coverage" target.  ThumbnailGrabber.cpp is kept
+    #     because its API is fully exercisable from offscreen tests.
     set(_cov_ignore
-        -ignore-filename-regex=\(^/usr/\|/Qt6/\|/tests/tst_\|_autogen/\|/moc_\|third_party\)
+        -ignore-filename-regex=\(^/usr/\|/Qt6/\|/tests/tst_\|_autogen/\|/moc_\|third_party\|backend_mpv/MpvBackend\|backend_mpv/qthelper\)
     )
 
     add_custom_target(coverage

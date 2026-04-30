@@ -43,6 +43,53 @@ private slots:
         QVERIFY(! QFile::exists(out));
     }
 
+    // When the input file exists but isn't a valid video, libmpv emits
+    // MPV_EVENT_END_FILE during the load wait — covers the early-return
+    // branch on END_FILE inside the load loop.
+    void grab_existingNonVideoTriggersEndFile_returnsFalse() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        // A plain text file mpv can't decode as a media stream.
+        const QString in = d.filePath("not_a_video.txt");
+        QFile f(in);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("definitely not media content");
+        f.close();
+
+        const QString out = d.filePath("thumb.jpg");
+        ThumbnailGrabber grabber;
+        QCOMPARE(grabber.grab(in, out, 0.5), false);
+        QVERIFY(! QFile::exists(out));
+    }
+
+    // Seek absolute past the end of the clip → libmpv may emit END_FILE
+    // during the seek wait.  Either path inside the seek loop is acceptable
+    // (END_FILE return-false OR PLAYBACK_RESTART success), but the test
+    // pushes the seek-loop branch where it can land the END_FILE path.
+    void grab_seekPastEnd_returnsFalseOrSilent() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        const QString in = QFINDTESTDATA("fixtures/tiny.webm");
+        if (! QFileInfo::exists(in))
+            QSKIP("fixtures/tiny.webm missing in this environment");
+        const QString out = d.filePath("seek_past_end.jpg");
+
+        ThumbnailGrabber grabber;
+        // tiny.webm is ~2s; ask for 100s. libmpv either clamps or emits
+        // END_FILE — both end in grab() returning a boolean we don't crash on.
+        const bool ok = grabber.grab(in, out, /*atSeconds=*/100.0);
+        // We don't strictly require a particular return value: some libmpv
+        // builds clamp the seek and capture the last frame (returning true);
+        // others emit END_FILE and return false.  We only verify no crash
+        // and consistency between the bool result and the file presence.
+        if (ok) {
+            QVERIFY(QFile::exists(out));
+            QVERIFY(QFileInfo(out).size() > 0);
+        }
+        // ok==false: file may or may not have been written depending on the
+        // libmpv version; no further assertion.
+    }
+
     void generateThumbnail_emitsThumbnailReady() {
         QTemporaryDir d;
         const QString in  = QFINDTESTDATA("fixtures/tiny.webm");

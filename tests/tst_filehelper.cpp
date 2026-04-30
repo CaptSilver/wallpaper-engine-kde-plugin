@@ -291,6 +291,80 @@ private slots:
         QFile::remove(path);
     }
 
+    void config_readUnopenable_returnsEmpty() {
+        // file.exists() returns true but file.open(ReadOnly) fails — covers
+        // the qWarning + return path in readWallpaperConfig (lines 200-203).
+        // chmod 000 makes the file un-openable for the current user (when
+        // not running as root, which is the test env).
+        FileHelper    helper;
+        const QString id = "test_unread";
+        const QString path =
+            QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
+            "/wekde/wallpaper/" + id + ".json";
+        QDir().mkpath(QFileInfo(path).absolutePath());
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(R"({"key": "value"})");
+        f.close();
+        // Strip read perms.  On most filesystems this prevents open() unless
+        // we're root — running as root is uncommon for `make test` so the
+        // branch is exercised; if root for some reason, fall through and
+        // skip rather than fail.
+        QVERIFY(QFile::setPermissions(path, QFile::Permissions()));
+
+        if (QFile(path).open(QIODevice::ReadOnly)) {
+            // Running as root or filesystem ignores mode bits — restore and
+            // skip rather than asserting a coverage path we can't reach.
+            QFile::setPermissions(path, QFile::ReadUser | QFile::WriteUser);
+            QFile::remove(path);
+            QSKIP("filesystem permits read regardless of mode (likely running as root)");
+        }
+
+        QVariantMap got = helper.readWallpaperConfig(id);
+        QVERIFY(got.isEmpty());
+
+        // Restore so QFile::remove succeeds.
+        QFile::setPermissions(path, QFile::ReadUser | QFile::WriteUser);
+        QFile::remove(path);
+    }
+
+    void config_writeUnopenable_silentlyFails() {
+        // file.open(WriteOnly) fails — covers the qWarning + early return in
+        // writeWallpaperConfig (lines 227-229).  Make the wallpaper config
+        // dir read-only so the inner QFile open() returns false.
+        FileHelper    helper;
+        const QString cfgDir =
+            QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
+            "/wekde/wallpaper";
+        QDir().mkpath(cfgDir);
+        const QString id   = "test_unwritable";
+        const QString path = cfgDir + "/" + id + ".json";
+        QFile::remove(path);
+
+        // Lock the directory (no write/exec for owner) so the inner
+        // QFile::open(WriteOnly) cannot create the file.
+        const QFile::Permissions origPerms = QFile(cfgDir).permissions();
+        QVERIFY(QFile::setPermissions(cfgDir, QFile::ReadOwner | QFile::ReadUser));
+
+        // Sanity-check the env actually disallowed writes (otherwise SKIP).
+        {
+            QFile probe(path);
+            if (probe.open(QIODevice::WriteOnly)) {
+                probe.close();
+                QFile::remove(path);
+                QFile::setPermissions(cfgDir, origPerms);
+                QSKIP("filesystem permits write regardless of mode (likely running as root)");
+            }
+        }
+
+        // Now drive writeWallpaperConfig: should hit the qWarning + return.
+        helper.writeWallpaperConfig(id, { { "x", 1 } });
+        QVERIFY(! QFile::exists(path));
+
+        // Restore permissions so cleanupTestCase can remove the dir.
+        QFile::setPermissions(cfgDir, origPerms);
+    }
+
     void config_writeAndRead_roundTrip() {
         FileHelper    helper;
         const QString id = "test_roundtrip";
@@ -372,14 +446,33 @@ private slots:
 
     // ── qwebChannelSource ────────────────────────────────────────────────────
     void qwebChannelSource_returnsStringOrEmpty() {
-        // In test env the :/qtwebchannel/qwebchannel.js Qt resource may not
-        // be registered. Either path is fine — just verify it doesn't crash
-        // and returns a QString.  When the resource is present, the returned
-        // text starts with "/**" or "//" (standard JS source comments).
+        // The bundled :/qtwebchannel/qwebchannel.js resource is compiled into
+        // the test binary via tests/CMakeLists.txt → exercises the happy
+        // path of qwebChannelSource (file open + readAll → fromUtf8).  If a
+        // future build drops the qrc this test will catch it via the
+        // non-empty assertion below.
         FileHelper helper;
         QString    out = helper.qwebChannelSource();
-        // Exercising the method is the coverage goal; content is not asserted.
-        Q_UNUSED(out);
+        QVERIFY2(! out.isEmpty(),
+                 "qwebchannel.js Qt resource missing — line 57 happy path won't be covered");
+        // Standard qwebchannel.js opens with a license / module comment.
+        QVERIFY(out.contains("QWebChannel"));
+    }
+
+    void qwebChannelSource_missingResource_returnsEmpty() {
+        // Unregister the qrc to drive the qWarning + return-empty branch
+        // (lines 54-56 of FileHelper.cpp).  Re-register at end so subsequent
+        // tests still see the resource.  AUTORCC exposes a
+        // qCleanupResources_<basename>() / qInitResources_<basename>() pair.
+        Q_CLEANUP_RESOURCE(qwebchannel);
+
+        FileHelper helper;
+        QString    out = helper.qwebChannelSource();
+        QVERIFY(out.isEmpty());
+
+        Q_INIT_RESOURCE(qwebchannel);
+        // Sanity: re-init restores the resource for downstream tests.
+        QVERIFY(! helper.qwebChannelSource().isEmpty());
     }
 
     // ── patchedHtml ──────────────────────────────────────────────────────────

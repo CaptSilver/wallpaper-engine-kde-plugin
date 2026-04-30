@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Pre-push hook: runs scripts/preflight.sh.
+# Skip on a single push with: git push --no-verify
+# Disable entirely with:       git config --unset core.hooksPath
+
+exec "$(git rev-parse --show-toplevel)/scripts/preflight.sh"

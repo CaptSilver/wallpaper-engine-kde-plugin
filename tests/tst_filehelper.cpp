@@ -342,8 +342,17 @@ private slots:
         QFile::remove(path);
 
         // Lock the directory (no write/exec for owner) so the inner
-        // QFile::open(WriteOnly) cannot create the file.
+        // QFile::open(WriteOnly) cannot create the file.  RAII guard
+        // restores permissions even if a QVERIFY fails — without this,
+        // the dir stays at 000 and every subsequent config_* test fails
+        // with "FileHelper: Cannot write config".
         const QFile::Permissions origPerms = QFile(cfgDir).permissions();
+        struct PermsGuard {
+            QString path;
+            QFile::Permissions perms;
+            bool restored { false };
+            ~PermsGuard() { if (! restored) QFile::setPermissions(path, perms); }
+        } guard { cfgDir, origPerms, false };
         QVERIFY(QFile::setPermissions(cfgDir, QFile::ReadOwner | QFile::ReadUser));
 
         // Sanity-check the env actually disallowed writes (otherwise SKIP).
@@ -352,7 +361,6 @@ private slots:
             if (probe.open(QIODevice::WriteOnly)) {
                 probe.close();
                 QFile::remove(path);
-                QFile::setPermissions(cfgDir, origPerms);
                 QSKIP("filesystem permits write regardless of mode (likely running as root)");
             }
         }
@@ -362,6 +370,7 @@ private slots:
         QVERIFY(! QFile::exists(path));
 
         // Restore permissions so cleanupTestCase can remove the dir.
+        guard.restored = true;
         QFile::setPermissions(cfgDir, origPerms);
     }
 

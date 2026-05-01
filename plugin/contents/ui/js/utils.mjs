@@ -87,3 +87,27 @@ export function prettyBytes(number, maxFrac=0) {
     return `${prefix}${num_str} ${unit}`;
 }
 
+// Map a Wallpaper Engine file-property `fileType` value to a Qt FileDialog
+// `nameFilters` array.  WE uses small lowercase tokens ("video", "image",
+// "sound"); unknown / missing values fall through to all-files so the user
+// is never blocked from picking arbitrary content.  Returned filters are
+// permissive ("All files (*)" always present) since WE wallpapers often
+// accept formats outside the obvious extension list (e.g. .mov for video).
+export function fileTypeNameFilters(fileType) {
+    const ft = (typeof fileType === 'string') ? fileType.toLowerCase() : '';
+    switch (ft) {
+        case 'video':
+            return ['Video files (*.webm *.mp4 *.mkv *.avi *.mov *.m4v)',
+                    'All files (*)'];
+        case 'image':
+            return ['Image files (*.png *.jpg *.jpeg *.gif *.bmp *.webp *.tga)',
+                    'All files (*)'];
+        case 'sound':
+        case 'audio':
+            return ['Audio files (*.ogg *.mp3 *.wav *.flac *.opus *.m4a)',
+                    'All files (*)'];
+        default:
+            return ['All files (*)'];
+    }
+}
+

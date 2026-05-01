@@ -9,6 +9,7 @@ import {
     strToIntArray,
     intArrayToStr,
     prettyBytes,
+    fileTypeNameFilters,
 } from '../../plugin/contents/ui/js/utils.mjs';
 
 test('parseJson: valid JSON shapes', () => {
@@ -84,4 +85,44 @@ test('prettyBytes: maxFrac controls fractional digits', () => {
 test('prettyBytes: negative numbers carry the sign', () => {
     assert.match(prettyBytes(-1024), /^-/);
     assert.equal(prettyBytes(-1024), '-1 kB');
+});
+
+// ── fileTypeNameFilters: WE file-property fileType → Qt FileDialog filters
+test('fileTypeNameFilters: video maps to video extensions', () => {
+    const f = fileTypeNameFilters('video');
+    assert.equal(f.length, 2);
+    assert.match(f[0], /Video files/);
+    assert.match(f[0], /\*\.webm/);
+    assert.match(f[0], /\*\.mp4/);
+    assert.equal(f[f.length - 1], 'All files (*)');
+});
+
+test('fileTypeNameFilters: image maps to image extensions', () => {
+    const f = fileTypeNameFilters('image');
+    assert.match(f[0], /Image files/);
+    assert.match(f[0], /\*\.png/);
+    assert.match(f[0], /\*\.jpg/);
+    assert.equal(f[f.length - 1], 'All files (*)');
+});
+
+test('fileTypeNameFilters: sound and audio both map to audio extensions', () => {
+    const fSound = fileTypeNameFilters('sound');
+    const fAudio = fileTypeNameFilters('audio');
+    assert.deepEqual(fSound, fAudio);
+    assert.match(fSound[0], /Audio files/);
+    assert.match(fSound[0], /\*\.ogg/);
+});
+
+test('fileTypeNameFilters: unknown / missing → all-files only', () => {
+    assert.deepEqual(fileTypeNameFilters(''), ['All files (*)']);
+    assert.deepEqual(fileTypeNameFilters(undefined), ['All files (*)']);
+    assert.deepEqual(fileTypeNameFilters(null), ['All files (*)']);
+    assert.deepEqual(fileTypeNameFilters('xml'), ['All files (*)']);
+    assert.deepEqual(fileTypeNameFilters(42), ['All files (*)']);
+});
+
+test('fileTypeNameFilters: case-insensitive match', () => {
+    assert.match(fileTypeNameFilters('VIDEO')[0], /Video files/);
+    assert.match(fileTypeNameFilters('Image')[0], /Image files/);
+    assert.match(fileTypeNameFilters('Sound')[0], /Audio files/);
 });

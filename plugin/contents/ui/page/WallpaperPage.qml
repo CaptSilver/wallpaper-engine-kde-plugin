@@ -666,6 +666,81 @@ RowLayout {
                     id: user_prop_color
                     ColorButton { }
                 }
+                // String-valued user property — wallpapers read it as
+                // properties.<key>.value with type "textinput".
+                Component {
+                    id: user_prop_textinput
+                    TextField {
+                        property string def_val: ""
+                        property string res_val: text
+                        function finish() { text = def_val; }
+                        // Keep the picker compact — most labels are wide
+                        // enough that we don't need a sprawling field.
+                        Layout.preferredWidth: 220
+                    }
+                }
+                // File picker — wallpapers receive the absolute path string
+                // (matching WE Windows behaviour, including the leading
+                // "file:///" prefix the wallpaper itself prepends if it
+                // wants a URL).  `fileType` (set by onLoaded) drives the
+                // FileDialog name-filters; unknown/missing falls back to
+                // all-files so users are never blocked.
+                Component {
+                    id: user_prop_file
+                    Row {
+                        spacing: 4
+                        property string def_val: ""
+                        property string fileType: ""
+                        property string res_val: pathField.text
+                        function finish() {
+                            pathField.text = def_val;
+                            fileDlg.nameFilters = Utils.fileTypeNameFilters(fileType);
+                        }
+                        TextField {
+                            id: pathField
+                            width: 220
+                            placeholderText: "(no file selected)"
+                        }
+                        Button {
+                            text: "Browse…"
+                            onClicked: fileDlg.open()
+                        }
+                        FileDialog {
+                            id: fileDlg
+                            onAccepted: {
+                                pathField.text = Common.urlNative(fileDlg.selectedFile.toString());
+                            }
+                        }
+                    }
+                }
+                // Directory picker — same shape as user_prop_file but with
+                // a FolderDialog so wallpapers can use it for slideshow
+                // roots, etc.
+                Component {
+                    id: user_prop_directory
+                    Row {
+                        spacing: 4
+                        property string def_val: ""
+                        property string res_val: pathField.text
+                        function finish() { pathField.text = def_val; }
+                        TextField {
+                            id: pathField
+                            width: 220
+                            placeholderText: "(no folder selected)"
+                        }
+                        Button {
+                            text: "Browse…"
+                            onClicked: dirDlg.open()
+                        }
+                        FolderDialog {
+                            id: dirDlg
+                            onAccepted: {
+                                pathField.text = Utils.trimCharR(
+                                    Common.urlNative(dirDlg.selectedFolder.toString()), '/');
+                            }
+                        }
+                    }
+                }
 
                 OptionGroup {
                     id: user_props_group
@@ -735,7 +810,8 @@ RowLayout {
                                             value: prop.value,
                                             min: prop.min,
                                             max: prop.max,
-                                            options: prop.options
+                                            options: prop.options,
+                                            fileType: prop.fileType  // for file picker name filters
                                         });
                                     }
                                     userProperties = arr;
@@ -835,6 +911,12 @@ RowLayout {
                                             return user_prop_color;
                                         case 'combo':
                                             return right_opt_combox;
+                                        case 'textinput':
+                                            return user_prop_textinput;
+                                        case 'file':
+                                            return user_prop_file;
+                                        case 'directory':
+                                            return user_prop_directory;
                                         default:
                                             return null;
                                     }
@@ -901,6 +983,16 @@ RowLayout {
                                                 this.item.model = comboModel;
                                                 this.item.def_val = defVal || 0;
                                             }
+                                            break;
+                                        case 'textinput':
+                                        case 'directory':
+                                            this.item.def_val = (typeof defVal === 'string') ? defVal : "";
+                                            break;
+                                        case 'file':
+                                            this.item.def_val = (typeof defVal === 'string') ? defVal : "";
+                                            // WE properties carry .fileType (video/image/sound);
+                                            // missing → empty → all-files filter
+                                            this.item.fileType = modelData.fileType || "";
                                             break;
                                     }
 

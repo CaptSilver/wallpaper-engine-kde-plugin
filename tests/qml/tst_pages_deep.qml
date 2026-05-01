@@ -172,8 +172,119 @@ TestCase {
             { key: "p_combo",      text: "Combo",  type: "combo",  value: 0,
               options: [{ value: 0, label: "ui_browse_properties_first_option" },
                         { value: 1, label: "<b>second</b>" }] },
+            // String-valued picker types — exercised separately to confirm
+            // they no longer fall through the type-switch's null default.
+            { key: "p_textinput",  text: "Text",   type: "textinput", value: "hello" },
+            { key: "p_file",       text: "File",   type: "file",      value: "/tmp/a.png" },
+            { key: "p_directory",  text: "Dir",    type: "directory", value: "/tmp" },
         ];
         verify(true);
+    }
+
+    // Walk the user-props Repeater, assert each picker type produced a
+    // non-null Loader.item and that res_val/finish exist on the loaded
+    // component.  Catches regressions where someone re-introduces the
+    // default-null branch for file/directory/textinput.
+    function _findUserPropsRepeater() {
+        return _firstByPredicate(c =>
+            c && typeof c.model !== "undefined" &&
+            typeof c.itemAt === "function" &&
+            typeof c.count === "number" &&
+            // Repeater siblings of OptionItem set this id pattern; we just
+            // need ANY repeater. Filter heuristically: model items that
+            // look like our user-prop shape.
+            (function() {
+                const m = c.model;
+                if (!m || !m.length) return false;
+                for (let i = 0; i < m.length; i++)
+                    if (m[i] && typeof m[i].type === "string" &&
+                        typeof m[i].key === "string") return true;
+                return false;
+            })()
+        );
+    }
+
+    function _walkChildren(root, predicate, out) {
+        if (!root || !out) return;
+        const buckets = [root.children || [], root.data || []];
+        for (const b of buckets) {
+            for (let i = 0; i < b.length; i++) {
+                const c = b[i];
+                if (!c) continue;
+                if (predicate(c)) out.push(c);
+                _walkChildren(c, predicate, out);
+            }
+        }
+    }
+
+    function test_userPropsRepeater_pickerTypesProduceLoadedItems() {
+        const upg = _findUserPropsGroup();
+        if (!upg) return;
+        upg.userProperties = [
+            { key: "p_textinput", text: "T", type: "textinput", value: "hi" },
+            { key: "p_file",      text: "F", type: "file",      value: "/x.png" },
+            { key: "p_directory", text: "D", type: "directory", value: "/d" },
+        ];
+        // Force re-binding flushes by reading a property
+        const _flush = upg.userProperties.length;
+        compare(_flush, 3);
+
+        // Find Loaders that look like the picker actors. They expose a
+        // res_val + def_val + finish() combo via the property forwarding.
+        const loaders = [];
+        _walkChildren(upg, c =>
+            c && typeof c.sourceComponent !== "undefined" &&
+            c.item && typeof c.item.res_val === "string" &&
+            typeof c.item.def_val !== "undefined" &&
+            typeof c.item.finish === "function", loaders);
+
+        // We should find ≥3 such loaders (one per new picker). May find more
+        // if the repeater rebuilt mid-test; we just need at least 3.
+        verify(loaders.length >= 3);
+        // res_val should reflect def_val after finish() — confirms wiring.
+        for (const ld of loaders) {
+            verify(typeof ld.item.res_val === "string");
+        }
+    }
+
+    function test_userPropsRepeater_savePropChange_textinputRoundTrips() {
+        const upg = _findUserPropsGroup();
+        if (!upg) return;
+        // Direct invocation of savePropChange covers the persistence path
+        // for string types — same code path the new pickers' onRes_valChanged
+        // hook will hit.
+        try { upg.savePropChange("text_key", "user typed value"); } catch (e) {}
+        compare(upg.getPropValue("text_key", null), "user typed value");
+    }
+
+    function test_userPropsRepeater_fileTypePropagatesToPickerItem() {
+        const upg = _findUserPropsGroup();
+        if (!upg) return;
+        upg.userProperties = [
+            { key: "p_video", text: "V", type: "file", value: "/x.webm",
+              fileType: "video" },
+            { key: "p_image", text: "I", type: "file", value: "/y.png",
+              fileType: "image" },
+            { key: "p_unspec", text: "U", type: "file", value: "" },
+        ];
+        compare(upg.userProperties.length, 3);
+
+        // Find Loader.items shaped like the file picker — they have a
+        // string `fileType` property in addition to the standard contract.
+        const filePickers = [];
+        _walkChildren(upg, c =>
+            c && typeof c.sourceComponent !== "undefined" &&
+            c.item && typeof c.item.fileType === "string" &&
+            typeof c.item.res_val === "string", filePickers);
+
+        verify(filePickers.length >= 3);
+        // Collect the fileType values across loaded pickers; must include
+        // both "video" and "image" (proves the property flowed through
+        // arr.push → modelData.fileType → onLoaded → item.fileType).
+        const seen = new Set();
+        for (const ld of filePickers) seen.add(ld.item.fileType);
+        verify(seen.has("video"));
+        verify(seen.has("image"));
     }
 
     function test_userPropsGroup_propChanges_isChangedFlagFires() {

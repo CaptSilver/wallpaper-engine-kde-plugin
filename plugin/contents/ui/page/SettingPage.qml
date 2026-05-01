@@ -407,6 +407,11 @@ Flickable {
                 text_color: Kirigami.Theme.textColor
                 actor: ComboBox {
                     id: cb_postProcessing
+                    // Disabled until the HDR mip-chain bloom audit lands —
+                    // the "Ultra" path renders too dark, and rather than
+                    // expose only some of the choices we lock the whole
+                    // selector to "Scene default" for now.
+                    enabled: false
                     model: [
                         { text: "Scene default", value: "" },
                         { text: "Low (LDR)", value: "low" },
@@ -417,19 +422,19 @@ Flickable {
                     textRole: "text"
                     onActivated: cfg_PostProcessing = model[currentIndex].value
                     Component.onCompleted: {
-                        for (var i = 0; i < model.length; ++i) {
-                            if (model[i].value === cfg_PostProcessing) {
-                                currentIndex = i;
-                                break;
-                            }
-                        }
+                        // Force "Scene default" while the dropdown is disabled
+                        // — anyone who previously saved another option (e.g.
+                        // "ultra") gets migrated back so they aren't stuck
+                        // looking at a value they can no longer change.
+                        cfg_PostProcessing = "";
+                        currentIndex = 0;
                     }
                 }
                 contentBottom: ColumnLayout {
                     Text {
                         Layout.fillWidth: true
                         color: Kirigami.Theme.disabledTextColor
-                        text: "Override the bloom pipeline scenes use. 'Ultra' enables the HDR 5-level mip-chain pipeline; effective when the scene also declares hdr+bloom (otherwise the legacy 4-pass LDR path runs). Forces a scene reload."
+                        text: "Override the bloom pipeline scenes use. Disabled while the HDR 'Ultra' path is being audited (output renders too dark — needs RenderDoc work). Forces a scene reload when re-enabled."
                         wrapMode: Text.Wrap
                     }
                 }

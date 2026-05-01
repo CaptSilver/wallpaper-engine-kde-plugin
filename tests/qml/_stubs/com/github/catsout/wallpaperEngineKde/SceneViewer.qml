@@ -17,6 +17,7 @@ Item {
     property bool   stats:          false
     property bool   mouseInput:     true
     property bool   hdrOutput:      false
+    property string postprocessingOverride: ""  // wallpaper-default when empty
     property bool   systemAudioCapture: false
 
     signal firstFrame()

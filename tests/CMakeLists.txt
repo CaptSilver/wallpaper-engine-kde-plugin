@@ -2,7 +2,7 @@
 # Or included from root with: -DBUILD_TESTS=ON
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     cmake_minimum_required(VERSION 3.16)
-    project(WallpaperEngineKdeTests CXX)
+    project(WallpaperEngineKdeTests C CXX)
     set(CMAKE_CXX_STANDARD 20)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
     set(CMAKE_CXX_EXTENSIONS OFF)
@@ -11,6 +11,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 else()
     set(WEKDE_SRC_DIR "${CMAKE_SOURCE_DIR}/src")
 endif()
+# tst_webaudio includes kissfft .c sources; ensure the C compiler is enabled
+# even when this CMakeLists is consumed from a parent project that defaults
+# to CXX-only.
+enable_language(C)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Test)
 set(CMAKE_AUTOMOC ON)
@@ -180,6 +184,53 @@ if(Qt6Gui_FOUND AND Qt6Quick_FOUND AND PkgConfig_FOUND)
         message(STATUS "libmpv not found — skipping MpvBackend tests")
     endif()
 endif()
+
+# ── WebAudioBridge tests ──────────────────────────────────────────────────────
+# Bridge between the scene-side AudioAnalyzer and web wallpapers (forwards
+# 64L+64R FFT bands via QWebChannel).  We compile AudioAnalyzer and its
+# kissfft sources into the test binary; AudioCapture is stubbed inside
+# tst_webaudio.cpp so we don't pull in miniaudio / libpulse just to check
+# the encoder + signal contract.
+set(WEKDE_AUDIO_DIR    "${WEKDE_SRC_DIR}/backend_scene/src/Audio")
+set(WEKDE_UTILS_DIR    "${WEKDE_SRC_DIR}/backend_scene/src/Utils")
+set(WEKDE_KISSFFT_DIR  "${WEKDE_SRC_DIR}/backend_scene/third_party/kissfft")
+add_executable(tst_webaudio
+    tst_webaudio.cpp
+    ${WEKDE_SRC_DIR}/WebAudioBridge.cpp
+    ${WEKDE_AUDIO_DIR}/AudioAnalyzer.cpp
+    ${WEKDE_UTILS_DIR}/Logging.cpp
+    ${WEKDE_UTILS_DIR}/SceneProfiler.cpp
+    ${WEKDE_UTILS_DIR}/Sha.cpp           # genSha1, used by Logging.cpp
+    ${WEKDE_KISSFFT_DIR}/kiss_fft.c
+    ${WEKDE_KISSFFT_DIR}/kiss_fftr.c
+)
+target_include_directories(tst_webaudio PRIVATE
+    ${WEKDE_SRC_DIR}
+    ${WEKDE_AUDIO_DIR}/include
+    ${WEKDE_UTILS_DIR}/include
+    ${WEKDE_UTILS_DIR}/include/Utils  # internal #includes drop the Utils/ prefix
+    ${WEKDE_KISSFFT_DIR}
+    ${WEKDE_SRC_DIR}/backend_scene/third_party  # for vog/sha1.hpp
+)
+target_link_libraries(tst_webaudio PRIVATE Qt6::Core Qt6::Test)
+# Suppress kissfft C-source warnings (matches what wpAudio's CMakeLists does).
+set_source_files_properties(
+    ${WEKDE_KISSFFT_DIR}/kiss_fft.c
+    ${WEKDE_KISSFFT_DIR}/kiss_fftr.c
+    PROPERTIES COMPILE_OPTIONS "-w"
+)
+if(MUTATION_TESTING)
+    target_compile_options(tst_webaudio PRIVATE
+        -fpass-plugin=${MULL_PLUGIN_PATH}
+        -g -grecord-command-line)
+endif()
+if(COVERAGE)
+    target_compile_options(tst_webaudio PRIVATE ${_cov_compile_flags})
+    target_link_options(tst_webaudio PRIVATE ${_cov_link_flags})
+endif()
+add_test(NAME tst_webaudio COMMAND tst_webaudio -v2)
+set_tests_properties(tst_webaudio PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
 # ── QML tests (qmltestrunner) ─────────────────────────────────────────────────
 # Prefer Qt6-specific binary names. The bare `qmltestrunner` on some Debian/

@@ -8,6 +8,7 @@
 #include "MprisMonitor.hpp"
 #include "PluginInfo.hpp"
 #include "FileHelper.hpp"
+#include "WebAudioBridge.hpp"
 
 constexpr std::array<uint, 2> WPVer { 1, 2 };
 
@@ -38,6 +39,7 @@ public:
         qmlRegisterType<wekde::TTYSwitchMonitor>(uri, WPVer[0], WPVer[1], "TTYSwitchMonitor");
         qmlRegisterType<wekde::MprisMonitor>(uri, WPVer[0], WPVer[1], "MprisMonitor");
         qmlRegisterType<wekde::FileHelper>(uri, WPVer[0], WPVer[1], "FileHelper");
+        qmlRegisterType<wekde::WebAudioBridge>(uri, WPVer[0], WPVer[1], "WebAudioBridge");
     }
 };
 

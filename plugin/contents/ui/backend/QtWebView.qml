@@ -1,6 +1,7 @@
 import QtQuick 2.5
 import QtWebEngine 1.10
 import QtWebChannel 1.10
+import com.github.catsout.wallpaperEngineKde 1.2
 import ".."
 import "../js/utils.mjs" as Utils
 
@@ -79,6 +80,21 @@ Item {
         visible: true
         enabled: false
     }
+
+    // Forwards system audio FFT spectrum into the wallpaper through
+    // QWebChannel.  Active only while the global "System Audio Capture"
+    // setting is on; audio-reactive wallpapers (Perfect Wallpaper, Colorful
+    // Fluid, Module Visualizer …) register listeners via
+    // wallpaperRegisterAudioListener() and receive a 128-element array
+    // (64 left bands + 64 right bands).
+    WebAudioBridge {
+        id: audioBridge
+        enabled: background.systemAudioCapture
+        onAudioBuffer: function(samples) {
+            if (webobj.loaded) webobj.sigAudio(samples);
+        }
+    }
+
     QtObject {
         id: webobj
         WebChannel.id: "wpeQml"

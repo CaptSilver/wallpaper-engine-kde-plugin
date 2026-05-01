@@ -19,6 +19,7 @@ add_library(${PROJECT_NAME}
 	MprisMonitor.cpp
 	PluginInfo.cpp
 	FileHelper.cpp
+	WebAudioBridge.cpp
 	qmldir
 	qwebchannel.qrc
 )
@@ -29,6 +30,7 @@ target_link_libraries(${PROJECT_NAME}
 	Qt::Qml
 	mpvbackend
 	wescene-renderer-qml
+	wpAudio
 	Qt::Core
 	Qt::DBus
 	Qt::Network

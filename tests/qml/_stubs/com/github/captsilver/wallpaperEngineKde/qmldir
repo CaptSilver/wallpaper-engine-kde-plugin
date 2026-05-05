@@ -7,4 +7,5 @@ TTYSwitchMonitor 1.2 TTYSwitchMonitor.qml
 SceneViewer 1.2 SceneViewer.qml
 Mpv 1.2 Mpv.qml
 WebAudioBridge 1.2 WebAudioBridge.qml
+PlaylistManager 1.2 PlaylistManager.qml
 singleton MigrationHelper 1.2 MigrationHelperStub.qml

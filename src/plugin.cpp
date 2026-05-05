@@ -10,6 +10,9 @@
 #include "FileHelper.hpp"
 #include "WebAudioBridge.hpp"
 #include "MigrationHelper.h"
+#include "PlaylistManager.hpp"
+#include "PlaylistsModel.hpp"
+#include "PlaylistItemsModel.hpp"
 
 constexpr std::array<uint, 2> WPVer { 1, 2 };
 
@@ -41,6 +44,13 @@ public:
         qmlRegisterType<wekde::MprisMonitor>(uri, WPVer[0], WPVer[1], "MprisMonitor");
         qmlRegisterType<wekde::FileHelper>(uri, WPVer[0], WPVer[1], "FileHelper");
         qmlRegisterType<wekde::WebAudioBridge>(uri, WPVer[0], WPVer[1], "WebAudioBridge");
+        qmlRegisterType<wekde::PlaylistManager>(uri, WPVer[0], WPVer[1], "PlaylistManager");
+        qmlRegisterUncreatableType<wekde::PlaylistsModel>(
+            uri, WPVer[0], WPVer[1], "PlaylistsModel",
+            "PlaylistsModel is owned by PlaylistManager");
+        qmlRegisterUncreatableType<wekde::PlaylistItemsModel>(
+            uri, WPVer[0], WPVer[1], "PlaylistItemsModel",
+            "PlaylistItemsModel is created via PlaylistManager.itemsModel()");
         qmlRegisterSingletonType<wekde::MigrationHelper>(
             uri, WPVer[0], WPVer[1], "MigrationHelper", [](QQmlEngine*, QJSEngine*) -> QObject* {
                 return new wekde::MigrationHelper();

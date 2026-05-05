@@ -188,7 +188,9 @@ Flickable {
                     Text {
                         Layout.fillWidth: true
                         color: Kirigami.Theme.disabledTextColor
-                        text: "Randomize wallpapers filtered in the 'Wallpapers' page"
+                        text: "Equivalent to activating the built-in 'Filtered Library' playlist. "
+                            + "Cycles through wallpapers passing the filter chips on the Wallpapers page."
+                        wrapMode: Text.Wrap
                     }
                     RowLayout {
                         Layout.fillWidth: true

@@ -271,17 +271,14 @@ Rectangle {
             wallpaper.configuration.WallpaperSource = Common.packWallpaperSource(model);
         }
     }
-    Timer {
-        id: randomizeTimer
-        running: background.randomizeWallpaper
-        interval: background.switchTimer * 1000 * 60
-        repeat: true
-        onTriggered: {
-            if(!(background.noRandomWhilePaused && !background.ok)) {
-                const i = Math.round(Math.random() * wpListModel.model.count);
-                wpListModel.changeWallpaper(i);
-            }
-        }
+    PlaylistController {
+        id: playlistController
+        wpListModel: wpListModel
+        videoListModel: null   // main.qml has no videoListModel — only the config dialog does
+        wallpaperConfig: wallpaper.configuration
+        common: Common
+        noRandomWhilePaused: background.noRandomWhilePaused
+        desktopOk: background.ok
     }
 
     // lauch pause time to avoid freezing
@@ -432,7 +429,6 @@ Rectangle {
         background.sourceChanged.connect(applySource);
 
         lauchPauseTimer.start();
-        randomizeTimer.start();
     }
 }
 }

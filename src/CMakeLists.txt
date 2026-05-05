@@ -21,6 +21,10 @@ add_library(${PROJECT_NAME}
 	FileHelper.cpp
 	WebAudioBridge.cpp
 	MigrationHelper.cpp
+	Playlist.cpp
+	PlaylistManager.cpp
+	PlaylistsModel.cpp
+	PlaylistItemsModel.cpp
 	qmldir
 	qwebchannel.qrc
 )

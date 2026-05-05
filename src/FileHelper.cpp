@@ -324,4 +324,35 @@ QVariantList FileHelper::scanVideoFolder(const QString& path) {
     return out;
 }
 
+bool FileHelper::atomicWriteJson(const QString& path, const QJsonDocument& doc) {
+    const QString tmp = path + ".tmp";
+    QFile         f(tmp);
+    if (! f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        qWarning() << "FileHelper::atomicWriteJson: cannot open tmp for write:" << tmp;
+        return false;
+    }
+    const QByteArray bytes = doc.toJson(QJsonDocument::Indented);
+    if (f.write(bytes) != bytes.size()) {
+        qWarning() << "FileHelper::atomicWriteJson: short write to" << tmp;
+        f.close();
+        QFile::remove(tmp);
+        return false;
+    }
+    if (! f.flush()) {
+        qWarning() << "FileHelper::atomicWriteJson: flush failed on" << tmp;
+        f.close();
+        QFile::remove(tmp);
+        return false;
+    }
+    f.close();
+    // QFile::rename will not overwrite on POSIX; remove target first.
+    if (QFile::exists(path)) QFile::remove(path);
+    if (! QFile::rename(tmp, path)) {
+        qWarning() << "FileHelper::atomicWriteJson: rename failed" << tmp << "->" << path;
+        QFile::remove(tmp);
+        return false;
+    }
+    return true;
+}
+
 } // namespace wekde

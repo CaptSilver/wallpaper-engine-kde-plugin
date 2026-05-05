@@ -4,3 +4,4 @@ OptionGroup OptionGroup.qml
 DoubleSpinBox DoubleSpinBox.qml
 ColorButton ColorButton.qml
 WallpaperGrid WallpaperGrid.qml
+AddToPlaylistMenu AddToPlaylistMenu.qml

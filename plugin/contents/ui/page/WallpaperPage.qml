@@ -19,10 +19,21 @@ import org.kde.kirigami 2.6 as Kirigami
 import org.kde.kquickcontrolsaddons 2.0
 
 RowLayout {
+    id: wallpaperPageRoot
     Layout.fillWidth: true
 
     // Наследуем тему от родителя
     Kirigami.Theme.inherit: true
+
+    // Set by config.qml — used by AddToPlaylistMenu and the active-playlist banner.
+    property var playlistManager: null
+    property string cfg_ActivePlaylistId: ""
+    property int    cfg_CurrentItemIndex: 0
+
+    AddToPlaylistMenu {
+        id: addToPlaylistMenu
+        manager: wallpaperPageRoot.playlistManager
+    }
 
     function saveConfig() {
         right_opts.save_changes();
@@ -144,8 +155,44 @@ RowLayout {
                             icon.name: "view-refresh-symbolic"
                             text: 'Refresh'
                             onTriggered: wpListModel.refresh()
+                        },
+                        Kirigami.Action {
+                            icon.name: "list-add-symbolic"
+                            text: 'Save filter as playlist…'
+                            // Enable when filtered list is non-empty AND narrows
+                            // the full library (otherwise duplicates "select all").
+                            enabled: wallpaperPageRoot.playlistManager
+                                  && wpListModel.model.count > 0
+                                  && wpListModel.model.count < wpListModel.countNoFilter
+                            onTriggered: saveFilterPrompt.open()
                         }
                     ]
+                }
+            }
+
+            // Active-playlist banner
+            Rectangle {
+                Layout.fillWidth: true
+                height: 32
+                visible: wallpaperPageRoot.cfg_ActivePlaylistId !== ""
+                color: Kirigami.Theme.activeBackgroundColor
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 4
+                    Label {
+                        Layout.fillWidth: true
+                        verticalAlignment: Text.AlignVCenter
+                        text: wallpaperPageRoot.cfg_ActivePlaylistId === "__filtered_library__"
+                            ? "Filtered Library is active · Item " + (wallpaperPageRoot.cfg_CurrentItemIndex + 1)
+                            : "Playlist is active · Item " + (wallpaperPageRoot.cfg_CurrentItemIndex + 1)
+                    }
+                    Button {
+                        text: "Stop"
+                        onClicked: {
+                            if (wallpaperPageRoot.playlistManager)
+                                wallpaperPageRoot.playlistManager.deactivate();
+                        }
+                    }
                 }
             }
 
@@ -211,6 +258,11 @@ RowLayout {
                         cfg_WallpaperSource = Common.packWallpaperSource(item);
                         cfg_WallpaperWorkShopId = item.workshopid;
                     }
+                    onItemRightClicked: (item, index, x, y) => {
+                        if (!wallpaperPageRoot.playlistManager) return;
+                        addToPlaylistMenu.item = item;
+                        addToPlaylistMenu.popup();
+                    }
                     onSaveCustomConfRequested: root.saveCustomConf()
                 }
             }
@@ -222,6 +274,30 @@ RowLayout {
                     const path = Utils.trimCharR(wpDialog.selectedFolder.toString(), '/');
                     cfg_SteamLibraryPath = path;
                     return wpListModel.refresh();
+                }
+            }
+
+            // "Save filter as playlist" prompt — snapshots every wallpaper
+            // currently in wpListModel.model into a new sequential playlist.
+            Dialog {
+                id: saveFilterPrompt
+                title: "Save filter as playlist"
+                modal: true
+                anchors.centerIn: parent
+                contentItem: TextField {
+                    id: saveFilterNameField
+                    placeholderText: "Playlist name"
+                }
+                standardButtons: Dialog.Ok | Dialog.Cancel
+                onAccepted: {
+                    if (!wallpaperPageRoot.playlistManager) return;
+                    if (saveFilterNameField.text.trim() === "") return;
+                    const id = wallpaperPageRoot.playlistManager.createPlaylist(
+                        saveFilterNameField.text.trim());
+                    const m = wpListModel.model;
+                    for (let i = 0; i < m.count; ++i)
+                        wallpaperPageRoot.playlistManager.addItem(id, m.get(i).workshopid);
+                    saveFilterNameField.text = "";
                 }
             }
         }

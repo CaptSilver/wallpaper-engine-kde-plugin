@@ -126,5 +126,13 @@
       <label>Plain video wallpapers folder</label>
       <default></default>
     </entry>
+    <entry name="ActivePlaylistId" type="String">
+      <label>Active playlist id (empty=none, __filtered_library__=built-in)</label>
+      <default></default>
+    </entry>
+    <entry name="CurrentItemIndex" type="Int">
+      <label>Cycle position within the active playlist</label>
+      <default>0</default>
+    </entry>
   </group>
 </kcfg>

@@ -24,6 +24,7 @@ KCM.GridView {
     property var    customConf: null              // {favor: Set} when showFavorites
     signal itemClicked(var item, int index)
     signal favorToggled(var item, int index)
+    signal itemRightClicked(var item, int index, real x, real y)
     signal saveCustomConfRequested()
 
     // ── Internal state preserved from original implementation ────────────────
@@ -106,6 +107,17 @@ KCM.GridView {
         onClicked: {
             view.currentIndex = index;
             root.itemClicked(model, index);
+        }
+
+        // Right-click: emit signal so the parent page can pop a context menu
+        // (e.g. AddToPlaylistMenu). Doesn't block left-click — propagates.
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.RightButton
+            propagateComposedEvents: true
+            onClicked: function(mouse) {
+                root.itemRightClicked(model, index, mouse.x, mouse.y);
+            }
         }
     }
 

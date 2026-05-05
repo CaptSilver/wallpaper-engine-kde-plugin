@@ -5,6 +5,7 @@
 #include <QVariantList>
 #include <QSet>
 #include <QMutex>
+#include <QJsonDocument>
 
 namespace wekde
 {
@@ -35,6 +36,11 @@ public:
     // coalesced — only one libmpv grab runs at a time per input.
     Q_INVOKABLE void generateThumbnail(const QString& videoPath, const QString& outPath,
                                        double atSeconds);
+
+    // Atomic JSON write: encode `doc` to UTF-8, write to <path>.tmp, flush,
+    // then rename(2) to `path`. Returns false on any failure; the temp file
+    // is removed on failure to avoid clutter.
+    bool atomicWriteJson(const QString& path, const QJsonDocument& doc);
 
 signals:
     void thumbnailReady(const QString& videoPath, const QString& outPath, bool ok);

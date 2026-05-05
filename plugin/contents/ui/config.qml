@@ -25,6 +25,8 @@ ColumnLayout {
     property string cfg_FilterStr
     property int    cfg_SortMode
     property string cfg_VideoFolderPath
+    property string cfg_ActivePlaylistId
+    property int    cfg_CurrentItemIndex
 
     property alias  cfg_Fps:                 settingPage.cfg_Fps
     property alias  cfg_Volume:              settingPage.cfg_Volume
@@ -125,6 +127,14 @@ ColumnLayout {
         readfile: pyext.readfile
     }
 
+    PlaylistController {
+        id: playlistController
+        wpListModel: wpListModel
+        videoListModel: videoPage.videoListModel
+        wallpaperConfig: root
+        common: Common
+    }
+
     Component.onDestruction: {
         if(this.pyext) this.pyext.destroy();
     }
@@ -145,6 +155,9 @@ ColumnLayout {
             text: "Videos"
         }
         PlasmaComponents.TabButton {
+            text: "Playlists"
+        }
+        PlasmaComponents.TabButton {
             text: "Settings"
         }
         PlasmaComponents.TabButton {
@@ -159,6 +172,9 @@ ColumnLayout {
 
         WallpaperPage {
             id: wallpaperPage
+            playlistManager: playlistController.manager
+            cfg_ActivePlaylistId: root.cfg_ActivePlaylistId
+            cfg_CurrentItemIndex: root.cfg_CurrentItemIndex
         }
 
         VideoPage {
@@ -167,11 +183,20 @@ ColumnLayout {
             activeWorkshopId: root.cfg_WallpaperWorkShopId
             cachePath: root.plugin_info ? (root.plugin_info.cache_path || "") : ""
             pyext: root.pyext
+            playlistManager: playlistController.manager
             onCfg_VideoFolderPathChanged: root.cfg_VideoFolderPath = videoPage.cfg_VideoFolderPath
             onCommitWallpaper: (item) => {
                 root.cfg_WallpaperWorkShopId = item.workshopid;
                 root.cfg_WallpaperSource = Common.packWallpaperSource(item);
             }
+        }
+
+        PlaylistsPage {
+            id: playlistsPage
+            manager: playlistController.manager
+            wpListModel: wpListModel
+            videoListModel: videoPage.videoListModel
+            cfg_ActivePlaylistId: root.cfg_ActivePlaylistId
         }
 
         SettingPage {

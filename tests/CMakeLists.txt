@@ -250,6 +250,29 @@ if(MUTATION_TESTING)
 endif()
 add_test(NAME tst_migrationhelper COMMAND tst_migrationhelper -v2)
 
+# ── PlaylistManager unit tests ────────────────────────────────────────────────
+add_executable(tst_playlist_manager
+    tst_playlist_manager.cpp
+    ${WEKDE_SRC_DIR}/PlaylistManager.cpp
+    ${WEKDE_SRC_DIR}/PlaylistsModel.cpp
+    ${WEKDE_SRC_DIR}/PlaylistItemsModel.cpp
+    ${WEKDE_SRC_DIR}/Playlist.cpp
+    ${WEKDE_SRC_DIR}/FileHelper.cpp
+    ${WEKDE_SRC_DIR}/qwebchannel.qrc
+)
+target_include_directories(tst_playlist_manager PRIVATE ${WEKDE_SRC_DIR})
+target_link_libraries(tst_playlist_manager PRIVATE Qt6::Core Qt6::Test)
+if(COVERAGE)
+    target_compile_options(tst_playlist_manager PRIVATE ${_cov_compile_flags})
+    target_link_options(tst_playlist_manager PRIVATE ${_cov_link_flags})
+endif()
+if(MUTATION_TESTING)
+    target_compile_options(tst_playlist_manager PRIVATE
+        -fpass-plugin=${MULL_PLUGIN_PATH}
+        -g -grecord-command-line)
+endif()
+add_test(NAME tst_playlist_manager COMMAND tst_playlist_manager -v2)
+
 # ── QML tests (qmltestrunner) ─────────────────────────────────────────────────
 # Prefer Qt6-specific binary names. The bare `qmltestrunner` on some Debian/
 # Ubuntu images is a qtchooser proxy that fails at runtime when no default Qt
@@ -363,6 +386,10 @@ if(COVERAGE)
     if(TARGET tst_migrationhelper)
         list(APPEND _cov_objs -object=$<TARGET_FILE:tst_migrationhelper>)
         list(APPEND _cov_tests tst_migrationhelper)
+    endif()
+    if(TARGET tst_playlist_manager)
+        list(APPEND _cov_objs -object=$<TARGET_FILE:tst_playlist_manager>)
+        list(APPEND _cov_tests tst_playlist_manager)
     endif()
 
     # Ignore everything outside the user-facing "main project" scope:

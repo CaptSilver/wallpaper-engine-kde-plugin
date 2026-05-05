@@ -9,6 +9,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
@@ -682,6 +684,61 @@ private slots:
         FileHelper   helper;
         QVariantList result = helper.scanVideoFolder("/tmp/wekde_nonexistent_xyz");
         QCOMPARE(result.size(), 0);
+    }
+
+    // ── atomicWriteJson ───────────────────────────────────────────────────────
+    void atomicWriteJson_writesAndIsReReadable() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        const QString path = d.path() + "/data.json";
+
+        QJsonObject obj;
+        obj["k"] = QString("v");
+        obj["n"] = 7;
+
+        FileHelper fh;
+        QVERIFY(fh.atomicWriteJson(path, QJsonDocument(obj)));
+
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        const QJsonDocument back = QJsonDocument::fromJson(f.readAll());
+        QVERIFY(back.isObject());
+        QCOMPARE(back.object().value("k").toString(), QString("v"));
+        QCOMPARE(back.object().value("n").toInt(), 7);
+
+        // The .tmp sibling must not linger.
+        QVERIFY(! QFileInfo::exists(path + ".tmp"));
+    }
+
+    void atomicWriteJson_replacesExisting() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        const QString path = d.path() + "/data.json";
+
+        QFile pre(path);
+        QVERIFY(pre.open(QIODevice::WriteOnly));
+        pre.write("garbage");
+        pre.close();
+
+        FileHelper  fh;
+        QJsonObject obj;
+        obj["v"] = 1;
+        QVERIFY(fh.atomicWriteJson(path, QJsonDocument(obj)));
+
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        const auto bytes = f.readAll();
+        QVERIFY(! bytes.contains("garbage"));
+    }
+
+    void atomicWriteJson_failsOnUnwritablePath() {
+        FileHelper  fh;
+        QJsonObject obj;
+        obj["v"] = 1;
+        // /nonexistent-dir-... cannot be created or written to.
+        const bool ok = fh.atomicWriteJson("/nonexistent-test-dir-xyz/data.json",
+                                           QJsonDocument(obj));
+        QCOMPARE(ok, false);
     }
 };
 

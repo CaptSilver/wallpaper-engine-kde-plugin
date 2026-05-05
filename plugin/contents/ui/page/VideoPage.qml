@@ -19,10 +19,16 @@ Item {
     property string activeWorkshopId: ""
     property string cachePath: ""
     property var pyext: null
+    property var playlistManager: null
 
     // ── Outputs ──────────────────────────────────────────────────────────────
     signal commitWallpaper(var item)
     signal folderPathChosen(string path)
+
+    AddToPlaylistMenu {
+        id: addToPlaylistMenu
+        manager: root.playlistManager
+    }
 
     // ── Test surface (read-only) ─────────────────────────────────────────────
     readonly property bool emptyStateVisible: !cfg_VideoFolderPath
@@ -101,6 +107,11 @@ Item {
             autoCommitOnIndexResolve: false
 
             onItemClicked: (item, idx) => root._commitItem(item)
+            onItemRightClicked: (item, idx, x, y) => {
+                if (!root.playlistManager) return;
+                addToPlaylistMenu.item = item;
+                addToPlaylistMenu.popup();
+            }
 
             Component.onCompleted: {
                 vlm.model.countChanged.connect(function() {

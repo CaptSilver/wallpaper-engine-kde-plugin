@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Pre-push verification: lint -> submodule build/tests -> main tests.
+# Pre-push verification: lint -> submodule build/tests -> main tests -> fuzz smoke.
 #
 # Usage:
-#   scripts/preflight.sh              # lint check + build + tests (fail on violations)
-#   scripts/preflight.sh --fix        # auto-format then build + tests (one-shot for push)
+#   scripts/preflight.sh              # lint + build + tests + fuzz smoke
+#   scripts/preflight.sh --fix        # auto-format then build + tests + fuzz
 #   scripts/preflight.sh --lint-only  # just clang-format check (fast)
 #   scripts/preflight.sh --no-build   # skip cmake builds, run existing tests only
+#   scripts/preflight.sh --no-fuzz    # skip fuzz smoke (lint + tests still run)
 #   scripts/preflight.sh --bootstrap  # (re-)provision fedora distrobox + deps and exit
+#
+# Env: FUZZ_SECS=N overrides per-target fuzz duration (default 20; 7 targets ≈ 2.3 min).
 #
 # Auto-runs on `git push` if hooks are installed:
 #   git config core.hooksPath scripts/git-hooks   # enable
@@ -26,14 +29,16 @@ cd "$(git rev-parse --show-toplevel)"
 
 # ── Args ──────────────────────────────────────────────────────────────────────
 MODE=full
+NO_FUZZ=0
 for arg in "$@"; do
     case "$arg" in
         --lint-only) MODE=lint ;;
         --fix)       MODE=fix ;;
         --no-build)  MODE=test-only ;;
+        --no-fuzz)   NO_FUZZ=1 ;;
         --bootstrap) MODE=bootstrap ;;
         -h|--help)
-            sed -n '2,21p' "$0"
+            sed -n '2,24p' "$0"
             exit 0
             ;;
         *) echo "unknown flag: $arg" >&2; exit 2 ;;
@@ -160,7 +165,10 @@ if [[ ${#SRCS[@]} -eq 0 ]]; then
 else
     case "$MODE" in
         fix)
-            BEFORE_HASH=$(clang-format --dry-run --Werror "${SRCS[@]}" 2>&1 | wc -l)
+            # `clang-format --dry-run --Werror` exits non-zero on violations.
+            # With set -euo pipefail that kills the substitution before -i
+            # ever runs, so explicitly swallow the pipeline status.
+            BEFORE_HASH=$(clang-format --dry-run --Werror "${SRCS[@]}" 2>&1 | wc -l || true)
             clang-format -i "${SRCS[@]}"
             if [[ "$BEFORE_HASH" -gt 0 ]]; then
                 CHANGED=$(git diff --name-only -- "${SRCS[@]}" | wc -l)
@@ -187,9 +195,12 @@ if [[ "$MODE" != "test-only" ]]; then
     step "Build submodule (src/backend_scene, BUILD_TESTS=ON)"
     SUB_GEN=""
     [[ ! -f build/sub/CMakeCache.txt ]] && SUB_GEN="-G Ninja"
+    # BUILD_FUZZERS=ON adds the fuzz_* targets without compiling them — section
+    # 6 builds them on demand. Configuring once here keeps the cache consistent.
     dbox "CC=/usr/bin/clang CXX=/usr/bin/clang++ \
           cmake -B build/sub -S src/backend_scene $SUB_GEN \
-                -DBUILD_TESTS=ON -DBUILD_TOOLS=ON -DCMAKE_BUILD_TYPE=Debug \
+                -DBUILD_TESTS=ON -DBUILD_TOOLS=ON -DBUILD_FUZZERS=ON \
+                -DCMAKE_BUILD_TYPE=Debug \
           && cmake --build build/sub" \
         || fail "submodule build failed"
     ok "submodule built"
@@ -221,5 +232,55 @@ fi
 step "Main project tests (ctest)"
 dbox "ctest --test-dir build/tests --output-on-failure" || fail "ctest failed"
 ok "ctest passed"
+
+# ── 6. Fuzz smoke (libFuzzer cold-start regression gate) ─────────────────────
+# Catches the unbounded-resize / unterminated-buffer bug class on parser entry
+# points (WPMdlParser, WPTexImageParser). Cold-start only: no seed corpus
+# dependency, so this works on a fresh checkout. Each harness ~30s; 60s total.
+# Findings (crash/oom/timeout/leak) under build/sub/fuzz-crashes/ fail the gate.
+if [[ "$NO_FUZZ" == "0" ]]; then
+    FUZZ_SECS="${FUZZ_SECS:-20}"
+    FUZZ_TARGETS=(WPMdlParser WPTexImageParser WPPkgFs
+                  WPShaderParser WPSceneParser WPParticleParser WPSoundParser)
+    step "Fuzz smoke (libFuzzer cold-start, ${FUZZ_SECS}s × ${#FUZZ_TARGETS[@]} targets)"
+
+    if [[ "$MODE" != "test-only" ]]; then
+        dbox "cmake --build build/sub --target fuzzers" \
+            || fail "fuzzer build failed"
+    fi
+
+    crash_dir=build/sub/fuzz-crashes
+    rm -rf "$crash_dir" && mkdir -p "$crash_dir"
+
+    for target in "${FUZZ_TARGETS[@]}"; do
+        binary="build/sub/src/Test/fuzz_$target"
+        if [[ ! -x "$binary" ]]; then
+            warn "fuzz_$target not built — skipping"
+            continue
+        fi
+        corpus="build/sub/fuzz-corpus-$target"
+        mkdir -p "$corpus"
+        # libFuzzer exits non-zero on first finding (which is what we want for a
+        # gate). set -o pipefail inside dbox preserves that exit through tail.
+        dbox "set -o pipefail; $binary $corpus \
+                -max_total_time=$FUZZ_SECS -timeout=5 -max_len=65536 \
+                -malloc_limit_mb=512 -rss_limit_mb=2048 \
+                -artifact_prefix=$crash_dir/ -print_final_stats=1 2>&1 \
+              | tail -8" || true
+        artifacts=$(find "$crash_dir" -maxdepth 1 -type f \
+            \( -name 'crash-*' -o -name 'oom-*' \
+               -o -name 'timeout-*' -o -name 'leak-*' \) 2>/dev/null | wc -l)
+        if [[ "$artifacts" -gt 0 ]]; then
+            echo
+            echo "Findings in $crash_dir:"
+            find "$crash_dir" -maxdepth 1 -type f \
+                \( -name 'crash-*' -o -name 'oom-*' \
+                   -o -name 'timeout-*' -o -name 'leak-*' \) \
+                -printf '  %f\n' | sort
+            fail "fuzz_$target found $artifacts new finding(s) — replay with: $binary $crash_dir/<artifact>"
+        fi
+        ok "fuzz_$target: ${FUZZ_SECS}s clean"
+    done
+fi
 
 printf '\n%sAll preflight checks passed — safe to push.%s\n' "$GREEN" "$RESET"

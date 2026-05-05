@@ -1,0 +1,16 @@
+[Containments][1]
+plugin=org.kde.plasma.folder
+wallpaperplugin=com.github.captsilver.wallpaperEngineKde
+
+[Containments][1][Wallpaper][com.github.captsilver.wallpaperEngineKde][General]
+Backend=2
+WallpaperPath=file:///home/user/wallpapers/scene1
+MuteAudio=true
+
+[Containments][3]
+plugin=org.kde.plasma.folder
+wallpaperplugin=com.github.captsilver.wallpaperEngineKde
+
+[Containments][3][Wallpaper][com.github.captsilver.wallpaperEngineKde][General]
+Backend=1
+WallpaperPath=file:///home/user/default-image

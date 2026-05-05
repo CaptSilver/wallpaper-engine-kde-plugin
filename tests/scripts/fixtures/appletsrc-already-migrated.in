@@ -1,0 +1,7 @@
+[Containments][1]
+plugin=org.kde.plasma.folder
+wallpaperplugin=com.github.captsilver.wallpaperEngineKde
+
+[Containments][1][Wallpaper][com.github.captsilver.wallpaperEngineKde][General]
+Backend=2
+WallpaperPath=file:///home/user/wallpapers/scene1

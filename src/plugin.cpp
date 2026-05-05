@@ -9,6 +9,7 @@
 #include "PluginInfo.hpp"
 #include "FileHelper.hpp"
 #include "WebAudioBridge.hpp"
+#include "MigrationHelper.h"
 
 constexpr std::array<uint, 2> WPVer { 1, 2 };
 
@@ -18,7 +19,7 @@ class Port : public QQmlExtensionPlugin {
 
 public:
     void registerTypes(const char* uri) override {
-        if (strcmp(uri, "com.github.catsout.wallpaperEngineKde") != 0) return;
+        if (strcmp(uri, "com.github.captsilver.wallpaperEngineKde") != 0) return;
         qputenv("QML_XHR_ALLOW_FILE_READ", "1");
         // Allow web wallpapers to make cross-origin requests (XHR/fetch).
         // Wallpaper Engine (Windows) uses CEF with --disable-web-security;
@@ -40,6 +41,11 @@ public:
         qmlRegisterType<wekde::MprisMonitor>(uri, WPVer[0], WPVer[1], "MprisMonitor");
         qmlRegisterType<wekde::FileHelper>(uri, WPVer[0], WPVer[1], "FileHelper");
         qmlRegisterType<wekde::WebAudioBridge>(uri, WPVer[0], WPVer[1], "WebAudioBridge");
+        qmlRegisterSingletonType<wekde::MigrationHelper>(
+            uri, WPVer[0], WPVer[1], "MigrationHelper",
+            [](QQmlEngine*, QJSEngine*) -> QObject* {
+                return new wekde::MigrationHelper();
+            });
     }
 };
 

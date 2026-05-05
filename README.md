@@ -2,7 +2,7 @@
 
 A wallpaper plugin integrating [Wallpaper Engine](https://store.steampowered.com/app/431960/Wallpaper_Engine) into KDE Plasma wallpaper settings.
 
-> **This is a maintained fork** of the original [catsout/wallpaper-engine-kde-plugin](https://github.com/catsout/wallpaper-engine-kde-plugin) with improvements for Plasma 6.
+> **This is a maintained fork** by [CaptSilver](https://github.com/CaptSilver) of the original [catsout/wallpaper-engine-kde-plugin](https://github.com/catsout/wallpaper-engine-kde-plugin) (no longer maintained), with Plasma 6 support and substantial new features.
 
 ## Install
 
@@ -167,7 +167,7 @@ After installing via any method:
 
 ### Uninstall
 1. Remove files listed in `build/install_manifest.txt`
-2. `kpackagetool6 -t Plasma/Wallpaper -r com.github.catsout.wallpaperEngineKde`
+2. `kpackagetool6 -t Plasma/Wallpaper -r com.github.captsilver.wallpaperEngineKde`
 
 ## Usage
 1. *Wallpaper Engine* installed on Steam
@@ -226,8 +226,47 @@ Supported via QtWebEngine. HTML patching, Plasma 6 mouse input, and user propert
 - **MPV** (default) — libmpv playback
 - **QtMultimedia** — GStreamer fallback
 
+## Upgrading from versions ≤ 1.2 (catsout-id)
+
+Version 1.3 renames the plugin's KDE id from
+`com.github.catsout.wallpaperEngineKde` to `com.github.captsilver.wallpaperEngineKde`.
+The upgrade is **fully automatic** — no user action required.
+
+**What happens on upgrade:**
+
+1. The new package installs both the renamed plugin and a transitional shim
+   package at the old id, so existing wallpaper selections in your Plasma
+   config keep resolving.
+2. On the next plasmashell start (or session login), the plugin's first-load
+   migration helper fires. It silently runs `wek-migrate-from-catsout`, which:
+   - backs up your `~/.config/plasma-org.kde.plasma.desktop-appletsrc` to
+     `~/.config/wek-migration-backup/<timestamp>/`,
+   - rewrites every per-desktop wallpaper selection from the old id to the
+     new id (including all containment-specific settings like Backend,
+     WallpaperPath, MuteAudio),
+   - removes the old plugin install and the transitional shim,
+   - writes a marker at `~/.config/wekde/migrated-from-catsout` so the
+     migration won't run twice,
+   - restarts plasmashell.
+3. After the restart, your wallpapers are back exactly as they were.
+
+**Manual run** (e.g., to verify before upgrade, or to recover from a
+non-standard session): `wek-migrate-from-catsout --dry-run` previews the
+changes; `wek-migrate-from-catsout --auto` runs silently as the plugin
+itself does.
+
+**Recovery**: every run creates a timestamped backup. To revert, copy
+`~/.config/wek-migration-backup/<timestamp>/plasma-org.kde.plasma.desktop-appletsrc`
+back over `~/.config/plasma-org.kde.plasma.desktop-appletsrc` and remove the
+marker file at `~/.config/wekde/migrated-from-catsout`.
+
+**Version 1.4 will remove the transitional shim.** If you skip 1.3 and
+upgrade directly from 1.2 to 1.4+, the auto-migration cannot fire because
+the shim won't be present — in that case run `wek-migrate-from-catsout`
+manually after upgrade.
+
 ## Acknowledgments
 - RainyPixel fork: [RainyPixel/wallpaper-engine-kde-plugin](https://github.com/rainypixel/wallpaper-engine-kde-plugin)
-- Original project: [catsout/wallpaper-engine-kde-plugin](https://github.com/catsout/wallpaper-engine-kde-plugin)
+- Original project: [catsout/wallpaper-engine-kde-plugin](https://github.com/catsout/wallpaper-engine-kde-plugin) (no longer maintained — this fork picks up where it left off)
 - [RePKG](https://github.com/notscuffed/repkg)
 - All open-source libraries used in this project

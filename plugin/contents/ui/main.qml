@@ -1,5 +1,5 @@
 import QtQuick
-import com.github.catsout.wallpaperEngineKde
+import com.github.captsilver.wallpaperEngineKde
 import QtQuick.Window
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.plasmoid
@@ -222,7 +222,7 @@ Rectangle {
             console.warn("[WEK] MouseHook: found target " + hookParent);
             if(background.mouseHooker) background.mouseHooker.destroy();
             background.mouseHooker = Qt.createQmlObject(`import QtQuick 2.12;
-                    import com.github.catsout.wallpaperEngineKde 1.2
+                    import com.github.captsilver.wallpaperEngineKde 1.2
                     MouseGrabber {
                         z: -1
                         anchors.fill: parent
@@ -417,6 +417,12 @@ Rectangle {
     }
 
     Component.onCompleted: {
+        // catsout → captsilver one-shot migration. No-op when marker present
+        // or no catsout config exists. Spawns wek-migrate-from-catsout via
+        // QProcess::startDetached, which restarts plasmashell — so anything
+        // we do after this call may not finish.
+        MigrationHelper.runIfNeeded();
+
         // load first backend
         applySource();
 

@@ -29,7 +29,7 @@ QtObject {
 
     readonly property string version: '0.6.0'
 
-    readonly property string repo_url: 'https://github.com/catsout/wallpaper-engine-kde-plugin'
+    readonly property string repo_url: 'https://github.com/CaptSilver/wallpaper-engine-kde-plugin'
 
     readonly property var videoExtensions: [".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v"]
 
@@ -293,7 +293,7 @@ QtObject {
     }
 
     function checklib_wallpaper(parentItem) {
-        return checklib('com.github.catsout.wallpaperEngineKde 1.2', parentItem);
+        return checklib('com.github.captsilver.wallpaperEngineKde 1.2', parentItem);
     }
 
     function checklib_folderlist(parentItem) {

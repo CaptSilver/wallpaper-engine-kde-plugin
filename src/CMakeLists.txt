@@ -20,6 +20,7 @@ add_library(${PROJECT_NAME}
 	PluginInfo.cpp
 	FileHelper.cpp
 	WebAudioBridge.cpp
+	MigrationHelper.cpp
 	qmldir
 	qwebchannel.qrc
 )

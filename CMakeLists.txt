@@ -65,8 +65,39 @@ message(FATAL_ERROR "Qt not found")
 endif()
 
 if(NOT USE_PLASMAPKG)
-  plasma_install_package(plugin com.github.catsout.wallpaperEngineKde wallpapers
+  plasma_install_package(plugin com.github.captsilver.wallpaperEngineKde wallpapers
                          wallpaper)
+
+  # Transitional shim: install a second package directory at the old catsout URI
+  # so existing user installs with `wallpaperplugin=com.github.catsout.…` lines
+  # in their plasma-org.kde.plasma.desktop-appletsrc keep resolving.
+  # The shim is removed by scripts/migrate-from-catsout.sh on first plugin load
+  # and from CMake entirely in the next release.
+  option(WEK_INSTALL_CATSOUT_SHIM
+         "Install transitional catsout-id shim KPackage (this release only)" ON)
+
+  if(WEK_INSTALL_CATSOUT_SHIM)
+    set(_shim_subdir
+        plasma/wallpapers/com.github.catsout.wallpaperEngineKde)
+    configure_file(
+      "${CMAKE_CURRENT_SOURCE_DIR}/plugin/catsout-shim-metadata.json.in"
+      "${CMAKE_CURRENT_BINARY_DIR}/catsout-shim-metadata.json"
+      @ONLY)
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/catsout-shim-metadata.json"
+            DESTINATION "${KDE_INSTALL_DATADIR}/${_shim_subdir}"
+            RENAME metadata.json)
+    # Relative symlink so the shim's contents/ resolves to the real package's
+    # contents/ regardless of install prefix. Both packages always sit in the
+    # same parent directory under share/plasma/wallpapers/.
+    install(CODE "
+      set(_shim_contents
+          \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_DATADIR}/${_shim_subdir}/contents\")
+      file(REMOVE \"\${_shim_contents}\")
+      execute_process(COMMAND \${CMAKE_COMMAND} -E create_symlink
+        \"../com.github.captsilver.wallpaperEngineKde/contents\"
+        \"\${_shim_contents}\")
+    ")
+  endif()
 else()
   find_program(KPACKAGETOOL NAMES kpackagetool6 kpackagetool)
   if(${KPACKAGETOOL} STREQUAL "KPACKAGETOOL-NOTFOUND")
@@ -81,7 +112,20 @@ else()
     VERBATIM)
 endif()
 
-set(QMLPLUGIN_URI "com.github.catsout.wallpaperEngineKde")
+# ── Migration script ─────────────────────────────────────────────────────────
+install(PROGRAMS scripts/migrate-from-catsout.sh
+        DESTINATION ${KDE_INSTALL_DATADIR}/wek/scripts
+        RENAME migrate-from-catsout.sh)
+install(CODE "
+  set(_link \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_BINDIR}/wek-migrate-from-catsout\")
+  file(REMOVE \"\${_link}\")
+  file(MAKE_DIRECTORY \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_BINDIR}\")
+  execute_process(COMMAND \${CMAKE_COMMAND} -E create_symlink
+    \"\${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_DATADIR}/wek/scripts/migrate-from-catsout.sh\"
+    \"\${_link}\")
+")
+
+set(QMLPLUGIN_URI "com.github.captsilver.wallpaperEngineKde")
 string(REPLACE "." "/" QMLPLUGIN_INSTALL_URI ${QMLPLUGIN_URI})
 
 add_subdirectory(src)

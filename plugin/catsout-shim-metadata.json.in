@@ -4,17 +4,15 @@
         "Authors": [
             {
                 "Name": "CaptSilver"
-            },
-            {
-                "Name": "catsout (original author)"
             }
         ],
         "Category": "",
-        "Description": "Wallpaper Engine for Kde",
+        "Description": "Compat shim — pending migration to com.github.captsilver.wallpaperEngineKde",
+        "Hidden": true,
         "Icon": "preferences-desktop-wallpaper",
-        "Id": "com.github.captsilver.wallpaperEngineKde",
+        "Id": "com.github.catsout.wallpaperEngineKde",
         "License": "GPLv2+",
-        "Name": "Wallpaper Engine for Kde",
+        "Name": "Wallpaper Engine for Kde (legacy id)",
         "ServiceTypes": [
             "Plasma/Wallpaper"
         ],

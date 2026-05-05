@@ -60,10 +60,19 @@ DESTDIR=%{buildroot} cmake --install %{_builddir}/wek-build \
 %files
 %{_libdir}/*
 %{_datadir}/*
+%{_bindir}/wek-migrate-from-catsout
 
 %changelog
 * %(date +'%a %b %d %Y') packager - %{version}-%{release}.git%{shortcommit}
 - Snapshot build from commit %{shortcommit} on %(date +'%Y-%m-%d %H:%M %Z')
+
+* Thu May 01 2026 packager - 1.3-1
+- Plugin URI renamed: com.github.catsout.wallpaperEngineKde
+  -> com.github.captsilver.wallpaperEngineKde
+- Transitional shim package preserves existing user selectors during upgrade
+- Auto-fallback: in-plugin first-load detection silently runs migration script
+- New: scripts/migrate-from-catsout.sh + /usr/bin/wek-migrate-from-catsout
+- Existing per-desktop wallpaper settings migrated transparently (one-time)
 
 * Wed Apr 22 2026 packager - 1.2-1
 - Version bump to 1.2

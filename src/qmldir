@@ -1,4 +1,4 @@
-module com.github.catsout.wallpaperEngineKde
+module com.github.captsilver.wallpaperEngineKde
 plugin WallpaperEngineKde
 classname PluginInfo
 classname MouseGrabber

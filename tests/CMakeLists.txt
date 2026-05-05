@@ -232,6 +232,24 @@ add_test(NAME tst_webaudio COMMAND tst_webaudio -v2)
 set_tests_properties(tst_webaudio PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+# ── MigrationHelper unit tests ────────────────────────────────────────────────
+add_executable(tst_migrationhelper
+    tst_migrationhelper.cpp
+    ${WEKDE_SRC_DIR}/MigrationHelper.cpp
+)
+target_include_directories(tst_migrationhelper PRIVATE ${WEKDE_SRC_DIR})
+target_link_libraries(tst_migrationhelper PRIVATE Qt6::Core Qt6::Test)
+if(COVERAGE)
+    target_compile_options(tst_migrationhelper PRIVATE ${_cov_compile_flags})
+    target_link_options(tst_migrationhelper PRIVATE ${_cov_link_flags})
+endif()
+if(MUTATION_TESTING)
+    target_compile_options(tst_migrationhelper PRIVATE
+        -fpass-plugin=${MULL_PLUGIN_PATH}
+        -g -grecord-command-line)
+endif()
+add_test(NAME tst_migrationhelper COMMAND tst_migrationhelper -v2)
+
 # ── QML tests (qmltestrunner) ─────────────────────────────────────────────────
 # Prefer Qt6-specific binary names. The bare `qmltestrunner` on some Debian/
 # Ubuntu images is a qtchooser proxy that fails at runtime when no default Qt
@@ -341,6 +359,10 @@ if(COVERAGE)
     if(TARGET tst_thumbnail_grabber)
         list(APPEND _cov_objs -object=$<TARGET_FILE:tst_thumbnail_grabber>)
         list(APPEND _cov_tests tst_thumbnail_grabber)
+    endif()
+    if(TARGET tst_migrationhelper)
+        list(APPEND _cov_objs -object=$<TARGET_FILE:tst_migrationhelper>)
+        list(APPEND _cov_tests tst_migrationhelper)
     endif()
 
     # Ignore everything outside the user-facing "main project" scope:

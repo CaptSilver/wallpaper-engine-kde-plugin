@@ -1,7 +1,8 @@
 #pragma once
 #include <QObject>
 
-namespace wekde {
+namespace wekde
+{
 
 class MigrationHelper : public QObject {
     Q_OBJECT

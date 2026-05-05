@@ -9,14 +9,12 @@
 namespace wekde
 {
 
-WebAudioBridge::WebAudioBridge(QObject* parent) : QObject(parent) {
+WebAudioBridge::WebAudioBridge(QObject* parent): QObject(parent) {
     m_timer.setInterval(m_intervalMs);
     QObject::connect(&m_timer, &QTimer::timeout, this, &WebAudioBridge::onTimerTick);
 }
 
-WebAudioBridge::~WebAudioBridge() {
-    stop();
-}
+WebAudioBridge::~WebAudioBridge() { stop(); }
 
 void WebAudioBridge::setEnabled(bool e) {
     if (e == m_enabled) return;
@@ -95,8 +93,6 @@ bool WebAudioBridge::feedTestPcm(const QList<qreal>& interleavedStereo, int chan
     return m_analyzer->HasData();
 }
 
-void WebAudioBridge::runOneTick() {
-    onTimerTick();
-}
+void WebAudioBridge::runOneTick() { onTimerTick(); }
 
 } // namespace wekde

@@ -42,8 +42,7 @@ public:
         qmlRegisterType<wekde::FileHelper>(uri, WPVer[0], WPVer[1], "FileHelper");
         qmlRegisterType<wekde::WebAudioBridge>(uri, WPVer[0], WPVer[1], "WebAudioBridge");
         qmlRegisterSingletonType<wekde::MigrationHelper>(
-            uri, WPVer[0], WPVer[1], "MigrationHelper",
-            [](QQmlEngine*, QJSEngine*) -> QObject* {
+            uri, WPVer[0], WPVer[1], "MigrationHelper", [](QQmlEngine*, QJSEngine*) -> QObject* {
                 return new wekde::MigrationHelper();
             });
     }

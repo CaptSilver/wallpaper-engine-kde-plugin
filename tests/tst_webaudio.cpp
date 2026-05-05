@@ -25,7 +25,7 @@ namespace wallpaper::audio
 
 struct AudioCapture::Impl {};
 
-AudioCapture::AudioCapture() : m_impl(std::make_unique<Impl>()) {}
+AudioCapture::AudioCapture(): m_impl(std::make_unique<Impl>()) {}
 AudioCapture::~AudioCapture() = default;
 bool AudioCapture::Init(std::shared_ptr<AudioAnalyzer>) { return false; }
 bool AudioCapture::IsActive() const { return false; }
@@ -66,8 +66,8 @@ private slots:
 
     void encodeBuffer_returns128FloatsAfterProcess() {
         wallpaper::audio::AudioAnalyzer a;
-        auto pcm = makeSineStereo(FFT_SIZE * 2, 440.0, 48000.0);
-        std::vector<float> floats;
+        auto                            pcm = makeSineStereo(FFT_SIZE * 2, 440.0, 48000.0);
+        std::vector<float>              floats;
         floats.reserve(pcm.size());
         for (qreal v : pcm) floats.push_back(float(v));
         a.FeedPcm(floats.data(), uint32_t(floats.size() / 2), 2);
@@ -91,7 +91,7 @@ private slots:
     // ── feedTestPcm + runOneTick (signal contract) ───────────────────────
     void runOneTick_emitsAudioBufferOnceAnalyzerHasData() {
         wekde::WebAudioBridge bridge;
-        QSignalSpy spy(&bridge, &wekde::WebAudioBridge::audioBuffer);
+        QSignalSpy            spy(&bridge, &wekde::WebAudioBridge::audioBuffer);
 
         // Empty tick before any PCM: no signal.
         bridge.runOneTick();
@@ -117,7 +117,7 @@ private slots:
     // ── enabled lifecycle ────────────────────────────────────────────────
     void setEnabled_emitsChangeSignalAndIsIdempotent() {
         wekde::WebAudioBridge bridge;
-        QSignalSpy spy(&bridge, &wekde::WebAudioBridge::enabledChanged);
+        QSignalSpy            spy(&bridge, &wekde::WebAudioBridge::enabledChanged);
 
         bridge.setEnabled(true);
         // Capture init returns false in the stub, but `enabled` still flips
@@ -136,7 +136,7 @@ private slots:
 
     void setIntervalMs_validatesAndEmits() {
         wekde::WebAudioBridge bridge;
-        QSignalSpy spy(&bridge, &wekde::WebAudioBridge::intervalMsChanged);
+        QSignalSpy            spy(&bridge, &wekde::WebAudioBridge::intervalMsChanged);
 
         const int initial = bridge.intervalMs();
         QVERIFY(initial > 0);

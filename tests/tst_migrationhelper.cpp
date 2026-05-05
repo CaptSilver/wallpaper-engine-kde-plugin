@@ -96,16 +96,15 @@ private slots:
         const QString stub_dir = d.path() + "/bin";
         QDir().mkpath(stub_dir);
         const QString stub = stub_dir + "/wek-migrate-from-catsout";
-        QFile s(stub);
+        QFile         s(stub);
         QVERIFY(s.open(QIODevice::WriteOnly));
-        s.write("#!/usr/bin/env bash\ntouch \"" + d.path().toUtf8()
-                + "/script-was-called\"\n");
+        s.write("#!/usr/bin/env bash\ntouch \"" + d.path().toUtf8() + "/script-was-called\"\n");
         s.close();
         QFile::setPermissions(stub,
-            QFileDevice::ReadOwner | QFileDevice::WriteOwner |
-            QFileDevice::ExeOwner | QFileDevice::ReadGroup |
-            QFileDevice::ExeGroup | QFileDevice::ReadOther |
-            QFileDevice::ExeOther);
+                              QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                  QFileDevice::ExeOwner | QFileDevice::ReadGroup |
+                                  QFileDevice::ExeGroup | QFileDevice::ReadOther |
+                                  QFileDevice::ExeOther);
 
         const QByteArray oldPath = qgetenv("PATH");
         qputenv("PATH", (stub_dir + ":" + oldPath).toLocal8Bit());
@@ -114,12 +113,12 @@ private slots:
         helper.runIfNeeded();
 
         const QString sentinel = d.path() + "/script-was-called";
-        QElapsedTimer t; t.start();
+        QElapsedTimer t;
+        t.start();
         while (t.elapsed() < 2000 && ! QFile::exists(sentinel)) {
             QTest::qWait(50);
         }
-        QVERIFY2(QFile::exists(sentinel),
-                 "wek-migrate-from-catsout was not invoked within 2s");
+        QVERIFY2(QFile::exists(sentinel), "wek-migrate-from-catsout was not invoked within 2s");
 
         qputenv("PATH", oldPath);
     }
@@ -141,7 +140,7 @@ private slots:
         qputenv("PATH", empty_dir.toLocal8Bit());
 
         wekde::MigrationHelper helper;
-        helper.runIfNeeded();  // Should not throw, hang, or crash.
+        helper.runIfNeeded(); // Should not throw, hang, or crash.
 
         qputenv("PATH", oldPath);
     }

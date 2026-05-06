@@ -213,99 +213,159 @@ Item {
                     Layout.fillHeight: true
                     clip: true
                     spacing: 2
+
+                    // Smooth animation when items reorder.
+                    moveDisplaced: Transition { NumberAnimation { properties: "y"; duration: 150 } }
+                    move:          Transition { NumberAnimation { properties: "y"; duration: 150 } }
+
                     model: root.manager
                          ? root.manager.itemsModel(root._selectedId)
                          : null
-                    delegate: Rectangle {
+
+                    // Standard QML reorder pattern (Qt docs example):
+                    // — outer MouseArea is the drag handle (covers the row's
+                    //   leftmost gutter); inner Rectangle is the drag payload
+                    //   centered via anchors so width/height stay stable when
+                    //   ParentChange re-anchors during drag.
+                    // — onPressAndHold engages the drag (not onPressed), so
+                    //   click-to-press a child Button still works.
+                    // — DropArea is on the MouseArea (delegate root), with
+                    //   margins so a release inside the dragged item's own
+                    //   bounds doesn't fire as a drop on itself.
+                    // Outer Item is positioned by ListView. Only the small
+                    // drag handle (left gutter) engages drag — the rest of
+                    // the row passes through to child Buttons/SpinBox so
+                    // clicks on those work normally. ListView scrolling
+                    // remains the default gesture when the user drags
+                    // outside the handle.
+                    delegate: Item {
                         id: itemDelegate
                         width: lvItems.width
-                        height: 36
-                        property bool dragActive: false
-                        property int  itemIndex: index
-                        opacity: dragActive ? 0.7 : 1.0
-                        color: dragActive
-                            ? Kirigami.Theme.activeBackgroundColor
-                            : (index % 2 ? Kirigami.Theme.alternateBackgroundColor
-                                         : "transparent")
+                        height: 48
+                        property int itemIndex: index
 
-                        Drag.active: itemDelegate.dragActive
-                        Drag.hotSpot.x: width / 2
-                        Drag.hotSpot.y: height / 2
-                        Drag.source: itemDelegate
-                        Drag.keys: ["wek-playlist-item"]
+                        Rectangle {
+                            id: content
+                            width: itemDelegate.width
+                            height: itemDelegate.height
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.verticalCenter: parent.verticalCenter
+                            radius: 3
+                            color: dragArea.drag.active
+                                ? Kirigami.Theme.activeBackgroundColor
+                                : (index % 2 ? Kirigami.Theme.alternateBackgroundColor
+                                             : "transparent")
+                            opacity: dragArea.drag.active ? 0.85 : 1.0
+                            border.width: dragArea.drag.active ? 1 : 0
+                            border.color: Kirigami.Theme.highlightColor
 
+                            Drag.active: dragArea.drag.active
+                            Drag.source: itemDelegate
+                            Drag.hotSpot.x: width / 2
+                            Drag.hotSpot.y: height / 2
+                            Drag.keys: ["wek-playlist-item"]
+
+                            states: State {
+                                when: dragArea.drag.active
+                                ParentChange { target: content; parent: lvItems }
+                                AnchorChanges {
+                                    target: content
+                                    anchors.horizontalCenter: undefined
+                                    anchors.verticalCenter: undefined
+                                }
+                            }
+
+                            // Drag handle — only this small area is the
+                            // grab target. drag.target is always set so a
+                            // simple press-drag works (no hold delay).
+                            MouseArea {
+                                id: dragArea
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: 28
+                                cursorShape: dragArea.drag.active
+                                    ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                                drag.target: content
+                                drag.axis: Drag.YAxis
+                                drag.minimumY: -10000
+                                drag.maximumY: 10000
+                                onReleased: content.Drag.drop()
+
+                                Label {
+                                    anchors.centerIn: parent
+                                    text: "⋮⋮"
+                                    color: Kirigami.Theme.disabledTextColor
+                                }
+                            }
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 32  // past drag handle
+                                anchors.rightMargin: 4
+                                anchors.topMargin: 4
+                                anchors.bottomMargin: 4
+                                spacing: 4
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: root._resolveItemTitle(workshopId)
+                                    elide: Text.ElideRight
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                SpinBox {
+                                    Layout.preferredHeight: 36
+                                    from: 0; to: 1440
+                                    value: durationOverrideMin || 0
+                                    onValueModified: {
+                                        if (root.manager)
+                                            root.manager.setItemDuration(root._selectedId, index, value);
+                                    }
+                                }
+                                Button {
+                                    Layout.preferredHeight: 36
+                                    Layout.preferredWidth: 36
+                                    text: "↑"
+                                    enabled: index > 0
+                                    onClicked: {
+                                        if (root.manager)
+                                            root.manager.moveItem(root._selectedId, index, index - 1);
+                                    }
+                                }
+                                Button {
+                                    Layout.preferredHeight: 36
+                                    Layout.preferredWidth: 36
+                                    text: "↓"
+                                    enabled: lvItems.count > 0 && index < lvItems.count - 1
+                                    onClicked: {
+                                        if (root.manager)
+                                            root.manager.moveItem(root._selectedId, index, index + 1);
+                                    }
+                                }
+                                Button {
+                                    Layout.preferredHeight: 36
+                                    Layout.preferredWidth: 36
+                                    text: "×"
+                                    onClicked: {
+                                        if (root.manager)
+                                            root.manager.removeItem(root._selectedId, index);
+                                    }
+                                }
+                            }
+                        }
+
+                        // Reorder fires on `onDropped` (release), not on
+                        // `onEntered` (hover) — hover-based reorder fires
+                        // moveItem repeatedly as the dragged hotspot crosses
+                        // each delegate, making the drag feel like an
+                        // instant-snap with no real drag distance.
                         DropArea {
-                            anchors.fill: parent
+                            anchors { fill: parent; margins: 4 }
                             keys: ["wek-playlist-item"]
                             onDropped: function(drop) {
                                 const fromIdx = drop.source.itemIndex;
                                 const toIdx   = itemDelegate.itemIndex;
                                 if (fromIdx !== toIdx && root.manager)
                                     root.manager.moveItem(root._selectedId, fromIdx, toIdx);
-                            }
-                        }
-
-                        Item {
-                            id: dragHandle
-                            anchors.left: parent.left
-                            width: 16
-                            height: parent.height
-                            Label {
-                                anchors.centerIn: parent
-                                text: "⋮⋮"
-                                color: Kirigami.Theme.disabledTextColor
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                drag.target: itemDelegate
-                                drag.axis: Drag.YAxis
-                                onPressed: itemDelegate.dragActive = true
-                                onReleased: {
-                                    itemDelegate.dragActive = false;
-                                    itemDelegate.Drag.drop();
-                                }
-                            }
-                        }
-
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: 20  // leave room for the drag handle
-                            anchors.margins: 4
-                            Label {
-                                Layout.fillWidth: true
-                                text: root._resolveItemTitle(workshopId)
-                                elide: Text.ElideRight
-                            }
-                            SpinBox {
-                                from: 0; to: 1440
-                                value: durationOverrideMin || 0
-                                onValueModified: {
-                                    if (root.manager)
-                                        root.manager.setItemDuration(root._selectedId, index, value);
-                                }
-                            }
-                            Button {
-                                text: "↑"
-                                enabled: index > 0
-                                onClicked: {
-                                    if (root.manager)
-                                        root.manager.moveItem(root._selectedId, index, index - 1);
-                                }
-                            }
-                            Button {
-                                text: "↓"
-                                enabled: lvItems.count > 0 && index < lvItems.count - 1
-                                onClicked: {
-                                    if (root.manager)
-                                        root.manager.moveItem(root._selectedId, index, index + 1);
-                                }
-                            }
-                            Button {
-                                text: "×"
-                                onClicked: {
-                                    if (root.manager)
-                                        root.manager.removeItem(root._selectedId, index);
-                                }
                             }
                         }
                     }

@@ -16,10 +16,26 @@ Item {
     // Inputs (set by parent — main.qml or config.qml)
     property var wpListModel:    null   // WallpaperListModel
     property var videoListModel: null   // VideoListModel
-    property var wallpaperConfig: null  // wallpaper.configuration (or config.qml root)
     property var common:          null  // Common namespace (DI)
     property bool noRandomWhilePaused: false
     property bool desktopOk: true
+
+    // Reads — parent supplies plain values rather than the config object,
+    // because main.qml's `wallpaper.configuration` and config.qml's `root`
+    // expose the same fields under different names (ActivePlaylistId vs
+    // cfg_ActivePlaylistId). Centralising read/write through the parent
+    // lets each context do the right thing without leaking config-shape
+    // into the controller.
+    property string activePlaylistIdRead: ""
+    property int    currentItemIndexRead: 0
+    property bool   randomizeWallpaperRead: false
+    property int    switchTimerRead: 15
+
+    // Writes — parent provides setters. Setters are responsible for
+    // routing the value to the correct config field in their scope.
+    property var setActivePlaylistId: function(id) { }
+    property var setCurrentItemIndex: function(idx) { }
+    property var setWallpaperFromItem: function(item) { } // applies WallpaperSource + WallpaperWorkShopId
 
     PlaylistManager {
         id: mgr
@@ -28,14 +44,15 @@ Item {
         onPersistFailed: function(reason) { console.warn("[playlist] persist failed:", reason); }
         onActivationFailed: function(id) { console.warn("[playlist] activation failed:", id); }
         onActivePlaylistIdChanged: {
-            if (root.wallpaperConfig
-                && root.wallpaperConfig.ActivePlaylistId !== mgr.activePlaylistId)
-                root.wallpaperConfig.ActivePlaylistId = mgr.activePlaylistId;
+            console.warn("[WEK-DBG ctrl mgrIdChanged]",
+                "mgr.activeId:", mgr.activePlaylistId,
+                "read:", root.activePlaylistIdRead);
+            if (root.activePlaylistIdRead !== mgr.activePlaylistId)
+                root.setActivePlaylistId(mgr.activePlaylistId);
         }
         onCurrentItemIndexChanged: {
-            if (root.wallpaperConfig
-                && root.wallpaperConfig.CurrentItemIndex !== mgr.currentItemIndex)
-                root.wallpaperConfig.CurrentItemIndex = mgr.currentItemIndex;
+            if (root.currentItemIndexRead !== mgr.currentItemIndex)
+                root.setCurrentItemIndex(mgr.currentItemIndex);
         }
     }
 
@@ -61,16 +78,47 @@ Item {
         return null;
     }
 
+    // wpListModel loads asynchronously (pyext.readfile + JSON parse per
+    // wallpaper). When this controller activates a playlist at startup —
+    // either from Component.onCompleted or onActivePlaylistIdReadChanged
+    // firing on a freshly-loaded plasmoid config — the model may still be
+    // empty. _resolveItem returning null and falling through to skipCurrent
+    // would burn the 8-skip budget on a race condition before the model is
+    // even ready. Instead, queue the workshopId and retry once
+    // modelRefreshed fires.
+    property string _pendingWorkshopId: ""
+
+    function _modelsAreEmpty() {
+        const wpEmpty = !root.wpListModel || !root.wpListModel.model
+                     || root.wpListModel.model.count === 0;
+        const vidEmpty = !root.videoListModel || !root.videoListModel.model
+                      || root.videoListModel.model.count === 0;
+        return wpEmpty && vidEmpty;
+    }
+
     function _applyWorkshopId(workshopId) {
         const item = _resolveItem(workshopId);
         if (!item) {
+            if (_modelsAreEmpty()) {
+                // Model not ready yet — defer.
+                root._pendingWorkshopId = workshopId;
+                return;
+            }
             console.warn("[playlist] item", workshopId, "not resolvable; skipping");
             mgr.skipCurrent();
             return;
         }
-        if (!root.wallpaperConfig || !root.common) return;
-        root.wallpaperConfig.WallpaperWorkShopId = item.workshopid;
-        root.wallpaperConfig.WallpaperSource = root.common.packWallpaperSource(item);
+        root._pendingWorkshopId = "";
+        root.setWallpaperFromItem(item);
+    }
+
+    Connections {
+        target: root.wpListModel
+        ignoreUnknownSignals: true
+        function onModelRefreshed() {
+            if (root._pendingWorkshopId)
+                root._applyWorkshopId(root._pendingWorkshopId);
+        }
     }
 
     function _serveFilteredPick() {
@@ -93,39 +141,52 @@ Item {
     }
 
     Component.onCompleted: {
-        if (!root.wallpaperConfig) return;
         // Migration: RandomizeWallpaper=on AND no ActivePlaylistId yet → activate
         // the Filtered Library.
-        if (root.wallpaperConfig.RandomizeWallpaper
-            && !root.wallpaperConfig.ActivePlaylistId) {
-            mgr.setFilteredLibraryIntervalMin(root.wallpaperConfig.SwitchTimer || 15);
+        if (root.randomizeWallpaperRead && !root.activePlaylistIdRead) {
+            mgr.setFilteredLibraryIntervalMin(root.switchTimerRead || 15);
             mgr.activate("__filtered_library__");
-        } else if (root.wallpaperConfig.ActivePlaylistId) {
-            // Re-activate a previously-active playlist on plasmashell startup.
-            if (root.wallpaperConfig.ActivePlaylistId === "__filtered_library__")
-                mgr.setFilteredLibraryIntervalMin(root.wallpaperConfig.SwitchTimer || 15);
-            mgr.activate(root.wallpaperConfig.ActivePlaylistId);
+        } else if (root.activePlaylistIdRead) {
+            // Re-activate previously-active playlist on plasmashell startup.
+            if (root.activePlaylistIdRead === "__filtered_library__")
+                mgr.setFilteredLibraryIntervalMin(root.switchTimerRead || 15);
+            mgr.activate(root.activePlaylistIdRead);
         }
     }
 
-    // Two-way bindings: SwitchTimer / RandomizeWallpaper toggles in Settings
-    // mirror the Filtered Library state.
-    Connections {
-        target: root.wallpaperConfig
-        ignoreUnknownSignals: true
-        function onSwitchTimerChanged() {
-            if (mgr.activePlaylistId === "__filtered_library__")
-                mgr.setFilteredLibraryIntervalMin(root.wallpaperConfig.SwitchTimer || 15);
+    // Live propagation: when the parent's activePlaylistIdRead changes (e.g.
+    // because the config dialog wrote cfg_ActivePlaylistId and plasmoid
+    // config sync'd it through to wallpaper.configuration), drive the
+    // underlying manager to match. Without this, hitting "Activate" in the
+    // config dialog updates plasmoid config but the runtime controller's
+    // manager stays inactive — wallpapers don't cycle.
+    onActivePlaylistIdReadChanged: {
+        console.warn("[WEK-DBG ctrl readChanged]",
+            "read:", root.activePlaylistIdRead,
+            "mgr.activeId:", mgr.activePlaylistId);
+        if (root.activePlaylistIdRead === mgr.activePlaylistId) return;
+        if (root.activePlaylistIdRead === "") {
+            mgr.deactivate();
+        } else {
+            if (root.activePlaylistIdRead === "__filtered_library__")
+                mgr.setFilteredLibraryIntervalMin(root.switchTimerRead || 15);
+            mgr.activate(root.activePlaylistIdRead);
         }
-        function onRandomizeWallpaperChanged() {
-            if (root.wallpaperConfig.RandomizeWallpaper) {
-                if (!mgr.activePlaylistId) {
-                    mgr.setFilteredLibraryIntervalMin(root.wallpaperConfig.SwitchTimer || 15);
-                    mgr.activate("__filtered_library__");
-                }
-            } else if (mgr.activePlaylistId === "__filtered_library__") {
-                mgr.deactivate();
+    }
+
+    // Re-arm Filtered Library when SwitchTimer or RandomizeWallpaper change.
+    onSwitchTimerReadChanged: {
+        if (mgr.activePlaylistId === "__filtered_library__")
+            mgr.setFilteredLibraryIntervalMin(root.switchTimerRead || 15);
+    }
+    onRandomizeWallpaperReadChanged: {
+        if (root.randomizeWallpaperRead) {
+            if (!mgr.activePlaylistId) {
+                mgr.setFilteredLibraryIntervalMin(root.switchTimerRead || 15);
+                mgr.activate("__filtered_library__");
             }
+        } else if (mgr.activePlaylistId === "__filtered_library__") {
+            mgr.deactivate();
         }
     }
 }

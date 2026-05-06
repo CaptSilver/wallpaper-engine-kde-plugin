@@ -25,8 +25,20 @@ ColumnLayout {
     property string cfg_FilterStr
     property int    cfg_SortMode
     property string cfg_VideoFolderPath
-    property string cfg_ActivePlaylistId
-    property int    cfg_CurrentItemIndex
+
+    // Playlist state goes through wallpaperConfiguration directly (live)
+    // rather than cfg_*. cfg_* writes for these new fields didn't enable
+    // the Apply button in our testing — the field is recognized by
+    // KConfigPropertyMap (defined in main.xml) but the cfg_ diff tracker
+    // doesn't pick up programmatic writes for entries that haven't yet
+    // been persisted to appletsrc. Direct wallpaperConfiguration writes
+    // are LIVE: the runtime sees them immediately, no Apply needed for
+    // activation. Reading uses bracket-notation-friendly bindings so
+    // the dialog reflects the current state.
+    readonly property string activePlaylistId: wallpaperConfiguration
+        ? (wallpaperConfiguration["ActivePlaylistId"] || "") : ""
+    readonly property int currentItemIndex: wallpaperConfiguration
+        ? (wallpaperConfiguration["CurrentItemIndex"] || 0) : 0
 
     property alias  cfg_Fps:                 settingPage.cfg_Fps
     property alias  cfg_Volume:              settingPage.cfg_Volume
@@ -110,7 +122,21 @@ ColumnLayout {
     }
 
     function saveConfig() {
+        const wcfg = root.wallpaperConfiguration;
+        console.warn("[WEK-DBG config.saveConfig] BEFORE",
+            "cfg_WallpaperSource:", cfg_WallpaperSource,
+            "cfg_WallpaperWorkShopId:", cfg_WallpaperWorkShopId,
+            "wcfg.WallpaperSource:", wcfg ? wcfg["WallpaperSource"] : "<no wcfg>",
+            "wcfg.WallpaperWorkShopId:", wcfg ? wcfg["WallpaperWorkShopId"] : "<no wcfg>",
+            "wcfg.ActivePlaylistId:", wcfg ? (wcfg["ActivePlaylistId"] || "<empty>") : "<no wcfg>");
         wallpaperPage.saveConfig();
+    }
+
+    onCfg_WallpaperSourceChanged: {
+        console.warn("[WEK-DBG config] cfg_WallpaperSource changed →", cfg_WallpaperSource);
+    }
+    onCfg_WallpaperWorkShopIdChanged: {
+        console.warn("[WEK-DBG config] cfg_WallpaperWorkShopId changed →", cfg_WallpaperWorkShopId);
     }
 
     WallpaperListModel {
@@ -131,8 +157,45 @@ ColumnLayout {
         id: playlistController
         wpListModel: wpListModel
         videoListModel: videoPage.videoListModel
-        wallpaperConfig: root
         common: Common
+
+        activePlaylistIdRead:    root.activePlaylistId
+        currentItemIndexRead:    root.currentItemIndex
+        randomizeWallpaperRead:  root.cfg_RandomizeWallpaper
+        switchTimerRead:         root.cfg_SwitchTimer
+
+        // ActivePlaylistId / CurrentItemIndex: write directly to
+        // wallpaperConfiguration so they propagate live to the runtime
+        // instance and don't interfere with cfg_-vs-plasmoid Apply
+        // tracking (cfg_ writes for these new fields didn't enable Apply
+        // in testing — the cfg_ diff tracker seems to bind only for
+        // entries that have been persisted at least once).
+        // WallpaperWorkShopId / WallpaperSource: keep going through cfg_*
+        // (legacy flow used by manual wallpaper picks; Apply commits).
+        setActivePlaylistId: function(id) {
+            console.warn("[WEK-DBG dialog setActivePlaylistId]", id);
+            if (root.wallpaperConfiguration)
+                root.wallpaperConfiguration["ActivePlaylistId"] = id;
+        }
+        setCurrentItemIndex: function(idx) {
+            console.warn("[WEK-DBG dialog setCurrentItemIndex]", idx);
+            if (root.wallpaperConfiguration)
+                root.wallpaperConfiguration["CurrentItemIndex"] = idx;
+        }
+        // No-op: only the RUNTIME PlaylistController should change the
+        // wallpaper. When the dialog's mgr.activate fires its first tick,
+        // we used to write cfg_WallpaperSource here — but that silently
+        // burned the user's "unsaved-change" budget: cfg_WallpaperSource
+        // gets pinned to the cycled wallpaper, so when the user later
+        // deactivates and picks a wallpaper that happens to match what's
+        // already in cfg_ (or what the dialog snapshotted at open), Apply
+        // sees zero diff and stays grayed. The runtime's live write to
+        // `wallpaper.configuration.WallpaperSource` is what actually
+        // changes the user's wallpaper; the dialog doesn't need to echo it.
+        setWallpaperFromItem: function(item) {
+            console.warn("[WEK-DBG dialog setWallpaperFromItem (no-op)]",
+                "wid:", item.workshopid);
+        }
     }
 
     Component.onDestruction: {
@@ -147,7 +210,7 @@ ColumnLayout {
     // Content
     PlasmaComponents.TabBar {
         id: bar
-        implicitWidth: font.pixelSize*8 * 4
+        implicitWidth: font.pixelSize*8 * 5
         PlasmaComponents.TabButton {
             text: "Wallpapers"
         }
@@ -173,8 +236,8 @@ ColumnLayout {
         WallpaperPage {
             id: wallpaperPage
             playlistManager: playlistController.manager
-            cfg_ActivePlaylistId: root.cfg_ActivePlaylistId
-            cfg_CurrentItemIndex: root.cfg_CurrentItemIndex
+            cfg_ActivePlaylistId: root.activePlaylistId
+            cfg_CurrentItemIndex: root.currentItemIndex
         }
 
         VideoPage {
@@ -196,7 +259,7 @@ ColumnLayout {
             manager: playlistController.manager
             wpListModel: wpListModel
             videoListModel: videoPage.videoListModel
-            cfg_ActivePlaylistId: root.cfg_ActivePlaylistId
+            cfg_ActivePlaylistId: root.activePlaylistId
         }
 
         SettingPage {

@@ -1,8 +1,7 @@
-// Coverage tests for PlaylistController.qml. The controller is an internal
-// adapter — exercising its handlers requires a fake wallpaperConfig and
-// list models. wallpaperConfig is a JS object literal so we can use the
-// upper-case Q_PROPERTY-like names (KConfigXT field names) — QML user
-// properties must start with lowercase, but JS object keys are any-case.
+// Coverage tests for PlaylistController.qml. The controller no longer holds
+// a wallpaperConfig reference — it takes plain reads + setter callbacks
+// from the parent. Tests provide stub readers/writers to exercise the
+// resolve / pause / migration paths.
 import QtQuick
 import QtTest
 
@@ -35,31 +34,33 @@ TestCase {
         }
     }
 
-    // Wallpaper config as a plain JS object — the controller treats it as a
-    // duck-typed bag of Q_PROPERTYs. JS keys can start with uppercase.
-    property var fakeWallpaperConfig: ({
-        ActivePlaylistId: "",
-        CurrentItemIndex: 0,
-        WallpaperWorkShopId: "",
-        WallpaperSource: "",
-        RandomizeWallpaper: false,
-        SwitchTimer: 15,
-    })
-
     QtObject {
         id: fakeCommon
         function packWallpaperSource(item) { return "packed-" + item.workshopid; }
     }
 
+    // Captured writes from the controller's setter callbacks.
+    property var lastSet: ({})
+
     PluginUi.PlaylistController {
         id: ctrl
         wpListModel: fakeWpModel
         videoListModel: fakeVideoModel
-        wallpaperConfig: tc.fakeWallpaperConfig
         common: fakeCommon
         noRandomWhilePaused: false
         desktopOk: true
+
+        activePlaylistIdRead: ""
+        currentItemIndexRead: 0
+        randomizeWallpaperRead: false
+        switchTimerRead: 15
+
+        setActivePlaylistId: function(id) { tc.lastSet = { fn: "setActivePlaylistId", id: id }; }
+        setCurrentItemIndex: function(idx) { tc.lastSet = { fn: "setCurrentItemIndex", idx: idx }; }
+        setWallpaperFromItem: function(item) { tc.lastSet = { fn: "setWallpaperFromItem", item: item }; }
     }
+
+    function init() { tc.lastSet = {}; }
 
     function test_resolvesFromWpListModel() {
         const item = ctrl._resolveItem("wid-A");
@@ -81,20 +82,19 @@ TestCase {
         compare(ctrl._resolveItem(""), null);
     }
 
-    function test_applyWorkshopIdHits() {
+    function test_applyWorkshopIdCallsSetter() {
         ctrl._applyWorkshopId("wid-B");
-        compare(tc.fakeWallpaperConfig.WallpaperWorkShopId, "wid-B");
-        compare(tc.fakeWallpaperConfig.WallpaperSource, "packed-wid-B");
+        compare(tc.lastSet.fn, "setWallpaperFromItem");
+        compare(tc.lastSet.item.workshopid, "wid-B");
     }
 
-    function test_applyWorkshopIdMissingDoesNotMutate() {
-        const before = tc.fakeWallpaperConfig.WallpaperWorkShopId;
+    function test_applyWorkshopIdMissingDoesNotCallSetter() {
         ctrl._applyWorkshopId("not-here");
-        compare(tc.fakeWallpaperConfig.WallpaperWorkShopId, before);
+        // Setter was not called for missing items; lastSet stays empty.
+        compare(tc.lastSet.fn, undefined);
     }
 
     function test_serveFilteredPickWithItems() {
-        // Should invoke acceptPick on the manager — exercise the path.
         ctrl._serveFilteredPick();
     }
 
@@ -108,23 +108,15 @@ TestCase {
     }
 
     function test_managerSignalsTriggerHandlers() {
-        // Fire the manager's signals to exercise the controller's onTick /
-        // onRequestFilteredPick / onPersistFailed / onActivationFailed handlers.
         ctrl.manager.tick("wid-A");
-        compare(tc.fakeWallpaperConfig.WallpaperWorkShopId, "wid-A");
+        compare(tc.lastSet.fn, "setWallpaperFromItem");
 
         ctrl.manager.requestFilteredPick();
-        // _serveFilteredPick called acceptPick on the stub — no observable
-        // side effect on our fake config, but the path is covered.
-
         ctrl.manager.persistFailed("disk full");
         ctrl.manager.activationFailed("nonexistent");
-        // Both handlers just console.warn; coverage tracer counts the entry.
     }
 
     function test_emptyWpListServesEmptyPick() {
-        // Replace the model with an empty one and call _serveFilteredPick —
-        // exercises the count===0 branch.
         const emptyModel = Qt.createQmlObject(
             'import QtQuick; QtObject { property var model: ListModel{} }', tc);
         const saved = ctrl.wpListModel;

@@ -39,6 +39,7 @@ target_link_libraries(${PROJECT_NAME}
 	Qt::Core
 	Qt::DBus
 	Qt::Network
+	KF6::ConfigCore
 )
 target_compile_definitions(${PROJECT_NAME} PRIVATE WEKDE_HAS_MPV)
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_VISIBILITY_PRESET hidden)

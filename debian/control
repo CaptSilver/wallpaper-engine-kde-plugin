@@ -10,6 +10,7 @@ Build-Depends:
  ninja-build,
  libvulkan-dev,
  libkf6package-dev,
+ libkf6config-dev,
  libplasma-dev,
  plasma-workspace-dev,
  qt6-base-dev,

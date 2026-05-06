@@ -130,6 +130,11 @@ Rectangle {
     }
 
     function applySource() {
+        console.warn("[WEK-DBG main.applySource]",
+            "source:", source,
+            "WallpaperWorkShopId:", wallpaper.configuration.WallpaperWorkShopId,
+            "ActivePlaylistId:", (wallpaper.configuration.ActivePlaylistId || "<empty>"),
+            "currentBackend:", nowBackend);
         // Ensure user props are loaded for the current wallpaper before loading backend.
         // When both WallpaperWorkShopId and WallpaperSource change simultaneously,
         // QML may evaluate source first, so workshopid/curOpt/userPropsJson could be stale.
@@ -254,7 +259,13 @@ Rectangle {
     }
     WallpaperListModel {
         id: wpListModel
+        // Load the model whenever any playlist is active OR the legacy
+        // randomize toggle is on. Without this, custom playlists with
+        // ActivePlaylistId set but RandomizeWallpaper=false leave the
+        // model unloaded, so PlaylistController can't resolve workshop
+        // IDs and the cycle bails after 8 consecutive skips.
         enabled: background.randomizeWallpaper
+              || (wallpaper.configuration.ActivePlaylistId !== "")
         workshopDirs: Common.getProjectDirs(background.steamlibrary)
         globalConfigPath: Common.getGlobalConfigPath(background.steamlibrary)
         filterStr: background.filterStr
@@ -274,11 +285,32 @@ Rectangle {
     PlaylistController {
         id: playlistController
         wpListModel: wpListModel
-        videoListModel: null   // main.qml has no videoListModel — only the config dialog does
-        wallpaperConfig: wallpaper.configuration
+        videoListModel: null   // runtime wallpaper has no video list model
         common: Common
         noRandomWhilePaused: background.noRandomWhilePaused
         desktopOk: background.ok
+
+        activePlaylistIdRead:    wallpaper.configuration.ActivePlaylistId
+        currentItemIndexRead:    wallpaper.configuration.CurrentItemIndex
+        randomizeWallpaperRead:  wallpaper.configuration.RandomizeWallpaper
+        switchTimerRead:         wallpaper.configuration.SwitchTimer
+
+        // Writes happen here so `wallpaper.configuration` is in lexical scope —
+        // QML can resolve Q_PROPERTY assignments correctly.
+        setActivePlaylistId: function(id) {
+            console.warn("[WEK-DBG runtime setActivePlaylistId]", id);
+            wallpaper.configuration.ActivePlaylistId = id;
+        }
+        setCurrentItemIndex: function(idx) {
+            console.warn("[WEK-DBG runtime setCurrentItemIndex]", idx);
+            wallpaper.configuration.CurrentItemIndex = idx;
+        }
+        setWallpaperFromItem: function(item) {
+            console.warn("[WEK-DBG runtime setWallpaperFromItem]",
+                "wid:", item.workshopid);
+            wallpaper.configuration.WallpaperWorkShopId = item.workshopid;
+            wallpaper.configuration.WallpaperSource = Common.packWallpaperSource(item);
+        }
     }
 
     // lauch pause time to avoid freezing

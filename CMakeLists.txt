@@ -53,7 +53,7 @@ set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH} ${CMAKE_MODULE_PATH})
 
 if(ECM_VERSION_MAJOR EQUAL 6)
   find_package(Plasma REQUIRED)
-  find_package(KF6 ${KF_MIN_VERSION} REQUIRED COMPONENTS Package)
+  find_package(KF6 ${KF_MIN_VERSION} REQUIRED COMPONENTS Package Config)
   include(KDEInstallDirs6)
 else()
   find_package(KF5 ${KF_MIN_VERSION} REQUIRED COMPONENTS Package Plasma)

@@ -233,12 +233,18 @@ set_tests_properties(tst_webaudio PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
 # ── MigrationHelper unit tests ────────────────────────────────────────────────
+# MigrationHelper now does the catsout→captsilver merge in-process via KConfig
+# (was: spawn migrate-from-catsout.sh that got cgroup-killed when plasmashell
+# stopped). The test binary needs KF6::ConfigCore. Find the component
+# directly (no umbrella `find_package(KF6 …)` because the standalone test
+# build doesn't pull in ECM).
+find_package(KF6Config REQUIRED)
 add_executable(tst_migrationhelper
     tst_migrationhelper.cpp
     ${WEKDE_SRC_DIR}/MigrationHelper.cpp
 )
 target_include_directories(tst_migrationhelper PRIVATE ${WEKDE_SRC_DIR})
-target_link_libraries(tst_migrationhelper PRIVATE Qt6::Core Qt6::Test)
+target_link_libraries(tst_migrationhelper PRIVATE Qt6::Core Qt6::Test KF6::ConfigCore)
 if(COVERAGE)
     target_compile_options(tst_migrationhelper PRIVATE ${_cov_compile_flags})
     target_link_options(tst_migrationhelper PRIVATE ${_cov_link_flags})

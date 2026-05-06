@@ -37,6 +37,7 @@ jobs:
             ninja \
             extra-cmake-modules \
             libplasma \
+            kconfig \
             qt6-declarative \
             qt6-websockets \
             qt6-webchannel \
@@ -86,6 +87,7 @@ jobs:
             kf6-plasma-devel \
             kf6-kcoreaddons-devel \
             kf6-kpackage-devel \
+            kf6-kconfig-devel \
             lz4-devel \
             mpv-devel \
             qt6-qtbase-private-devel \
@@ -138,6 +140,7 @@ jobs:
             pkg-config \
             libvulkan-dev \
             libkf6package-dev \
+            libkf6config-dev \
             libplasma-dev \
             plasma-workspace-dev \
             qt6-base-dev \
@@ -187,6 +190,7 @@ jobs:
             qt6-qtwebchannel-devel \
             mpv-devel \
             kf6-kirigami-devel \
+            kf6-kconfig-devel \
             kf6-kcmutils \
             plasma-workspace \
             libplasma-devel \

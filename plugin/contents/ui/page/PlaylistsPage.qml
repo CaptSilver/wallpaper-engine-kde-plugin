@@ -207,6 +207,32 @@ Item {
                     }
                 }
 
+                // Column headers — kept in sync with the delegate's column
+                // widths so labels line up.
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+                    Label {
+                        Layout.preferredWidth: 28
+                        text: ""
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        text: "Wallpaper"
+                        font.bold: true
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+                    Label {
+                        Layout.preferredWidth: 90
+                        text: "Time (min)"
+                        font.bold: true
+                        color: Kirigami.Theme.disabledTextColor
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                    // Spacer matching the 3 action buttons (36×3 + spacing)
+                    Item { Layout.preferredWidth: 36 * 3 + 8 }
+                }
+
                 ListView {
                     id: lvItems
                     Layout.fillWidth: true
@@ -275,45 +301,49 @@ Item {
                                 }
                             }
 
-                            // Drag handle — only this small area is the
-                            // grab target. drag.target is always set so a
-                            // simple press-drag works (no hold delay).
-                            MouseArea {
-                                id: dragArea
-                                anchors.left: parent.left
-                                anchors.top: parent.top
-                                anchors.bottom: parent.bottom
-                                width: 28
-                                cursorShape: dragArea.drag.active
-                                    ? Qt.ClosedHandCursor : Qt.OpenHandCursor
-                                drag.target: content
-                                drag.axis: Drag.YAxis
-                                drag.minimumY: -10000
-                                drag.maximumY: 10000
-                                onReleased: content.Drag.drop()
-
-                                Label {
-                                    anchors.centerIn: parent
-                                    text: "⋮⋮"
-                                    color: Kirigami.Theme.disabledTextColor
-                                }
-                            }
-
                             RowLayout {
                                 anchors.fill: parent
-                                anchors.leftMargin: 32  // past drag handle
-                                anchors.rightMargin: 4
-                                anchors.topMargin: 4
-                                anchors.bottomMargin: 4
+                                anchors.margins: 4
                                 spacing: 4
-                                Label {
+
+                                // Drag area covers the full name column —
+                                // ⋮⋮ glyph + title. Press-drag anywhere on
+                                // the name engages reorder. SpinBox + action
+                                // buttons stay outside so their clicks work.
+                                MouseArea {
+                                    id: dragArea
                                     Layout.fillWidth: true
-                                    text: root._resolveItemTitle(workshopId)
-                                    elide: Text.ElideRight
-                                    verticalAlignment: Text.AlignVCenter
+                                    Layout.fillHeight: true
+                                    cursorShape: dragArea.drag.active
+                                        ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                                    drag.target: content
+                                    drag.axis: Drag.YAxis
+                                    drag.minimumY: -10000
+                                    drag.maximumY: 10000
+                                    onReleased: content.Drag.drop()
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        spacing: 4
+                                        Label {
+                                            Layout.preferredWidth: 24
+                                            text: "⋮⋮"
+                                            color: Kirigami.Theme.disabledTextColor
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                        Label {
+                                            Layout.fillWidth: true
+                                            text: root._resolveItemTitle(workshopId)
+                                            elide: Text.ElideRight
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                    }
                                 }
+
                                 SpinBox {
                                     Layout.preferredHeight: 36
+                                    Layout.preferredWidth: 90
                                     from: 0; to: 1440
                                     value: durationOverrideMin || 0
                                     onValueModified: {

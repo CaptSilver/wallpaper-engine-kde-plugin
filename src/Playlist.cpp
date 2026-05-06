@@ -15,9 +15,7 @@ PlaylistMode playlistModeFromString(const QString& s, PlaylistMode fallback) {
     return fallback;
 }
 
-int clampIntervalMin(int value) {
-    return std::clamp(value, 1, 1440);
-}
+int clampIntervalMin(int value) { return std::clamp(value, 1, 1440); }
 
 QJsonObject playlistItemToJson(const PlaylistItem& it) {
     QJsonObject o;
@@ -54,12 +52,12 @@ QJsonObject playlistToJson(const Playlist& pl) {
 
 Playlist playlistFromJson(const QJsonObject& obj) {
     Playlist pl;
-    pl.id          = obj.value("id").toString();
-    pl.name        = obj.value("name").toString();
-    pl.mode        = playlistModeFromString(obj.value("mode").toString());
-    pl.intervalMin = clampIntervalMin(obj.value("interval_min").toInt(15));
-    pl.created     = static_cast<qint64>(obj.value("created").toDouble());
-    pl.modified    = static_cast<qint64>(obj.value("modified").toDouble());
+    pl.id                  = obj.value("id").toString();
+    pl.name                = obj.value("name").toString();
+    pl.mode                = playlistModeFromString(obj.value("mode").toString());
+    pl.intervalMin         = clampIntervalMin(obj.value("interval_min").toInt(15));
+    pl.created             = static_cast<qint64>(obj.value("created").toDouble());
+    pl.modified            = static_cast<qint64>(obj.value("modified").toDouble());
     const QJsonArray items = obj.value("items").toArray();
     pl.items.reserve(items.size());
     for (const auto& v : items) pl.items.append(playlistItemFromJson(v.toObject()));

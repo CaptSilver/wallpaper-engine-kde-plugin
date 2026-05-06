@@ -46,10 +46,16 @@ public:
         qmlRegisterType<wekde::WebAudioBridge>(uri, WPVer[0], WPVer[1], "WebAudioBridge");
         qmlRegisterType<wekde::PlaylistManager>(uri, WPVer[0], WPVer[1], "PlaylistManager");
         qmlRegisterUncreatableType<wekde::PlaylistsModel>(
-            uri, WPVer[0], WPVer[1], "PlaylistsModel",
+            uri,
+            WPVer[0],
+            WPVer[1],
+            "PlaylistsModel",
             "PlaylistsModel is owned by PlaylistManager");
         qmlRegisterUncreatableType<wekde::PlaylistItemsModel>(
-            uri, WPVer[0], WPVer[1], "PlaylistItemsModel",
+            uri,
+            WPVer[0],
+            WPVer[1],
+            "PlaylistItemsModel",
             "PlaylistItemsModel is created via PlaylistManager.itemsModel()");
         qmlRegisterSingletonType<wekde::MigrationHelper>(
             uri, WPVer[0], WPVer[1], "MigrationHelper", [](QQmlEngine*, QJSEngine*) -> QObject* {

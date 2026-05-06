@@ -9,7 +9,11 @@
 namespace wekde
 {
 
-enum class PlaylistMode { Sequential, Shuffle };
+enum class PlaylistMode
+{
+    Sequential,
+    Shuffle
+};
 
 struct PlaylistItem {
     QString            workshopId;
@@ -17,13 +21,13 @@ struct PlaylistItem {
 };
 
 struct Playlist {
-    QString               id;            // UUID v4 string, lowercased, no braces
+    QString               id; // UUID v4 string, lowercased, no braces
     QString               name;
     PlaylistMode          mode        = PlaylistMode::Sequential;
-    int                   intervalMin = 15;  // 1..1440 (validated on load + every setter)
+    int                   intervalMin = 15; // 1..1440 (validated on load + every setter)
     QVector<PlaylistItem> items;
-    qint64                created     = 0;   // unix epoch seconds
-    qint64                modified    = 0;
+    qint64                created  = 0; // unix epoch seconds
+    qint64                modified = 0;
 };
 
 // Sentinel id reserved for the built-in Filtered Library.

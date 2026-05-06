@@ -63,16 +63,16 @@ void MigrationHelper::runIfNeeded() {
         // user's appletsrc verbatim.
         KConfig config(appletsrcPath, KConfig::SimpleConfig);
 
-        KConfigGroup containments = config.group(QStringLiteral("Containments"));
-        const QStringList cids    = containments.groupList();
+        KConfigGroup      containments = config.group(QStringLiteral("Containments"));
+        const QStringList cids         = containments.groupList();
         for (const QString& cid : cids) {
             KConfigGroup c           = containments.group(cid);
             KConfigGroup wpRoot      = c.group(QStringLiteral("Wallpaper"));
             KConfigGroup catsoutRoot = wpRoot.group(QString::fromUtf8(kOldUri));
             if (! catsoutRoot.exists()) continue;
-            KConfigGroup catsoutG    = catsoutRoot.group(QStringLiteral("General"));
-            KConfigGroup captsilverG = wpRoot.group(QString::fromUtf8(kNewUri))
-                                           .group(QStringLiteral("General"));
+            KConfigGroup catsoutG = catsoutRoot.group(QStringLiteral("General"));
+            KConfigGroup captsilverG =
+                wpRoot.group(QString::fromUtf8(kNewUri)).group(QStringLiteral("General"));
             if (! catsoutG.exists()) continue;
             const QStringList keys = catsoutG.keyList();
             for (const QString& key : keys) {

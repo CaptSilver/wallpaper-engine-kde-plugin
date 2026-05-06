@@ -736,8 +736,8 @@ private slots:
         QJsonObject obj;
         obj["v"] = 1;
         // /nonexistent-dir-... cannot be created or written to.
-        const bool ok = fh.atomicWriteJson("/nonexistent-test-dir-xyz/data.json",
-                                           QJsonDocument(obj));
+        const bool ok =
+            fh.atomicWriteJson("/nonexistent-test-dir-xyz/data.json", QJsonDocument(obj));
         QCOMPARE(ok, false);
     }
 };

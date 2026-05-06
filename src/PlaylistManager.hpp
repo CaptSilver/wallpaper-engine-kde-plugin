@@ -16,8 +16,8 @@ namespace wekde
 class PlaylistManager : public QObject {
     Q_OBJECT
     Q_PROPERTY(PlaylistsModel* playlistsModel READ playlistsModel CONSTANT)
-    Q_PROPERTY(QString activePlaylistId READ activePlaylistId WRITE setActivePlaylistId
-                   NOTIFY activePlaylistIdChanged)
+    Q_PROPERTY(QString activePlaylistId READ activePlaylistId WRITE setActivePlaylistId NOTIFY
+                   activePlaylistIdChanged)
     Q_PROPERTY(int currentItemIndex READ currentItemIndex NOTIFY currentItemIndexChanged)
 
 public:
@@ -42,8 +42,7 @@ public:
                              int durationOverrideMin = 0);
     Q_INVOKABLE bool removeItem(const QString& playlistId, int index);
     Q_INVOKABLE bool moveItem(const QString& playlistId, int fromIdx, int toIdx);
-    Q_INVOKABLE bool setItemDuration(const QString& playlistId, int index,
-                                     int durationOverrideMin);
+    Q_INVOKABLE bool setItemDuration(const QString& playlistId, int index, int durationOverrideMin);
 
     // C++ overload (used by tests; not Q_INVOKABLE to avoid moc overload ambiguity)
     bool setMode(const QString& id, PlaylistMode mode);
@@ -89,18 +88,18 @@ private:
     int     advanceSequential(int currentIdx, int size) const;
     int     pickShuffle(int currentIdx, int size) const;
 
-    QVector<Playlist>                   m_playlists;
-    QHash<QString, int>                 m_indexById;
-    QString                             m_activeId;
-    int                                 m_currentIndex   = 0;
-    int                                 m_consecutiveSkips = 0;
-    int                                 m_filteredLibraryIntervalMin = -1; // -1 = default 15
-    QTimer                              m_timer;
-    qint64                              m_remainingMs    = -1; // -1 = no pause-state
-    qint64                              m_lastArmEpochMs = 0;
+    QVector<Playlist>   m_playlists;
+    QHash<QString, int> m_indexById;
+    QString             m_activeId;
+    int                 m_currentIndex               = 0;
+    int                 m_consecutiveSkips           = 0;
+    int                 m_filteredLibraryIntervalMin = -1; // -1 = default 15
+    QTimer              m_timer;
+    qint64              m_remainingMs    = -1; // -1 = no pause-state
+    qint64              m_lastArmEpochMs = 0;
 
-    PlaylistsModel*                       m_listModel = nullptr;
-    QHash<QString, PlaylistItemsModel*>   m_itemsModels;
+    PlaylistsModel*                     m_listModel = nullptr;
+    QHash<QString, PlaylistItemsModel*> m_itemsModels;
 };
 
 } // namespace wekde

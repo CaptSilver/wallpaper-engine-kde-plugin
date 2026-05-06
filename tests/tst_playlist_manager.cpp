@@ -31,7 +31,7 @@ private slots:
     void emptyOnFreshConstruction() {
         QTemporaryDir d;
         QVERIFY(d.isValid());
-        const QString path = setupConfigHome(d);
+        const QString          path = setupConfigHome(d);
         wekde::PlaylistManager mgr;
         QVERIFY(mgr.playlists().isEmpty());
         QVERIFY(QFileInfo::exists(path));
@@ -192,15 +192,14 @@ private slots:
         QVERIFY(mgr.setMode(id, wekde::PlaylistMode::Shuffle));
         QVERIFY(mgr.activate(id));
 
-        QString prev = mgr.playlists().first().items[mgr.currentItemIndex()].workshopId;
+        QString       prev = mgr.playlists().first().items[mgr.currentItemIndex()].workshopId;
         QSet<QString> seen { prev };
         for (int i = 0; i < 200; ++i) {
             mgr.onTimerTick();
             const QString cur = mgr.playlists().first().items[mgr.currentItemIndex()].workshopId;
-            QVERIFY2(cur != prev,
-                     qPrintable(QStringLiteral("immediate repeat at iteration %1: %2")
-                                    .arg(i)
-                                    .arg(cur)));
+            QVERIFY2(
+                cur != prev,
+                qPrintable(QStringLiteral("immediate repeat at iteration %1: %2").arg(i).arg(cur)));
             seen.insert(cur);
             prev = cur;
         }
@@ -320,7 +319,7 @@ private slots:
         QSignalSpy spy(&mgr, &wekde::PlaylistManager::tick);
         for (int i = 0; i < 8; ++i) mgr.skipCurrent();
         const int countBefore = spy.count();
-        mgr.skipCurrent(); // 9th skip — bail
+        mgr.skipCurrent();                  // 9th skip — bail
         QCOMPARE(spy.count(), countBefore); // no new tick
     }
 

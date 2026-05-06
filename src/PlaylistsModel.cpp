@@ -45,7 +45,7 @@ void PlaylistsModel::resetUnderlying() {
 void PlaylistsModel::notifyRowChanged(int row) {
     if (row < 0) return;
     const auto idx = createIndex(row, 0);
-    emit dataChanged(idx, idx);
+    emit       dataChanged(idx, idx);
 }
 
 } // namespace wekde

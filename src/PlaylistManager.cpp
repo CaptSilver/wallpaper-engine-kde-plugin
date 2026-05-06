@@ -79,7 +79,9 @@ void PlaylistManager::load() {
     m_playlists.clear();
     const auto arr = obj.value("playlists").toArray();
     m_playlists.reserve(arr.size());
-    for (const auto& v : arr) { m_playlists.append(playlistFromJson(v.toObject())); }
+    for (const auto& v : arr) {
+        m_playlists.append(playlistFromJson(v.toObject()));
+    }
     rebuildIndex();
 }
 
@@ -259,7 +261,8 @@ int PlaylistManager::pickShuffle(int cur, int size) const {
     if (pick == cur) {
         // Re-pick once to avoid trivial back-to-back repeat.
         const int second = QRandomGenerator::global()->bounded(size);
-        if (second != cur) pick = second;
+        if (second != cur)
+            pick = second;
         else {
             // Both picks landed on cur — force a different one.
             pick = (cur + 1) % size;
@@ -287,9 +290,9 @@ void PlaylistManager::armTimerForCurrent() {
 int PlaylistManager::nextIntervalMsForTest() const {
     if (m_activeId.isEmpty()) return 0;
     if (m_activeId == kFilteredLibraryId) {
-        return clampIntervalMin(
-                   m_filteredLibraryIntervalMin > 0 ? m_filteredLibraryIntervalMin : 15)
-               * 60 * 1000;
+        return clampIntervalMin(m_filteredLibraryIntervalMin > 0 ? m_filteredLibraryIntervalMin
+                                                                 : 15) *
+               60 * 1000;
     }
     const auto* pl = findPlaylist(m_activeId);
     if (! pl || pl->items.isEmpty()) return 0;
@@ -358,8 +361,8 @@ void PlaylistManager::onTimerTick() {
 void PlaylistManager::skipCurrent() {
     if (m_activeId.isEmpty() || m_activeId == kFilteredLibraryId) return;
     if (++m_consecutiveSkips > kMaxConsecutiveSkips) {
-        qCCritical(lcPlaylist) << "playlist" << m_activeId << "exceeded"
-                               << kMaxConsecutiveSkips << "consecutive skips; bailing";
+        qCCritical(lcPlaylist) << "playlist" << m_activeId << "exceeded" << kMaxConsecutiveSkips
+                               << "consecutive skips; bailing";
         return;
     }
     auto* pl = findPlaylist(m_activeId);

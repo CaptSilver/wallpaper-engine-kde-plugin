@@ -114,24 +114,23 @@ private slots:
         qputenv("XDG_CONFIG_HOME", d.path().toLocal8Bit());
 
         const QString p = d.path() + "/plasma-org.kde.plasma.desktop-appletsrc";
-        QFile a(p);
+        QFile         a(p);
         QVERIFY(a.open(QIODevice::WriteOnly));
-        a.write(
-            "[Containments][38][Wallpaper][com.github.catsout.wallpaperEngineKde][General]\n"
-            "Volume=42\n"
-            "Fps=60\n"
-            "MuteAudio=false\n"
-            "\n"
-            "[Containments][38][Wallpaper][com.github.captsilver.wallpaperEngineKde][General]\n"
-            "WallpaperWorkShopId=2800255344\n");
+        a.write("[Containments][38][Wallpaper][com.github.catsout.wallpaperEngineKde][General]\n"
+                "Volume=42\n"
+                "Fps=60\n"
+                "MuteAudio=false\n"
+                "\n"
+                "[Containments][38][Wallpaper][com.github.captsilver.wallpaperEngineKde][General]\n"
+                "WallpaperWorkShopId=2800255344\n");
         a.close();
 
         wekde::MigrationHelper helper;
         helper.runIfNeeded();
 
         // Verify captsilver section now has the merged keys.
-        KConfig         config(p, KConfig::SimpleConfig);
-        KConfigGroup    cs = config.group(QStringLiteral("Containments"))
+        KConfig      config(p, KConfig::SimpleConfig);
+        KConfigGroup cs = config.group(QStringLiteral("Containments"))
                               .group(QStringLiteral("38"))
                               .group(QStringLiteral("Wallpaper"))
                               .group(QStringLiteral("com.github.captsilver.wallpaperEngineKde"))
@@ -149,21 +148,20 @@ private slots:
         qputenv("XDG_CONFIG_HOME", d.path().toLocal8Bit());
 
         const QString p = d.path() + "/plasma-org.kde.plasma.desktop-appletsrc";
-        QFile a(p);
+        QFile         a(p);
         QVERIFY(a.open(QIODevice::WriteOnly));
-        a.write(
-            "[Containments][1][Wallpaper][com.github.catsout.wallpaperEngineKde][General]\n"
-            "Volume=42\n"
-            "\n"
-            "[Containments][1][Wallpaper][com.github.captsilver.wallpaperEngineKde][General]\n"
-            "Volume=99\n"); // captsilver already has Volume — should win
+        a.write("[Containments][1][Wallpaper][com.github.catsout.wallpaperEngineKde][General]\n"
+                "Volume=42\n"
+                "\n"
+                "[Containments][1][Wallpaper][com.github.captsilver.wallpaperEngineKde][General]\n"
+                "Volume=99\n"); // captsilver already has Volume — should win
         a.close();
 
         wekde::MigrationHelper helper;
         helper.runIfNeeded();
 
-        KConfig         config(p, KConfig::SimpleConfig);
-        KConfigGroup    cs = config.group(QStringLiteral("Containments"))
+        KConfig      config(p, KConfig::SimpleConfig);
+        KConfigGroup cs = config.group(QStringLiteral("Containments"))
                               .group(QStringLiteral("1"))
                               .group(QStringLiteral("Wallpaper"))
                               .group(QStringLiteral("com.github.captsilver.wallpaperEngineKde"))
@@ -177,7 +175,7 @@ private slots:
         qputenv("XDG_CONFIG_HOME", d.path().toLocal8Bit());
 
         const QString p = d.path() + "/plasma-org.kde.plasma.desktop-appletsrc";
-        QFile a(p);
+        QFile         a(p);
         QVERIFY(a.open(QIODevice::WriteOnly));
         a.write("[Containments][1][Wallpaper][com.github.catsout.wallpaperEngineKde][General]\n"
                 "Volume=42\n");

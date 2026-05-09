@@ -67,7 +67,7 @@ DESTDIR=%{buildroot} cmake --install %{_builddir}/wek-build \
 * %(date +'%a %b %d %Y') packager - %{version}-%{release}.git%{shortcommit}
 - Snapshot build from commit %{shortcommit} on %(date +'%Y-%m-%d %H:%M %Z')
 
-* Thu May 01 2026 packager - 1.3-1
+* Fri May 01 2026 packager - 1.3-1
 - Plugin URI renamed: com.github.catsout.wallpaperEngineKde
   -> com.github.captsilver.wallpaperEngineKde
 - Transitional shim package preserves existing user selectors during upgrade

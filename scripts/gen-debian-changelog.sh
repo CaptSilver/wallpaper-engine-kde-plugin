@@ -33,6 +33,18 @@ fi
 
 short_sha="$(git -C "$repo_root" rev-parse --short=7 HEAD 2>/dev/null || echo unknown)"
 date_rfc="$(date -R)"
+
+# If HEAD is exactly on the tag matching the .in's top version, skip the
+# snapshot stanza — the tagged release stanza is already at the top of
+# changelog.in. Produces a clean "_<ver>_" deb name instead of
+# "_<ver>+git.<sha>_".
+exact_tag="$(git -C "$repo_root" describe --tags --exact-match HEAD 2>/dev/null || true)"
+if [[ "$exact_tag" == "v${top_version}" || "$exact_tag" == "$top_version" ]]; then
+    cp "$in_file" "$out_file"
+    echo "Wrote $out_file (tagged release ${top_version} — no snapshot stanza)"
+    exit 0
+fi
+
 snapshot_version="${top_version}+git.${short_sha}"
 
 {

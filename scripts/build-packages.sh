@@ -68,6 +68,13 @@ UBUNTU_IMAGE="quay.io/toolbx/ubuntu-toolbox:25.04"
 DEPS_FEDORA_BASE=(
     rpm-build rpmdevtools
     cmake extra-cmake-modules clang
+    # llvm: provides llvm-ar / llvm-ranlib. CMake auto-picks these as the
+    # archiver when the C compiler is Clang and they exist, then bakes the
+    # absolute path into each target's link.txt. The Fedora `clang` package
+    # does NOT pull `llvm`, so a container with only clang installed will
+    # produce link.txt files referencing /usr/bin/llvm-ar — which then fail
+    # with "no such file or directory" on first link of any static library.
+    llvm
     vulkan-headers vulkan-loader-devel vulkan-validation-layers vulkan-tools
     plasma-workspace-devel libplasma-devel
     kf6-plasma-devel kf6-kcoreaddons-devel kf6-kpackage-devel kf6-kconfig-devel
@@ -92,6 +99,10 @@ RPMFUSION_FREE_PKG="rpmfusion-free-release"
 DEPS_UBUNTU=(
     build-essential devscripts dpkg-dev debhelper fakeroot
     clang cmake extra-cmake-modules ninja-build pkg-config
+    # llvm: same reason as the Fedora list — CMake bakes llvm-ar / llvm-ranlib
+    # paths into link.txt when present, and on Ubuntu the `clang` package does
+    # not pull the unversioned llvm tools, causing static-library link failures.
+    llvm
     libvulkan-dev vulkan-validationlayers vulkan-tools
     libkf6package-dev libkf6config-dev libplasma-dev plasma-workspace-dev
     qt6-base-dev qt6-base-private-dev qt6-declarative-dev

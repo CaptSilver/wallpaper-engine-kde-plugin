@@ -81,10 +81,18 @@ public:
 
 signals:
     void playbackStateChanged(int state); // 0=stopped, 1=playing, 2=paused
+    // `duration` carries the most recent known track length so SceneScript
+    // can read mediaPropertiesChanged event.duration alongside title/artist
+    // (some WE scripts read duration from this event rather than waiting for
+    // a separate timeline tick).  0.0 when unknown.
     void propertiesChanged(const QString& title, const QString& artist, const QString& albumTitle,
-                           const QString& albumArtist, const QString& genres);
+                           const QString& albumArtist, const QString& genres,
+                           double duration);
     void thumbnailChanged(bool hasThumbnail, const QVariantList& colors);
-    void timelineChanged(double position, double duration);
+    // `state` mirrors playbackStateChanged (0=stopped 1=playing 2=paused) so
+    // SceneScript can read event.state from the timeline event without
+    // synchronizing against the separate playbackStateChanged signal.
+    void timelineChanged(double position, double duration, int state);
     void enabledChanged(bool enabled);
 
 private slots:

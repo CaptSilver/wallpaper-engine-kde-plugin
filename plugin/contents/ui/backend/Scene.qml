@@ -43,14 +43,14 @@ Item{
         onPlaybackStateChanged: function(state) {
             player.mediaPlaybackChanged(state);
         }
-        onPropertiesChanged: function(title, artist, albumTitle, albumArtist, genres) {
-            player.mediaPropertiesChanged(title, artist, albumTitle, albumArtist, genres);
+        onPropertiesChanged: function(title, artist, albumTitle, albumArtist, genres, duration) {
+            player.mediaPropertiesChanged(title, artist, albumTitle, albumArtist, genres, duration);
         }
         onThumbnailChanged: function(hasThumbnail, colors) {
             player.mediaThumbnailChanged(hasThumbnail, colors);
         }
-        onTimelineChanged: function(position, duration) {
-            player.mediaTimelineChanged(position, duration);
+        onTimelineChanged: function(position, duration, state) {
+            player.mediaTimelineChanged(position, duration, state);
         }
         onEnabledChanged: function(enabled) {
             player.mediaStatusChanged(enabled);

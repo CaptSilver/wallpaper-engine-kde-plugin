@@ -9,9 +9,9 @@ QtObject {
 
     // Production wrappers connect on these:
     signal playbackStateChanged(string state)
-    signal propertiesChanged(string title, string artist, string albumTitle, string albumArtist, var genres)
+    signal propertiesChanged(string title, string artist, string albumTitle, string albumArtist, var genres, var duration)
     signal thumbnailChanged(bool hasThumbnail, var colors)
-    signal timelineChanged(var position, var duration)
+    signal timelineChanged(var position, var duration, int state)
     signal userShortcutRequested(string name)
 
     function invokeShortcut(name) {}

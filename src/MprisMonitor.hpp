@@ -86,8 +86,7 @@ signals:
     // (some WE scripts read duration from this event rather than waiting for
     // a separate timeline tick).  0.0 when unknown.
     void propertiesChanged(const QString& title, const QString& artist, const QString& albumTitle,
-                           const QString& albumArtist, const QString& genres,
-                           double duration);
+                           const QString& albumArtist, const QString& genres, double duration);
     void thumbnailChanged(bool hasThumbnail, const QVariantList& colors);
     // `state` mirrors playbackStateChanged (0=stopped 1=playing 2=paused) so
     // SceneScript can read event.state from the timeline event without

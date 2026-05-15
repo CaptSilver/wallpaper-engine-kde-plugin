@@ -192,8 +192,8 @@ void MprisMonitor::fetchAllProperties() {
             QVariantMap meta = qdbus_cast<QVariantMap>(r.value().value<QDBusArgument>());
             auto        md   = parseMprisMetadata(meta);
             m_duration       = md.duration;
-            emit propertiesChanged(md.title, md.artist, md.album, md.albumArtist, md.genres,
-                                   m_duration);
+            emit propertiesChanged(
+                md.title, md.artist, md.album, md.albumArtist, md.genres, m_duration);
             if (md.artUrl != m_lastArtUrl || ! m_artUrlEverProcessed) {
                 m_lastArtUrl          = md.artUrl;
                 m_artUrlEverProcessed = true;
@@ -243,8 +243,8 @@ void MprisMonitor::handlePropertiesChanged(const QString& interface, const QVari
         }
         auto md    = parseMprisMetadata(meta);
         m_duration = md.duration;
-        emit propertiesChanged(md.title, md.artist, md.album, md.albumArtist, md.genres,
-                               m_duration);
+        emit propertiesChanged(
+            md.title, md.artist, md.album, md.albumArtist, md.genres, m_duration);
         if (md.artUrl != m_lastArtUrl || ! m_artUrlEverProcessed) {
             m_lastArtUrl          = md.artUrl;
             m_artUrlEverProcessed = true;

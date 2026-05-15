@@ -71,7 +71,7 @@ TestCase {
 
     function test_mprisPropertiesForwardsToPlayer() {
         const mpris = _findChildByMethodName(scene, "invokeShortcut");
-        mpris.propertiesChanged("title", "artist", "albumTitle", "albumArtist", []);
+        mpris.propertiesChanged("title", "artist", "albumTitle", "albumArtist", "", 0.0);
         verify(true);
     }
 
@@ -83,7 +83,7 @@ TestCase {
 
     function test_mprisTimelineForwardsToPlayer() {
         const mpris = _findChildByMethodName(scene, "invokeShortcut");
-        mpris.timelineChanged(0, 60);
+        mpris.timelineChanged(0, 60, 1);
         verify(true);
     }
 

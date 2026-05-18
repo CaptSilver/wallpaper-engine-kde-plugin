@@ -1251,8 +1251,7 @@ void TestMprisColors::classifyArtUrl_dataUrl_isUnknown() {
     // data: URLs (inline base64 image bodies — some MPRIS players emit
     // these) are neither LocalFile nor Http; the helper must fall into
     // Unknown so the caller knows not to try a file fetch or HTTP GET.
-    QCOMPARE(wekde::classifyArtUrl(
-                 "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB"),
+    QCOMPARE(wekde::classifyArtUrl("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB"),
              wekde::MprisArtUrlKind::Unknown);
     // Also: bare data: prefix and weird schemes round-trip safely.
     QCOMPARE(wekde::classifyArtUrl("data:"), wekde::MprisArtUrlKind::Unknown);
@@ -1304,7 +1303,7 @@ void TestMprisColors::reconnect_sameArtUrl_doesNotDedup() {
     QVariantMap c;
     QVariantMap meta;
     meta["mpris:artUrl"] = artUrl;
-    c["Metadata"] = meta;
+    c["Metadata"]        = meta;
     invokeSlot(&m,
                "handlePropertiesChanged",
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),

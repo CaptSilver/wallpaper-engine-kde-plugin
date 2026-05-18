@@ -752,7 +752,7 @@ private slots:
     }
 
     void clearCacheDir_refusesPathOutsideCacheRoot() {
-        FileHelper fh;
+        FileHelper    fh;
         QTemporaryDir d;
         QVERIFY(d.isValid());
         const QString outside = d.path();
@@ -768,8 +768,7 @@ private slots:
     // name to XDG_CACHE_HOME). mkpath the raw path first so the
     // canonicalization step succeeds.
     static QString cacheRootCanonical() {
-        const QString raw = QStandardPaths::writableLocation(
-                                QStandardPaths::CacheLocation);
+        const QString raw = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
         if (raw.isEmpty()) return QString();
         QDir().mkpath(raw);
         return QFileInfo(raw).canonicalFilePath();
@@ -795,9 +794,9 @@ private slots:
         // Directory itself stays (so bindings to it remain valid),
         // contents are gone.
         QVERIFY(QFileInfo(target).exists());
-        QCOMPARE(QDir(target).entryList(QDir::AllEntries | QDir::NoDotAndDotDot
-                                       | QDir::Hidden).size(),
-                 0);
+        QCOMPARE(
+            QDir(target).entryList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden).size(),
+            0);
         // Clean up
         QDir(target).removeRecursively();
     }
@@ -827,11 +826,11 @@ private slots:
         QTemporaryDir cfgRoot;
         QVERIFY(cfgRoot.isValid());
         qputenv("XDG_CONFIG_HOME", cfgRoot.path().toLocal8Bit());
-        FileHelper fh;
+        FileHelper  fh;
         QVariantMap deep;
         QVariantMap inner;
         inner["alpha"] = 0.42;
-        inner["beta"]  = QVariantList{ "one", "two", 3 };
+        inner["beta"]  = QVariantList { "one", "two", 3 };
         deep["nested"] = inner;
         deep["top"]    = "string value";
         deep["scalar"] = 7;

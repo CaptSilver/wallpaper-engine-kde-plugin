@@ -10,6 +10,7 @@ import {
     intArrayToStr,
     prettyBytes,
     fileTypeNameFilters,
+    formatPropertyLabel,
 } from '../../plugin/contents/ui/js/utils.mjs';
 
 test('parseJson: valid JSON shapes', () => {
@@ -125,4 +126,40 @@ test('fileTypeNameFilters: case-insensitive match', () => {
     assert.match(fileTypeNameFilters('VIDEO')[0], /Video files/);
     assert.match(fileTypeNameFilters('Image')[0], /Image files/);
     assert.match(fileTypeNameFilters('Sound')[0], /Audio files/);
+});
+
+// formatPropertyLabel — extracted from WallpaperPage.qml's inner
+// _loadProps helper so the transform is unit-testable. The regex and
+// underscore-split are easy Mull mutation targets.
+test('formatPropertyLabel: ui_browse_properties_X_Y → "X Y"', () => {
+    assert.equal(formatPropertyLabel('ui_browse_properties_brightness', 'k'),
+                 'Brightness');
+    assert.equal(formatPropertyLabel('ui_browse_properties_color_intensity', 'k'),
+                 'Color Intensity');
+    // Title-case applied per word: first char upper, rest lower.
+    assert.equal(formatPropertyLabel('ui_browse_properties_MIX_AMOUNT', 'k'),
+                 'Mix Amount');
+});
+
+test('formatPropertyLabel: HTML tags stripped, whitespace collapsed', () => {
+    assert.equal(formatPropertyLabel('<b>Bold label</b>', 'k'), 'Bold label');
+    assert.equal(formatPropertyLabel('<span>multi  </span>  <i>word</i>', 'k'),
+                 'multi word');
+    assert.equal(formatPropertyLabel('plain text', 'k'), 'plain text');
+});
+
+test('formatPropertyLabel: empty / whitespace / falsy → key', () => {
+    assert.equal(formatPropertyLabel('', 'fallback'), 'fallback');
+    assert.equal(formatPropertyLabel(null, 'fallback'), 'fallback');
+    assert.equal(formatPropertyLabel(undefined, 'fallback'), 'fallback');
+    // Whitespace-only after HTML strip + collapse → empty → fallback.
+    assert.equal(formatPropertyLabel('   ', 'fallback'), 'fallback');
+    assert.equal(formatPropertyLabel('<br>  <br>', 'fallback'), 'fallback');
+});
+
+test('formatPropertyLabel: localization prefix wins over HTML strip', () => {
+    // Strings that BEGIN with the prefix bypass the HTML path entirely
+    // — they're identifiers, not user text.
+    assert.equal(formatPropertyLabel('ui_browse_properties_<b>nope</b>', 'k'),
+                 '<b>nope</b>');
 });

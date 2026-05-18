@@ -59,6 +59,30 @@ Item {
                 text: root.cfg_VideoFolderPath
                 Layout.fillWidth: true
                 elide: Text.ElideMiddle
+                // Tooltip with the full path — elide hides long paths
+                // entirely otherwise.
+                ToolTip.text: root.cfg_VideoFolderPath
+                ToolTip.visible: ma.containsMouse && ma.parent.width < ma.parent.implicitWidth
+                ToolTip.delay: 500
+                MouseArea {
+                    id: ma
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    acceptedButtons: Qt.NoButton
+                }
+            }
+            Label {
+                text: vlm.model.count > 0
+                    ? "(" + vlm.model.count + " video" + (vlm.model.count === 1 ? "" : "s") + ")"
+                    : ""
+                color: Kirigami.Theme.disabledTextColor
+                visible: ! vlm.scanning && text !== ""
+            }
+            BusyIndicator {
+                running: vlm.scanning
+                visible: running
+                implicitWidth: 20
+                implicitHeight: 20
             }
             Button {
                 text: "Change folder…"
@@ -66,6 +90,7 @@ Item {
             }
             Button {
                 text: "Rescan"
+                enabled: ! vlm.scanning
                 onClicked: vlm.refresh()
             }
         }

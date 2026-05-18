@@ -123,7 +123,7 @@ ColumnLayout {
 
     function saveConfig() {
         const wcfg = root.wallpaperConfiguration;
-        console.warn("[WEK-DBG config.saveConfig] BEFORE",
+        console.log("[WEK-DBG config.saveConfig] BEFORE",
             "cfg_WallpaperSource:", cfg_WallpaperSource,
             "cfg_WallpaperWorkShopId:", cfg_WallpaperWorkShopId,
             "wcfg.WallpaperSource:", wcfg ? wcfg["WallpaperSource"] : "<no wcfg>",
@@ -133,10 +133,10 @@ ColumnLayout {
     }
 
     onCfg_WallpaperSourceChanged: {
-        console.warn("[WEK-DBG config] cfg_WallpaperSource changed →", cfg_WallpaperSource);
+        console.log("[WEK-DBG config] cfg_WallpaperSource changed →", cfg_WallpaperSource);
     }
     onCfg_WallpaperWorkShopIdChanged: {
-        console.warn("[WEK-DBG config] cfg_WallpaperWorkShopId changed →", cfg_WallpaperWorkShopId);
+        console.log("[WEK-DBG config] cfg_WallpaperWorkShopId changed →", cfg_WallpaperWorkShopId);
     }
 
     WallpaperListModel {
@@ -173,12 +173,12 @@ ColumnLayout {
         // WallpaperWorkShopId / WallpaperSource: keep going through cfg_*
         // (legacy flow used by manual wallpaper picks; Apply commits).
         setActivePlaylistId: function(id) {
-            console.warn("[WEK-DBG dialog setActivePlaylistId]", id);
+            console.log("[WEK-DBG dialog setActivePlaylistId]", id);
             if (root.wallpaperConfiguration)
                 root.wallpaperConfiguration["ActivePlaylistId"] = id;
         }
         setCurrentItemIndex: function(idx) {
-            console.warn("[WEK-DBG dialog setCurrentItemIndex]", idx);
+            console.log("[WEK-DBG dialog setCurrentItemIndex]", idx);
             if (root.wallpaperConfiguration)
                 root.wallpaperConfiguration["CurrentItemIndex"] = idx;
         }
@@ -193,7 +193,7 @@ ColumnLayout {
         // `wallpaper.configuration.WallpaperSource` is what actually
         // changes the user's wallpaper; the dialog doesn't need to echo it.
         setWallpaperFromItem: function(item) {
-            console.warn("[WEK-DBG dialog setWallpaperFromItem (no-op)]",
+            console.log("[WEK-DBG dialog setWallpaperFromItem (no-op)]",
                 "wid:", item.workshopid);
         }
     }

@@ -23,7 +23,16 @@ Menu {
             // manual-add target. height: 0 collapses the menu row cleanly.
             visible: id !== "__filtered_library__"
             height: visible ? implicitHeight : 0
-            text: name
+            // Show "(added)" when the wallpaper is already in this
+            // playlist, and disable the row so clicking it doesn't
+            // create a silent duplicate. The disabled item still
+            // appears so users see what's already covered.
+            readonly property bool _alreadyIn:
+                root.manager && root.item
+                && typeof root.manager.playlistContains === "function"
+                && root.manager.playlistContains(id, root.item.workshopid)
+            enabled: ! _alreadyIn
+            text: _alreadyIn ? (name + "  (added)") : name
             onTriggered: {
                 if (root.manager && root.item)
                     root.manager.addItem(id, root.item.workshopid);

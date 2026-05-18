@@ -62,6 +62,25 @@ Item{
             ignoreUnknownSignals: true
             onFirstFrame: {
                 background.sig_backendFirstFrame('mpv');
+                loadWatchdog.stop();
+            }
+        }
+    }
+
+    // MpvBackend doesn't emit an explicit error signal — if libmpv can't
+    // load the source (missing file, codec failure, etc.) firstFrame
+    // never fires. A 15s watchdog catches this and falls back to InfoShow
+    // so the user sees a real message instead of a permanent black screen.
+    Timer {
+        id: loadWatchdog
+        interval: 15000
+        repeat: false
+        running: true
+        onTriggered: {
+            if (videoItem.parent
+                && typeof videoItem.parent.loadInfoShow === "function") {
+                videoItem.parent.loadInfoShow(
+                    "MPV failed to produce a frame within 15s — file may be unsupported or missing.");
             }
         }
     }

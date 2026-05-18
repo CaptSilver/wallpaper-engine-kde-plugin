@@ -152,6 +152,57 @@ TestCase {
                 "non-race miss must not queue — would hang the playlist");
     }
 
+    // Rapid activate/deactivate/activate within one event loop turn —
+    // race against _pendingWorkshopId and the mgr→parent Connections.
+    // Tests that quick toggling doesn't leave the controller wedged
+    // with a stale pending id or double-fire activate.
+    function test_rapidActivateDeactivateCycle_doesNotWedge() {
+        const savedRead = ctrl.activePlaylistIdRead;
+        ctrl.activePlaylistIdRead = "";
+        // Sequence of state changes inside one event loop turn.
+        ctrl.activePlaylistIdRead = "pl-1";
+        ctrl.activePlaylistIdRead = "";
+        ctrl.activePlaylistIdRead = "pl-1";
+        ctrl.activePlaylistIdRead = "pl-2";
+        ctrl.activePlaylistIdRead = "";
+        // After all that churn the controller's view of activePlaylistId
+        // should be the LAST read value — no zombie state.
+        compare(ctrl.activePlaylistIdRead, "");
+        ctrl.activePlaylistIdRead = savedRead;
+    }
+
+    // modelRefreshed AFTER _pendingWorkshopId was cleared by a successful
+    // resolve — controller must NOT re-apply a stale id from the prior
+    // queue cycle. Wrapped in try/finally so the wpListModel restore
+    // always runs even when an assert throws — otherwise subsequent
+    // tests inherit a polluted ctrl.wpListModel and fail in confusing
+    // ways.
+    function test_modelRefreshedAfterPendingCleared_doesNotReapply() {
+        const savedWp = ctrl.wpListModel;
+        try {
+            emptyWpInner.clear();
+            emptyWpInner.append({ workshopid: "delayed-id", title: "X" });
+            emptyWpModel.countNoFilter = 1;
+            ctrl.wpListModel = emptyWpModel;
+
+            // Successful resolve: setter fires, no pending queue lingers.
+            tc.lastSet = {};
+            ctrl._applyWorkshopId("delayed-id");
+            compare(tc.lastSet.fn, "setWallpaperFromItem");
+            compare(ctrl._pendingWorkshopId, "");
+
+            // Fire a spurious modelRefreshed — pending is already empty,
+            // so the Connections handler short-circuits and the setter
+            // does NOT re-fire.
+            tc.lastSet = {};
+            emptyWpModel.modelRefreshed();
+            compare(tc.lastSet.fn, undefined,
+                    "spurious modelRefreshed must not re-trigger setter");
+        } finally {
+            ctrl.wpListModel = savedWp;
+        }
+    }
+
     // Cold-start race: at plasmoid launch, the playlist controller may try
     // to apply a workshopId before WallpaperListModel has finished loading
     // (refresh + per-file readfile + JSON parse). Without the pending

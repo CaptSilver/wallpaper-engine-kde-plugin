@@ -35,6 +35,43 @@ RowLayout {
         manager: wallpaperPageRoot.playlistManager
     }
 
+    // Reset confirmation dialogs live at page root — they're Popups, not
+    // QQuickItems, so they can't sit inside OptionGroup's `content` list.
+    Dialog {
+        id: resetSceneOptsConfirm
+        objectName: "resetSceneOptsConfirm"
+        title: "Reset scene options"
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        contentItem: Label {
+            text: "Reset all per-wallpaper scene options to defaults? This cannot be undone."
+            wrapMode: Text.WordWrap
+        }
+        standardButtons: Dialog.Yes | Dialog.No
+        onOpened: {
+            const noBtn = standardButton(Dialog.No);
+            if (noBtn) noBtn.forceActiveFocus();
+        }
+        onAccepted: { if (right_opts) right_opts.reset_config(); }
+    }
+    Dialog {
+        id: resetUserPropsConfirm
+        objectName: "resetUserPropsConfirm"
+        title: "Reset wallpaper properties"
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        contentItem: Label {
+            text: "Reset this wallpaper's user properties to defaults? Any tuning you've done will be lost."
+            wrapMode: Text.WordWrap
+        }
+        standardButtons: Dialog.Yes | Dialog.No
+        onOpened: {
+            const noBtn = standardButton(Dialog.No);
+            if (noBtn) noBtn.forceActiveFocus();
+        }
+        onAccepted: { if (user_props_group) user_props_group.resetUserProps(); }
+    }
+
     function saveConfig() {
         right_opts.save_changes();
     }
@@ -163,12 +200,19 @@ RowLayout {
                 objectName: "filterPopup"
                 modal: false
                 focus: true
-                // Anchor near the top-right where the toolbar button is. The
-                // ActionToolBar doesn't surface a stable per-action geometry,
-                // so we anchor to the page's left_content top-right region.
-                x: left_content ? left_content.width - width - 16 : 0
+                // Anchor near the top-right where the toolbar button is.
+                // Width adapts so the popup never overflows a narrow side-
+                // panel layout (Plasma allows the wallpaper config dialog
+                // to be quite slim on some setups). x is clamped so the
+                // popup stays inside the parent.
+                readonly property int _maxW: 280
+                readonly property int _minW: 200
+                readonly property int _avail: left_content
+                    ? Math.max(0, left_content.width - 32) : _maxW
+                width: Math.max(_minW, Math.min(_maxW, _avail))
+                x: left_content
+                    ? Math.max(8, left_content.width - width - 16) : 0
                 y: infoRow ? infoRow.height + 8 : 48
-                width: 280
                 height: Math.min(
                     (left_content ? left_content.height : 600) - 80,
                     520)
@@ -335,7 +379,7 @@ RowLayout {
                         const newWid = item.workshopid;
                         cfg_WallpaperSource = newSrc;
                         cfg_WallpaperWorkShopId = newWid;
-                        console.warn("[WEK-DBG WallpaperPage.onItemClicked]",
+                        console.log("[WEK-DBG WallpaperPage.onItemClicked]",
                             "wid:", oldWid, "→", newWid,
                             "srcChanged:", oldSrc !== newSrc,
                             "widChanged:", oldWid !== newWid);
@@ -535,7 +579,17 @@ RowLayout {
                             Kirigami.Action {
                                 icon.name: "folder-symbolic"
                                 tooltip: "Open Containing Folder"
-                                onTriggered: Qt.openUrlExternally(right_content.wpmodel.path) 
+                                // Qt.openUrlExternally silently no-ops on
+                                // bare paths — needs a scheme. Most
+                                // wpmodel.path values are already
+                                // "file://..." from QUrl resolution, but
+                                // guard the bare-path case anyway.
+                                onTriggered: {
+                                    const p = right_content.wpmodel.path || "";
+                                    const url = p.indexOf("://") > 0 ? p
+                                                : (p.startsWith("/") ? ("file://" + p) : p);
+                                    Qt.openUrlExternally(url);
+                                }
                             }
                         ]
                     }
@@ -721,9 +775,7 @@ RowLayout {
                         actions: [
                             Kirigami.Action {
                                 text: 'Reset'
-                                onTriggered: {
-                                    right_opts.reset_config();
-                                }
+                                onTriggered: resetSceneOptsConfirm.open()
                             }
                         ]
                     }
@@ -940,22 +992,9 @@ RowLayout {
                                 if (project && project.general && project.general.properties) {
                                     const props = project.general.properties;
                                     const arr = [];
-                                    // Helper to convert localization keys to readable text
-                                    function formatLabel(text, key) {
-                                        if (!text) return key;
-                                        // Convert "ui_browse_properties_XXX" to "Xxx Yyy"
-                                        if (text.startsWith('ui_browse_properties_')) {
-                                            const suffix = text.replace('ui_browse_properties_', '');
-                                            return suffix.split('_').map(w =>
-                                                w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
-                                            ).join(' ');
-                                        }
-                                        // Strip HTML tags
-                                        let cleaned = text.replace(/<[^>]*>/g, ' ');
-                                        // Collapse whitespace
-                                        cleaned = cleaned.replace(/\s+/g, ' ').trim();
-                                        return cleaned || key;
-                                    }
+                                    // Pulled into Utils.formatPropertyLabel so the
+                                    // transform is unit-testable. Behavior unchanged.
+                                    const formatLabel = Utils.formatPropertyLabel;
                                     for (const key in props) {
                                         const prop = props[key];
                                         // Skip non-interactive types (info text, groups)
@@ -1032,7 +1071,7 @@ RowLayout {
                         actions: [
                             Kirigami.Action {
                                 text: 'Reset'
-                                onTriggered: user_props_group.resetUserProps()
+                                onTriggered: resetUserPropsConfirm.open()
                             }
                         ]
                     }

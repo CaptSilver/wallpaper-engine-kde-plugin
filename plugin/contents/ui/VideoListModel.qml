@@ -16,6 +16,11 @@ Item {
     // the onFolderPathChanged auto-trigger and explicit caller refresh().
     property int _refreshGen: 0
 
+    // True while a folder scan is in progress. UI binds Rescan buttons +
+    // BusyIndicators to this so the user gets feedback that a 5s-on-a-big-
+    // folder operation is actually working.
+    property bool scanning: false
+
     onFolderPathChanged: refresh()
 
     // FNV-1a 32-bit, hex-padded to 16 chars. Stable per absolute path —
@@ -46,8 +51,12 @@ Item {
 
     function refresh() {
         const gen = ++root._refreshGen;
+        root.scanning = true;
         model.clear();
-        if (! folderPath || ! pyext) return Promise.resolve();
+        if (! folderPath || ! pyext) {
+            root.scanning = false;
+            return Promise.resolve();
+        }
         return pyext.scan_video_folder(folderPath).then((list) => {
             // Stale scan — a newer refresh() superseded this one.
             if (gen !== root._refreshGen) return;
@@ -77,7 +86,13 @@ Item {
                     modified: f.mtime,
                 });
             }
+            // Thumbnail generation continues async, but the list is
+            // committed — flip scanning back off so the UI re-enables.
+            root.scanning = false;
             _kickThumbnails(gen);
+        }).catch((e) => {
+            root.scanning = false;
+            console.warn("VideoListModel: scan failed", e);
         });
     }
 

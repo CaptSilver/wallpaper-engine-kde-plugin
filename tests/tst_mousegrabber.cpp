@@ -105,6 +105,10 @@ private slots:
     // mouseUngrabEvent behavior
     void mouseUngrab_withoutForce_noRegrab();
     void mouseUngrab_withForce_attemptsRegrab();
+
+    // Mid-event target swap — target nulled between press and release.
+    // Pins the `if (m_target)` guard in sendMouseEvent.
+    void setTarget_nullBetweenPressAndRelease_noCrash();
 };
 
 // ---------------------------------------------------------------------------
@@ -386,6 +390,36 @@ void TestMouseGrabber::mouseUngrab_withForce_attemptsRegrab() {
     // just exercising the forceCapture==true branch of mouseUngrabEvent.
     g.mouseUngrabEvent();
     QCOMPARE(g.forceCapture(), true);
+}
+
+void TestMouseGrabber::setTarget_nullBetweenPressAndRelease_noCrash() {
+    // The QML caller may legitimately reassign target between press and
+    // release (e.g. a focus-out racing with a click). Guard at
+    // sendMouseEvent ensures we don't deliver to a stale pointer. Use
+    // EventCapturingFilter to absorb the press cleanly without invoking
+    // the QQuickItem dispatch path (which assumes a QQuickWindow).
+    QQuickItem           target;
+    EventCapturingFilter filter;
+    TestableMouseGrabber g;
+    g.setTarget(&target);
+    target.installEventFilter(&filter);
+
+    auto press = mkMouse(QEvent::MouseButtonPress);
+    g.mousePressEvent(&press);
+    QVERIFY(press.isAccepted());
+    QCOMPARE(filter.types.size(), 1);
+
+    // Null the target mid-stream — sendMouseEvent must early-out.
+    g.setTarget(nullptr);
+
+    auto release = mkMouse(QEvent::MouseButtonRelease);
+    g.mouseReleaseEvent(&release);
+    // Filter saw press only — release never dispatched (no target).
+    QCOMPARE(filter.types.size(), 1);
+    // Second send while target is null — still safe.
+    auto move = mkMouse(QEvent::MouseMove);
+    g.mouseMoveEvent(&move);
+    QCOMPARE(filter.types.size(), 1);
 }
 
 QTEST_GUILESS_MAIN(TestMouseGrabber)

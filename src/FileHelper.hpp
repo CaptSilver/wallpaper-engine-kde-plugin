@@ -37,6 +37,14 @@ public:
     Q_INVOKABLE void generateThumbnail(const QString& videoPath, const QString& outPath,
                                        double atSeconds);
 
+    // Recursively remove the contents of a directory under the user's cache
+    // root (QStandardPaths::CacheLocation). Refuses paths outside the cache
+    // root — a safety belt against a stray "/" or "/home/<user>" landing
+    // in `path` via a misconfigured plugin_info.cache_path. Returns true on
+    // success (directory now empty or didn't exist), false on permission
+    // error or path-outside-cache violation.
+    Q_INVOKABLE bool clearCacheDir(const QString& path);
+
     // Atomic JSON write: encode `doc` to UTF-8, write to <path>.tmp, flush,
     // then rename(2) to `path`. Returns false on any failure; the temp file
     // is removed on failure to avoid clutter.

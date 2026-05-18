@@ -237,6 +237,44 @@ void FileHelper::resetWallpaperConfig(const QString& id) {
     QFile::remove(filePath);
 }
 
+bool FileHelper::clearCacheDir(const QString& path) {
+    if (path.isEmpty()) return false;
+    // Safety belt: refuse anything outside QStandardPaths::CacheLocation.
+    // Strip file:// if present and resolve symlinks to defeat path tricks.
+    QString native = path;
+    if (native.startsWith("file://")) native = native.mid(7);
+    const QString canon = QFileInfo(native).canonicalFilePath();
+    if (canon.isEmpty()) return false;
+    const QString cacheRoot =
+        QFileInfo(QStandardPaths::writableLocation(QStandardPaths::CacheLocation))
+            .canonicalFilePath();
+    if (cacheRoot.isEmpty() || ! canon.startsWith(cacheRoot)) {
+        qWarning() << "FileHelper::clearCacheDir refused path outside cache root:" << path;
+        return false;
+    }
+    QDir dir(canon);
+    if (! dir.exists()) return true; // nothing to clear
+    // Remove the directory contents but keep the directory itself so the
+    // caller's binding to it (e.g. plugin_info.cache_path) stays valid.
+    const QFileInfoList entries =
+        dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden);
+    for (const QFileInfo& fi : entries) {
+        if (fi.isDir()) {
+            QDir sub(fi.absoluteFilePath());
+            if (! sub.removeRecursively()) {
+                qWarning() << "FileHelper::clearCacheDir failed on" << fi.absoluteFilePath();
+                return false;
+            }
+        } else {
+            if (! QFile::remove(fi.absoluteFilePath())) {
+                qWarning() << "FileHelper::clearCacheDir failed on" << fi.absoluteFilePath();
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 QVariantList FileHelper::readActiveBindings(const QString& id) {
     QString filePath = wallpaperConfigDir() + "/" + id + "_bindings.json";
     QFile   file(filePath);

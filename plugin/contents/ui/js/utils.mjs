@@ -62,6 +62,26 @@ export function intArrayToStr(arr) {
     return arr.reduce((acc, e) => acc + e.toString(), "");
 }
 
+// Converts a wallpaper user-property `text` field into a human-readable
+// label, with fallback to the property `key`.
+//   • `ui_browse_properties_foo_bar` → "Foo Bar" (WE localization keys)
+//   • "<b>Cool prop</b>" → "Cool prop" (HTML strips, whitespace collapses)
+//   • empty / whitespace-only / falsy → returns `key`
+// Pulled out of WallpaperPage.qml so it can be unit-tested directly —
+// the underscore-split + regex are easy mutation targets.
+export function formatPropertyLabel(text, key) {
+    if (!text) return key;
+    if (text.startsWith('ui_browse_properties_')) {
+        const suffix = text.replace('ui_browse_properties_', '');
+        return suffix.split('_').map(w =>
+            w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
+        ).join(' ');
+    }
+    let cleaned = text.replace(/<[^>]*>/g, ' ');
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    return cleaned || key;
+}
+
 const BYTE_UNITS = [
 	'B',
 	'kB',

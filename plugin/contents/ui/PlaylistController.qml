@@ -55,7 +55,7 @@ Item {
                 root.setActivePlaylistId("");
         }
         onActivePlaylistIdChanged: {
-            console.warn("[WEK-DBG ctrl mgrIdChanged]",
+            console.log("[WEK-DBG ctrl mgrIdChanged]",
                 "mgr.activeId:", mgr.activePlaylistId,
                 "read:", root.activePlaylistIdRead);
             if (root.activePlaylistIdRead !== mgr.activePlaylistId)
@@ -187,7 +187,7 @@ Item {
     // config dialog updates plasmoid config but the runtime controller's
     // manager stays inactive — wallpapers don't cycle.
     onActivePlaylistIdReadChanged: {
-        console.warn("[WEK-DBG ctrl readChanged]",
+        console.log("[WEK-DBG ctrl readChanged]",
             "read:", root.activePlaylistIdRead,
             "mgr.activeId:", mgr.activePlaylistId);
         if (root.activePlaylistIdRead === mgr.activePlaylistId) return;

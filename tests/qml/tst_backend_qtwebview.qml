@@ -91,6 +91,38 @@ TestCase {
         verify(true);
     }
 
+    // ── WebAudioBridge.onAudioBuffer@93: relays a 128-sample audio
+    //    array to the webobj. Only fires when webobj.loaded is true —
+    //    a regression that drops the guard would push audio at an
+    //    uninitialised proxy and crash in-page JS.
+    function test_audioBuffer_onlyForwardedWhenWebobjLoaded() {
+        const bridge = _findInner(c =>
+            c && typeof c.audioBuffer === "function" &&
+            typeof c.enabled !== "undefined");
+        const webobj = _findInner(c =>
+            c && typeof c.loaded !== "undefined" &&
+            typeof c.sigAudio === "function");
+        if (!bridge || !webobj) return;
+
+        let relayed = 0;
+        const conn = function(arr) { relayed += 1; };
+        webobj.sigAudio.connect(conn);
+
+        // Default state: loaded === false → handler must NOT relay.
+        webobj.loaded = false;
+        try { bridge.audioBuffer([0, 1, 2, 3]); } catch (e) {}
+        compare(relayed, 0,
+                "audio relay must be gated on webobj.loaded");
+
+        // Flip loaded → relay should now fire.
+        webobj.loaded = true;
+        try { bridge.audioBuffer([4, 5, 6, 7]); } catch (e) {}
+        compare(relayed, 1,
+                "loaded webobj must receive audio samples");
+
+        webobj.sigAudio.disconnect(conn);
+    }
+
     // ── webobj.onLoadedChanged@91: fired when webobj.loaded toggles true.
     //    The 26 LOC body reads project.json via readfile() and emits
     //    sigUserProperties + sigGeneralProperties on the webobj. ──────────

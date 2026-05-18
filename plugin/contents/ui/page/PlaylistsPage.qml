@@ -584,6 +584,12 @@ Item {
             wrapMode: Text.WordWrap
         }
         standardButtons: Dialog.Yes | Dialog.No
+        // Destructive default → safe. Enter on the dialog dismisses
+        // without deleting; the user has to explicitly click Yes.
+        onOpened: {
+            const noBtn = standardButton(Dialog.No);
+            if (noBtn) noBtn.forceActiveFocus();
+        }
         onAccepted: {
             if (root.manager) root.manager.deletePlaylist(root._selectedId);
             root._selectedId = "";

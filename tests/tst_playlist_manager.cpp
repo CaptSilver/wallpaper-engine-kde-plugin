@@ -17,6 +17,7 @@
 #include <QSignalSpy>
 #include <QSet>
 
+#include "Playlist.hpp"
 #include "PlaylistManager.hpp"
 
 class TstPlaylistManager : public QObject {
@@ -409,6 +410,315 @@ private slots:
             QCOMPARE(pl.items[0].workshopId, QString("B"));
             QCOMPARE(pl.items[1].workshopId, QString("C"));
             QCOMPARE(pl.items[2].workshopId, QString("A"));
+        }
+    }
+
+    // Persistence recovery — atomicWriteJson writes to <path>.tmp, fsync,
+    // then rename(2). A crash between flush and rename leaves an orphan
+    // .tmp next to a valid playlists.json. PlaylistManager must load the
+    // real file and treat the orphan as benign clutter (next persist
+    // overwrites it cleanly).
+    void orphanTmpDoesNotPoisonLoad() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        const QString path = setupConfigHome(d);
+        QDir().mkpath(QFileInfo(path).absolutePath());
+
+        // Write a valid playlists.json with one entry.
+        {
+            wekde::PlaylistManager mgr;
+            const QString id = mgr.createPlaylist("Survives");
+            mgr.addItem(id, "Wp1");
+        }
+        QVERIFY(QFile::exists(path));
+
+        // Drop a stray .tmp file with garbage — simulates the
+        // post-flush-pre-rename crash.
+        const QString tmp = path + ".tmp";
+        QFile orphan(tmp);
+        QVERIFY(orphan.open(QIODevice::WriteOnly));
+        orphan.write("{this is not valid json yet — half written");
+        orphan.close();
+
+        // Re-construct: real file must still load cleanly. Orphan
+        // .tmp is irrelevant to load().
+        {
+            wekde::PlaylistManager mgr;
+            QCOMPARE(mgr.playlists().size(), 1);
+            QCOMPARE(mgr.playlists().first().name, QString("Survives"));
+        }
+
+        // Next persist must overwrite cleanly — the rename(2) step replaces
+        // .tmp via tmpfile creation+rename, so the stale orphan ends up
+        // either gone or overwritten on the next write.
+        {
+            wekde::PlaylistManager mgr;
+            mgr.createPlaylist("Another");
+        }
+        QVERIFY(QFile::exists(path));
+        // The orphan should not block future writes; it may be overwritten
+        // or removed. The key invariant is that the canonical file is
+        // still valid JSON.
+        QFile reread(path);
+        QVERIFY(reread.open(QIODevice::ReadOnly));
+        const auto doc = QJsonDocument::fromJson(reread.readAll());
+        QVERIFY(! doc.isNull());
+        QVERIFY(doc.object().value("playlists").isArray());
+    }
+
+    // Schema corruption: valid JSON but wrong shape. Real-world bug from
+    // disk-full failures or third-party config editors that produce
+    // syntactically valid JSON with semantically wrong fields.
+    void schemaShapeWrong_doesNotCrash() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        const QString path = setupConfigHome(d);
+        QDir().mkpath(QFileInfo(path).absolutePath());
+
+        // playlists is a STRING instead of an array — must not crash on load.
+        QFile pre(path);
+        QVERIFY(pre.open(QIODevice::WriteOnly));
+        pre.write(R"({"version": 1, "playlists": "oops not an array"})");
+        pre.close();
+
+        wekde::PlaylistManager mgr;
+        // Should fall back to empty rather than crash or assert.
+        QCOMPARE(mgr.playlists().size(), 0);
+    }
+
+    // Schema corruption: entry missing required fields. The reader should
+    // skip or default rather than produce a half-formed Playlist.
+    void schemaEntryMissingFields_doesNotCrash() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        const QString path = setupConfigHome(d);
+        QDir().mkpath(QFileInfo(path).absolutePath());
+
+        QFile pre(path);
+        QVERIFY(pre.open(QIODevice::WriteOnly));
+        pre.write(R"({
+            "version": 1,
+            "playlists": [
+                {"missing_id_and_name": true},
+                {"id": "", "name": ""}
+            ]
+        })");
+        pre.close();
+
+        wekde::PlaylistManager mgr;
+        // No assertion on count — implementation defines whether to skip
+        // or accept-default the malformed entries. The contract is "don't
+        // crash"; both load policies satisfy it.
+        Q_UNUSED(mgr);
+    }
+
+    // ── Direct JSON round-trips for Playlist + PlaylistItem helpers ─────────
+    // The reset_wallpaper_config + writeWallpaperConfig + migration paths
+    // depend on these being faithful encoders. Going via PlaylistManager's
+    // end-to-end persist masks single-field encoder regressions.
+
+    void playlistItem_jsonRoundTrip_idempotent() {
+        wekde::PlaylistItem original;
+        original.workshopId = "2800255344";
+        const auto json  = wekde::playlistItemToJson(original);
+        const auto round = wekde::playlistItemFromJson(json);
+        QCOMPARE(round.workshopId, original.workshopId);
+    }
+
+    void playlistItem_jsonTolerantToUnknownFields() {
+        // The removed durationOverrideMin field landed silently in
+        // playlistFromJson — this test pins that unknown JSON fields are
+        // ignored so future schema additions don't blow up old binaries.
+        QJsonObject obj;
+        obj["workshop_id"] = "abc";
+        obj["duration_override_min"] = 42;           // removed
+        obj["some_future_field"] = "anything";       // unknown
+        obj["extra_nested"] = QJsonObject{ { "x", 1 } };
+        const auto it = wekde::playlistItemFromJson(obj);
+        QCOMPARE(it.workshopId, QString("abc"));
+    }
+
+    void playlist_jsonRoundTrip_preservesAllFields() {
+        wekde::Playlist original;
+        original.id          = "uuid-1234";
+        original.name        = "Round Trip";
+        original.mode        = wekde::PlaylistMode::Shuffle;
+        original.intervalMin = 42;
+        original.created     = 1700000000;
+        original.modified    = 1700000100;
+        wekde::PlaylistItem a; a.workshopId = "A"; original.items.append(a);
+        wekde::PlaylistItem b; b.workshopId = "B"; original.items.append(b);
+
+        const auto json  = wekde::playlistToJson(original);
+        const auto round = wekde::playlistFromJson(json);
+        QCOMPARE(round.id, original.id);
+        QCOMPARE(round.name, original.name);
+        QCOMPARE(round.mode, original.mode);
+        QCOMPARE(round.intervalMin, original.intervalMin);
+        QCOMPARE(round.created, original.created);
+        QCOMPARE(round.modified, original.modified);
+        QCOMPARE(round.items.size(), 2);
+        QCOMPARE(round.items[0].workshopId, QString("A"));
+        QCOMPARE(round.items[1].workshopId, QString("B"));
+    }
+
+    void playlistMode_fromString_acceptsKnownValues() {
+        QCOMPARE(wekde::playlistModeFromString("sequential"),
+                 wekde::PlaylistMode::Sequential);
+        QCOMPARE(wekde::playlistModeFromString("shuffle"),
+                 wekde::PlaylistMode::Shuffle);
+    }
+
+    void playlistMode_fromString_unknownReturnsFallback() {
+        // Default fallback is Sequential.
+        QCOMPARE(wekde::playlistModeFromString(""),
+                 wekde::PlaylistMode::Sequential);
+        QCOMPARE(wekde::playlistModeFromString("nonsense"),
+                 wekde::PlaylistMode::Sequential);
+        // Explicit fallback honored.
+        QCOMPARE(wekde::playlistModeFromString("x", wekde::PlaylistMode::Shuffle),
+                 wekde::PlaylistMode::Shuffle);
+    }
+
+    void clampIntervalMin_boundaries() {
+        // Min boundary.
+        QCOMPARE(wekde::clampIntervalMin(0), 1);
+        QCOMPARE(wekde::clampIntervalMin(-100), 1);
+        QCOMPARE(wekde::clampIntervalMin(INT_MIN), 1);
+        // Mid range — passthrough.
+        QCOMPARE(wekde::clampIntervalMin(1), 1);
+        QCOMPARE(wekde::clampIntervalMin(15), 15);
+        QCOMPARE(wekde::clampIntervalMin(1440), 1440);
+        // Max boundary.
+        QCOMPARE(wekde::clampIntervalMin(1441), 1440);
+        QCOMPARE(wekde::clampIntervalMin(INT_MAX), 1440);
+    }
+
+    // setFilteredLibraryIntervalMin re-arms the live timer if the user
+    // changes the Randomize Timer slider while Filtered Library is active.
+    // Without the re-arm, the new interval only kicks in on the NEXT
+    // natural tick — invisible to the user. Anchors the
+    // `m_activeId == kFilteredLibraryId && m_timer.isActive()` branch.
+    void setFilteredLibraryIntervalMin_reArmsActiveTimer() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+
+        // Arm: filtered library + initial interval.
+        mgr.setFilteredLibraryIntervalMin(10);
+        QVERIFY(mgr.activate(wekde::kFilteredLibraryId));
+        // activate does NOT arm the timer for the filtered library because
+        // tick goes through requestFilteredPick. Manually arm via
+        // acceptPick — that's the production path after the QML side
+        // returns a chosen workshopId.
+        mgr.acceptPick("workshop-xyz");
+        QCOMPARE(mgr.nextIntervalMsForTest(), 10 * 60 * 1000);
+
+        // Change the interval — re-arm branch should fire.
+        mgr.setFilteredLibraryIntervalMin(45);
+        QCOMPARE(mgr.nextIntervalMsForTest(), 45 * 60 * 1000);
+
+        // Clamping verified at the boundary: too-large → 1440 cap.
+        mgr.setFilteredLibraryIntervalMin(99999);
+        QCOMPARE(mgr.nextIntervalMsForTest(), 1440 * 60 * 1000);
+    }
+
+    // setFilteredLibraryIntervalMin on an INACTIVE filtered library only
+    // stores the value — it doesn't try to arm a timer that has no source.
+    void setFilteredLibraryIntervalMin_inactiveStoresOnly() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        mgr.setFilteredLibraryIntervalMin(30);
+        // No active playlist → nextIntervalMsForTest reports 0 regardless.
+        QCOMPARE(mgr.nextIntervalMsForTest(), 0);
+        // Subsequent activation honors the stored value.
+        QVERIFY(mgr.activate(wekde::kFilteredLibraryId));
+        mgr.acceptPick("x");
+        QCOMPARE(mgr.nextIntervalMsForTest(), 30 * 60 * 1000);
+    }
+
+    // Pause/resume edge cases. The clamp `std::max<qint64>(0, total -
+    // elapsed)` at PlaylistManager.cpp:392 is a Mull mutation target —
+    // dropping it lets m_remainingMs go negative, which resumeTicks
+    // would silently reject (m_remainingMs < 0 short-circuits the
+    // re-arm). These tests don't time-travel to hit elapsed > total
+    // directly (would need a 1+ minute wait), but they pin the
+    // invariants that protect callers.
+
+    void pauseTicks_isNoOpWhenTimerNotActive() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        // No active playlist → timer never armed.
+        mgr.pauseTicks();
+        mgr.resumeTicks();
+        // Followed by activate: arming + tick path should still work
+        // (pauseTicks shouldn't have poisoned internal state).
+        const QString id = mgr.createPlaylist("X");
+        mgr.addItem(id, "A");
+        QVERIFY(mgr.activate(id));
+        QCOMPARE(mgr.activePlaylistId(), id);
+    }
+
+    void resumeTicks_earlyReturnWhenNoPriorPause() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString id = mgr.createPlaylist("X");
+        mgr.addItem(id, "A");
+        QVERIFY(mgr.activate(id));
+        // m_remainingMs == -1 (default sentinel). resumeTicks must be
+        // safe — no double-arm, no crash.
+        mgr.resumeTicks();
+        mgr.resumeTicks();
+        QCOMPARE(mgr.activePlaylistId(), id);
+    }
+
+    void pauseThenResume_restoresActiveState() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString id = mgr.createPlaylist("X");
+        mgr.setIntervalMin(id, 15);
+        mgr.addItem(id, "A");
+        QVERIFY(mgr.activate(id));
+        const auto activeBefore = mgr.activePlaylistId();
+        const auto idxBefore    = mgr.currentItemIndex();
+        mgr.pauseTicks();
+        mgr.resumeTicks();
+        // Active id + index survive a pause/resume round-trip.
+        QCOMPARE(mgr.activePlaylistId(), activeBefore);
+        QCOMPARE(mgr.currentItemIndex(), idxBefore);
+    }
+
+    // Mull-target: pickShuffle force-different branch. With size==2 and
+    // the first random bounded() landing on cur, the implementation
+    // tries a second pick. If both land on cur it forces `(cur+1) % size`.
+    // Hammer the path with many ticks: across N runs the result must
+    // NEVER equal the previous index (the no-immediate-repeat guarantee).
+    void shuffle_neverImmediatelyRepeats_evenAtSize2() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString id = mgr.createPlaylist("Two");
+        mgr.addItem(id, "A");
+        mgr.addItem(id, "B");
+        QVERIFY(mgr.setMode(id, wekde::PlaylistMode::Shuffle));
+        QVERIFY(mgr.activate(id));
+        QString prev = mgr.playlists().first().items[mgr.currentItemIndex()].workshopId;
+        for (int i = 0; i < 500; ++i) {
+            mgr.onTimerTick();
+            const QString cur = mgr.playlists().first().items[mgr.currentItemIndex()].workshopId;
+            QVERIFY2(cur != prev,
+                qPrintable(QStringLiteral("size=2 shuffle repeat at iter %1: %2").arg(i).arg(cur)));
+            prev = cur;
         }
     }
 

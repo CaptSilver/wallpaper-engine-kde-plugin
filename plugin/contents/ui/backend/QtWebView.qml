@@ -164,15 +164,29 @@ Item {
         //onContextMenuRequested: function(request) {
         //    request.accepted = true;
         //}
+        // Track whether the first page load succeeded — in-page nav
+        // failures after that shouldn't kick the user to InfoShow.
+        property bool _firstLoadOk: false
+
         onLoadingChanged: (loadingInfo) => {
-            console.warn("[WEK] onLoadingChanged status=" + loadingInfo.status
+            console.log("[WEK] onLoadingChanged status=" + loadingInfo.status
                 + " url=" + loadingInfo.url
                 + " (Succeeded=" + WebEngineView.LoadSucceededStatus
                 + " Failed=" + WebEngineView.LoadFailedStatus + ")");
             if (loadingInfo.status == WebEngineView.LoadFailedStatus) {
                 console.warn("[WEK] LOAD FAILED: " + loadingInfo.errorString);
+                // Only surface as a wallpaper-load failure if the FIRST
+                // top-level navigation never succeeded. Otherwise this is
+                // an in-page nav failure (broken link inside the wallpaper)
+                // and shouldn't yank the user to InfoShow.
+                if (! web._firstLoadOk && webItem.parent
+                    && typeof webItem.parent.loadInfoShow === "function") {
+                    webItem.parent.loadInfoShow(
+                        "Web wallpaper failed to load: " + loadingInfo.errorString);
+                }
             }
             if(loadingInfo.status == WebEngineView.LoadSucceededStatus) {
+                web._firstLoadOk = true;
                 // check pause after load
                 if(paused) {
                     webItem.play();

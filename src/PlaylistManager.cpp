@@ -221,6 +221,17 @@ bool PlaylistManager::moveItem(const QString& playlistId, int fromIdx, int toIdx
     return true;
 }
 
+bool PlaylistManager::playlistContains(const QString& playlistId,
+                                       const QString& workshopId) const {
+    if (playlistId.isEmpty() || playlistId == kFilteredLibraryId) return false;
+    if (workshopId.isEmpty()) return false;
+    const auto* pl = findPlaylist(playlistId);
+    if (! pl) return false;
+    for (const auto& it : pl->items)
+        if (it.workshopId == workshopId) return true;
+    return false;
+}
+
 PlaylistItemsModel* PlaylistManager::itemsModel(const QString& playlistId) {
     auto it = m_itemsModels.find(playlistId);
     if (it != m_itemsModels.end()) return it.value();

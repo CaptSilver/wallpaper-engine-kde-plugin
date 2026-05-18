@@ -19,6 +19,10 @@ QtObject {
     function resetWallpaperConfig(id)    { return; }
     function readActiveBindings(id)      { return ({}); }
     function scanVideoFolder(path)       { return _scanVideoFolderReturns; }
+    // Always reports success in tests. Real impl refuses paths outside the
+    // user's cache root; tests that need to exercise the refusal path
+    // should mock this directly.
+    function clearCacheDir(path)         { return true; }
     function generateThumbnail(videoPath, outPath, atSeconds) {
         // Fire the signal synchronously in the stub so tests can resolve
         // promises immediately without a QSignalSpy/wait.

@@ -2,7 +2,9 @@ import QtQuick 2.8
 import QtQuick.Controls 2.1
 import QtQuick.Dialogs
 
-// Color picker button that shows current color and opens ColorDialog on click
+// Color picker button that shows current color and opens ColorDialog on
+// click. Now keyboard-accessible: Tab focuses, Space/Enter opens the
+// dialog. A visible focus ring satisfies sighted-keyboard users.
 Rectangle {
     id: colorBtn
 
@@ -26,8 +28,19 @@ Rectangle {
     height: 30
     radius: 4
     color: colorValue
-    border.color: Qt.darker(colorValue, 1.2)
-    border.width: 1
+    // Outer border thickens + accent-colors when keyboard-focused so the
+    // user can tell where they are without a mouse.
+    border.color: activeFocus ? palette.highlight : Qt.darker(colorValue, 1.2)
+    border.width: activeFocus ? 2 : 1
+
+    activeFocusOnTab: true
+    Accessible.role: Accessible.Button
+    Accessible.name: "Color picker"
+    Accessible.description: "Opens a color picker dialog"
+    Accessible.onPressAction: colorDialog.open()
+    Keys.onSpacePressed: colorDialog.open()
+    Keys.onReturnPressed: colorDialog.open()
+    Keys.onEnterPressed: colorDialog.open()
 
     function finish() {
         colorValue = def_val;
@@ -36,7 +49,10 @@ Rectangle {
     MouseArea {
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
-        onClicked: colorDialog.open()
+        onClicked: {
+            colorBtn.forceActiveFocus();
+            colorDialog.open();
+        }
     }
 
     ColorDialog {

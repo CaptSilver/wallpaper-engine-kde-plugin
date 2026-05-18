@@ -27,6 +27,9 @@ QtObject {
     function addItem(id, workshopId) { return true; }
     function removeItem(id, idx) { return true; }
     function moveItem(id, fromIdx, toIdx) { return true; }
+    // Stub: always returns false. Tests that exercise the "already
+    // added" UI branch should mock this with a richer implementation.
+    function playlistContains(id, workshopId) { return false; }
     function activate(id) {
         // Track state minimally so deletePlaylist's "deactivate first if
         // currently active" path can fire activePlaylistIdChanged.

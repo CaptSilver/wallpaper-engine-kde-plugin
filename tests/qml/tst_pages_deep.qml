@@ -807,4 +807,50 @@ TestCase {
         }
         verify(true);
     }
+
+    // Anchor for the Qt.colorEqual enable guard. Cycle the cfg through
+    // black → non-black → black and assert the Reset button's enabled
+    // state flips with it. The `!Qt.colorEqual(...)` predicate is a
+    // one-char Mull mutation target (drop the !).
+    function test_backgroundColor_resetButton_enabledStateCycles() {
+        if (!cfg) return;
+        const resets = _allByPredicate(c =>
+            c && String(c.text || "") === "Reset" &&
+            typeof c.clicked === "function" &&
+            typeof c.enabled === "boolean" &&
+            typeof c.toString === "function" &&
+            String(c).indexOf("Action") < 0);
+        if (resets.length === 0) return;
+        // Pick the Reset button whose enabled state actually tracks
+        // cfg_BackgroundColor — others may belong to unrelated rows.
+        const btn = _findBgResetButton(resets);
+        if (!btn) return;
+
+        cfg.cfg_BackgroundColor = "black";
+        verify(! btn.enabled,
+               "Reset must be disabled when bg color equals the default black");
+        cfg.cfg_BackgroundColor = "#abcdef";
+        verify(btn.enabled,
+               "Reset must enable once bg color diverges from black");
+        // Round-trip back to black and confirm the binding re-disables.
+        cfg.cfg_BackgroundColor = "black";
+        verify(! btn.enabled,
+               "Reset must re-disable when bg color returns to black");
+    }
+
+    function _findBgResetButton(candidates) {
+        // Drive cfg through non-black, return the candidate whose enabled
+        // flag actually flipped — disambiguates from other "Reset" buttons
+        // in the tree (per-wallpaper options, user-properties, etc.).
+        const orig = cfg.cfg_BackgroundColor;
+        cfg.cfg_BackgroundColor = "black";
+        const baseline = candidates.map(b => b.enabled);
+        cfg.cfg_BackgroundColor = "#777777";
+        let hit = null;
+        for (let i = 0; i < candidates.length; ++i) {
+            if (candidates[i].enabled !== baseline[i]) { hit = candidates[i]; break; }
+        }
+        cfg.cfg_BackgroundColor = orig;
+        return hit;
+    }
 }

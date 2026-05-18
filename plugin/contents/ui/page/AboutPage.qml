@@ -81,14 +81,43 @@ Flickable {
             }
         }
         OptionItem {
+            id: githubRow
             icon: '../../images/github.svg'
             text: 'Github Repo'
             text_color: Kirigami.Theme.textColor
-            MouseArea {
+            // Keyboard reachable + visible focus + tooltip showing the URL.
+            // Previously a bare MouseArea: no Tab focus, no Space/Enter
+            // activation, no hint where the link goes.
+            activeFocusOnTab: true
+            Accessible.role: Accessible.Link
+            Accessible.name: "Open Github repository"
+            Accessible.description: Common.repo_url
+            Keys.onSpacePressed: Qt.openUrlExternally(Common.repo_url)
+            Keys.onReturnPressed: Qt.openUrlExternally(Common.repo_url)
+            Keys.onEnterPressed: Qt.openUrlExternally(Common.repo_url)
+            ToolTip.text: Common.repo_url
+            ToolTip.visible: ghLinkArea.containsMouse || githubRow.activeFocus
+            ToolTip.delay: 500
+            // Focus ring overlay — same accent as Kirigami highlight.
+            Rectangle {
                 anchors.fill: parent
+                color: "transparent"
+                border.color: Kirigami.Theme.highlightColor
+                border.width: 2
+                radius: 3
+                visible: githubRow.activeFocus
+                z: 99
+            }
+            MouseArea {
+                id: ghLinkArea
+                anchors.fill: parent
+                hoverEnabled: true
                 acceptedButtons: Qt.LeftButton
                 cursorShape: Qt.PointingHandCursor
-                onClicked: Qt.openUrlExternally(Common.repo_url)
+                onClicked: {
+                    githubRow.forceActiveFocus();
+                    Qt.openUrlExternally(Common.repo_url);
+                }
             }
         }
 

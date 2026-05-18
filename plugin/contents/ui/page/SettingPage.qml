@@ -444,8 +444,8 @@ Flickable {
                 }
             }
             OptionItem {
-                text: 'Postprocessing'
-                text_color: Kirigami.Theme.textColor
+                text: 'Postprocessing  (disabled — under audit)'
+                text_color: Kirigami.Theme.disabledTextColor
                 actor: ComboBox {
                     id: cb_postProcessing
                     // Disabled until the HDR mip-chain bloom audit lands —
@@ -453,6 +453,11 @@ Flickable {
                     // expose only some of the choices we lock the whole
                     // selector to "Scene default" for now.
                     enabled: false
+                    ToolTip.text: "Override the bloom pipeline scenes use. "
+                        + "Disabled while the HDR 'Ultra' path is being audited "
+                        + "(output renders too dark). Will force a scene reload when re-enabled."
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
                     model: [
                         { text: "Scene default", value: "" },
                         { text: "Low (LDR)", value: "low" },
@@ -471,19 +476,15 @@ Flickable {
                         currentIndex = 0;
                     }
                 }
-                contentBottom: ColumnLayout {
-                    Text {
-                        Layout.fillWidth: true
-                        color: Kirigami.Theme.disabledTextColor
-                        text: "Override the bloom pipeline scenes use. Disabled while the HDR 'Ultra' path is being audited (output renders too dark — needs RenderDoc work). Forces a scene reload when re-enabled."
-                        wrapMode: Text.Wrap
-                    }
-                }
             }
             OptionItem {
+                id: shaderCacheItem
                 text: 'Shader cache'
                 text_color: Kirigami.Theme.textColor
                 icon: '../../images/information-outline.svg'
+                // Bumped by the Clear action to force the cache-size Text
+                // below to re-query after a successful wipe.
+                property int _cacheRev: 0
                 actor: Kirigami.ActionToolBar {
                     Layout.fillWidth: true
                     alignment: Qt.AlignRight
@@ -496,6 +497,12 @@ Flickable {
                                 if(plugin_info.cache_path)
                                     Qt.openUrlExternally(plugin_info.cache_path);
                             }
+                        },
+                        Kirigami.Action {
+                            text: 'Clear'
+                            tooltip: 'Delete cached compiled shaders'
+                            enabled: plugin_info.cache_path
+                            onTriggered: clearShaderCacheConfirm.open()
                         }
                     ]
                 }
@@ -503,6 +510,9 @@ Flickable {
                     Text {
                         Layout.fillWidth: true
                         property string cache_path: Common.urlNative(plugin_info.cache_path)
+                        // Re-read whenever shaderCacheItem._cacheRev bumps
+                        // (Clear sets it after wiping the dir).
+                        property int _rev: shaderCacheItem._cacheRev
 
                         color: Kirigami.Theme.disabledTextColor
                         text: plugin_info.cache_path
@@ -510,6 +520,8 @@ Flickable {
                         : `Not available`
 
                         property string cache_size: {
+                            // Touch _rev so the binding re-evaluates.
+                            void _rev;
                             if(pyext) {
                                 pyext.get_dir_size(this.cache_path).then(res => {
                                     this.cache_size = Utils.prettyBytes(res);
@@ -523,6 +535,33 @@ Flickable {
         }
     }
 
-
+    // Dialog lives at Flickable root — OptionGroup's `content` is a
+    // QQuickItem-only list and Dialog (a Popup) can't sit inside it.
+    Dialog {
+        id: clearShaderCacheConfirm
+        objectName: "clearShaderCacheConfirm"
+        title: "Clear shader cache"
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        contentItem: Label {
+            text: "Delete all cached compiled shaders? They will be regenerated on the next wallpaper load (first frame may be slower)."
+            wrapMode: Text.WordWrap
+        }
+        standardButtons: Dialog.Yes | Dialog.No
+        onOpened: {
+            const noBtn = standardButton(Dialog.No);
+            if (noBtn) noBtn.forceActiveFocus();
+        }
+        onAccepted: {
+            if (!plugin_info.cache_path || !pyext) return;
+            pyext.clear_cache(Common.urlNative(plugin_info.cache_path))
+                .then(ok => {
+                    if (ok && typeof shaderCacheItem !== "undefined")
+                        shaderCacheItem._cacheRev += 1;
+                    else if (!ok)
+                        console.warn("Shader cache clear failed — see plasmashell journal");
+                });
+        }
+    }
 }
 

@@ -82,6 +82,11 @@ Item {
         return _makePromise(list);
     }
 
+    function clear_cache(path) {
+        const ok = fileHelper.clearCacheDir(path);
+        return _makePromise(ok);
+    }
+
     // Pending thumbnail requests keyed by videoPath. Each entry is an array of
     // {resolve, reject, outPath} callbacks waiting on the next thumbnailReady
     // signal matching that videoPath.

@@ -130,7 +130,7 @@ Rectangle {
     }
 
     function applySource() {
-        console.warn("[WEK-DBG main.applySource]",
+        console.log("[WEK-DBG main.applySource]",
             "source:", source,
             "WallpaperWorkShopId:", wallpaper.configuration.WallpaperWorkShopId,
             "ActivePlaylistId:", (wallpaper.configuration.ActivePlaylistId || "<empty>"),
@@ -298,15 +298,15 @@ Rectangle {
         // Writes happen here so `wallpaper.configuration` is in lexical scope —
         // QML can resolve Q_PROPERTY assignments correctly.
         setActivePlaylistId: function(id) {
-            console.warn("[WEK-DBG runtime setActivePlaylistId]", id);
+            console.log("[WEK-DBG runtime setActivePlaylistId]", id);
             wallpaper.configuration.ActivePlaylistId = id;
         }
         setCurrentItemIndex: function(idx) {
-            console.warn("[WEK-DBG runtime setCurrentItemIndex]", idx);
+            console.log("[WEK-DBG runtime setCurrentItemIndex]", idx);
             wallpaper.configuration.CurrentItemIndex = idx;
         }
         setWallpaperFromItem: function(item) {
-            console.warn("[WEK-DBG runtime setWallpaperFromItem]",
+            console.log("[WEK-DBG runtime setWallpaperFromItem]",
                 "wid:", item.workshopid);
             wallpaper.configuration.WallpaperWorkShopId = item.workshopid;
             wallpaper.configuration.WallpaperSource = Common.packWallpaperSource(item);

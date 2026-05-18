@@ -105,4 +105,13 @@ TestCase {
         wait(50);
         compare(resolvedWith, "/tmp/out.jpg");
     }
+
+    function test_clear_cache_returnsPromiseResolvingToBool() {
+        // Stub returns true; pyext.clear_cache wraps it in the promise
+        // shim. Both the wrapper and the underlying FFI call get
+        // exercised.
+        let observed = null;
+        pyext.clear_cache("/tmp/cache").then(v => { observed = v; });
+        compare(observed, true);
+    }
 }

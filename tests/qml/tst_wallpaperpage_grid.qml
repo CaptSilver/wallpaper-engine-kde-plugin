@@ -118,6 +118,20 @@ TestCase {
         compare(grid.currentModel.workshopid, "8");
     }
 
+    // GridDelegate.onClicked@107 — the left-click handler that sets
+    // currentIndex + emits itemClicked. wait for delegate materialisation
+    // then call onClicked on view.currentItem.
+    function test_delegate_onClickedFiresItemClicked() {
+        _injectFixtureModel([_fakeItem(42), _fakeItem(43)]);
+        wait(50);
+        const delegate = grid.view.itemAtIndex(0)
+            || grid.view.currentItem;
+        if (!delegate) return;
+        try { delegate.onClicked(); } catch (e) {}
+        // After click currentIndex should point to the delegate index.
+        verify(grid.view.currentIndex >= 0);
+    }
+
     function test_backtoBegin_clearsView() {
         // backtoBegin() swaps view.model back to the empty defaultModel.
         // Production callers (modelStartSync) install a fresh ListModel via

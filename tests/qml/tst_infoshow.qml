@@ -42,4 +42,29 @@ TestCase {
     function test_componentOnCompletedRanWithoutThrowing() {
         verify(true);
     }
+
+    // clipboardHelper.onTextChanged@120 — the small "copy to clipboard"
+    // scratch handler that selectAll + copy + clears. Reach it via the
+    // hidden TextEdit child and toggle .text to fire the change signal.
+    function _findClipboardHelper() {
+        const buckets = [info.children || [], info.data || []];
+        for (const b of buckets) {
+            for (let i = 0; i < b.length; i++) {
+                const c = b[i];
+                // TextEdit has `selectAll`, `copy`, and an editable `text`.
+                if (c && typeof c.selectAll === "function"
+                    && typeof c.copy === "function"
+                    && typeof c.text !== "undefined") return c;
+            }
+        }
+        return null;
+    }
+    function test_clipboardHelperOnTextChanged_runsBody() {
+        const helper = _findClipboardHelper();
+        verify(helper !== null);
+        // Setting text fires onTextChanged synchronously.
+        helper.text = "12345";
+        // After the handler runs, the helper clears its own text.
+        compare(helper.text, "");
+    }
 }

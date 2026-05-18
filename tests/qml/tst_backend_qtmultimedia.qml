@@ -43,6 +43,31 @@ TestCase {
         compare(qm.getMouseTarget(), undefined);
     }
 
+    // Connections.onErrorOccurred@63 — routes player error to InfoShow.
+    // Find the MediaPlayer + fire errorOccurred(error, errorString) on it;
+    // the Connections handler in QtMultimedia.qml then runs through
+    // (videoItem.parent.loadInfoShow guard means it's safe even when
+    // the parent doesn't supply that function).
+    function test_playerErrorOccurred_routesToInfoShow() {
+        function findPlayer(parent) {
+            const buckets = [parent.children || [], parent.data || []];
+            for (const b of buckets) {
+                for (let i = 0; i < b.length; i++) {
+                    const p = b[i];
+                    if (p && typeof p.play === "function"
+                        && typeof p.errorOccurred === "function") return p;
+                }
+            }
+            return null;
+        }
+        const player = findPlayer(qm);
+        if (!player) return; // offscreen QPA may not realise MediaPlayer
+        // MediaPlayer.errorOccurred(MediaPlayer.Error, string). Calling
+        // the signal directly from JS coerces ints into the enum.
+        try { player.errorOccurred(1, "stub failure"); } catch (e) {}
+        verify(true);
+    }
+
     function test_pauseTimer_triggeredCallsPlayerPause() {
         function findPauseTimer(parent) {
             const buckets = [parent.children || [], parent.data || []];

@@ -67,7 +67,7 @@ private slots:
             mgr.setMode(id, wekde::PlaylistMode::Shuffle);
             mgr.setIntervalMin(id, 42);
             mgr.addItem(id, "2800255344");
-            mgr.addItem(id, "3633635618", 60);
+            mgr.addItem(id, "3633635618");
         }
         {
             wekde::PlaylistManager mgr;
@@ -79,10 +79,7 @@ private slots:
             QCOMPARE(pl.intervalMin, 42);
             QCOMPARE(pl.items.size(), 2);
             QCOMPARE(pl.items[0].workshopId, QString("2800255344"));
-            QVERIFY(! pl.items[0].durationOverrideMin.has_value());
             QCOMPARE(pl.items[1].workshopId, QString("3633635618"));
-            QVERIFY(pl.items[1].durationOverrideMin.has_value());
-            QCOMPARE(*pl.items[1].durationOverrideMin, 60);
         }
     }
 
@@ -206,7 +203,7 @@ private slots:
         QCOMPARE(seen, QSet<QString>({ "A", "B", "C", "D" }));
     }
 
-    void perItemDurationOverridesNextInterval() {
+    void nextIntervalUsesPlaylistDefault() {
         QTemporaryDir d;
         QVERIFY(d.isValid());
         setupConfigHome(d);
@@ -214,17 +211,14 @@ private slots:
         const QString          id = mgr.createPlaylist("D");
         mgr.setIntervalMin(id, 15);
         mgr.addItem(id, "A");
-        mgr.addItem(id, "B", 5);
+        mgr.addItem(id, "B");
         mgr.addItem(id, "C");
 
         QVERIFY(mgr.activate(id));
-        // After activate, current is item 0 (A), timer should be 15 min.
         QCOMPARE(mgr.nextIntervalMsForTest(), 15 * 60 * 1000);
         mgr.onTimerTick();
-        // Now on item 1 (B), interval = 5 min override.
-        QCOMPARE(mgr.nextIntervalMsForTest(), 5 * 60 * 1000);
+        QCOMPARE(mgr.nextIntervalMsForTest(), 15 * 60 * 1000);
         mgr.onTimerTick();
-        // Now on item 2 (C), back to 15 min default.
         QCOMPARE(mgr.nextIntervalMsForTest(), 15 * 60 * 1000);
     }
 
@@ -316,11 +310,40 @@ private slots:
         const QString          id = mgr.createPlaylist("X");
         for (int i = 0; i < 5; ++i) mgr.addItem(id, QString("W%1").arg(i));
         QVERIFY(mgr.activate(id));
-        QSignalSpy spy(&mgr, &wekde::PlaylistManager::tick);
+        QSignalSpy tickSpy(&mgr, &wekde::PlaylistManager::tick);
+        QSignalSpy failSpy(&mgr, &wekde::PlaylistManager::activationFailed);
         for (int i = 0; i < 8; ++i) mgr.skipCurrent();
-        const int countBefore = spy.count();
-        mgr.skipCurrent();                  // 9th skip — bail
-        QCOMPARE(spy.count(), countBefore); // no new tick
+        const int countBefore = tickSpy.count();
+        mgr.skipCurrent();                      // 9th skip — bail
+        QCOMPARE(tickSpy.count(), countBefore); // no new tick
+        // Bail must deactivate: the user sees the playlist toggle off
+        // instead of a silently-wedged playlist that emits nothing.
+        QCOMPARE(mgr.activePlaylistId(), QString(""));
+        QCOMPARE(failSpy.count(), 1);
+        QCOMPARE(failSpy.takeFirst().first().toString(), id);
+    }
+
+    // Consecutive skip counter resets on a successful tick — a playlist
+    // with one bad item out of many shouldn't accumulate toward bail.
+    void skipCounterResetsOnSuccessfulTick() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString          id = mgr.createPlaylist("X");
+        for (int i = 0; i < 3; ++i) mgr.addItem(id, QString("W%1").arg(i));
+        QVERIFY(mgr.activate(id));
+
+        // Skip 5 times — counter at 5/8.
+        for (int i = 0; i < 5; ++i) mgr.skipCurrent();
+        QCOMPARE(mgr.activePlaylistId(), id); // still active
+
+        // A normal timer tick advances and resets the counter.
+        mgr.onTimerTick();
+
+        // Now skip 5 more — should still not bail (counter started fresh).
+        for (int i = 0; i < 5; ++i) mgr.skipCurrent();
+        QCOMPARE(mgr.activePlaylistId(), id);
     }
 
     // ── migration + pause/resume ──────────────────────────────────────────────
@@ -355,6 +378,38 @@ private slots:
         // Construction must not rewrite the file — load() bails before persist()
         // when the file already exists.
         QCOMPARE(QFileInfo(path).size(), bytesBefore);
+    }
+
+    // moveItem persists immediately — there's no Apply gate on playlist
+    // ops (per plasma-cfg-vs-live-writes.md, playlists.json is the source
+    // of truth, NOT cfg_*). Cancel on the dialog therefore can't revert
+    // a drag-reorder; the test exists to lock that semantic in place so
+    // any future "buffered playlist edits" refactor has to consciously
+    // change it.
+    void moveItemPersistsImmediatelyNoCancelGate() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+
+        QString id;
+        {
+            wekde::PlaylistManager mgr;
+            id = mgr.createPlaylist("R");
+            mgr.addItem(id, "A");
+            mgr.addItem(id, "B");
+            mgr.addItem(id, "C");
+            mgr.moveItem(id, 0, 2); // A → end → order becomes [B, C, A]
+        }
+        // Re-instantiate — disk state must reflect the move even though
+        // the user didn't "Apply" anything.
+        {
+            wekde::PlaylistManager mgr;
+            const auto pl = mgr.playlists().first();
+            QCOMPARE(pl.items.size(), 3);
+            QCOMPARE(pl.items[0].workshopId, QString("B"));
+            QCOMPARE(pl.items[1].workshopId, QString("C"));
+            QCOMPARE(pl.items[2].workshopId, QString("A"));
+        }
     }
 
     void pauseAndResumeKeepsStateConsistent() {

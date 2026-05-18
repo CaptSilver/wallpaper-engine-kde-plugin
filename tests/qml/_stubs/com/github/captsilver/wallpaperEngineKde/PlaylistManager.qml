@@ -18,10 +18,9 @@ QtObject {
     function renamePlaylist(id, name) { return true; }
     function setMode(id, mode) { return true; }
     function setIntervalMin(id, m) { return true; }
-    function addItem(id, workshopId, dur) { return true; }
+    function addItem(id, workshopId) { return true; }
     function removeItem(id, idx) { return true; }
     function moveItem(id, fromIdx, toIdx) { return true; }
-    function setItemDuration(id, idx, dur) { return true; }
     function activate(id) { return true; }
     function deactivate() { }
     function skipCurrent() { }

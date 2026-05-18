@@ -230,13 +230,6 @@ Item {
                         font.bold: true
                         color: Kirigami.Theme.disabledTextColor
                     }
-                    Label {
-                        Layout.preferredWidth: 90
-                        text: "Time (min)"
-                        font.bold: true
-                        color: Kirigami.Theme.disabledTextColor
-                        horizontalAlignment: Text.AlignHCenter
-                    }
                     // Spacer matching the 3 action buttons (36×3 + spacing)
                     Item { Layout.preferredWidth: 36 * 3 + 8 }
                 }
@@ -316,8 +309,8 @@ Item {
 
                                 // Drag area covers the full name column —
                                 // ⋮⋮ glyph + title. Press-drag anywhere on
-                                // the name engages reorder. SpinBox + action
-                                // buttons stay outside so their clicks work.
+                                // the name engages reorder. Action buttons
+                                // stay outside so their clicks work.
                                 MouseArea {
                                     id: dragArea
                                     Layout.fillWidth: true
@@ -349,16 +342,6 @@ Item {
                                     }
                                 }
 
-                                SpinBox {
-                                    Layout.preferredHeight: 36
-                                    Layout.preferredWidth: 90
-                                    from: 0; to: 1440
-                                    value: durationOverrideMin || 0
-                                    onValueModified: {
-                                        if (root.manager)
-                                            root.manager.setItemDuration(root._selectedId, index, value);
-                                    }
-                                }
                                 Button {
                                     Layout.preferredHeight: 36
                                     Layout.preferredWidth: 36

@@ -23,7 +23,6 @@ QVariant PlaylistItemsModel::data(const QModelIndex& index, int role) const {
     const auto& it = pl->items[row];
     switch (role) {
     case WorkshopIdRole: return it.workshopId;
-    case DurationOverrideMinRole: return it.durationOverrideMin.value_or(0);
     }
     return {};
 }
@@ -31,7 +30,6 @@ QVariant PlaylistItemsModel::data(const QModelIndex& index, int role) const {
 QHash<int, QByteArray> PlaylistItemsModel::roleNames() const {
     return {
         { WorkshopIdRole, "workshopId" },
-        { DurationOverrideMinRole, "durationOverrideMin" },
     };
 }
 

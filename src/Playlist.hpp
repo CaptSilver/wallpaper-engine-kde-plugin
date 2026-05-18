@@ -4,7 +4,6 @@
 #include <QVector>
 #include <QJsonObject>
 #include <QJsonArray>
-#include <optional>
 
 namespace wekde
 {
@@ -16,8 +15,7 @@ enum class PlaylistMode
 };
 
 struct PlaylistItem {
-    QString            workshopId;
-    std::optional<int> durationOverrideMin; // minutes, none = use playlist default
+    QString workshopId;
 };
 
 struct Playlist {

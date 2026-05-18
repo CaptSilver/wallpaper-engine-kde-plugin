@@ -57,6 +57,20 @@ TestCase {
         function packWallpaperSource(item) { return "packed-" + item.workshopid; }
     }
 
+    // Empty wp/video models for the cold-start race test. Declared at
+    // TestCase scope (instead of via Qt.createQmlObject) so the modelRefreshed
+    // signal can be declared properly — dynamic QML doesn't support `signal`.
+    QtObject {
+        id: emptyWpModel
+        property var model: ListModel { id: emptyWpInner }
+        property int countNoFilter: 0
+        signal modelRefreshed()
+    }
+    QtObject {
+        id: emptyVidModel
+        property var model: ListModel { id: emptyVidInner }
+    }
+
     // Captured writes from the controller's setter callbacks.
     property var lastSet: ({})
 
@@ -127,6 +141,51 @@ TestCase {
         ctrl._applyWorkshopId("wid-FILTERED");
         compare(tc.lastSet.fn, "setWallpaperFromItem");
         compare(tc.lastSet.item.workshopid, "wid-FILTERED");
+    }
+
+    // Source loaded but no entry for workshopId → real miss, not a race.
+    // Controller must skipCurrent (warn + advance), not queue forever.
+    function test_loadedModel_missingId_doesNotQueue() {
+        tc.lastSet = {};
+        ctrl._applyWorkshopId("really-not-there");
+        compare(ctrl._pendingWorkshopId, "",
+                "non-race miss must not queue — would hang the playlist");
+    }
+
+    // Cold-start race: at plasmoid launch, the playlist controller may try
+    // to apply a workshopId before WallpaperListModel has finished loading
+    // (refresh + per-file readfile + JSON parse). Without the pending
+    // queue, _applyWorkshopId would skipCurrent immediately — burning the
+    // 8-skip budget on a race condition. The fix queues the workshopId
+    // and retries on modelRefreshed.
+    function test_coldStart_emptyModel_queuesAndReplaysOnRefresh() {
+        const savedWp  = ctrl.wpListModel;
+        const savedVid = ctrl.videoListModel;
+        // Reset the empty fixtures in case a previous run dirtied them.
+        emptyWpInner.clear();
+        emptyVidInner.clear();
+        emptyWpModel.countNoFilter = 0;
+        ctrl.wpListModel    = emptyWpModel;
+        ctrl.videoListModel = emptyVidModel;
+
+        tc.lastSet = {};
+        ctrl._applyWorkshopId("queue-me");
+        compare(tc.lastSet.fn, undefined,
+                "empty model should queue, not call setter");
+        compare(ctrl._pendingWorkshopId, "queue-me");
+
+        // Populate + fire modelRefreshed: the controller's Connections
+        // block replays the pending id.
+        emptyWpInner.append({ workshopid: "queue-me", title: "Queued" });
+        emptyWpModel.countNoFilter = 1;
+        emptyWpModel.modelRefreshed();
+        compare(tc.lastSet.fn, "setWallpaperFromItem");
+        compare(tc.lastSet.item.workshopid, "queue-me");
+        compare(ctrl._pendingWorkshopId, "",
+                "pending id should clear once successfully applied");
+
+        ctrl.wpListModel    = savedWp;
+        ctrl.videoListModel = savedVid;
     }
 
     function test_serveFilteredPickWithItems() {

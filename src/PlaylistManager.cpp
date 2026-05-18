@@ -184,13 +184,11 @@ bool PlaylistManager::setIntervalMin(const QString& id, int minutes) {
     return true;
 }
 
-bool PlaylistManager::addItem(const QString& playlistId, const QString& workshopId,
-                              int durationOverrideMin) {
+bool PlaylistManager::addItem(const QString& playlistId, const QString& workshopId) {
     auto* pl = findPlaylist(playlistId);
     if (! pl) return false;
     PlaylistItem it;
     it.workshopId = workshopId;
-    if (durationOverrideMin > 0) it.durationOverrideMin = clampIntervalMin(durationOverrideMin);
     pl->items.append(it);
     pl->modified = QDateTime::currentSecsSinceEpoch();
     if (auto* m = m_itemsModels.value(playlistId)) m->resetUnderlying();
@@ -217,20 +215,6 @@ bool PlaylistManager::moveItem(const QString& playlistId, int fromIdx, int toIdx
     if (toIdx < 0 || toIdx >= pl->items.size()) return false;
     if (fromIdx == toIdx) return true;
     pl->items.move(fromIdx, toIdx);
-    pl->modified = QDateTime::currentSecsSinceEpoch();
-    if (auto* m = m_itemsModels.value(playlistId)) m->resetUnderlying();
-    persist();
-    return true;
-}
-
-bool PlaylistManager::setItemDuration(const QString& playlistId, int index,
-                                      int durationOverrideMin) {
-    auto* pl = findPlaylist(playlistId);
-    if (! pl || index < 0 || index >= pl->items.size()) return false;
-    if (durationOverrideMin > 0)
-        pl->items[index].durationOverrideMin = clampIntervalMin(durationOverrideMin);
-    else
-        pl->items[index].durationOverrideMin.reset();
     pl->modified = QDateTime::currentSecsSinceEpoch();
     if (auto* m = m_itemsModels.value(playlistId)) m->resetUnderlying();
     persist();
@@ -278,8 +262,7 @@ void PlaylistManager::armTimerForCurrent() {
     } else {
         const auto* pl = findPlaylist(m_activeId);
         if (! pl || pl->items.isEmpty()) return;
-        const auto& item = pl->items[m_currentIndex];
-        minutes          = item.durationOverrideMin.value_or(pl->intervalMin);
+        minutes = pl->intervalMin;
     }
     minutes          = clampIntervalMin(minutes);
     m_lastArmEpochMs = QDateTime::currentMSecsSinceEpoch();
@@ -296,8 +279,7 @@ int PlaylistManager::nextIntervalMsForTest() const {
     }
     const auto* pl = findPlaylist(m_activeId);
     if (! pl || pl->items.isEmpty()) return 0;
-    const auto& item = pl->items[m_currentIndex];
-    return clampIntervalMin(item.durationOverrideMin.value_or(pl->intervalMin)) * 60 * 1000;
+    return clampIntervalMin(pl->intervalMin) * 60 * 1000;
 }
 
 bool PlaylistManager::activate(const QString& id) {
@@ -361,8 +343,15 @@ void PlaylistManager::onTimerTick() {
 void PlaylistManager::skipCurrent() {
     if (m_activeId.isEmpty() || m_activeId == kFilteredLibraryId) return;
     if (++m_consecutiveSkips > kMaxConsecutiveSkips) {
-        qCCritical(lcPlaylist) << "playlist" << m_activeId << "exceeded" << kMaxConsecutiveSkips
-                               << "consecutive skips; bailing";
+        // Deactivate rather than silently wedging — the user sees the
+        // playlist toggle off in the UI and the controller's
+        // onActivePlaylistIdChanged path runs, instead of a stuck cycle
+        // that emits no tick but reports activePlaylistId() != "".
+        const auto failedId = m_activeId;
+        qCCritical(lcPlaylist) << "playlist" << failedId << "exceeded"
+                               << kMaxConsecutiveSkips << "consecutive skips; deactivating";
+        deactivate();
+        emit activationFailed(failedId);
         return;
     }
     auto* pl = findPlaylist(m_activeId);

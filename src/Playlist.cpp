@@ -20,19 +20,12 @@ int clampIntervalMin(int value) { return std::clamp(value, 1, 1440); }
 QJsonObject playlistItemToJson(const PlaylistItem& it) {
     QJsonObject o;
     o["workshop_id"] = it.workshopId;
-    if (it.durationOverrideMin.has_value()) {
-        o["duration_override_min"] = clampIntervalMin(*it.durationOverrideMin);
-    }
     return o;
 }
 
 PlaylistItem playlistItemFromJson(const QJsonObject& obj) {
     PlaylistItem it;
     it.workshopId = obj.value("workshop_id").toString();
-    if (obj.contains("duration_override_min")) {
-        const auto v = obj.value("duration_override_min").toInt(0);
-        if (v > 0) it.durationOverrideMin = clampIntervalMin(v);
-    }
     return it;
 }
 

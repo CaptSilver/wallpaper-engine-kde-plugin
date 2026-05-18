@@ -54,10 +54,6 @@ TestCase {
             lastCall = { fn: "moveItem", id: id, from: f, to: t };
             return true;
         }
-        function setItemDuration(id, i, d) {
-            lastCall = { fn: "setItemDuration", id: id, idx: i, dur: d };
-            return true;
-        }
         function removeItem(id, i) {
             lastCall = { fn: "removeItem", id: id, idx: i };
             return true;
@@ -67,8 +63,8 @@ TestCase {
             if (! _itemsCache[id]) {
                 _itemsCache[id] = Qt.createQmlObject('import QtQuick; ListModel{}', tc);
                 if (id === "p1") {
-                    _itemsCache[id].append({ workshopId: "wid-A", durationOverrideMin: 0 });
-                    _itemsCache[id].append({ workshopId: "wid-B", durationOverrideMin: 5 });
+                    _itemsCache[id].append({ workshopId: "wid-A" });
+                    _itemsCache[id].append({ workshopId: "wid-B" });
                 }
             }
             return _itemsCache[id];
@@ -287,21 +283,6 @@ TestCase {
     }
 
     // ── Coverage for previously-missed handlers ─────────────────────────────
-    // onValueModified@349 — per-item duration override SpinBox.
-    function test_clickItemDurationSpinBoxFiresSetItemDuration() {
-        page._selectedId = "p1";
-        wait(50);
-        const delegate = page.itemsView.itemAtIndex(0);
-        verify(delegate !== null);
-        const sb = _findItemDurationSpinBox(delegate);
-        verify(sb !== null);
-        sb.value = 10;
-        sb.valueModified();
-        compare(fakeManager.lastCall.fn, "setItemDuration");
-        compare(fakeManager.lastCall.idx, 0);
-        compare(fakeManager.lastCall.dur, 10);
-    }
-
     // onDropped@394 — DropArea handler. QQuickDragEvent cannot be
     // constructed from JS (signal cast fails), so we cannot inject a
     // synthetic drop with a meaningful `drop.source.itemIndex`. Calling
@@ -382,20 +363,6 @@ TestCase {
         const children = root.data || root.children || [];
         for (let i = 0; i < children.length; ++i) {
             const found = _findIntervalSpinBox(children[i]);
-            if (found) return found;
-        }
-        return null;
-    }
-
-    // Per-item SpinBox: from=0, to=1440 (the top-level interval picker uses
-    // from=1 so we can disambiguate).
-    function _findItemDurationSpinBox(root) {
-        if (! root) return null;
-        if (root.from === 0 && root.to === 1440
-            && typeof root.valueModified === "function") return root;
-        const children = root.data || root.children || [];
-        for (let i = 0; i < children.length; ++i) {
-            const found = _findItemDurationSpinBox(children[i]);
             if (found) return found;
         }
         return null;

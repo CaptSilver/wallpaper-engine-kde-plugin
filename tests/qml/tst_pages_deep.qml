@@ -351,6 +351,100 @@ TestCase {
         verify(true);
     }
 
+    // ── WallpaperPage: saveFilterPrompt snapshot — exercises onAccepted
+    // path that builds a fresh playlist from the currently-visible
+    // wpListModel.model. Pre-coverage this dialog had zero hits.
+    function _findSaveFilterDialog() {
+        return _firstByPredicate(
+            c => c.title === "Save filter as playlist");
+    }
+
+    // PlaylistController id is file-scoped inside config.qml — reach the
+    // manager via any node with a `playlistManager` property (WallpaperPage
+    // declares it; the binding chain ends at the real instance).
+    function _findPlaylistManager() {
+        const node = _firstByPredicate(c => typeof c.playlistManager !== "undefined"
+                                         && c.playlistManager !== null);
+        return node ? node.playlistManager : null;
+    }
+
+    // WallpaperPage owner with the playlistManager Q_PROPERTY. Used to
+    // swap in a recording proxy below (the stub PlaylistManager declares
+    // createPlaylist/addItem as `function`, which QML pins as read-only).
+    function _findWallpaperPage() {
+        return _firstByPredicate(c => typeof c.playlistManager !== "undefined"
+                                   && c.playlistManager !== null);
+    }
+
+    function test_saveFilterAsPlaylistSnapshot() {
+        const dlg = _findSaveFilterDialog();
+        verify(dlg !== null, "saveFilterPrompt dialog not found");
+        const tf = dlg.contentItem;
+        verify(tf && tf.placeholderText === "Playlist name",
+               "saveFilterNameField unreachable via dialog.contentItem");
+
+        const wp = _findWallpaperPage();
+        verify(wp !== null,
+               "WallpaperPage node unreachable from tree");
+        const origMgr = wp.playlistManager;
+        const log = [];
+        wp.playlistManager = ({
+            createPlaylist: function(name) {
+                log.push("create:" + name); return "id-snap";
+            },
+            addItem: function(id, w) {
+                log.push("add:" + id + ":" + w); return true;
+            },
+        });
+
+        // wpListModel ids in config.qml are file-scoped — reach the
+        // model via WallpaperPage's bare `wpListModel` ref isn't exposed
+        // either. Walk the tree for a node that has `countNoFilter` (which
+        // is unique to WallpaperListModel).
+        const wpModelNode = _firstByPredicate(
+            c => typeof c.countNoFilter !== "undefined"
+              && typeof c.filterStr     !== "undefined");
+        verify(wpModelNode !== null,
+               "WallpaperListModel unreachable from tree");
+        try {
+            wpModelNode.model.clear();
+            wpModelNode.model.append({ workshopid: "alpha", title: "Alpha" });
+            wpModelNode.model.append({ workshopid: "beta",  title: "Beta"  });
+        } catch (e) {
+            console.warn("DEBUG append failed:", e);
+        }
+
+        tf.text = "SnapshotPlaylist";
+        try { dlg.accept(); } catch (e) {}
+
+        compare(log[0], "create:SnapshotPlaylist");
+        compare(log.length, 3,
+                "expected 1 createPlaylist + 1 addItem per visible wallpaper");
+        verify(log.indexOf("add:id-snap:alpha") >= 0);
+        verify(log.indexOf("add:id-snap:beta")  >= 0);
+
+        wp.playlistManager = origMgr;
+    }
+
+    function test_saveFilterAsPlaylistEmptyNameNoOp() {
+        const dlg = _findSaveFilterDialog();
+        verify(dlg !== null);
+        const tf = dlg.contentItem;
+        const wp = _findWallpaperPage();
+        verify(wp !== null);
+        const origMgr = wp.playlistManager;
+
+        let called = false;
+        wp.playlistManager = ({
+            createPlaylist: function() { called = true; return ""; },
+            addItem: function() { return true; },
+        });
+        tf.text = "   ";
+        try { dlg.accept(); } catch (e) {}
+        verify(! called, "empty/whitespace name must not createPlaylist");
+        wp.playlistManager = origMgr;
+    }
+
     // ── WallpaperPage: filter chip onTriggered@72 ───────────────────────────
     function test_filterChipAction_branchTaken() {
         const chips = _allByPredicate(c => typeof c.act_index !== "undefined");

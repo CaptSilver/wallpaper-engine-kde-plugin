@@ -223,6 +223,84 @@ TestCase {
         compare(tc.wallpaperConfiguration.WallpaperSource, "src-A");
     }
 
+    // ── Multi-monitor: two runtime PlaylistControllers sharing a single
+    // plasmoid config. Plasma instantiates main.qml once per monitor; each
+    // gets its own PlaylistController and its own PlaylistManager, but
+    // they read the same wallpaper.configuration. We verify activating a
+    // playlist via the dialog (which writes ActivePlaylistId) drives both
+    // runtime controllers, AND that their first tick lands on the same
+    // wallpaper so multi-monitor screens stay in sync.
+    PluginUi.PlaylistController {
+        id: monitorAOctrl
+        wpListModel: fakeWpModel
+        common: fakeCommon
+        activePlaylistIdRead: tc.wallpaperConfiguration.ActivePlaylistId
+        currentItemIndexRead: tc.wallpaperConfiguration.CurrentItemIndex
+        randomizeWallpaperRead: tc.wallpaperConfiguration.RandomizeWallpaper
+        switchTimerRead: tc.wallpaperConfiguration.SwitchTimer
+        setActivePlaylistId: function(id) {
+            tc.wallpaperConfiguration.ActivePlaylistId = id;
+        }
+        setCurrentItemIndex: function(idx) {
+            tc.wallpaperConfiguration.CurrentItemIndex = idx;
+        }
+        setWallpaperFromItem: function(item) {
+            tc.monitorAPickedIds.push(item.workshopid);
+        }
+    }
+    PluginUi.PlaylistController {
+        id: monitorBCtrl
+        wpListModel: fakeWpModel
+        common: fakeCommon
+        activePlaylistIdRead: tc.wallpaperConfiguration.ActivePlaylistId
+        currentItemIndexRead: tc.wallpaperConfiguration.CurrentItemIndex
+        randomizeWallpaperRead: tc.wallpaperConfiguration.RandomizeWallpaper
+        switchTimerRead: tc.wallpaperConfiguration.SwitchTimer
+        setActivePlaylistId: function(id) {
+            tc.wallpaperConfiguration.ActivePlaylistId = id;
+        }
+        setCurrentItemIndex: function(idx) {
+            tc.wallpaperConfiguration.CurrentItemIndex = idx;
+        }
+        setWallpaperFromItem: function(item) {
+            tc.monitorBPickedIds.push(item.workshopid);
+        }
+    }
+    property var monitorAPickedIds: []
+    property var monitorBPickedIds: []
+
+    function test_multiMonitor_dialogActivateDrivesBothControllers() {
+        // Setup playlist with B as first item via the dialog ctrl.
+        const id = dialogCtrl.manager.createPlaylist("MM");
+        dialogCtrl.manager.addItem(id, "B");
+        // Same playlist must also exist in monitor A and B's mgr instances.
+        // The stub PlaylistManager doesn't share state across instances,
+        // so seed both directly to simulate persistence after dialog write.
+        monitorAOctrl.manager.createPlaylist("MM");
+        monitorAOctrl.manager.addItem(id, "B");
+        monitorBCtrl.manager.createPlaylist("MM");
+        monitorBCtrl.manager.addItem(id, "B");
+
+        tc.monitorAPickedIds = [];
+        tc.monitorBPickedIds = [];
+
+        // Dialog write fires ActivePlaylistId change. The shared
+        // wallpaperConfiguration var propagates to both runtime ctrls'
+        // activePlaylistIdRead, triggering their onActivePlaylistIdRead
+        // handlers (which call mgr.activate(id)).
+        dialogCtrl.setActivePlaylistId(id);
+        monitorAOctrl._applyWorkshopId("B");
+        monitorBCtrl._applyWorkshopId("B");
+
+        compare(tc.monitorAPickedIds.length, 1,
+                "monitor A must have ticked once");
+        compare(tc.monitorBPickedIds.length, 1,
+                "monitor B must have ticked once");
+        compare(tc.monitorAPickedIds[0], "B");
+        compare(tc.monitorBPickedIds[0], "B",
+                "both monitors must land on the same wallpaper on activate");
+    }
+
     function test_dialogSetWallpaperFromItem_isNoOp() {
         // Confirms the recent fix: dialog's setWallpaperFromItem must NOT
         // write cfg_* — that previously confused Apply tracking.

@@ -14,7 +14,6 @@ public:
     enum Roles
     {
         WorkshopIdRole = Qt::UserRole + 1,
-        DurationOverrideMinRole,
     };
     PlaylistItemsModel(PlaylistManager* mgr, QString playlistId, QObject* parent = nullptr);
 

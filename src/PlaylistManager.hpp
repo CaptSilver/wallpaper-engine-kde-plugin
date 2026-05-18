@@ -38,11 +38,9 @@ public:
     Q_INVOKABLE bool    setIntervalMin(const QString& id, int minutes);
 
     // Item ops
-    Q_INVOKABLE bool addItem(const QString& playlistId, const QString& workshopId,
-                             int durationOverrideMin = 0);
+    Q_INVOKABLE bool addItem(const QString& playlistId, const QString& workshopId);
     Q_INVOKABLE bool removeItem(const QString& playlistId, int index);
     Q_INVOKABLE bool moveItem(const QString& playlistId, int fromIdx, int toIdx);
-    Q_INVOKABLE bool setItemDuration(const QString& playlistId, int index, int durationOverrideMin);
 
     // C++ overload (used by tests; not Q_INVOKABLE to avoid moc overload ambiguity)
     bool setMode(const QString& id, PlaylistMode mode);

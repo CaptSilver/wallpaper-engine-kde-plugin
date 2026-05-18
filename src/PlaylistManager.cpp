@@ -278,6 +278,9 @@ void PlaylistManager::armTimerForCurrent() {
     minutes          = clampIntervalMin(minutes);
     m_lastArmEpochMs = QDateTime::currentMSecsSinceEpoch();
     m_remainingMs    = -1;
+    qWarning() << "[WEK-DIAG-PM] armTimerForCurrent activeId=" << m_activeId
+               << "interval_min=" << minutes
+               << "→ timer fires in" << (minutes * 60) << "seconds";
     m_timer.start(minutes * 60 * 1000);
 }
 
@@ -294,22 +297,27 @@ int PlaylistManager::nextIntervalMsForTest() const {
 }
 
 bool PlaylistManager::activate(const QString& id) {
+    qWarning() << "[WEK-DIAG-PM] activate id=" << id
+               << "prev_activeId=" << m_activeId;
     if (id == kFilteredLibraryId) {
         m_activeId         = id;
         m_currentIndex     = 0;
         m_consecutiveSkips = 0;
         emit activePlaylistIdChanged();
         emit currentItemIndexChanged();
+        qWarning() << "[WEK-DIAG-PM] activate filtered → requestFilteredPick";
         emit requestFilteredPick();
         // Don't arm the timer yet — wait for acceptPick.
         return true;
     }
     auto* pl = findPlaylist(id);
     if (! pl) {
+        qWarning() << "[WEK-DIAG-PM] activate FAILED — unknown id" << id;
         emit activationFailed(id);
         return false;
     }
     if (pl->items.isEmpty()) {
+        qWarning() << "[WEK-DIAG-PM] activate FAILED — empty playlist" << id;
         emit activationFailed(id);
         return false;
     }
@@ -320,6 +328,8 @@ bool PlaylistManager::activate(const QString& id) {
                              : 0;
     emit activePlaylistIdChanged();
     emit currentItemIndexChanged();
+    qWarning() << "[WEK-DIAG-PM] activate → tick" << pl->items[m_currentIndex].workshopId
+               << "idx=" << m_currentIndex << "mode=" << (int)pl->mode;
     emit tick(pl->items[m_currentIndex].workshopId);
     armTimerForCurrent();
     return true;
@@ -335,8 +345,10 @@ void PlaylistManager::deactivate() {
 }
 
 void PlaylistManager::onTimerTick() {
+    qWarning() << "[WEK-DIAG-PM] onTimerTick activeId=" << m_activeId;
     if (m_activeId.isEmpty()) return;
     if (m_activeId == kFilteredLibraryId) {
+        qWarning() << "[WEK-DIAG-PM] onTimerTick filtered → requestFilteredPick";
         emit requestFilteredPick();
         return;
     }
@@ -347,6 +359,8 @@ void PlaylistManager::onTimerTick() {
                              : advanceSequential(m_currentIndex, pl->items.size());
     m_consecutiveSkips = 0;
     emit currentItemIndexChanged();
+    qWarning() << "[WEK-DIAG-PM] onTimerTick → tick" << pl->items[m_currentIndex].workshopId
+               << "idx=" << m_currentIndex;
     emit tick(pl->items[m_currentIndex].workshopId);
     armTimerForCurrent();
 }
@@ -374,12 +388,16 @@ void PlaylistManager::skipCurrent() {
 }
 
 void PlaylistManager::acceptPick(const QString& workshopId) {
+    qWarning() << "[WEK-DIAG-PM] acceptPick id=" << workshopId
+               << "activeId=" << m_activeId;
     if (m_activeId != kFilteredLibraryId) return;
     if (workshopId.isEmpty()) {
         // QML had nothing to offer; just re-arm the timer.
+        qWarning() << "[WEK-DIAG-PM] acceptPick empty → arm-only (no tick)";
         armTimerForCurrent();
         return;
     }
+    qWarning() << "[WEK-DIAG-PM] acceptPick → tick" << workshopId;
     emit tick(workshopId);
     armTimerForCurrent();
 }

@@ -55,7 +55,7 @@ Item {
                 root.setActivePlaylistId("");
         }
         onActivePlaylistIdChanged: {
-            console.log("[WEK-DBG ctrl mgrIdChanged]",
+            console.warn("[WEK-DIAG ctrl mgrIdChanged]",
                 "mgr.activeId:", mgr.activePlaylistId,
                 "read:", root.activePlaylistIdRead);
             if (root.activePlaylistIdRead !== mgr.activePlaylistId)
@@ -126,7 +126,7 @@ Item {
         const item = _resolveItem(workshopId);
         if (!item) {
             if (_modelsAreEmpty()) {
-                // Model not ready yet — defer.
+                console.warn("[WEK-DIAG ctrl] _applyWorkshopId queuing pending=", workshopId);
                 root._pendingWorkshopId = workshopId;
                 return;
             }
@@ -134,6 +134,9 @@ Item {
             mgr.skipCurrent();
             return;
         }
+        const replayed = root._pendingWorkshopId === workshopId;
+        console.warn("[WEK-DIAG ctrl] _applyWorkshopId →setWallpaperFromItem wid=",
+            workshopId, "replayedFromPending=", replayed);
         root._pendingWorkshopId = "";
         root.setWallpaperFromItem(item);
     }
@@ -142,8 +145,11 @@ Item {
         target: root.wpListModel
         ignoreUnknownSignals: true
         function onModelRefreshed() {
-            if (root._pendingWorkshopId)
+            if (root._pendingWorkshopId) {
+                console.warn("[WEK-DIAG ctrl] modelRefreshed → replay pending=",
+                    root._pendingWorkshopId);
                 root._applyWorkshopId(root._pendingWorkshopId);
+            }
         }
     }
 
@@ -187,7 +193,7 @@ Item {
     // config dialog updates plasmoid config but the runtime controller's
     // manager stays inactive — wallpapers don't cycle.
     onActivePlaylistIdReadChanged: {
-        console.log("[WEK-DBG ctrl readChanged]",
+        console.warn("[WEK-DIAG ctrl readChanged]",
             "read:", root.activePlaylistIdRead,
             "mgr.activeId:", mgr.activePlaylistId);
         if (root.activePlaylistIdRead === mgr.activePlaylistId) return;

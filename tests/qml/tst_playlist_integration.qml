@@ -269,6 +269,57 @@ TestCase {
     property var monitorAPickedIds: []
     property var monitorBPickedIds: []
 
+    // Deleting the currently-active playlist must also clear the
+    // controller's view of ActivePlaylistId. The C++ side already
+    // deactivates on deletePlaylist (covered in
+    // tst_playlist_manager.cpp), but the UI-side chain — dialog
+    // ctrl's onActivePlaylistIdChanged handler → setActivePlaylistId("")
+    // setter — is integration-shaped and only covered here.
+    // Capture setActivePlaylistId calls in order. Can't observe via
+    // wallpaperConfiguration because it's a property var — JS dot-writes
+    // don't fire bindings (Plasma's real KConfigPropertyMap does). The
+    // captured log is the unambiguous record of what the controller would
+    // tell Plasma.
+    property var setActiveCalls: []
+    function test_deletingActivePlaylistClearsCfg() {
+        const id = dialogCtrl.manager.createPlaylist("ToDelete");
+        dialogCtrl.manager.addItem(id, "B");
+
+        const origSetter = dialogCtrl.setActivePlaylistId;
+        tc.setActiveCalls = [];
+        dialogCtrl.setActivePlaylistId = function(newId) {
+            tc.setActiveCalls.push(newId);
+        };
+
+        // Activate via mgr — controller's mgr→parent Connections fires
+        // setActivePlaylistId(id).
+        dialogCtrl.manager.activate(id);
+        compare(dialogCtrl.manager.activePlaylistId, id);
+        verify(tc.setActiveCalls.indexOf(id) >= 0,
+               "controller must call setActivePlaylistId(id) on activate");
+
+        // Bring activePlaylistIdRead in sync with the manager — production
+        // does this via KConfigPropertyMap's binding propagation; in this
+        // test fixture wcfg is a JS object, so its dot-writes don't fire
+        // bindings. Without this, the controller's read==mgr.activeId
+        // guard short-circuits the deactivate setter below.
+        dialogCtrl.activePlaylistIdRead = id;
+
+        // Delete the active playlist — stub mgr deactivates first
+        // (mirrors C++) → activePlaylistIdChanged fires → controller
+        // sees mgr.activeId="" and calls setActivePlaylistId("").
+        const before = tc.setActiveCalls.length;
+        dialogCtrl.manager.deletePlaylist(id);
+        compare(dialogCtrl.manager.activePlaylistId, "",
+                "stub mgr must clear activePlaylistId when deleting the active row");
+        verify(tc.setActiveCalls.length > before,
+               "deletePlaylist must trigger a follow-up setActivePlaylistId");
+        compare(tc.setActiveCalls[tc.setActiveCalls.length - 1], "",
+                "the final setActivePlaylistId call must pass an empty id");
+
+        dialogCtrl.setActivePlaylistId = origSetter;
+    }
+
     function test_multiMonitor_dialogActivateDrivesBothControllers() {
         // Setup playlist with B as first item via the dialog ctrl.
         const id = dialogCtrl.manager.createPlaylist("MM");

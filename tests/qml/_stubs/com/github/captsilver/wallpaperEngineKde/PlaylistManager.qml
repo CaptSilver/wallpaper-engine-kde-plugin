@@ -14,15 +14,26 @@ QtObject {
     signal persistFailed(string reason)
 
     function createPlaylist(name) { return "fake-uuid-" + name; }
-    function deletePlaylist(id) { return true; }
+    function deletePlaylist(id) {
+        // Mirror the C++ deactivate-first behavior: if the user deletes
+        // the currently-active playlist, drop the active id so the
+        // controller's onActivePlaylistIdChanged handler fires.
+        if (activePlaylistId === id) activePlaylistId = "";
+        return true;
+    }
     function renamePlaylist(id, name) { return true; }
     function setMode(id, mode) { return true; }
     function setIntervalMin(id, m) { return true; }
     function addItem(id, workshopId) { return true; }
     function removeItem(id, idx) { return true; }
     function moveItem(id, fromIdx, toIdx) { return true; }
-    function activate(id) { return true; }
-    function deactivate() { }
+    function activate(id) {
+        // Track state minimally so deletePlaylist's "deactivate first if
+        // currently active" path can fire activePlaylistIdChanged.
+        if (activePlaylistId !== id) activePlaylistId = id;
+        return true;
+    }
+    function deactivate() { activePlaylistId = ""; }
     function skipCurrent() { }
     function acceptPick(workshopId) { }
     function pauseTicks() { }

@@ -260,6 +260,7 @@ ColumnLayout {
             wpListModel: wpListModel
             videoListModel: videoPage.videoListModel
             cfg_ActivePlaylistId: root.activePlaylistId
+            cfg_CurrentItemIndex: root.currentItemIndex
         }
 
         SettingPage {

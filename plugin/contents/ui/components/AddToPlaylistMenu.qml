@@ -17,6 +17,12 @@ Menu {
     Repeater {
         model: root.manager ? root.manager.playlistsModel : null
         delegate: MenuItem {
+            // The sentinel "__filtered_library__" is never in
+            // PlaylistsModel today, but guarding the delegate keeps the
+            // promise the file header makes: Filtered Library is not a
+            // manual-add target. height: 0 collapses the menu row cleanly.
+            visible: id !== "__filtered_library__"
+            height: visible ? implicitHeight : 0
             text: name
             onTriggered: {
                 if (root.manager && root.item)

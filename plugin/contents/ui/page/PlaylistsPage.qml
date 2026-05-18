@@ -20,6 +20,7 @@ Item {
     property var wpListModel: null
     property var videoListModel: null
     property string cfg_ActivePlaylistId: ""
+    property int    cfg_CurrentItemIndex: 0   // used to highlight the playing row
 
     // Test surface
     readonly property alias playlistsView: lvPlaylists
@@ -61,21 +62,24 @@ Item {
             RowLayout {
                 Layout.fillWidth: true
                 Button {
+                    objectName: "btnNewPlaylist"
                     text: "+"
+                    ToolTip.text: "New playlist"
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
                     onClicked: namePromptCreate.open()
                 }
                 Button {
-                    text: "Rename"
-                    enabled: root._selectedId !== "" && root._selectedId !== "__filtered_library__"
-                    onClicked: namePromptRename.open()
-                }
-                Button {
+                    objectName: "btnDeletePlaylist"
                     text: "Delete"
+                    ToolTip.text: "Delete the selected playlist"
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
                     enabled: root._selectedId !== "" && root._selectedId !== "__filtered_library__"
-                    onClicked: {
-                        if (root.manager) root.manager.deletePlaylist(root._selectedId);
-                        root._selectedId = "";
-                    }
+                    // Confirm before deleting — a single mis-click should not
+                    // wipe a curated playlist. Tip: rename inline by
+                    // double-clicking the row instead.
+                    onClicked: deleteConfirmPrompt.open()
                 }
             }
 
@@ -85,41 +89,134 @@ Item {
                 Layout.fillHeight: true
                 clip: true
                 spacing: 2
+                // Keyboard reachable: Tab into the list, arrow keys move
+                // between rows, Space selects. ListView defaults to
+                // activeFocusOnTab=false, so the list is mouse-only without
+                // this — bad for accessibility.
+                activeFocusOnTab: true
+                keyNavigationEnabled: true
+                keyNavigationWraps: false
                 model: root.manager ? root.manager.playlistsModel : null
+
+                // Filtered Library always on top — bold + ▶ when active.
                 header: Rectangle {
                     width: lvPlaylists.width
                     height: 32
                     color: root._selectedId === "__filtered_library__"
                            ? Kirigami.Theme.highlightColor
                            : "transparent"
-                    Label {
+                    RowLayout {
                         anchors.fill: parent
                         anchors.leftMargin: 8
-                        text: "Filtered Library"
-                        font.italic: true
-                        verticalAlignment: Text.AlignVCenter
+                        spacing: 4
+                        Label {
+                            text: root.cfg_ActivePlaylistId === "__filtered_library__"
+                                  ? "▶" : ""
+                            color: Kirigami.Theme.positiveTextColor
+                            Layout.preferredWidth: 12
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            text: "Filtered Library"
+                            font.italic: true
+                            font.bold: root.cfg_ActivePlaylistId === "__filtered_library__"
+                            verticalAlignment: Text.AlignVCenter
+                        }
                     }
                     MouseArea {
                         anchors.fill: parent
                         onClicked: root._selectedId = "__filtered_library__"
                     }
                 }
+
                 delegate: Rectangle {
+                    id: plRow
                     width: lvPlaylists.width
                     height: 32
                     color: root._selectedId === id
                            ? Kirigami.Theme.highlightColor : "transparent"
-                    Label {
+
+                    // Local edit state for inline rename. We don't bind the
+                    // TextField into the model — we commit via the manager
+                    // on Enter / focusOut and let the model reset back to
+                    // the saved name on Escape.
+                    property bool _editing: false
+
+                    RowLayout {
                         anchors.fill: parent
                         anchors.leftMargin: 8
-                        text: name + "  (" + itemCount + ")"
-                        verticalAlignment: Text.AlignVCenter
+                        anchors.rightMargin: 4
+                        spacing: 4
+                        Label {
+                            text: root.cfg_ActivePlaylistId === id ? "▶" : ""
+                            color: Kirigami.Theme.positiveTextColor
+                            Layout.preferredWidth: 12
+                        }
+                        Label {
+                            id: plNameLabel
+                            visible: ! plRow._editing
+                            Layout.fillWidth: true
+                            text: name + "  (" + itemCount + ")"
+                            font.bold: root.cfg_ActivePlaylistId === id
+                            elide: Text.ElideRight
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        TextField {
+                            id: plNameEdit
+                            objectName: "plNameEdit_" + id
+                            visible: plRow._editing
+                            Layout.fillWidth: true
+                            text: name
+                            selectByMouse: true
+                            onAccepted: {
+                                if (root.manager && text.trim() !== "")
+                                    root.manager.renamePlaylist(id, text.trim());
+                                plRow._editing = false;
+                            }
+                            Keys.onEscapePressed: {
+                                text = name;
+                                plRow._editing = false;
+                            }
+                            onActiveFocusChanged: {
+                                // Commit on focus loss if user clicked away.
+                                if (! activeFocus && plRow._editing) {
+                                    if (root.manager && text.trim() !== "" && text.trim() !== name)
+                                        root.manager.renamePlaylist(id, text.trim());
+                                    plRow._editing = false;
+                                }
+                            }
+                        }
                     }
                     MouseArea {
                         anchors.fill: parent
-                        onClicked: root._selectedId = id
+                        // Only the single-click path selects; double-click
+                        // engages inline rename. acceptedButtons + lastPressed
+                        // gating prevents the single-click from racing
+                        // ahead of the double.
+                        onClicked: {
+                            if (! plRow._editing) root._selectedId = id;
+                        }
+                        onDoubleClicked: {
+                            plRow._editing = true;
+                            plNameEdit.forceActiveFocus();
+                            plNameEdit.selectAll();
+                        }
                     }
                 }
+            }
+
+            // Empty-state hint when the user has zero custom playlists. The
+            // Filtered Library header is always visible in lvPlaylists.header
+            // but doesn't count toward .count.
+            Label {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.topMargin: 4
+                visible: lvPlaylists.count === 0
+                color: Kirigami.Theme.disabledTextColor
+                font.italic: true
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+                text: "No custom playlists — click + to add one"
             }
         }
 
@@ -240,6 +337,11 @@ Item {
                     Layout.fillHeight: true
                     clip: true
                     spacing: 2
+                    // Same accessibility hook as lvPlaylists — keyboard
+                    // users can Tab into the queue and arrow through items.
+                    activeFocusOnTab: true
+                    keyNavigationEnabled: true
+                    keyNavigationWraps: false
 
                     // Smooth animation when items reorder.
                     moveDisplaced: Transition { NumberAnimation { properties: "y"; duration: 150 } }
@@ -270,6 +372,12 @@ Item {
                         width: lvItems.width
                         height: 48
                         property int itemIndex: index
+                        // Highlight the currently-playing row when this
+                        // playlist is the active one — gives the user a
+                        // visible "you are here" marker in the queue.
+                        readonly property bool isPlayingRow:
+                            root.cfg_ActivePlaylistId === root._selectedId
+                            && index === root.cfg_CurrentItemIndex
 
                         Rectangle {
                             id: content
@@ -280,11 +388,15 @@ Item {
                             radius: 3
                             color: dragArea.drag.active
                                 ? Kirigami.Theme.activeBackgroundColor
-                                : (index % 2 ? Kirigami.Theme.alternateBackgroundColor
-                                             : "transparent")
+                                : (itemDelegate.isPlayingRow
+                                    ? Kirigami.Theme.positiveBackgroundColor
+                                    : (index % 2 ? Kirigami.Theme.alternateBackgroundColor
+                                                 : "transparent"))
                             opacity: dragArea.drag.active ? 0.85 : 1.0
-                            border.width: dragArea.drag.active ? 1 : 0
-                            border.color: Kirigami.Theme.highlightColor
+                            border.width: (dragArea.drag.active || itemDelegate.isPlayingRow) ? 1 : 0
+                            border.color: itemDelegate.isPlayingRow
+                                ? Kirigami.Theme.positiveTextColor
+                                : Kirigami.Theme.highlightColor
 
                             Drag.active: dragArea.drag.active
                             Drag.source: itemDelegate
@@ -326,12 +438,17 @@ Item {
                                     RowLayout {
                                         anchors.fill: parent
                                         spacing: 4
-                                        Label {
-                                            Layout.preferredWidth: 24
-                                            text: "⋮⋮"
+                                        Kirigami.Icon {
+                                            Layout.preferredWidth: 18
+                                            Layout.preferredHeight: 18
+                                            Layout.alignment: Qt.AlignVCenter
+                                            // Falls back to ⋮⋮ glyph below if
+                                            // the icon theme doesn't ship this name.
+                                            source: "transform-move-vertical"
                                             color: Kirigami.Theme.disabledTextColor
-                                            horizontalAlignment: Text.AlignHCenter
-                                            verticalAlignment: Text.AlignVCenter
+                                            // Tooltip on the drag area is on the
+                                            // MouseArea above (cursor + grab).
+                                            fallback: "view-list-icons"
                                         }
                                         Label {
                                             Layout.fillWidth: true
@@ -346,6 +463,9 @@ Item {
                                     Layout.preferredHeight: 36
                                     Layout.preferredWidth: 36
                                     text: "↑"
+                                    ToolTip.text: "Move up"
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 500
                                     enabled: index > 0
                                     onClicked: {
                                         if (root.manager)
@@ -356,6 +476,9 @@ Item {
                                     Layout.preferredHeight: 36
                                     Layout.preferredWidth: 36
                                     text: "↓"
+                                    ToolTip.text: "Move down"
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 500
                                     enabled: lvItems.count > 0 && index < lvItems.count - 1
                                     onClicked: {
                                         if (root.manager)
@@ -366,6 +489,9 @@ Item {
                                     Layout.preferredHeight: 36
                                     Layout.preferredWidth: 36
                                     text: "×"
+                                    ToolTip.text: "Remove from playlist"
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 500
                                     onClicked: {
                                         if (root.manager)
                                             root.manager.removeItem(root._selectedId, index);
@@ -432,21 +558,35 @@ Item {
             createNameField.text = "";
         }
     }
+    // Confirmation before destructive Delete. Names the playlist so it's
+    // obvious which one is about to vanish. Activated playlist deactivates
+    // on the C++ side; the controller's onActivePlaylistIdChanged then
+    // clears cfg_ActivePlaylistId via the dialog setter.
     Dialog {
-        id: namePromptRename
-        objectName: "namePromptRename"
-        title: "Rename playlist"
+        id: deleteConfirmPrompt
+        objectName: "deleteConfirmPrompt"
+        title: "Delete playlist"
         modal: true
         anchors.centerIn: parent
-        contentItem: TextField {
-            id: renameNameField
-            placeholderText: "New name"
+        property string _selectedName: {
+            if (!root.manager || root._selectedId === "") return "";
+            const list = root.manager.playlistsModel;
+            if (!list) return "";
+            for (let i = 0; i < list.rowCount(); ++i) {
+                const idx = list.index(i, 0);
+                if (list.data(idx, 257) === root._selectedId)
+                    return list.data(idx, 258);
+            }
+            return "";
         }
-        standardButtons: Dialog.Ok | Dialog.Cancel
+        contentItem: Label {
+            text: "Delete the playlist \"" + deleteConfirmPrompt._selectedName + "\"?"
+            wrapMode: Text.WordWrap
+        }
+        standardButtons: Dialog.Yes | Dialog.No
         onAccepted: {
-            if (root.manager && renameNameField.text.trim() !== "")
-                root.manager.renamePlaylist(root._selectedId, renameNameField.text.trim());
-            renameNameField.text = "";
+            if (root.manager) root.manager.deletePlaylist(root._selectedId);
+            root._selectedId = "";
         }
     }
 }

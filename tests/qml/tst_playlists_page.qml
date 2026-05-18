@@ -75,7 +75,11 @@ TestCase {
         }
     }
 
-    // Fake wpListModel + videoListModel for resolution tests
+    // Fake wpListModel + videoListModel for resolution tests.
+    // `_unfilteredItems` simulates the unfiltered source (folderWorker.model
+    // in production) — it's a SUPERSET of the public ListModel `model`. The
+    // filtered-out test exercises an item present in the source but absent
+    // from the filtered ListModel, which is the bug we're guarding against.
     QtObject {
         id: fakeWpListModel
         property var model: ListModel {
@@ -83,6 +87,19 @@ TestCase {
             Component.onCompleted: {
                 wpModel.append({ workshopid: "12345", title: "Resolved Title" });
             }
+        }
+        property var _unfilteredItems: [
+            { workshopid: "12345", title: "Resolved Title" },
+            { workshopid: "99999", title: "Filtered Out Title" },
+        ]
+        function findItem(workshopid) {
+            for (let i = 0; i < _unfilteredItems.length; ++i)
+                if (_unfilteredItems[i].workshopid === workshopid) return _unfilteredItems[i];
+            return null;
+        }
+        function titleOf(workshopid) {
+            const it = findItem(workshopid);
+            return (it && it.title) ? it.title : workshopid;
         }
     }
 
@@ -120,6 +137,17 @@ TestCase {
 
     function test_resolveItemTitle_fromWpListModel() {
         compare(page._resolveItemTitle("12345"), "Resolved Title");
+    }
+
+    // Regression for the filter-change queue-name bug: a wallpaper that the
+    // user's active filter chips exclude from the Wallpapers-tab view must
+    // still resolve its title in the playlist queue. The lookup goes
+    // through wpListModel.titleOf() which searches the unfiltered source.
+    function test_resolveItemTitle_filteredOutItemStillNamed() {
+        // 99999 is in fakeWpListModel._unfilteredItems but NOT in
+        // fakeWpListModel.model — exactly the production state when a
+        // wallpaper fails the active filter.
+        compare(page._resolveItemTitle("99999"), "Filtered Out Title");
     }
 
     function test_activatingFilteredLibraryCallsManager() {

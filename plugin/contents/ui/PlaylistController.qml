@@ -72,7 +72,15 @@ Item {
 
     function _resolveItem(workshopId) {
         if (!workshopId) return null;
-        if (root.wpListModel && root.wpListModel.model) {
+        // Prefer the unfiltered source via findItem(): the user's filter
+        // chips on the Wallpapers tab must not silently drop playlist items
+        // from playback. Without this, a playlist of "all artists" with the
+        // filter set to "solo only" would skip every group wallpaper.
+        if (root.wpListModel && typeof root.wpListModel.findItem === "function") {
+            const it = root.wpListModel.findItem(workshopId);
+            if (it) return it;
+        } else if (root.wpListModel && root.wpListModel.model) {
+            // Fallback for fakes/tests that don't implement findItem.
             const m = root.wpListModel.model;
             for (let i = 0; i < m.count; ++i) {
                 const it = m.get(i);
@@ -100,8 +108,15 @@ Item {
     property string _pendingWorkshopId: ""
 
     function _modelsAreEmpty() {
-        const wpEmpty = !root.wpListModel || !root.wpListModel.model
-                     || root.wpListModel.model.count === 0;
+        // For wp, use countNoFilter (the UNFILTERED source size) so a strict
+        // filter that happens to exclude every wallpaper isn't mistaken for
+        // "model still loading". If the fake/test object doesn't expose
+        // countNoFilter, fall back to the filtered-model count.
+        const wp = root.wpListModel;
+        const wpEmpty = !wp
+                     || (typeof wp.countNoFilter === "number"
+                            ? wp.countNoFilter === 0
+                            : (!wp.model || wp.model.count === 0));
         const vidEmpty = !root.videoListModel || !root.videoListModel.model
                       || root.videoListModel.model.count === 0;
         return wpEmpty && vidEmpty;

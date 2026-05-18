@@ -28,7 +28,15 @@ Item {
     property string _selectedId: ""
 
     function _resolveItemTitle(workshopId) {
-        if (root.wpListModel && root.wpListModel.model) {
+        // Use wpListModel's unfiltered source via titleOf() — the public
+        // `model` ListModel only holds items passing the active filter
+        // chips on the Wallpapers tab, so a playlist item the user filtered
+        // out would otherwise show as a raw workshopid here.
+        if (root.wpListModel && typeof root.wpListModel.titleOf === "function") {
+            const t = root.wpListModel.titleOf(workshopId);
+            if (t && t !== workshopId) return t;
+        } else if (root.wpListModel && root.wpListModel.model) {
+            // Fallback for fakes/tests that don't implement titleOf.
             const m = root.wpListModel.model;
             for (let i = 0; i < m.count; ++i)
                 if (m.get(i).workshopid === workshopId) return m.get(i).title || workshopId;

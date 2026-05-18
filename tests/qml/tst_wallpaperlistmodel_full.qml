@@ -66,6 +66,13 @@ TestCase {
         initSeen = [];
         readfileCalls = [];
         fakeFileContent = '{"general":{"playlists":[]}}';
+        // production-side refresh() calls loadPlaylists() before
+        // loadFolderLists(), which initialises root.playlists = {}. Tests
+        // calling loadFolderLists directly need the same starting state or
+        // the Object.keys(root.playlists) line inside the readfile chain
+        // throws (the mock _thenable propagates synchronous throws), which
+        // rejects the whole loadFolderLists Promise.
+        wpModel.playlists = {};
     }
 
     // ── loadItemFromJson — JSON to model row population ──────────────────────
@@ -216,5 +223,54 @@ TestCase {
         try { wpModel.refresh(); } catch (e) {}
         wpModel.enabled = false;
         verify(true);
+    }
+
+    // ── findItem / titleOf — unfiltered-source lookup ────────────────────────
+    // Regression guard: PlaylistsPage and PlaylistController must be able to
+    // resolve a playlist item's title/path even when the wallpaper-tab filter
+    // chips would exclude it from the public `model`. The lookup goes through
+    // folderWorker.model (the unfiltered JS array) which loadFolderLists
+    // populates.
+    function test_findItem_returnsItemFromUnfilteredSource() {
+        fakeFileContent = '{"title":"Hello"}';
+        wpModel.loadFolderLists([{
+            folder: "/wp",
+            items: [{ name: "abc123", mtime: 1 }],
+        }]);
+        // loadFolderLists chains native Promise.all (per-item readfile
+        // fan-in) before populating folderWorker.model. wait() pumps the
+        // QML event loop so the microtask queue drains.
+        wait(50);
+        const it = wpModel.findItem("abc123");
+        verify(it !== null);
+        compare(it.workshopid, "abc123");
+        compare(it.title, "Hello");
+    }
+
+    function test_findItem_returnsNullForUnknown() {
+        compare(wpModel.findItem("never-loaded"), null);
+    }
+
+    function test_titleOf_returnsTitleWhenLoaded() {
+        fakeFileContent = '{"title":"Named One"}';
+        wpModel.loadFolderLists([{
+            folder: "/wp",
+            items: [{ name: "id-1", mtime: 1 }],
+        }]);
+        wait(50);
+        compare(wpModel.titleOf("id-1"), "Named One");
+    }
+
+    function test_titleOf_fallsBackToWorkshopIdForUnknown() {
+        compare(wpModel.titleOf("missing-id"), "missing-id");
+    }
+
+    // Reactivity hook: bindings that read titleOf/findItem need a tracked
+    // property to re-evaluate when the unfiltered source repopulates. The
+    // modelRefreshed signal bumps _sourceRev for exactly that purpose.
+    function test_sourceRev_bumpsOnModelRefreshed() {
+        const before = wpModel._sourceRev;
+        wpModel.modelRefreshed();
+        compare(wpModel._sourceRev, before + 1);
     }
 }

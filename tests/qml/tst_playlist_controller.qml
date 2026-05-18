@@ -13,6 +13,13 @@ TestCase {
     width: 200; height: 200
     when: windowShown
 
+    // `_unfilteredItems` simulates the unfiltered source (folderWorker.model
+    // in production). It's a SUPERSET of the filtered `model` ListModel:
+    // `wid-FILTERED` is in the source but excluded by the simulated filter,
+    // mirroring the production state when a user filter chip drops a
+    // wallpaper from the Wallpapers tab view. `countNoFilter` mirrors the
+    // production property so PlaylistController's _modelsAreEmpty heuristic
+    // distinguishes "filter excludes everything" from "source not loaded".
     QtObject {
         id: fakeWpModel
         property var model: ListModel {
@@ -21,6 +28,17 @@ TestCase {
                 wpModel.append({ workshopid: "wid-A", title: "A" });
                 wpModel.append({ workshopid: "wid-B", title: "B" });
             }
+        }
+        property int countNoFilter: 3
+        property var _unfilteredItems: [
+            { workshopid: "wid-A",        title: "A" },
+            { workshopid: "wid-B",        title: "B" },
+            { workshopid: "wid-FILTERED", title: "FilteredOut" },
+        ]
+        function findItem(workshopid) {
+            for (let i = 0; i < _unfilteredItems.length; ++i)
+                if (_unfilteredItems[i].workshopid === workshopid) return _unfilteredItems[i];
+            return null;
         }
     }
 
@@ -92,6 +110,23 @@ TestCase {
         ctrl._applyWorkshopId("not-here");
         // Setter was not called for missing items; lastSet stays empty.
         compare(tc.lastSet.fn, undefined);
+    }
+
+    // Regression: a wallpaper currently excluded by the user's Wallpapers-tab
+    // filter chips must still play when its turn comes up in a playlist.
+    // Before the fix, _resolveItem iterated only the filtered ListModel and
+    // returned null for `wid-FILTERED`, causing skipCurrent to fire.
+    function test_resolvesFilteredOutItemFromUnfilteredSource() {
+        const item = ctrl._resolveItem("wid-FILTERED");
+        verify(item !== null);
+        compare(item.workshopid, "wid-FILTERED");
+        compare(item.title, "FilteredOut");
+    }
+
+    function test_applyWorkshopIdFilteredOut_callsSetter() {
+        ctrl._applyWorkshopId("wid-FILTERED");
+        compare(tc.lastSet.fn, "setWallpaperFromItem");
+        compare(tc.lastSet.item.workshopid, "wid-FILTERED");
     }
 
     function test_serveFilteredPickWithItems() {

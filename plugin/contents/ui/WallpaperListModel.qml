@@ -39,8 +39,34 @@ Item {
 
     property int countNoFilter: 0
 
+    // Bumped after every refresh / filter pass so callers that look items up
+    // through findItem/titleOf re-evaluate their bindings when the unfiltered
+    // source repopulates. Without this, a delegate created before the model
+    // finished loading keeps showing the workshopid forever.
+    property int _sourceRev: 0
+
     property var playlists: {}
     property var folderModels: []
+
+    // Look up an item by workshopid against the UNFILTERED source. The public
+    // `model` ListModel only contains items that pass the active filter, so
+    // callers that need to display or play wallpapers stored in a playlist
+    // (which is independent of the wallpaper-tab filter chips) must go
+    // through this helper — otherwise a filtered-out wallpaper looks like a
+    // missing one.
+    function findItem(workshopid) {
+        // Touch _sourceRev so bindings re-evaluate when the source reloads.
+        void root._sourceRev;
+        const arr = folderWorker.model;
+        for (let i = 0; i < arr.length; ++i)
+            if (arr[i].workshopid === workshopid) return arr[i];
+        return null;
+    }
+
+    function titleOf(workshopid) {
+        const item = findItem(workshopid);
+        return (item && item.title) ? item.title : workshopid;
+    }
 
     function loadItemFromJson(text, el) {
         const project = Utils.parseJson(text);    
@@ -234,6 +260,7 @@ Item {
 
     }
     Component.onCompleted: {
+        this.modelRefreshed.connect(function() { root._sourceRev = root._sourceRev + 1; });
         this.filterStrChanged.connect(function() {
             if(root.enabled) {
                 return folderWorker.filterToList(root.model, root.filterStr, folderWorker.model)

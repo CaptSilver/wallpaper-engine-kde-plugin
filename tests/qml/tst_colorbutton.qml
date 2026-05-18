@@ -35,18 +35,47 @@ TestCase {
     // The `onAccepted` handler on the inner ColorDialog mutates colorValue
     // from selectedColor. Fire the dialog's `accepted` signal directly from
     // JS — opening the dialog in offscreen QPA is unreliable.
-    function test_onAcceptedHandlerCopiesSelectedColor() {
-        function findColorDialog(parent) {
-            const all = [...(parent.children || []), ...(parent.data || [])];
-            for (const c of all) {
-                if (c && typeof c.selectedColor !== "undefined" && typeof c.accepted === "function") return c;
-            }
-            return null;
+    function _findColorDialog(parent) {
+        const all = [...(parent.children || []), ...(parent.data || [])];
+        for (const c of all) {
+            if (c && typeof c.selectedColor !== "undefined" && typeof c.accepted === "function") return c;
         }
-        const dlg = findColorDialog(btn);
+        return null;
+    }
+
+    function test_onAcceptedHandlerCopiesSelectedColor() {
+        const dlg = _findColorDialog(btn);
         verify(dlg !== null);
         dlg.selectedColor = Qt.rgba(1, 0, 0, 1);
         dlg.accepted(); // emit the signal — onAccepted: in QML fires
         compare(btn.colorValue.toString().toLowerCase(), "#ff0000");
+    }
+
+    // colorPicked fires only when the user accepts the ColorDialog.
+    // Callers can connect to this signal to distinguish user picks from
+    // binding-driven colorValue updates (which fire colorValueChanged too).
+    function test_colorPickedSignalFiresOnDialogAccepted() {
+        const dlg = _findColorDialog(btn);
+        verify(dlg !== null);
+        const spy = pickedSpy;
+        spy.clear();
+        dlg.selectedColor = Qt.rgba(0, 1, 0, 1);
+        dlg.accepted();
+        compare(spy.count, 1);
+        compare(spy.signalArguments[0][0].toString().toLowerCase(), "#00ff00");
+    }
+
+    function test_colorPickedNotFiredByBindingUpdate() {
+        // Programmatic colorValue change must NOT trigger colorPicked.
+        const spy = pickedSpy;
+        spy.clear();
+        btn.colorValue = Qt.rgba(0, 0, 1, 1);
+        compare(spy.count, 0);
+    }
+
+    SignalSpy {
+        id: pickedSpy
+        target: btn
+        signalName: "colorPicked"
     }
 }

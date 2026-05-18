@@ -35,6 +35,11 @@ Flickable {
     property alias cfg_HdrOutput: ckbox_hdrOutput.checked
     property string cfg_PostProcessing: ""
     property alias cfg_SystemAudioCapture: ckbox_systemAudioCapture.checked
+    // Color drawn behind the wallpaper. Visible as letterbox/pillarbox
+    // bars when display mode is "Keep Aspect Ratio" and the wallpaper
+    // aspect doesn't match the screen aspect. Stored as a Qt color
+    // string (named color or "#rrggbb"). Default matches main.xml.
+    property string cfg_BackgroundColor: "black"
 
 
     Layout.fillWidth: true
@@ -150,6 +155,40 @@ Flickable {
                     textRole: "text"
                     onActivated: cfg_DisplayMode = Common.cbCurrentValue(this)
                     Component.onCompleted: currentIndex = Common.cbIndexOfValue(this, cfg_DisplayMode)
+                }
+            }
+
+            OptionItem {
+                // Only meaningful in Keep Aspect Ratio mode — Crop/Scale fill
+                // the screen edge-to-edge so the backdrop is never visible.
+                visible: cfg_DisplayMode == Common.DisplayMode.Aspect
+                text: 'Background Color'
+                text_color: Kirigami.Theme.textColor
+                actor: RowLayout {
+                    spacing: 8
+                    ColorButton {
+                        id: bgColorBtn
+                        def_val: "black"
+                        colorValue: cfg_BackgroundColor
+                        onColorPicked: (value) => cfg_BackgroundColor = value.toString()
+                    }
+                    Button {
+                        text: "Reset"
+                        enabled: !Qt.colorEqual(cfg_BackgroundColor, "black")
+                        onClicked: {
+                            cfg_BackgroundColor = "black";
+                            bgColorBtn.colorValue = "black";
+                        }
+                    }
+                }
+                contentBottom: ColumnLayout {
+                    Text {
+                        Layout.fillWidth: true
+                        color: Kirigami.Theme.disabledTextColor
+                        text: "Color drawn in the letterbox/pillarbox bars when "
+                            + "the wallpaper's aspect ratio doesn't match the screen."
+                        wrapMode: Text.Wrap
+                    }
                 }
             }
 

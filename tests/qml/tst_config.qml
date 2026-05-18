@@ -83,4 +83,36 @@ TestCase {
             verify(typeof cfg.saveConfig === "function");
         }
     }
+
+    // ── BackgroundColor wiring ───────────────────────────────────────────────
+    // cfg_BackgroundColor is aliased from config.qml down to SettingPage,
+    // so writes on either side should mirror through. The setting drives
+    // the Rectangle backdrop in main.qml that shows as letterbox bars when
+    // a wallpaper's aspect doesn't match the screen.
+    function test_cfgBackgroundColor_defaultsToBlackString() {
+        verify(cfg !== null);
+        compare(cfg.cfg_BackgroundColor, "black");
+    }
+
+    function test_cfgBackgroundColor_writePropagatesToSettingPage() {
+        verify(cfg !== null);
+        // Find the SettingPage child; it owns the actual property.
+        function findSettingPage(parent) {
+            const all = [...(parent.children || []), ...(parent.data || [])];
+            for (const c of all) {
+                if (c && typeof c.cfg_BackgroundColor !== "undefined"
+                      && typeof c.cfg_HdrOutput !== "undefined") return c;
+                const found = findSettingPage(c);
+                if (found) return found;
+            }
+            return null;
+        }
+        const sp = findSettingPage(cfg);
+        verify(sp !== null);
+        cfg.cfg_BackgroundColor = "#112233";
+        compare(sp.cfg_BackgroundColor, "#112233");
+        // Write from the page side should also mirror back via the alias.
+        sp.cfg_BackgroundColor = "#445566";
+        compare(cfg.cfg_BackgroundColor, "#445566");
+    }
 }

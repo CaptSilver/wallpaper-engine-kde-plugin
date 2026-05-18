@@ -15,6 +15,11 @@ Rectangle {
         return `${c.r.toFixed(3)} ${c.g.toFixed(3)} ${c.b.toFixed(3)}`;
     }
 
+    // Fires only when the user accepts the ColorDialog. Lets callers
+    // distinguish user picks from binding-driven colorValue updates
+    // (which otherwise look identical via onColorValueChanged).
+    signal colorPicked(color value)
+
     implicitWidth: 60
     implicitHeight: 30
     width: 60
@@ -40,6 +45,7 @@ Rectangle {
         selectedColor: colorBtn.colorValue
         onAccepted: {
             colorBtn.colorValue = selectedColor;
+            colorBtn.colorPicked(selectedColor);
         }
     }
 }

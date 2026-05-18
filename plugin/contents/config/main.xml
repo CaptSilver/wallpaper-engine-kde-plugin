@@ -19,7 +19,7 @@
       <default></default>
     </entry>
     <entry name="BackgroundColor" type="String">
-      <label>Last folder used</label>
+      <label>Backdrop color (visible in Keep Aspect Ratio mode behind aspect-mismatched wallpapers)</label>
       <default>black</default>
     </entry>
     <entry name="DisplayMode" type="Int">

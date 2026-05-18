@@ -57,6 +57,7 @@ ColumnLayout {
     property alias  cfg_HdrOutput:           settingPage.cfg_HdrOutput
     property alias  cfg_PostProcessing:      settingPage.cfg_PostProcessing
     property alias  cfg_SystemAudioCapture:  settingPage.cfg_SystemAudioCapture
+    property alias  cfg_BackgroundColor:     settingPage.cfg_BackgroundColor
     property int    cfg_DisplayMode
     property int    cfg_PauseMode
     property int    cfg_VideoBackend
@@ -64,7 +65,6 @@ ColumnLayout {
     property int    cfg_PerOptChanged: 0
 
     //property alias  cfg_UseMpv
-    //property string cfg_BackgroundColor: "black"
     //property alias  cfg_FilterMode: wallpaperPage.cfg_FilterMode
 
     property string cfg_CustomConf

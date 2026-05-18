@@ -407,7 +407,7 @@ private slots:
         // the user didn't "Apply" anything.
         {
             wekde::PlaylistManager mgr;
-            const auto pl = mgr.playlists().first();
+            const auto             pl = mgr.playlists().first();
             QCOMPARE(pl.items.size(), 3);
             QCOMPARE(pl.items[0].workshopId, QString("B"));
             QCOMPARE(pl.items[1].workshopId, QString("C"));
@@ -429,7 +429,7 @@ private slots:
         // Write a valid playlists.json with one entry.
         {
             wekde::PlaylistManager mgr;
-            const QString id = mgr.createPlaylist("Survives");
+            const QString          id = mgr.createPlaylist("Survives");
             mgr.addItem(id, "Wp1");
         }
         QVERIFY(QFile::exists(path));
@@ -437,7 +437,7 @@ private slots:
         // Drop a stray .tmp file with garbage — simulates the
         // post-flush-pre-rename crash.
         const QString tmp = path + ".tmp";
-        QFile orphan(tmp);
+        QFile         orphan(tmp);
         QVERIFY(orphan.open(QIODevice::WriteOnly));
         orphan.write("{this is not valid json yet — half written");
         orphan.close();
@@ -522,8 +522,8 @@ private slots:
     void playlistItem_jsonRoundTrip_idempotent() {
         wekde::PlaylistItem original;
         original.workshopId = "2800255344";
-        const auto json  = wekde::playlistItemToJson(original);
-        const auto round = wekde::playlistItemFromJson(json);
+        const auto json     = wekde::playlistItemToJson(original);
+        const auto round    = wekde::playlistItemFromJson(json);
         QCOMPARE(round.workshopId, original.workshopId);
     }
 
@@ -532,11 +532,11 @@ private slots:
         // playlistFromJson — this test pins that unknown JSON fields are
         // ignored so future schema additions don't blow up old binaries.
         QJsonObject obj;
-        obj["workshop_id"] = "abc";
-        obj["duration_override_min"] = 42;           // removed
-        obj["some_future_field"] = "anything";       // unknown
-        obj["extra_nested"] = QJsonObject{ { "x", 1 } };
-        const auto it = wekde::playlistItemFromJson(obj);
+        obj["workshop_id"]           = "abc";
+        obj["duration_override_min"] = 42;         // removed
+        obj["some_future_field"]     = "anything"; // unknown
+        obj["extra_nested"]          = QJsonObject { { "x", 1 } };
+        const auto it                = wekde::playlistItemFromJson(obj);
         QCOMPARE(it.workshopId, QString("abc"));
     }
 
@@ -548,8 +548,12 @@ private slots:
         original.intervalMin = 42;
         original.created     = 1700000000;
         original.modified    = 1700000100;
-        wekde::PlaylistItem a; a.workshopId = "A"; original.items.append(a);
-        wekde::PlaylistItem b; b.workshopId = "B"; original.items.append(b);
+        wekde::PlaylistItem a;
+        a.workshopId = "A";
+        original.items.append(a);
+        wekde::PlaylistItem b;
+        b.workshopId = "B";
+        original.items.append(b);
 
         const auto json  = wekde::playlistToJson(original);
         const auto round = wekde::playlistFromJson(json);
@@ -565,18 +569,14 @@ private slots:
     }
 
     void playlistMode_fromString_acceptsKnownValues() {
-        QCOMPARE(wekde::playlistModeFromString("sequential"),
-                 wekde::PlaylistMode::Sequential);
-        QCOMPARE(wekde::playlistModeFromString("shuffle"),
-                 wekde::PlaylistMode::Shuffle);
+        QCOMPARE(wekde::playlistModeFromString("sequential"), wekde::PlaylistMode::Sequential);
+        QCOMPARE(wekde::playlistModeFromString("shuffle"), wekde::PlaylistMode::Shuffle);
     }
 
     void playlistMode_fromString_unknownReturnsFallback() {
         // Default fallback is Sequential.
-        QCOMPARE(wekde::playlistModeFromString(""),
-                 wekde::PlaylistMode::Sequential);
-        QCOMPARE(wekde::playlistModeFromString("nonsense"),
-                 wekde::PlaylistMode::Sequential);
+        QCOMPARE(wekde::playlistModeFromString(""), wekde::PlaylistMode::Sequential);
+        QCOMPARE(wekde::playlistModeFromString("nonsense"), wekde::PlaylistMode::Sequential);
         // Explicit fallback honored.
         QCOMPARE(wekde::playlistModeFromString("x", wekde::PlaylistMode::Shuffle),
                  wekde::PlaylistMode::Shuffle);
@@ -671,7 +671,7 @@ private slots:
         QVERIFY(d.isValid());
         setupConfigHome(d);
         wekde::PlaylistManager mgr;
-        const QString id = mgr.createPlaylist("X");
+        const QString          id = mgr.createPlaylist("X");
         mgr.addItem(id, "A");
         QVERIFY(mgr.activate(id));
         // m_remainingMs == -1 (default sentinel). resumeTicks must be
@@ -686,7 +686,7 @@ private slots:
         QVERIFY(d.isValid());
         setupConfigHome(d);
         wekde::PlaylistManager mgr;
-        const QString id = mgr.createPlaylist("X");
+        const QString          id = mgr.createPlaylist("X");
         mgr.setIntervalMin(id, 15);
         mgr.addItem(id, "A");
         QVERIFY(mgr.activate(id));
@@ -709,7 +709,7 @@ private slots:
         QVERIFY(d.isValid());
         setupConfigHome(d);
         wekde::PlaylistManager mgr;
-        const QString id = mgr.createPlaylist("Two");
+        const QString          id = mgr.createPlaylist("Two");
         mgr.addItem(id, "A");
         mgr.addItem(id, "B");
         QVERIFY(mgr.setMode(id, wekde::PlaylistMode::Shuffle));
@@ -718,7 +718,8 @@ private slots:
         for (int i = 0; i < 500; ++i) {
             mgr.onTimerTick();
             const QString cur = mgr.playlists().first().items[mgr.currentItemIndex()].workshopId;
-            QVERIFY2(cur != prev,
+            QVERIFY2(
+                cur != prev,
                 qPrintable(QStringLiteral("size=2 shuffle repeat at iter %1: %2").arg(i).arg(cur)));
             prev = cur;
         }
@@ -735,17 +736,17 @@ private slots:
         QVERIFY(d.isValid());
         setupConfigHome(d);
         wekde::PlaylistManager mgr;
-        const auto* model = mgr.playlistsModel();
+        const auto*            model = mgr.playlistsModel();
         QVERIFY(model != nullptr);
         const auto roles = model->roleNames();
         // The QML side reads `model.id`, `name`, `mode`, `intervalMin`,
         // `itemCount`. Any rename of these keys cascades into every
         // PlaylistsPage delegate + AddToPlaylistMenu delegate.
-        QCOMPARE(roles.value(wekde::PlaylistsModel::IdRole),          QByteArray("id"));
-        QCOMPARE(roles.value(wekde::PlaylistsModel::NameRole),        QByteArray("name"));
-        QCOMPARE(roles.value(wekde::PlaylistsModel::ModeRole),        QByteArray("mode"));
+        QCOMPARE(roles.value(wekde::PlaylistsModel::IdRole), QByteArray("id"));
+        QCOMPARE(roles.value(wekde::PlaylistsModel::NameRole), QByteArray("name"));
+        QCOMPARE(roles.value(wekde::PlaylistsModel::ModeRole), QByteArray("mode"));
         QCOMPARE(roles.value(wekde::PlaylistsModel::IntervalMinRole), QByteArray("intervalMin"));
-        QCOMPARE(roles.value(wekde::PlaylistsModel::ItemCountRole),   QByteArray("itemCount"));
+        QCOMPARE(roles.value(wekde::PlaylistsModel::ItemCountRole), QByteArray("itemCount"));
     }
 
     void playlistsModel_dataInvalidIndex_returnsInvalid() {
@@ -753,7 +754,7 @@ private slots:
         QVERIFY(d.isValid());
         setupConfigHome(d);
         wekde::PlaylistManager mgr;
-        const auto* model = mgr.playlistsModel();
+        const auto*            model = mgr.playlistsModel();
         // Invalid QModelIndex, negative row, past-end row, unknown role —
         // all defensive contract: no crash, returns invalid QVariant.
         QVERIFY(! model->data(QModelIndex(), wekde::PlaylistsModel::IdRole).isValid());
@@ -768,7 +769,7 @@ private slots:
         QVERIFY(d.isValid());
         setupConfigHome(d);
         wekde::PlaylistManager mgr;
-        const auto* model = mgr.playlistsModel();
+        const auto*            model = mgr.playlistsModel();
         mgr.createPlaylist("X");
         // QAbstractListModel contract: rowCount with valid parent (i.e.
         // anything that isn't the root) returns 0 — there are no nested
@@ -782,8 +783,8 @@ private slots:
         QVERIFY(d.isValid());
         setupConfigHome(d);
         wekde::PlaylistManager mgr;
-        auto* model = mgr.playlistsModel();
-        QSignalSpy spy(model, &QAbstractListModel::dataChanged);
+        auto*                  model = mgr.playlistsModel();
+        QSignalSpy             spy(model, &QAbstractListModel::dataChanged);
         model->notifyRowChanged(-1);
         model->notifyRowChanged(999);
         // Out-of-range must not emit a bogus dataChanged that would
@@ -796,12 +797,11 @@ private slots:
         QVERIFY(d.isValid());
         setupConfigHome(d);
         wekde::PlaylistManager mgr;
-        const QString id = mgr.createPlaylist("X");
-        const auto* model = mgr.itemsModel(id);
+        const QString          id    = mgr.createPlaylist("X");
+        const auto*            model = mgr.itemsModel(id);
         QVERIFY(model != nullptr);
         const auto roles = model->roleNames();
-        QCOMPARE(roles.value(wekde::PlaylistItemsModel::WorkshopIdRole),
-                 QByteArray("workshopId"));
+        QCOMPARE(roles.value(wekde::PlaylistItemsModel::WorkshopIdRole), QByteArray("workshopId"));
         // After the duration-override removal, the role hash size is 1.
         QCOMPARE(roles.size(), 1);
     }
@@ -816,8 +816,8 @@ private slots:
         auto* model = mgr.itemsModel("never-created");
         QVERIFY(model != nullptr);
         QCOMPARE(model->rowCount(), 0);
-        QVERIFY(! model->data(model->index(0, 0),
-                              wekde::PlaylistItemsModel::WorkshopIdRole).isValid());
+        QVERIFY(
+            ! model->data(model->index(0, 0), wekde::PlaylistItemsModel::WorkshopIdRole).isValid());
     }
 
     void playlistItemsModel_itemsCache_returnsSamePointer() {
@@ -825,13 +825,13 @@ private slots:
         QVERIFY(d.isValid());
         setupConfigHome(d);
         wekde::PlaylistManager mgr;
-        const QString id = mgr.createPlaylist("X");
-        auto* first  = mgr.itemsModel(id);
-        auto* second = mgr.itemsModel(id);
+        const QString          id     = mgr.createPlaylist("X");
+        auto*                  first  = mgr.itemsModel(id);
+        auto*                  second = mgr.itemsModel(id);
         QCOMPARE(first, second); // cached
         mgr.addItem(id, "wp-1");
-        auto* third  = mgr.itemsModel(id);
-        QCOMPARE(first, third);  // cache survives mutations
+        auto* third = mgr.itemsModel(id);
+        QCOMPARE(first, third); // cache survives mutations
     }
 
     // ── PlaylistManager unhappy paths — all must return false / no-op /
@@ -844,7 +844,7 @@ private slots:
         QVERIFY(d.isValid());
         setupConfigHome(d);
         wekde::PlaylistManager mgr;
-        const QString id = mgr.createPlaylist("X");
+        const QString          id = mgr.createPlaylist("X");
         mgr.addItem(id, "A");
         mgr.addItem(id, "B");
 
@@ -885,7 +885,7 @@ private slots:
         QVERIFY(d.isValid());
         setupConfigHome(d);
         wekde::PlaylistManager mgr;
-        const QString id = mgr.createPlaylist("X");
+        const QString          id = mgr.createPlaylist("X");
         mgr.addItem(id, "A");
 
         QSignalSpy spy(&mgr, &wekde::PlaylistManager::activePlaylistIdChanged);
@@ -912,7 +912,7 @@ private slots:
         QVERIFY(d.isValid());
         setupConfigHome(d);
         wekde::PlaylistManager mgr;
-        const QString id = mgr.createPlaylist("X");
+        const QString          id = mgr.createPlaylist("X");
         mgr.addItem(id, "wp-A");
         mgr.addItem(id, "wp-B");
 
@@ -976,10 +976,10 @@ private slots:
         QSignalSpy idSpy(&mgr, &wekde::PlaylistManager::activePlaylistIdChanged);
 
         QVERIFY(mgr.activate(id));
-        QCOMPARE(mgr.activePlaylistId(), id);     // tracked for UI
-        QCOMPARE(mgr.currentItemIndex(), 0);      // editor never picks shuffle index
-        QCOMPARE(tickSpy.count(), 0);             // CRITICAL: no tick
-        QVERIFY(idSpy.count() >= 1);              // UI gets the activate signal
+        QCOMPARE(mgr.activePlaylistId(), id); // tracked for UI
+        QCOMPARE(mgr.currentItemIndex(), 0);  // editor never picks shuffle index
+        QCOMPARE(tickSpy.count(), 0);         // CRITICAL: no tick
+        QVERIFY(idSpy.count() >= 1);          // UI gets the activate signal
         // No timer armed → nextIntervalMsForTest is what the mgr WOULD use,
         // but isActive is the real "would tick" check. Quick proxy: drive
         // onTimerTick manually and verify the editor short-circuit fires
@@ -1059,7 +1059,7 @@ private slots:
         QVERIFY(d.isValid());
         setupConfigHome(d);
         wekde::PlaylistManager mgr;
-        QSignalSpy spy(&mgr, &wekde::PlaylistManager::editorModeChanged);
+        QSignalSpy             spy(&mgr, &wekde::PlaylistManager::editorModeChanged);
         QCOMPARE(mgr.editorMode(), false);
         mgr.setEditorMode(false); // idempotent
         QCOMPARE(spy.count(), 0);
@@ -1082,7 +1082,7 @@ private slots:
         QVERIFY(d.isValid());
         setupConfigHome(d);
         wekde::PlaylistManager mgr;
-        QSignalSpy spy(&mgr, &wekde::PlaylistManager::persisted);
+        QSignalSpy             spy(&mgr, &wekde::PlaylistManager::persisted);
 
         // create → persist
         const QString id = mgr.createPlaylist("P");
@@ -1222,8 +1222,8 @@ private slots:
         QVERIFY(d.isValid());
         setupConfigHome(d);
         wekde::PlaylistManager mgr;
-        QSignalSpy idSpy(&mgr, &wekde::PlaylistManager::activePlaylistIdChanged);
-        QSignalSpy idxSpy(&mgr, &wekde::PlaylistManager::currentItemIndexChanged);
+        QSignalSpy             idSpy(&mgr, &wekde::PlaylistManager::activePlaylistIdChanged);
+        QSignalSpy             idxSpy(&mgr, &wekde::PlaylistManager::currentItemIndexChanged);
         mgr.reload();
         QCOMPARE(idSpy.count(), 0);
         QCOMPARE(idxSpy.count(), 0);

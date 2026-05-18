@@ -54,8 +54,7 @@ public:
     // True if `workshopId` is already in `playlistId`. False on missing
     // playlist or sentinel "__filtered_library__" (it's not a manual-add
     // target). UI callers use this to grey out "Add" entries.
-    Q_INVOKABLE bool playlistContains(const QString& playlistId,
-                                      const QString& workshopId) const;
+    Q_INVOKABLE bool playlistContains(const QString& playlistId, const QString& workshopId) const;
 
     // C++ overload (used by tests; not Q_INVOKABLE to avoid moc overload ambiguity)
     bool setMode(const QString& id, PlaylistMode mode);

@@ -459,9 +459,9 @@ void PlaylistManager::reload() {
     // Runtime: preserve active state across the reload so the user's
     // playlist edits (interval change, items added/removed) take effect
     // without restarting the cycle from scratch.
-    const QString savedActiveId    = m_activeId;
-    const int     savedCurrentIdx  = m_currentIndex;
-    const bool    wasTimerActive   = m_timer.isActive();
+    const QString savedActiveId   = m_activeId;
+    const int     savedCurrentIdx = m_currentIndex;
+    const bool    wasTimerActive  = m_timer.isActive();
 
     m_timer.stop();
     load();

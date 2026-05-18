@@ -113,7 +113,33 @@ TestCase {
 
         ctrl.manager.requestFilteredPick();
         ctrl.manager.persistFailed("disk full");
+        // Use a read that doesn't match the failed id so the self-heal
+        // branch in onActivationFailed stays inert here; the dedicated
+        // self-heal tests below cover the matching case.
+        ctrl.activePlaylistIdRead = "current-active";
         ctrl.manager.activationFailed("nonexistent");
+    }
+
+    // Self-heal: when activation fails for the very playlist cfg points
+    // at, the controller clears cfg so subsequent plasmashell launches
+    // don't keep retrying a dead id (e.g., deleted-but-still-pinned
+    // playlist, hand-edited playlists.json).
+    function test_onActivationFailed_clearsCfgIfReadMatchesFailedId() {
+        ctrl.activePlaylistIdRead = "dead-id";
+        tc.lastSet = {};
+        ctrl.manager.activationFailed("dead-id");
+        compare(tc.lastSet.fn, "setActivePlaylistId");
+        compare(tc.lastSet.id, "");
+    }
+
+    // Transient races: another playlist's activation failed while a
+    // different one is active. Leave cfg alone — don't clobber the
+    // current active state on unrelated failure signals.
+    function test_onActivationFailed_leavesCfgAloneIfReadDiffers() {
+        ctrl.activePlaylistIdRead = "current-active";
+        tc.lastSet = {};
+        ctrl.manager.activationFailed("transient-other");
+        compare(tc.lastSet.fn, undefined);
     }
 
     function test_emptyWpListServesEmptyPick() {

@@ -42,7 +42,18 @@ Item {
         onTick: function(workshopId) { root._applyWorkshopId(workshopId); }
         onRequestFilteredPick: { root._serveFilteredPick(); }
         onPersistFailed: function(reason) { console.warn("[playlist] persist failed:", reason); }
-        onActivationFailed: function(id) { console.warn("[playlist] activation failed:", id); }
+        onActivationFailed: function(id) {
+            console.warn("[playlist] activation failed:", id);
+            // Self-heal: if cfg points at the failed id (deleted playlist,
+            // hand-edited playlists.json, dead migration leftover), clear it
+            // so the next plasmashell launch doesn't keep retrying — and so
+            // the dialog UI reflects "no playlist active" instead of a stale
+            // selection. Only clear when read matches the failed id; a
+            // transient races against a different active playlist must leave
+            // the current state alone.
+            if (root.activePlaylistIdRead === id)
+                root.setActivePlaylistId("");
+        }
         onActivePlaylistIdChanged: {
             console.warn("[WEK-DBG ctrl mgrIdChanged]",
                 "mgr.activeId:", mgr.activePlaylistId,

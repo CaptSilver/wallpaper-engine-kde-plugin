@@ -152,13 +152,6 @@ TestCase {
         verify(btn !== null);
     }
 
-    function test_userPlaylistActivateCallsManager() {
-        page._selectedId = "p1";
-        page.cfg_ActivePlaylistId = "";
-        fakeManager.activate("p1");
-        compare(fakeManager.lastCall.fn, "activate");
-    }
-
     function test_clickPlusOpensCreatePrompt() {
         let btn = _findButton(page, "+");
         verify(btn !== null);

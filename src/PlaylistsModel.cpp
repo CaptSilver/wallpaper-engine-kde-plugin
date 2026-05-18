@@ -43,7 +43,12 @@ void PlaylistsModel::resetUnderlying() {
 }
 
 void PlaylistsModel::notifyRowChanged(int row) {
-    if (row < 0) return;
+    // Bounds-check both ends. Past-end is a real failure mode: callers
+    // (PlaylistManager after a delete that races with a rename) could
+    // legitimately end up here, and emitting dataChanged with a
+    // createIndex past rowCount poisons any view that asks for that
+    // index's data.
+    if (row < 0 || row >= rowCount()) return;
     const auto idx = createIndex(row, 0);
     emit       dataChanged(idx, idx);
 }

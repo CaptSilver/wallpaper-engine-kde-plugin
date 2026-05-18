@@ -740,6 +740,115 @@ private slots:
             fh.atomicWriteJson("/nonexistent-test-dir-xyz/data.json", QJsonDocument(obj));
         QCOMPARE(ok, false);
     }
+
+    // ── clearCacheDir — safety belt + recursive removal contract ───────────
+    // The function refuses any path outside QStandardPaths::CacheLocation.
+    // Without this guard a misconfigured plugin_info.cache_path could
+    // wipe arbitrary directories.
+
+    void clearCacheDir_emptyPathReturnsFalse() {
+        FileHelper fh;
+        QCOMPARE(fh.clearCacheDir(""), false);
+    }
+
+    void clearCacheDir_refusesPathOutsideCacheRoot() {
+        FileHelper fh;
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        const QString outside = d.path();
+        QVERIFY(QFileInfo(outside).exists());
+        QCOMPARE(fh.clearCacheDir(outside), false);
+        // Post-condition: dir still exists.
+        QVERIFY(QFileInfo(outside).exists());
+    }
+
+    // Helper — return whatever the real CacheLocation root canonicalizes
+    // to. The safety belt canonicalizes both sides, so the test target
+    // must live UNDER the real cache root (Qt appends the application
+    // name to XDG_CACHE_HOME). mkpath the raw path first so the
+    // canonicalization step succeeds.
+    static QString cacheRootCanonical() {
+        const QString raw = QStandardPaths::writableLocation(
+                                QStandardPaths::CacheLocation);
+        if (raw.isEmpty()) return QString();
+        QDir().mkpath(raw);
+        return QFileInfo(raw).canonicalFilePath();
+    }
+
+    void clearCacheDir_acceptsPathInsideCacheRoot() {
+        const QString root = cacheRootCanonical();
+        QDir().mkpath(root); // ensure the cache root exists for canonicalization
+        const QString target = root + "/wek-test-clear";
+        QDir().mkpath(target);
+        QDir().mkpath(target + "/sub1");
+        QFile a(target + "/sub1/file.txt");
+        QVERIFY(a.open(QIODevice::WriteOnly));
+        a.write("data");
+        a.close();
+        QFile b(target + "/top.txt");
+        QVERIFY(b.open(QIODevice::WriteOnly));
+        b.write("data");
+        b.close();
+
+        FileHelper fh;
+        QCOMPARE(fh.clearCacheDir(target), true);
+        // Directory itself stays (so bindings to it remain valid),
+        // contents are gone.
+        QVERIFY(QFileInfo(target).exists());
+        QCOMPARE(QDir(target).entryList(QDir::AllEntries | QDir::NoDotAndDotDot
+                                       | QDir::Hidden).size(),
+                 0);
+        // Clean up
+        QDir(target).removeRecursively();
+    }
+
+    void clearCacheDir_nonexistentPathReturnsTrue() {
+        const QString root = cacheRootCanonical();
+        QDir().mkpath(root);
+        FileHelper fh;
+        QCOMPARE(fh.clearCacheDir(root + "/never-existed"), true);
+    }
+
+    void clearCacheDir_stripsFileURIPrefix() {
+        const QString root = cacheRootCanonical();
+        QDir().mkpath(root);
+        const QString target = root + "/file-uri-test";
+        QDir().mkpath(target);
+        FileHelper fh;
+        QCOMPARE(fh.clearCacheDir("file://" + target), true);
+        QDir(target).removeRecursively();
+    }
+
+    // ── writeWallpaperConfig nested QVariantMap round-trip ─────────────────
+    // SceneScript user properties are arbitrary JSON objects; the config
+    // path needs to preserve the structure across write→read without
+    // flattening or losing nested objects.
+    void writeWallpaperConfig_nestedQVariantMapRoundTrips() {
+        QTemporaryDir cfgRoot;
+        QVERIFY(cfgRoot.isValid());
+        qputenv("XDG_CONFIG_HOME", cfgRoot.path().toLocal8Bit());
+        FileHelper fh;
+        QVariantMap deep;
+        QVariantMap inner;
+        inner["alpha"] = 0.42;
+        inner["beta"]  = QVariantList{ "one", "two", 3 };
+        deep["nested"] = inner;
+        deep["top"]    = "string value";
+        deep["scalar"] = 7;
+
+        QVariantMap topLevel;
+        topLevel["user_props"] = deep;
+        fh.writeWallpaperConfig("12345", topLevel);
+
+        const auto read = fh.readWallpaperConfig("12345");
+        QVERIFY(read.contains("user_props"));
+        const QVariantMap readUserProps = read.value("user_props").toMap();
+        QCOMPARE(readUserProps.value("top").toString(), QString("string value"));
+        QCOMPARE(readUserProps.value("scalar").toInt(), 7);
+        const QVariantMap readInner = readUserProps.value("nested").toMap();
+        QCOMPARE(readInner.value("alpha").toDouble(), 0.42);
+        QCOMPARE(readInner.value("beta").toList().size(), 3);
+    }
 };
 
 QTEST_MAIN(TestFileHelper)

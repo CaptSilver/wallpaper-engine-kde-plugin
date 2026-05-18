@@ -79,6 +79,14 @@ public:
     // after handleNameOwnerChanged / connectToPlayer runs.
     Q_INVOKABLE QString activeService() const { return m_activeService; }
 
+    // Start watching D-Bus for MPRIS player services + poll position.
+    // Call from QML when the wallpaper subscribes to media-info signals
+    // (propertiesChanged / playbackStateChanged / timelineChanged /
+    // thumbnailChanged). Wallpapers that never touch media controls
+    // skip this and avoid the 1Hz poll + persistent subscription.
+    // Idempotent.
+    Q_INVOKABLE void engage() { ensureEngaged(); }
+
 signals:
     void playbackStateChanged(int state); // 0=stopped, 1=playing, 2=paused
     // `duration` carries the most recent known track length so SceneScript
@@ -109,6 +117,12 @@ private:
     void fetchAllProperties();
     void processArtUrl(const QString& artUrl);
     void extractColors(const QImage& img);
+    // Idempotent: subscribe to NameOwnerChanged + scan for an active
+    // MPRIS player. Called lazily on the first invokePlayer /
+    // invokeShortcut so wallpapers that never touch media controls
+    // don't pay the 1Hz position-poll cost. Tests can force-engage by
+    // calling either Q_INVOKABLE.
+    void ensureEngaged();
 
     QDBusConnection m_sessionBus;
     QString         m_activeService;
@@ -117,6 +131,7 @@ private:
     double          m_duration { 0 };
     int             m_playbackState { 0 }; // 0=stopped
     bool            m_enabled { false };
+    bool            m_engaged { false }; // true once D-Bus watch started
     QString         m_lastArtUrl;
     bool            m_artUrlEverProcessed { false };
 

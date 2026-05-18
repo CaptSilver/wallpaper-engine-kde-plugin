@@ -19,6 +19,8 @@
 
 #include "Playlist.hpp"
 #include "PlaylistManager.hpp"
+#include "PlaylistsModel.hpp"
+#include "PlaylistItemsModel.hpp"
 
 class TstPlaylistManager : public QObject {
     Q_OBJECT
@@ -720,6 +722,211 @@ private slots:
                 qPrintable(QStringLiteral("size=2 shuffle repeat at iter %1: %2").arg(i).arg(cur)));
             prev = cur;
         }
+    }
+
+    // ── PlaylistsModel + PlaylistItemsModel direct tests ────────────────────
+    // These QAbstractListModel subclasses are the QML data contract for
+    // PlaylistsPage. A typo in a role name silently breaks every
+    // `delegate { Text { text: model.name } }`; a missing bounds check
+    // crashes the dialog on a corrupted-on-disk playlist.
+
+    void playlistsModel_roleNames_exactlyMatchQmlContract() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const auto* model = mgr.playlistsModel();
+        QVERIFY(model != nullptr);
+        const auto roles = model->roleNames();
+        // The QML side reads `model.id`, `name`, `mode`, `intervalMin`,
+        // `itemCount`. Any rename of these keys cascades into every
+        // PlaylistsPage delegate + AddToPlaylistMenu delegate.
+        QCOMPARE(roles.value(wekde::PlaylistsModel::IdRole),          QByteArray("id"));
+        QCOMPARE(roles.value(wekde::PlaylistsModel::NameRole),        QByteArray("name"));
+        QCOMPARE(roles.value(wekde::PlaylistsModel::ModeRole),        QByteArray("mode"));
+        QCOMPARE(roles.value(wekde::PlaylistsModel::IntervalMinRole), QByteArray("intervalMin"));
+        QCOMPARE(roles.value(wekde::PlaylistsModel::ItemCountRole),   QByteArray("itemCount"));
+    }
+
+    void playlistsModel_dataInvalidIndex_returnsInvalid() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const auto* model = mgr.playlistsModel();
+        // Invalid QModelIndex, negative row, past-end row, unknown role —
+        // all defensive contract: no crash, returns invalid QVariant.
+        QVERIFY(! model->data(QModelIndex(), wekde::PlaylistsModel::IdRole).isValid());
+        QVERIFY(! model->data(model->index(-1, 0), wekde::PlaylistsModel::IdRole).isValid());
+        QVERIFY(! model->data(model->index(999, 0), wekde::PlaylistsModel::IdRole).isValid());
+        mgr.createPlaylist("X");
+        QVERIFY(! model->data(model->index(0, 0), Qt::UserRole + 9999).isValid());
+    }
+
+    void playlistsModel_rowCountWithValidParent_returnsZero() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const auto* model = mgr.playlistsModel();
+        mgr.createPlaylist("X");
+        // QAbstractListModel contract: rowCount with valid parent (i.e.
+        // anything that isn't the root) returns 0 — there are no nested
+        // children.
+        QCOMPARE(model->rowCount(QModelIndex()), 1);
+        QCOMPARE(model->rowCount(model->index(0, 0)), 0);
+    }
+
+    void playlistsModel_notifyRowChanged_outOfRangeIsNoOp() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        auto* model = mgr.playlistsModel();
+        QSignalSpy spy(model, &QAbstractListModel::dataChanged);
+        model->notifyRowChanged(-1);
+        model->notifyRowChanged(999);
+        // Out-of-range must not emit a bogus dataChanged that would
+        // poison views asking for that row.
+        QCOMPARE(spy.count(), 0);
+    }
+
+    void playlistItemsModel_roleNames_exactlyMatchQmlContract() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString id = mgr.createPlaylist("X");
+        const auto* model = mgr.itemsModel(id);
+        QVERIFY(model != nullptr);
+        const auto roles = model->roleNames();
+        QCOMPARE(roles.value(wekde::PlaylistItemsModel::WorkshopIdRole),
+                 QByteArray("workshopId"));
+        // After the duration-override removal, the role hash size is 1.
+        QCOMPARE(roles.size(), 1);
+    }
+
+    void playlistItemsModel_unknownPlaylistId_rowCountZero() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        // itemsModel on an id that doesn't exist still returns a valid
+        // model pointer (cached); rowCount on it must be 0, not crash.
+        auto* model = mgr.itemsModel("never-created");
+        QVERIFY(model != nullptr);
+        QCOMPARE(model->rowCount(), 0);
+        QVERIFY(! model->data(model->index(0, 0),
+                              wekde::PlaylistItemsModel::WorkshopIdRole).isValid());
+    }
+
+    void playlistItemsModel_itemsCache_returnsSamePointer() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString id = mgr.createPlaylist("X");
+        auto* first  = mgr.itemsModel(id);
+        auto* second = mgr.itemsModel(id);
+        QCOMPARE(first, second); // cached
+        mgr.addItem(id, "wp-1");
+        auto* third  = mgr.itemsModel(id);
+        QCOMPARE(first, third);  // cache survives mutations
+    }
+
+    // ── PlaylistManager unhappy paths — all must return false / no-op /
+    //    no-crash. Currently uncovered branches a Mull mutation could
+    //    silently flip (return true from a guard that meant to return false,
+    //    or drop a bounds check entirely).
+
+    void unhappyPaths_returnFalseWithoutSideEffect() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString id = mgr.createPlaylist("X");
+        mgr.addItem(id, "A");
+        mgr.addItem(id, "B");
+
+        // addItem on unknown playlist
+        QCOMPARE(mgr.addItem("nonexistent", "ZZ"), false);
+        QCOMPARE(mgr.playlists().first().items.size(), 2);
+
+        // removeItem out of range (both directions) + unknown id
+        QCOMPARE(mgr.removeItem(id, -1), false);
+        QCOMPARE(mgr.removeItem(id, 999), false);
+        QCOMPARE(mgr.removeItem("nonexistent", 0), false);
+        QCOMPARE(mgr.playlists().first().items.size(), 2);
+
+        // moveItem self-move + out of range + unknown
+        QCOMPARE(mgr.moveItem(id, 0, 0), true); // self-move returns true (early-out)
+        QCOMPARE(mgr.moveItem(id, 0, 999), false);
+        QCOMPARE(mgr.moveItem(id, -1, 0), false);
+        QCOMPARE(mgr.moveItem("nonexistent", 0, 1), false);
+        QCOMPARE(mgr.playlists().first().items[0].workshopId, QString("A"));
+
+        // deletePlaylist of nonexistent
+        QCOMPARE(mgr.deletePlaylist("nonexistent"), false);
+        QCOMPARE(mgr.playlists().size(), 1);
+
+        // renamePlaylist of nonexistent
+        QCOMPARE(mgr.renamePlaylist("nonexistent", "NewName"), false);
+
+        // setMode / setIntervalMin of nonexistent
+        QCOMPARE(mgr.setMode("nonexistent", 1), false);
+        QCOMPARE(mgr.setIntervalMin("nonexistent", 30), false);
+    }
+
+    // setActivePlaylistId is the Q_PROPERTY setter behind the
+    // Q_PROPERTY(activePlaylistId WRITE setActivePlaylistId) — uncovered
+    // early-return + delegation branches.
+    void setActivePlaylistId_idempotentAndDelegating() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString id = mgr.createPlaylist("X");
+        mgr.addItem(id, "A");
+
+        QSignalSpy spy(&mgr, &wekde::PlaylistManager::activePlaylistIdChanged);
+
+        // Activate via the property setter (was uncovered).
+        mgr.setActivePlaylistId(id);
+        QCOMPARE(mgr.activePlaylistId(), id);
+        const int afterActivate = spy.count();
+        QVERIFY(afterActivate >= 1);
+
+        // Idempotent: same id → no-op early-return.
+        mgr.setActivePlaylistId(id);
+        QCOMPARE(spy.count(), afterActivate);
+
+        // Empty string → deactivate path.
+        mgr.setActivePlaylistId("");
+        QCOMPARE(mgr.activePlaylistId(), QString(""));
+    }
+
+    // playlistContains — Q_INVOKABLE used by AddToPlaylistMenu to disable
+    // already-added rows. Locks every documented branch.
+    void playlistContains_allBranches() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString id = mgr.createPlaylist("X");
+        mgr.addItem(id, "wp-A");
+        mgr.addItem(id, "wp-B");
+
+        QVERIFY(mgr.playlistContains(id, "wp-A"));
+        QVERIFY(mgr.playlistContains(id, "wp-B"));
+        QVERIFY(! mgr.playlistContains(id, "wp-NOT-HERE"));
+        // Empty playlistId / empty workshopid → false (never crash).
+        QVERIFY(! mgr.playlistContains("", "wp-A"));
+        QVERIFY(! mgr.playlistContains(id, ""));
+        // Filtered Library sentinel is never a manual-add target →
+        // contains always false even if the id somehow matched.
+        QVERIFY(! mgr.playlistContains(wekde::kFilteredLibraryId, "wp-A"));
+        // Unknown id → false.
+        QVERIFY(! mgr.playlistContains("not-a-playlist", "wp-A"));
     }
 
     void pauseAndResumeKeepsStateConsistent() {

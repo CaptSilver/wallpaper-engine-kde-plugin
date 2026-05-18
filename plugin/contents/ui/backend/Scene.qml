@@ -38,8 +38,26 @@ Item{
         }
     }
 
+    // MPRIS media-control + metadata bridge. SceneScript JS in scene
+    // wallpapers can subscribe to playback state, properties (title /
+    // artist / album / genres / duration), timeline (position), and
+    // thumbnail color extraction via mediaPlaybackChanged etc. on the
+    // player object. SceneScript can also dispatch transport controls
+    // via engine.openUserShortcut("bplaypause"/"bnext"/...).
+    //
+    // Web (QtWebView.qml) and Video (QtMultimedia.qml/Mpv.qml) backends
+    // do NOT currently wire this up — there's no QWebChannel proxy for
+    // MprisMonitor on the web side, and video wallpapers have no script
+    // surface to dispatch media keys from. If you need media-control
+    // dispatch from web, expose mprisMonitor.invokeShortcut to the page
+    // via WebAudioBridge-style relay (the asymmetry is intentional
+    // today, not a bug — but worth noting since users may expect parity).
     MprisMonitor {
         id: mprisMonitor
+        // Engage the D-Bus watch + position poll so signals fire for
+        // scene-script subscribers. Other backends skip the cost
+        // automatically (they never instantiate MprisMonitor).
+        Component.onCompleted: engage()
         onPlaybackStateChanged: function(state) {
             player.mediaPlaybackChanged(state);
         }

@@ -4,9 +4,13 @@
 using namespace wekde;
 
 TTYSwitchMonitor::TTYSwitchMonitor(QQuickItem* parent): QQuickItem(parent), m_sleeping(false) {
+    // Pause-on-suspend is a polish feature — degrading to "no TTY/suspend
+    // pause" is fine in toolbox / sandbox / minimal environments. Don't
+    // qFatal; that takes down plasmashell with us.
     QDBusConnection systemBus = QDBusConnection::systemBus();
     if (! systemBus.isConnected()) {
-        qFatal("Cannot connect to the D-Bus system bus");
+        qWarning("wekde::TTYSwitchMonitor: system D-Bus unavailable; "
+                 "pause-on-suspend disabled");
         return;
     }
 
@@ -18,7 +22,8 @@ TTYSwitchMonitor::TTYSwitchMonitor(QQuickItem* parent): QQuickItem(parent), m_sl
                                        SLOT(handlePrepareForSleep(bool)));
 
     if (! connected) {
-        qFatal("Failed to connect to PrepareForSleep signal");
+        qWarning("wekde::TTYSwitchMonitor: failed to connect to "
+                 "PrepareForSleep signal; pause-on-suspend disabled");
     }
 }
 

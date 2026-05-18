@@ -130,6 +130,15 @@ private slots:
     // ── HTTP path of processArtUrl drives onArtDownloaded
     void processArtUrl_http_downloadsAndEmits();
     void processArtUrl_http_returnsGarbage_emitsThumbnailFalse();
+
+    // ── Art-URL edge cases
+    // data: URL classification (Unknown — neither file:// nor http(s)//)
+    void classifyArtUrl_dataUrl_isUnknown();
+    // Transparent PNG extraction must not crash / produce garbage
+    void extractDominantColors_transparentImage();
+    // Reconnect with same art URL must NOT dedup (regression test for
+    // the m_artUrlEverProcessed reset-on-disconnect fix)
+    void reconnect_sameArtUrl_doesNotDedup();
 };
 
 // Helper: create a solid-color image
@@ -1232,6 +1241,95 @@ void TestMprisColors::processArtUrl_http_returnsGarbage_emitsThumbnailFalse() {
     QVERIFY(spy.wait(5000));
     QCOMPARE(spy.count(), 1);
     QCOMPARE(spy.last().at(0).toBool(), false);
+}
+
+// Reach the private helper that previous tests used. Defined here so
+// these later tests can call it too.
+extern bool injectFakeService(MprisMonitor& m, const QString& service);
+
+void TestMprisColors::classifyArtUrl_dataUrl_isUnknown() {
+    // data: URLs (inline base64 image bodies — some MPRIS players emit
+    // these) are neither LocalFile nor Http; the helper must fall into
+    // Unknown so the caller knows not to try a file fetch or HTTP GET.
+    QCOMPARE(wekde::classifyArtUrl(
+                 "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB"),
+             wekde::MprisArtUrlKind::Unknown);
+    // Also: bare data: prefix and weird schemes round-trip safely.
+    QCOMPARE(wekde::classifyArtUrl("data:"), wekde::MprisArtUrlKind::Unknown);
+    QCOMPARE(wekde::classifyArtUrl("blob:https://example.com/abc"),
+             wekde::MprisArtUrlKind::Unknown);
+}
+
+void TestMprisColors::extractDominantColors_transparentImage() {
+    // Fully transparent 32x32 ARGB image — every pixel alpha=0. The
+    // color extractor must not crash on this (Mull-easy mutation
+    // target: dropping an alpha-channel guard).
+    QImage img(32, 32, QImage::Format_ARGB32);
+    img.fill(QColor(0, 0, 0, 0));
+    const auto colors = wekde::extractDominantColors(img);
+    // Contract: returns 15 floats regardless of input. Values stay in
+    // 0-1 range. We don't assert specific colors (a fully transparent
+    // image has no meaningful dominant color; implementations may pick
+    // black, transparent-as-black, or something else).
+    QCOMPARE(colors.size(), 15);
+    for (const auto& v : colors) {
+        const double d = v.toDouble();
+        QVERIFY(d >= 0.0 && d <= 1.0);
+    }
+}
+
+void TestMprisColors::reconnect_sameArtUrl_doesNotDedup() {
+    // Regression test for the m_artUrlEverProcessed reset bug:
+    // connect → process art URL → disconnect → reconnect → SAME art URL
+    // must process again (the previous-connection's dedup state must
+    // not bleed into the new connection's state).
+    MprisMonitor m;
+    if (! injectFakeService(m, "org.mpris.MediaPlayer2.first"))
+        QSKIP("could not establish an active MPRIS service for this test");
+
+    QSignalSpy thumbSpy(&m, &MprisMonitor::thumbnailChanged);
+
+    // Write a tiny PNG to disk for the LocalFile path.
+    QTemporaryFile cover;
+    cover.setAutoRemove(true);
+    QVERIFY(cover.open());
+    QImage img(8, 8, QImage::Format_RGB32);
+    img.fill(Qt::yellow);
+    QVERIFY(img.save(cover.fileName(), "PNG"));
+    cover.close();
+    const QString artUrl = "file://" + cover.fileName();
+
+    // Process the art URL once via handlePropertiesChanged. m_lastArtUrl
+    // + m_artUrlEverProcessed get populated.
+    QVariantMap c;
+    QVariantMap meta;
+    meta["mpris:artUrl"] = artUrl;
+    c["Metadata"] = meta;
+    invokeSlot(&m,
+               "handlePropertiesChanged",
+               Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
+               Q_ARG(QVariantMap, c),
+               Q_ARG(QStringList, QStringList()));
+    const int firstCount = thumbSpy.count();
+    QVERIFY(firstCount >= 1);
+
+    // Disconnect — the fix resets m_lastArtUrl + m_artUrlEverProcessed.
+    invokeSlot(&m,
+               "handleNameOwnerChanged",
+               Q_ARG(QString, m.activeService()),
+               Q_ARG(QString, ":1.42"),
+               Q_ARG(QString, ""));
+    QCOMPARE(m.activeService(), QString(""));
+
+    // Reconnect — same artUrl re-processes (no silent dedup).
+    if (! injectFakeService(m, "org.mpris.MediaPlayer2.second"))
+        QSKIP("could not establish a second MPRIS service for this test");
+    invokeSlot(&m,
+               "handlePropertiesChanged",
+               Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
+               Q_ARG(QVariantMap, c),
+               Q_ARG(QStringList, QStringList()));
+    QVERIFY(thumbSpy.count() > firstCount);
 }
 
 QTEST_GUILESS_MAIN(TestMprisColors)

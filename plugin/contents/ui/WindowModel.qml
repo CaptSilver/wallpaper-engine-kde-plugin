@@ -248,7 +248,10 @@ Item {
             playBy(maxWModel.length === 0);
             break;
         case Common.PauseMode.FullScreen:
-            console.log("fullScreen", fullSModel);
+            // Diagnostic was unconditional — fired on every window-state
+            // tick in FullScreen pause mode. Gate on `logging` so it
+            // matches the rest of the noisy-dump path.
+            if (logging) console.log("fullScreen", fullSModel);
             playBy(fullSModel.length === 0);
             break;
         case Common.PauseMode.Focus:

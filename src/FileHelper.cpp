@@ -243,12 +243,32 @@ bool FileHelper::clearCacheDir(const QString& path) {
     // Strip file:// if present and resolve symlinks to defeat path tricks.
     QString native = path;
     if (native.startsWith("file://")) native = native.mid(7);
-    const QString canon = QFileInfo(native).canonicalFilePath();
-    if (canon.isEmpty()) return false;
     const QString cacheRoot =
         QFileInfo(QStandardPaths::writableLocation(QStandardPaths::CacheLocation))
             .canonicalFilePath();
-    if (cacheRoot.isEmpty() || ! canon.startsWith(cacheRoot)) {
+    if (cacheRoot.isEmpty()) return false;
+    // Path may not exist (nothing to clear) — canonicalize what we have:
+    // existing → its own canonical path; missing → walk up to the first
+    // existing ancestor and confirm it's under cacheRoot, then treat the
+    // child as a no-op success.
+    QString canon = QFileInfo(native).canonicalFilePath();
+    if (canon.isEmpty()) {
+        // Path doesn't exist. Confirm the parent (or first existing
+        // ancestor) is under cacheRoot — if so, "nothing to clear" is a
+        // successful no-op.
+        QFileInfo fi(native);
+        QDir parent = fi.dir();
+        while (! parent.exists() && parent.cdUp()) { /* walk up */ }
+        const QString parentCanon =
+            QFileInfo(parent.absolutePath()).canonicalFilePath();
+        if (parentCanon.isEmpty() || ! parentCanon.startsWith(cacheRoot)) {
+            qWarning() << "FileHelper::clearCacheDir refused missing path "
+                          "outside cache root:" << path;
+            return false;
+        }
+        return true; // nothing to clear
+    }
+    if (! canon.startsWith(cacheRoot)) {
         qWarning() << "FileHelper::clearCacheDir refused path outside cache root:" << path;
         return false;
     }

@@ -42,6 +42,10 @@ QString wekde::mapShortcutToMpris(const QString& name) {
 }
 
 void MprisMonitor::invokePlayer(const QString& method) {
+    // Lazy-engage on first use so wallpapers without media-control
+    // SceneScripts don't pay the 1Hz position-poll cost. Repeated calls
+    // are cheap (ensureEngaged is idempotent).
+    ensureEngaged();
     if (method.isEmpty() || m_activeService.isEmpty()) return;
     // Only allow the well-known MPRIS2 Player methods — defense against a
     // compromised scene JS smuggling arbitrary DBus calls through the shim.
@@ -86,10 +90,20 @@ MprisArtUrlKind wekde::classifyArtUrl(const QString& artUrl) {
 
 MprisMonitor::MprisMonitor(QQuickItem* parent)
     : QQuickItem(parent), m_sessionBus(QDBusConnection::sessionBus()) {
+    // Defer all D-Bus watching + position polling to the first time a
+    // wallpaper actually uses media controls. Wallpapers that don't call
+    // invokeShortcut / invokePlayer (the vast majority) avoid the 1Hz
+    // poll + persistent PropertiesChanged subscription. ensureEngaged()
+    // takes care of the lazy hook-up when needed.
+}
+
+void MprisMonitor::ensureEngaged() {
+    if (m_engaged) return;
     if (! m_sessionBus.isConnected()) {
         qWarning("MprisMonitor: cannot connect to session D-Bus");
         return;
     }
+    m_engaged = true;
 
     // Watch for MPRIS player services appearing/disappearing
     m_sessionBus.connect("org.freedesktop.DBus",
@@ -160,6 +174,13 @@ void MprisMonitor::disconnectFromPlayer() {
                             SLOT(handlePropertiesChanged(QString, QVariantMap, QStringList)));
     m_activeService.clear();
     m_positionTimer.stop();
+    // Reset the art-URL dedup tracker. Without this, reconnecting to a
+    // different MPRIS player whose first art URL happens to match the
+    // previous player's m_lastArtUrl silently dedups and the thumbnail
+    // never updates. m_lastArtUrl + m_artUrlEverProcessed are bound to
+    // the previous connection's lifetime, not the wallpaper's.
+    m_lastArtUrl.clear();
+    m_artUrlEverProcessed = false;
     if (m_enabled) {
         m_enabled = false;
         emit enabledChanged(false);

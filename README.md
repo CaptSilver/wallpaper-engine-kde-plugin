@@ -186,6 +186,27 @@ After installing via any method:
 - Mouse long press (to enter panel edit mode) is broken on desktop
 - Screen Locking is not supported
 
+## Diagnostics
+
+The plugin honors several `WEKDE_*` environment variables for verbose
+diagnostics. Set them before launching `plasmashell` (or, for the
+standalone `sceneviewer`, before running the binary):
+
+| Variable | Purpose |
+|---|---|
+| `WEKDE_PIPELINE_DIAG=1` | Dump the per-pass Vulkan render-graph layout on each reload (large output). |
+| `WEKDE_TIME_DIAG=1` | Per-frame CPU timing of major render stages — useful for hunting wallpaper-specific perf cliffs. |
+| `WEKDE_SCRIPT_DIAG=1` | Verbose SceneScript JS engine logging (`scenescript-dispatch-debug.md` in memory). |
+| `WEKDE_DEBUG_PARTICLE=1` | Particle-system per-emitter trace. |
+| `WEKDE_TEXT_DUMP_DIR=<dir>` | Dump each rasterized text glyph atlas to `<dir>`. |
+| `WEKDE_PASS_DUMP_MEM_MB=<n>` | Cap memory used by `--dump-passes-dir` to `<n>` MB (prevents OOM on long sessions). |
+| `WEKDE_SKIP_PARTICLE_CHILD_SUBSTR=<s>` | Skip particle objects whose name contains `<s>` — isolation tool. |
+| `WEKDE_DISABLE_OVERBRIGHT_HDR=1` | Disable the overbright clamp in HDR post-processing pipeline. |
+
+The standalone `sceneviewer` also accepts `--list-env-vars` to print the
+same list at runtime, and `H` / `?` in the viewer prints keyboard
+shortcuts.
+
 ## Support Status
 
 ### Scene Wallpapers

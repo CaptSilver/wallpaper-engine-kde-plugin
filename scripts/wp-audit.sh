@@ -329,12 +329,18 @@ cmd_run() {
 
     local list_args=()
 
+    # Ctrl-C should take any in-flight sceneviewer child with it. Without
+    # the trap, the parent dies before `wait` and the child becomes an
+    # orphan still painting frames + writing to its rawlog tmpfile.
+    # Cleanup also removes any rawlog files that weren't reaped.
+    trap 'kill $(jobs -p) 2>/dev/null; rm -f /tmp/tmp.* 2>/dev/null; exit 130' INT TERM
+
     while (( $# )); do
         case $1 in
-            --workshop)        WORKSHOP=$2; shift 2;;
-            --assets)          ASSETS=$2; shift 2;;
-            --viewer)          VIEWER=$2; shift 2;;
-            --cache-dir)       CACHE_DIR=$2; shift 2;;
+            --workshop)        WORKSHOP=$(realpath -m "$2"); shift 2;;
+            --assets)          ASSETS=$(realpath -m "$2"); shift 2;;
+            --viewer)          VIEWER=$(realpath -m "$2"); shift 2;;
+            --cache-dir)       CACHE_DIR=$(realpath -m "$2"); shift 2;;
             --runtime)         RUNTIME=$2; shift 2;;
             --timeout-offset)  TIMEOUT_OFFSET=$2; shift 2;;
             --resolution)      RESOLUTION=$2; shift 2;;

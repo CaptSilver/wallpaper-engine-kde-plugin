@@ -46,14 +46,12 @@ Rectangle {
 
     // Update all derived properties when curOpt changes
     onCurOptChanged: {
-        console.log("main.qml onCurOptChanged, curOpt:", JSON.stringify(curOpt));
         displayMode = get_opt_value('display_mode', wallpaper.configuration.DisplayMode);
         mute = get_opt_value('mute_audio', wallpaper.configuration.MuteAudio);
         volume = get_opt_value('volume', wallpaper.configuration.Volume);
         speed = get_opt_value('speed', wallpaper.configuration.Speed);
         const userProps = curOpt['user_props'];
         userPropsJson = userProps ? JSON.stringify(userProps) : "";
-        console.log("main.qml updated: displayMode=", displayMode, "speed=", speed, "userPropsJson=", userPropsJson);
     }
 
     property int    displayMode: get_opt_value('display_mode', wallpaper.configuration.DisplayMode)
@@ -82,9 +80,7 @@ Rectangle {
 
     property int    perOptChanged: wallpaper.configuration.PerOptChanged
     onPerOptChangedChanged: {
-        console.log("main.qml onPerOptChangedChanged, perOptChanged:", perOptChanged, "workshopid:", workshopid);
         pyext.read_wallpaper_config(workshopid).then((res) => {
-            console.log("main.qml read_wallpaper_config result:", JSON.stringify(res));
             this.curOpt = res;
         });
     }
@@ -170,7 +166,11 @@ Rectangle {
         }
         else if(this.mouseHooker) {
             this.mouseHooker.target = null;
-            this.mouseHooker.destroy;
+            this.mouseHooker.destroy();   // bug: was `.destroy;` — bare
+                                          // identifier reference, no call,
+                                          // so the hidden grabber Item
+                                          // leaked every time Mouse Input
+                                          // was toggled off mid-session.
             this.mouseHooker = null;
         }
     }
@@ -345,11 +345,46 @@ Rectangle {
         interval: 200
         onTriggered: background.autoPause();
     }
-    // main  
-    Item { 
+    // Loading affordance — until the backend Item is mounted the user
+    // sees only `BackgroundColor` (default solid black). For the 2-10s
+    // cold-start window that's a black void with no signal. Fade in a
+    // small label only when the wait crosses 600ms so fast loads don't
+    // flash a hint that immediately disappears. Hidden once the backend
+    // is loaded OR when the InfoShow first-run hint is showing.
+    Timer {
+        id: loadingHintDelay
+        interval: 600
+        running: !backendLoader.item && background.source && background.nowBackend !== "InfoShow"
+        repeat: false
+    }
+    Text {
+        anchors.centerIn: parent
+        visible: !backendLoader.item
+              && !loadingHintDelay.running
+              && background.source
+              && background.nowBackend !== "InfoShow"
+        text: "Loading wallpaper…"
+        color: "#cccccc"
+        font.pixelSize: 18
+        opacity: 0.0
+        Behavior on opacity { NumberAnimation { duration: 250 } }
+        onVisibleChanged: opacity = visible ? 0.7 : 0.0
+        Component.onCompleted: opacity = visible ? 0.7 : 0.0
+    }
+
+    // main
+    Item {
         id: backendLoader
         anchors.fill: parent
         property var item: null
+
+        // Fade between wallpapers instead of hard-cutting. A playlist tick
+        // every 15 min looks brutal as a flash of background color; a
+        // 250ms opacity fade reads as intentional. opacity is bound to a
+        // simple flag the loader flips around the destroy+create dance.
+        opacity: _fadeOpacity
+        Behavior on opacity { NumberAnimation { duration: 250 } }
+        property real _fadeOpacity: 1.0
 
         signal loaded
 
@@ -365,14 +400,22 @@ Rectangle {
         function load(url, properties) {
             const com = Qt.createComponent(url);
             if(com.status === Component.Ready) {
+                // Fade out, then swap on the next event-loop turn so the
+                // user sees a soft transition rather than the bg color
+                // flashing through.
+                backendLoader._fadeOpacity = 0.0;
                 if(this.item) this.item.destroy(100);
                 this.item = null;
                 try {
                     this.item = com.createObject(this, properties);
                 } catch(e) {
                     this.loadInfoShow(e);
+                    backendLoader._fadeOpacity = 1.0;
                     return;
                 }
+                // Restore opacity after the new backend is mounted —
+                // Behavior on opacity animates it back in.
+                backendLoader._fadeOpacity = 1.0;
                 this.loaded();
             } else if(com.status == Component.Error) {
                 this.loadInfoShow(com.errorString());
@@ -400,9 +443,22 @@ Rectangle {
         let properties = {};
 
     
-        // check source
+        // check source — differentiate first-run (no Steam library picked
+        // yet) from broken config (had a wallpaper, now invalid). First-
+        // run users need a call-to-action, not a "config may be broken"
+        // scare line.
         if(!background.source) {
-            backendLoader.loadInfoShow("Source is empty. The config may be broken.");
+            if (!wallpaper.configuration.SteamLibraryPath) {
+                backendLoader.loadInfoShow(
+                    "Open the wallpaper settings (right-click the desktop → "
+                    + "Configure Desktop and Wallpaper… → Wallpapers tab → "
+                    + "Library) to pick your Steam library folder, then "
+                    + "choose a Wallpaper Engine wallpaper.");
+            } else {
+                backendLoader.loadInfoShow(
+                    "No wallpaper selected. Open the wallpaper settings "
+                    + "and pick one from the Wallpapers or Videos tab.");
+            }
             return;
         }
         // choose backend
@@ -433,7 +489,9 @@ Rectangle {
         // Don't pass source as a constructor property — set it after load.
         // This ensures QML bindings (e.g. userProperties) are evaluated first,
         // so the C++ backend receives USER_PROPS before SOURCE/LOAD_SCENE.
-        console.error("load backend: "+qmlsource);
+        // Demoted from console.error — a successful backend load shouldn't
+        // present as an error in journalctl filtering.
+        console.log("load backend: "+qmlsource);
         backendLoader.load(qmlsource, properties);
         backendLoader.item.source = background.wallpaperPath;
         sourceCallback();

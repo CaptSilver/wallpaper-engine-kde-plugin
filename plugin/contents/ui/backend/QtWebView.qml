@@ -31,11 +31,11 @@ Item {
         // Read HTML and inject History API patch before Angular/etc scripts
         var html = webItem.patchedHtml(filePath);
         if (html && html.length > 0) {
-            console.warn("[WEK] loadHtml baseUrl=" + baseUrl + " htmlLen=" + html.length);
+            console.log("[WEK] loadHtml baseUrl=" + baseUrl + " htmlLen=" + html.length);
             web.loadHtml(html, baseUrl);
         } else {
             // Fallback: load URL directly (non-HTML wallpapers, read errors)
-            console.warn("[WEK] fallback direct url=" + fileUrl);
+            console.log("[WEK] fallback direct url=" + fileUrl);
             web.url = webItem.source;
         }
     }
@@ -59,7 +59,7 @@ Item {
                 }
             }
             if (Object.keys(delta).length > 0) {
-                console.warn("[WEK] Sending updated user properties:", JSON.stringify(Object.keys(delta)));
+                console.log("[WEK] Sending updated user properties:", JSON.stringify(Object.keys(delta)));
                 webobj.sigUserProperties(delta);
             }
         } catch(e) {
@@ -124,7 +124,7 @@ Item {
                         }
                     } catch(e) {}
                 }
-                console.warn("[WEK] project.json loaded, properties:", JSON.stringify(Object.keys(json.general.properties || {})));
+                console.log("[WEK] project.json loaded, properties:", JSON.stringify(Object.keys(json.general.properties || {})));
                 // Now signal both — properties first, then general
                 webobj.sigUserProperties(webobj.userProperties);
                 webobj.sigGeneralProperties(webobj.generalProperties);
@@ -208,12 +208,12 @@ Item {
         }
 
         Component.onCompleted: {
-            console.warn("[WEK] WebEngineView.onCompleted");
+            console.log("[WEK] WebEngineView.onCompleted");
 
             if (!webItem.qwebChannelJs || webItem.qwebChannelJs.length < 100)
-                console.warn("[WEK] qwebchannel source missing or truncated (" + webItem.qwebChannelJs.length + " chars)");
+                console.log("[WEK] qwebchannel source missing or truncated (" + webItem.qwebChannelJs.length + " chars)");
             else
-                console.warn("[WEK] qwebchannel source loaded (" + webItem.qwebChannelJs.length + " chars)");
+                console.log("[WEK] qwebchannel source loaded (" + webItem.qwebChannelJs.length + " chars)");
 
             // Single Deferred script: Audio listener + QWebChannel + channel init
             // DocumentCreation injection doesn't work for dynamically inserted
@@ -233,9 +233,9 @@ Item {
                                 window.wallpaperRAed = listener;
                         };
                     ` + webItem.qwebChannelJs + `
-                        console.warn('[WEK] Deferred script running, QWebChannel=' + typeof QWebChannel);
+                        console.log('[WEK] Deferred script running, QWebChannel=' + typeof QWebChannel);
                         new QWebChannel(qt.webChannelTransport, function(channel) {
-                            console.warn('[WEK] QWebChannel connected');
+                            console.log('[WEK] QWebChannel connected');
                             window.wpeQml = channel.objects.wpeQml;
                             var wpeQml = window.wpeQml;
                             var propertyListener = window.wallpaperPropertyListener;
@@ -248,7 +248,7 @@ Item {
                                     wpeQml.sigUserProperties.connect(propertyListener.applyUserProperties);
                             }
                             wpeQml.loaded = true;
-                            console.warn('[WEK] wpeQml.loaded set to true');
+                            console.log('[WEK] wpeQml.loaded set to true');
                         });
                         document.getElementsByTagName('body')[0].ondragstart = function() { return false; }
                     `

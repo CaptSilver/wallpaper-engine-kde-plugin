@@ -257,13 +257,14 @@ bool FileHelper::clearCacheDir(const QString& path) {
         // ancestor) is under cacheRoot — if so, "nothing to clear" is a
         // successful no-op.
         QFileInfo fi(native);
-        QDir parent = fi.dir();
-        while (! parent.exists() && parent.cdUp()) { /* walk up */ }
-        const QString parentCanon =
-            QFileInfo(parent.absolutePath()).canonicalFilePath();
+        QDir      parent = fi.dir();
+        while (! parent.exists() && parent.cdUp()) { /* walk up */
+        }
+        const QString parentCanon = QFileInfo(parent.absolutePath()).canonicalFilePath();
         if (parentCanon.isEmpty() || ! parentCanon.startsWith(cacheRoot)) {
             qWarning() << "FileHelper::clearCacheDir refused missing path "
-                          "outside cache root:" << path;
+                          "outside cache root:"
+                       << path;
             return false;
         }
         return true; // nothing to clear

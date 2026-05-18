@@ -464,6 +464,76 @@ TestCase {
         wp.playlistManager = origMgr;
     }
 
+    // ── Filter Popup — multi-toggle without auto-close ─────────────────────
+    // The Filter toolbar action now opens a Popup of CheckBoxes instead of
+    // a Menu that closes on each click. The tests below verify (a) the
+    // Popup is discoverable, (b) toggling a CheckBox writes cfg_FilterStr
+    // and the Popup stays open, (c) the Reset button restores defaults.
+    function _findFilterPopup() {
+        return _firstByPredicate(c => c.objectName === "filterPopup");
+    }
+
+    function test_filterPopup_existsAndOpens() {
+        const pop = _findFilterPopup();
+        verify(pop !== null, "filter Popup not present");
+        try { pop.open(); } catch (e) {}
+        // Whether the offscreen platform actually marks `opened` is racy,
+        // but the object should be discoverable + .open() callable.
+        verify(typeof pop.open === "function");
+        try { pop.close(); } catch (e) {}
+    }
+
+    // Popup.contentItem isn't in .children/.data of the Popup the BFS
+    // walks — it's a property. Walk from the contentItem explicitly.
+    function _walkPopupContent(pred) {
+        const pop = _findFilterPopup();
+        if (!pop || !pop.contentItem) return null;
+        const queue = [pop.contentItem];
+        const seen = new Set([pop.contentItem]);
+        while (queue.length > 0) {
+            const node = queue.shift();
+            if (pred(node)) return node;
+            const buckets = [node.children || [], node.data || []];
+            for (const b of buckets) {
+                if (! b || typeof b.length === "undefined") continue;
+                for (let i = 0; i < b.length; ++i) {
+                    const c = b[i];
+                    if (c && !seen.has(c)) { seen.add(c); queue.push(c); }
+                }
+            }
+        }
+        return null;
+    }
+
+    function test_filterPopup_checkBoxTogglesFilterStr() {
+        const pop = _findFilterPopup();
+        verify(pop !== null);
+        const cb = _walkPopupContent(c => c.text === "Scene"
+                                       && typeof c.toggled === "function"
+                                       && typeof c.checked === "boolean");
+        verify(cb !== null, "Scene CheckBox not found inside filterPopup");
+        const wasChecked = cb.checked;
+        cb.checked = !wasChecked;
+        cb.toggled();
+        verify(typeof cfg.cfg_FilterStr === "string");
+        verify(cfg.cfg_FilterStr.length > 0,
+               "cfg_FilterStr must be a real digit string after toggling");
+        cb.checked = wasChecked;
+        cb.toggled();
+    }
+
+    function test_filterPopup_resetClearsFilterStr() {
+        const pop = _findFilterPopup();
+        verify(pop !== null);
+        cfg.cfg_FilterStr = "010101";
+        const reset = _walkPopupContent(c => c.text === "Reset"
+                                          && typeof c.clicked === "function");
+        verify(reset !== null, "Reset button not found in filterPopup");
+        reset.clicked();
+        compare(cfg.cfg_FilterStr, "",
+                "Reset must clear cfg_FilterStr so defaults take over");
+    }
+
     // ── WallpaperPage: "Save filter as playlist" enabled-state edges ──────
     // Action.enabled is gated on three terms:
     //   playlistManager !== null

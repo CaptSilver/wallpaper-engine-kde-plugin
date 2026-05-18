@@ -74,23 +74,6 @@ RowLayout {
                         exclusive: true
                     }
                     Component {
-                        id: comp_action_filter
-                        Kirigami.Action {
-                            property int act_index;
-
-                            checkable: false
-                            checked: action_cb_filter.modelValues[act_index]
-                            onTriggered: {
-                                if(!checkable) return;
-                                const modelValues = action_cb_filter.modelValues;
-                                modelValues[act_index] = Number(!modelValues[act_index]);
-                                cfg_FilterStr = Utils.intArrayToStr(modelValues);
-                            }
-
-                            Component.onCompleted: comp_action_sort.Component.destruction.connect(this.destroy)
-                        }
-                    }
-                    Component {
                         id: comp_action_sort
                         Kirigami.Action {
                             ActionGroup.group: group_sort
@@ -117,15 +100,15 @@ RowLayout {
                             id: action_cb_filter
                             text: 'Filter'
                             icon.name: "view-filter"
-                            property int currentIndex
                             readonly property var model: Common.filterModel
                             readonly property var modelValues: Common.filterModel.getValueArray(cfg_FilterStr)
-
-                            children: model.map((el, index) => comp_action_filter.createObject(null, {
-                                text: el.text, 
-                                act_index: index,
-                                checkable: el.type !== '_nocheck'
-                            }))
+                            // Open the Popup instead of populating a Menu via
+                            // `children:`. A Menu auto-closes on each
+                            // MenuItem activation, which made multi-toggle
+                            // painful: the user had to reopen the menu for
+                            // every chip. The Popup stays open until
+                            // click-outside or Escape.
+                            onTriggered: filterPopup.open()
                         },
                         Kirigami.Action {
                             id: action_cb_sort
@@ -167,6 +150,97 @@ RowLayout {
                             onTriggered: saveFilterPrompt.open()
                         }
                     ]
+                }
+            }
+
+            // Filter Popup — replaces the toolbar dropdown menu. Toggling
+            // a CheckBox doesn't close the Popup, so users can flip multiple
+            // chips in one trip. Click-outside / Escape / explicit Close
+            // dismisses. Section labels (TYPE, AGE, GENRE, PLAYLIST) come
+            // from filterModel rows with type === "_nocheck".
+            Popup {
+                id: filterPopup
+                objectName: "filterPopup"
+                modal: false
+                focus: true
+                // Anchor near the top-right where the toolbar button is. The
+                // ActionToolBar doesn't surface a stable per-action geometry,
+                // so we anchor to the page's left_content top-right region.
+                x: left_content ? left_content.width - width - 16 : 0
+                y: infoRow ? infoRow.height + 8 : 48
+                width: 280
+                height: Math.min(
+                    (left_content ? left_content.height : 600) - 80,
+                    520)
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+                                | Popup.CloseOnPressOutside
+
+                contentItem: ColumnLayout {
+                    spacing: 4
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Label {
+                            Layout.fillWidth: true
+                            text: "Filters"
+                            font.bold: true
+                        }
+                        ToolButton {
+                            text: "Reset"
+                            ToolTip.text: "Reset to default filters"
+                            ToolTip.visible: hovered
+                            ToolTip.delay: 500
+                            onClicked: {
+                                // "" → getValueArray falls back to defaults.
+                                cfg_FilterStr = "";
+                            }
+                        }
+                        ToolButton {
+                            text: "Close"
+                            onClicked: filterPopup.close()
+                        }
+                    }
+                    ScrollView {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
+                        ColumnLayout {
+                            width: filterPopup.width - 24
+                            spacing: 2
+                            Repeater {
+                                model: Common.filterModel
+                                delegate: Item {
+                                    Layout.fillWidth: true
+                                    implicitHeight: model.type === "_nocheck"
+                                        ? sectionLabel.implicitHeight + 8
+                                        : chipBox.implicitHeight
+                                    Label {
+                                        id: sectionLabel
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.top: parent.top
+                                        anchors.topMargin: 6
+                                        visible: model.type === "_nocheck"
+                                        text: model.text
+                                        font.bold: true
+                                        color: Kirigami.Theme.disabledTextColor
+                                    }
+                                    CheckBox {
+                                        id: chipBox
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        visible: model.type !== "_nocheck"
+                                        text: model.text
+                                        checked: action_cb_filter.modelValues[index]
+                                        onToggled: {
+                                            const vals = action_cb_filter.modelValues;
+                                            vals[index] = checked ? 1 : 0;
+                                            cfg_FilterStr = Utils.intArrayToStr(vals);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

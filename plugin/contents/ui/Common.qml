@@ -136,36 +136,45 @@ QtObject {
 
         function genFilter(filters) {
             const typeF = {};
-            const noTags = new Set();
+            const includeTags = new Set();
             const playlists = new Set();
             let onlyFavor = false;
+            let totalTags = 0;
             filters.forEach((el) => {
-                if(el.type === "type") 
+                if(el.type === "type")
                     typeF[el.key] = el.value;
                 else if(el.type === "contentrating")
                     typeF[el.key] = el.value;
-                else if(el.type === "favor") 
+                else if(el.type === "favor")
                     onlyFavor = el.value;
                 else if(el.type === "tags") {
-                    if(!el.value) noTags.add(el.key)
+                    totalTags += 1;
+                    if(el.value) includeTags.add(el.key);
                 }
                 else if(el.type === "playlist") {
                     if(el.value) {
                         playlists.add(el.key);
-                    }                    
+                    }
                 }
             });
 
             const checkType = (el) => Boolean(typeF[el.type]);
             const checkContentrating = (el) => Boolean(typeF[el.contentrating]);
             const checkFavor = (el) => onlyFavor?el.favor:true;
-            const checkNoTags = (el) => {
-                for(let i=0;i < el.tags.length;i++) {
-                    if(noTags.has(el.tags[i].key)) {
-                        return false;
-                    }
+            // Inclusion-based tag filter (union / OR).
+            //   • All chips checked (default state) → no filter, untagged
+            //     wallpapers still pass. Preserves the existing default.
+            //   • Zero chips checked → no filter (avoids "I unchecked
+            //     everything and got an empty grid" footgun).
+            //   • A strict subset checked → wallpaper passes iff it carries
+            //     at least one of the checked tags. Untagged wallpapers are
+            //     excluded (they match none of the checked tags).
+            const checkTags = (el) => {
+                if (includeTags.size === 0 || includeTags.size === totalTags) return true;
+                for(let i = 0; i < el.tags.length; ++i) {
+                    if(includeTags.has(el.tags[i].key)) return true;
                 }
-                return true;
+                return false;
             }
             const checkPlaylists = (el) => {
                 if(playlists.size === 0) return true;
@@ -177,7 +186,7 @@ QtObject {
                 return false;
             }
             return (el) => {
-                return checkType(el) && checkFavor(el) && checkContentrating(el) && checkNoTags(el) && checkPlaylists(el);
+                return checkType(el) && checkFavor(el) && checkContentrating(el) && checkTags(el) && checkPlaylists(el);
             }
         }
     }

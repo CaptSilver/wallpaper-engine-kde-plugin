@@ -172,19 +172,106 @@ TestCase {
                       tags: [], playlists: [] }));
     }
 
-    function test_genFilter_unselectedTagExcludesItem() {
+    // Inclusion semantics: a wallpaper passes if it carries at least one
+    // of the *checked* tag chips. Anime-only fails (Anime is unchecked),
+    // Game-only passes. The naming kept the old wording for diff
+    // continuity but the spec it asserts is now inclusion (union/OR).
+    function test_genFilter_tagSubsetSelected_includesUnionOnly() {
         const filters = [
             { type: "type",          key: "scene", value: 1 },
             { type: "contentrating", key: "Everyone", value: 1 },
             { type: "favor",         key: "favor", value: 0 },
-            { type: "tags",          key: "Anime", value: 0 }, // Anime de-selected
+            { type: "tags",          key: "Anime", value: 0 },
             { type: "tags",          key: "Game",  value: 1 },
         ];
         const f = Plugin.Common.filterModel.genFilter(filters);
         verify(! f({ type: "scene", contentrating: "Everyone", favor: false,
-                      tags: [{ key: "Anime" }], playlists: [] }));
+                      tags: [{ key: "Anime" }], playlists: [] }),
+               "Anime-only wallpaper must NOT pass when only Game is checked");
         verify(f({ type: "scene", contentrating: "Everyone", favor: false,
-                    tags: [{ key: "Game" }], playlists: [] }));
+                    tags: [{ key: "Game" }], playlists: [] }),
+               "Game-tagged wallpaper must pass when Game is checked");
+    }
+
+    // A wallpaper tagged with BOTH Girls and Anime appears under either
+    // filter — confirms the union semantic explicitly.
+    function test_genFilter_multiTagWallpaperPassesWhenAnyMatches() {
+        const baseFilters = [
+            { type: "type",          key: "scene", value: 1 },
+            { type: "contentrating", key: "Everyone", value: 1 },
+            { type: "favor",         key: "favor", value: 0 },
+        ];
+        const wpGirlsAndAnime = {
+            type: "scene", contentrating: "Everyone", favor: false,
+            tags: [{ key: "Girls" }, { key: "Anime" }], playlists: [],
+        };
+        // Only Girls checked → passes (it carries Girls).
+        const f1 = Plugin.Common.filterModel.genFilter(baseFilters.concat([
+            { type: "tags", key: "Girls", value: 1 },
+            { type: "tags", key: "Anime", value: 0 },
+        ]));
+        verify(f1(wpGirlsAndAnime));
+        // Only Anime checked → still passes (it carries Anime).
+        const f2 = Plugin.Common.filterModel.genFilter(baseFilters.concat([
+            { type: "tags", key: "Girls", value: 0 },
+            { type: "tags", key: "Anime", value: 1 },
+        ]));
+        verify(f2(wpGirlsAndAnime));
+    }
+
+    // Special case #1: ALL tag chips checked = no tag filter. This is the
+    // default state — must keep untagged wallpapers visible so existing
+    // users see no regression on first run with the new build.
+    function test_genFilter_allTagsCheckedActsAsNoFilter() {
+        const filters = [
+            { type: "type",          key: "scene", value: 1 },
+            { type: "contentrating", key: "Everyone", value: 1 },
+            { type: "favor",         key: "favor", value: 0 },
+            { type: "tags",          key: "Anime", value: 1 },
+            { type: "tags",          key: "Game",  value: 1 },
+        ];
+        const f = Plugin.Common.filterModel.genFilter(filters);
+        verify(f({ type: "scene", contentrating: "Everyone", favor: false,
+                    tags: [], playlists: [] }),
+               "untagged wallpaper must pass when ALL tag chips are checked");
+        verify(f({ type: "scene", contentrating: "Everyone", favor: false,
+                    tags: [{ key: "Anime" }], playlists: [] }));
+    }
+
+    // Special case #2: NO tag chips checked = no tag filter. Avoids the
+    // footgun where unchecking everything yields an empty grid.
+    function test_genFilter_noTagsCheckedActsAsNoFilter() {
+        const filters = [
+            { type: "type",          key: "scene", value: 1 },
+            { type: "contentrating", key: "Everyone", value: 1 },
+            { type: "favor",         key: "favor", value: 0 },
+            { type: "tags",          key: "Anime", value: 0 },
+            { type: "tags",          key: "Game",  value: 0 },
+        ];
+        const f = Plugin.Common.filterModel.genFilter(filters);
+        verify(f({ type: "scene", contentrating: "Everyone", favor: false,
+                    tags: [], playlists: [] }),
+               "untagged wallpaper must pass when NO tag chips are checked");
+        verify(f({ type: "scene", contentrating: "Everyone", favor: false,
+                    tags: [{ key: "Anime" }], playlists: [] }),
+               "tagged wallpaper must pass when NO tag chips are checked");
+    }
+
+    // Narrowing case: with SOME chips checked, untagged wallpapers fall
+    // out (they match none of the checked tags). This is the new behavior
+    // — under exclusion semantics they would pass.
+    function test_genFilter_someTagsCheckedExcludesUntagged() {
+        const filters = [
+            { type: "type",          key: "scene", value: 1 },
+            { type: "contentrating", key: "Everyone", value: 1 },
+            { type: "favor",         key: "favor", value: 0 },
+            { type: "tags",          key: "Anime", value: 1 },
+            { type: "tags",          key: "Game",  value: 0 },
+        ];
+        const f = Plugin.Common.filterModel.genFilter(filters);
+        verify(! f({ type: "scene", contentrating: "Everyone", favor: false,
+                      tags: [], playlists: [] }),
+               "untagged wallpaper must NOT pass when a strict subset is checked");
     }
 
     function test_genFilter_playlistGateRequiresMembership() {

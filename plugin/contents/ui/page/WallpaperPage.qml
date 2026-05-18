@@ -172,8 +172,15 @@ RowLayout {
                             children: model.map((el, index) => comp_action_sort.createObject(null, {text: el.text, act_value: el.value}))
                         },
                         Kirigami.Action {
-                            icon.name: "view-refresh-symbolic"
-                            text: 'Refresh'
+                            // Show a spinning busy variant while a scan is
+                            // in flight — parity with the VideoPage Rescan
+                            // button. Mid-scan re-clicks are blocked to
+                            // avoid overlapping refreshes.
+                            icon.name: wpListModel.scanning
+                                ? "view-refresh"
+                                : "view-refresh-symbolic"
+                            text: wpListModel.scanning ? 'Refreshing…' : 'Refresh'
+                            enabled: ! wpListModel.scanning
                             onTriggered: wpListModel.refresh()
                         },
                         Kirigami.Action {

@@ -39,6 +39,12 @@ Item {
 
     property int countNoFilter: 0
 
+    // True while refresh() is in flight. UI binds the Refresh button +
+    // BusyIndicator to this so a cold-start scan of a large Steam library
+    // gives feedback that something's happening — matches the parity
+    // VideoListModel has with VideoPage Rescan.
+    property bool scanning: false
+
     // Bumped after every refresh / filter pass so callers that look items up
     // through findItem/titleOf re-evaluate their bindings when the unfiltered
     // source repopulates. Without this, a delegate created before the model
@@ -191,6 +197,7 @@ Item {
         if(!root.enabled) return Promise.resolve(null);
         const p_list = [];
 
+        root.scanning = true;
         return loadPlaylists().then(() => {
             this.workshopDirs.forEach(el => {
                 const dirs = (Array.isArray(el) ? el : [el]).map(Common.urlNative);
@@ -206,9 +213,11 @@ Item {
                 Promise.all(p_list).then(values => {
                     return this.loadFolderLists(values);
                 }).then(() => {
+                    root.scanning = false;
                     resolve();
                 }).catch(reason => {
                     console.error(reason)
+                    root.scanning = false;
                     resolve();
                 });
             });

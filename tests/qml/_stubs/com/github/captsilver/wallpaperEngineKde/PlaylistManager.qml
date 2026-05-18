@@ -7,11 +7,15 @@ QtObject {
     property var playlistsModel: ListModel { }
     property string activePlaylistId: ""
     property int currentItemIndex: 0
+    // Mirrors the real C++ Q_PROPERTY so production QML files (and tests
+    // exercising the editor-vs-runtime split) can bind it.
+    property bool editorMode: false
 
     signal tick(string workshopId)
     signal requestFilteredPick()
     signal activationFailed(string id)
     signal persistFailed(string reason)
+    signal persisted()
 
     function createPlaylist(name) { return "fake-uuid-" + name; }
     function deletePlaylist(id) {
@@ -42,6 +46,7 @@ QtObject {
     function pauseTicks() { }
     function resumeTicks() { }
     function setFilteredLibraryIntervalMin(m) { }
+    function reload() { }
     function itemsModel(id) {
         // Return a fresh empty list model each time. Not cached — tests that
         // mutate must use the production binary, not stubs.

@@ -134,5 +134,9 @@
       <label>Cycle position within the active playlist</label>
       <default>0</default>
     </entry>
+    <entry name="PlaylistsReloadSeq" type="Int">
+      <label>Bumped by the config dialog after every playlist CRUD so the runtime mgr re-reads playlists.json without a plasmashell restart.</label>
+      <default>0</default>
+    </entry>
   </group>
 </kcfg>

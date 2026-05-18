@@ -99,6 +99,7 @@ bool PlaylistManager::persist() {
         emit persistFailed("write failed");
         return false;
     }
+    emit persisted();
     return true;
 }
 
@@ -221,8 +222,7 @@ bool PlaylistManager::moveItem(const QString& playlistId, int fromIdx, int toIdx
     return true;
 }
 
-bool PlaylistManager::playlistContains(const QString& playlistId,
-                                       const QString& workshopId) const {
+bool PlaylistManager::playlistContains(const QString& playlistId, const QString& workshopId) const {
     if (playlistId.isEmpty() || playlistId == kFilteredLibraryId) return false;
     if (workshopId.isEmpty()) return false;
     const auto* pl = findPlaylist(playlistId);
@@ -278,9 +278,6 @@ void PlaylistManager::armTimerForCurrent() {
     minutes          = clampIntervalMin(minutes);
     m_lastArmEpochMs = QDateTime::currentMSecsSinceEpoch();
     m_remainingMs    = -1;
-    qWarning() << "[WEK-DIAG-PM] armTimerForCurrent activeId=" << m_activeId
-               << "interval_min=" << minutes
-               << "→ timer fires in" << (minutes * 60) << "seconds";
     m_timer.start(minutes * 60 * 1000);
 }
 
@@ -297,27 +294,31 @@ int PlaylistManager::nextIntervalMsForTest() const {
 }
 
 bool PlaylistManager::activate(const QString& id) {
-    qWarning() << "[WEK-DIAG-PM] activate id=" << id
-               << "prev_activeId=" << m_activeId;
+    if (m_editorMode) {
+        // Editor: track id for UI display; don't tick or arm timer. The
+        // runtime mgr (in main.qml) is the sole owner of the playback
+        // cycle — it sees wcfg.ActivePlaylistId change and runs the
+        // real activation path on its end.
+        if (m_activeId == id) return true;
+        m_activeId         = id;
+        m_currentIndex     = 0;
+        m_consecutiveSkips = 0;
+        emit activePlaylistIdChanged();
+        emit currentItemIndexChanged();
+        return true;
+    }
     if (id == kFilteredLibraryId) {
         m_activeId         = id;
         m_currentIndex     = 0;
         m_consecutiveSkips = 0;
         emit activePlaylistIdChanged();
         emit currentItemIndexChanged();
-        qWarning() << "[WEK-DIAG-PM] activate filtered → requestFilteredPick";
         emit requestFilteredPick();
         // Don't arm the timer yet — wait for acceptPick.
         return true;
     }
     auto* pl = findPlaylist(id);
-    if (! pl) {
-        qWarning() << "[WEK-DIAG-PM] activate FAILED — unknown id" << id;
-        emit activationFailed(id);
-        return false;
-    }
-    if (pl->items.isEmpty()) {
-        qWarning() << "[WEK-DIAG-PM] activate FAILED — empty playlist" << id;
+    if (! pl || pl->items.isEmpty()) {
         emit activationFailed(id);
         return false;
     }
@@ -328,14 +329,20 @@ bool PlaylistManager::activate(const QString& id) {
                              : 0;
     emit activePlaylistIdChanged();
     emit currentItemIndexChanged();
-    qWarning() << "[WEK-DIAG-PM] activate → tick" << pl->items[m_currentIndex].workshopId
-               << "idx=" << m_currentIndex << "mode=" << (int)pl->mode;
     emit tick(pl->items[m_currentIndex].workshopId);
     armTimerForCurrent();
     return true;
 }
 
 void PlaylistManager::deactivate() {
+    if (m_editorMode) {
+        if (m_activeId.isEmpty()) return;
+        m_activeId.clear();
+        m_currentIndex = 0;
+        emit activePlaylistIdChanged();
+        emit currentItemIndexChanged();
+        return;
+    }
     m_timer.stop();
     m_activeId.clear();
     m_currentIndex = 0;
@@ -345,10 +352,9 @@ void PlaylistManager::deactivate() {
 }
 
 void PlaylistManager::onTimerTick() {
-    qWarning() << "[WEK-DIAG-PM] onTimerTick activeId=" << m_activeId;
+    if (m_editorMode) return; // editor never ticks; defensive
     if (m_activeId.isEmpty()) return;
     if (m_activeId == kFilteredLibraryId) {
-        qWarning() << "[WEK-DIAG-PM] onTimerTick filtered → requestFilteredPick";
         emit requestFilteredPick();
         return;
     }
@@ -359,8 +365,6 @@ void PlaylistManager::onTimerTick() {
                              : advanceSequential(m_currentIndex, pl->items.size());
     m_consecutiveSkips = 0;
     emit currentItemIndexChanged();
-    qWarning() << "[WEK-DIAG-PM] onTimerTick → tick" << pl->items[m_currentIndex].workshopId
-               << "idx=" << m_currentIndex;
     emit tick(pl->items[m_currentIndex].workshopId);
     armTimerForCurrent();
 }
@@ -373,8 +377,8 @@ void PlaylistManager::skipCurrent() {
         // onActivePlaylistIdChanged path runs, instead of a stuck cycle
         // that emits no tick but reports activePlaylistId() != "".
         const auto failedId = m_activeId;
-        qCCritical(lcPlaylist) << "playlist" << failedId << "exceeded"
-                               << kMaxConsecutiveSkips << "consecutive skips; deactivating";
+        qCCritical(lcPlaylist) << "playlist" << failedId << "exceeded" << kMaxConsecutiveSkips
+                               << "consecutive skips; deactivating";
         deactivate();
         emit activationFailed(failedId);
         return;
@@ -388,16 +392,13 @@ void PlaylistManager::skipCurrent() {
 }
 
 void PlaylistManager::acceptPick(const QString& workshopId) {
-    qWarning() << "[WEK-DIAG-PM] acceptPick id=" << workshopId
-               << "activeId=" << m_activeId;
+    if (m_editorMode) return; // editor doesn't drive the filtered cycle
     if (m_activeId != kFilteredLibraryId) return;
     if (workshopId.isEmpty()) {
         // QML had nothing to offer; just re-arm the timer.
-        qWarning() << "[WEK-DIAG-PM] acceptPick empty → arm-only (no tick)";
         armTimerForCurrent();
         return;
     }
-    qWarning() << "[WEK-DIAG-PM] acceptPick → tick" << workshopId;
     emit tick(workshopId);
     armTimerForCurrent();
 }
@@ -433,6 +434,63 @@ void PlaylistManager::setFilteredLibraryIntervalMin(int minutes) {
         // Re-arm so the new interval takes effect on next tick.
         armTimerForCurrent();
     }
+}
+
+void PlaylistManager::setEditorMode(bool on) {
+    if (m_editorMode == on) return;
+    m_editorMode = on;
+    if (on && m_timer.isActive()) {
+        // Switching INTO editor mode while a timer is armed: stop it so the
+        // mgr can't accidentally tick the wallpaper. (Set-then-toggle isn't
+        // a common path but is cheap to guard.)
+        m_timer.stop();
+        m_remainingMs = -1;
+    }
+    emit editorModeChanged();
+}
+
+void PlaylistManager::reload() {
+    if (m_editorMode) {
+        // Editor just needs the fresh data; no activation state to preserve.
+        m_timer.stop();
+        load();
+        return;
+    }
+    // Runtime: preserve active state across the reload so the user's
+    // playlist edits (interval change, items added/removed) take effect
+    // without restarting the cycle from scratch.
+    const QString savedActiveId    = m_activeId;
+    const int     savedCurrentIdx  = m_currentIndex;
+    const bool    wasTimerActive   = m_timer.isActive();
+
+    m_timer.stop();
+    load();
+
+    if (savedActiveId.isEmpty()) return;
+    if (savedActiveId == kFilteredLibraryId) {
+        // Filtered library is always valid; just re-arm with whatever
+        // interval the dialog may have written.
+        if (wasTimerActive) armTimerForCurrent();
+        return;
+    }
+    const auto* pl = findPlaylist(savedActiveId);
+    if (! pl || pl->items.isEmpty()) {
+        // Playlist deleted (or emptied) while the runtime wasn't looking;
+        // deactivate so the cycle doesn't tick a stale id.
+        m_activeId.clear();
+        m_currentIndex = 0;
+        emit activePlaylistIdChanged();
+        emit currentItemIndexChanged();
+        return;
+    }
+    // Playlist still exists. Clamp index to new size + re-arm so the new
+    // interval (if the user changed it in the dialog) takes effect.
+    const int newIdx = std::min(savedCurrentIdx, static_cast<int>(pl->items.size()) - 1);
+    if (newIdx != savedCurrentIdx) {
+        m_currentIndex = newIdx;
+        emit currentItemIndexChanged();
+    }
+    if (wasTimerActive) armTimerForCurrent();
 }
 
 } // namespace wekde

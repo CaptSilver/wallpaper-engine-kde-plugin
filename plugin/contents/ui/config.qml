@@ -122,21 +122,7 @@ ColumnLayout {
     }
 
     function saveConfig() {
-        const wcfg = root.wallpaperConfiguration;
-        console.log("[WEK-DBG config.saveConfig] BEFORE",
-            "cfg_WallpaperSource:", cfg_WallpaperSource,
-            "cfg_WallpaperWorkShopId:", cfg_WallpaperWorkShopId,
-            "wcfg.WallpaperSource:", wcfg ? wcfg["WallpaperSource"] : "<no wcfg>",
-            "wcfg.WallpaperWorkShopId:", wcfg ? wcfg["WallpaperWorkShopId"] : "<no wcfg>",
-            "wcfg.ActivePlaylistId:", wcfg ? (wcfg["ActivePlaylistId"] || "<empty>") : "<no wcfg>");
         wallpaperPage.saveConfig();
-    }
-
-    onCfg_WallpaperSourceChanged: {
-        console.log("[WEK-DBG config] cfg_WallpaperSource changed →", cfg_WallpaperSource);
-    }
-    onCfg_WallpaperWorkShopIdChanged: {
-        console.log("[WEK-DBG config] cfg_WallpaperWorkShopId changed →", cfg_WallpaperWorkShopId);
     }
 
     WallpaperListModel {
@@ -159,10 +145,23 @@ ColumnLayout {
         videoListModel: videoPage.videoListModel
         common: Common
 
-        activePlaylistIdRead:    root.activePlaylistId
-        currentItemIndexRead:    root.currentItemIndex
-        randomizeWallpaperRead:  root.cfg_RandomizeWallpaper
-        switchTimerRead:         root.cfg_SwitchTimer
+        // editorMode=true: this mgr does CRUD + tracks activeId for UI but
+        // does NOT tick the wallpaper or arm a timer. The runtime mgr (in
+        // main.qml) is the sole owner of the playback cycle. Without this
+        // gate, both mgrs would arm independent timers + race to write
+        // CurrentItemIndex with different shuffle picks.
+        editorMode: true
+
+        activePlaylistIdRead:      root.activePlaylistId
+        currentItemIndexRead:      root.currentItemIndex
+        randomizeWallpaperRead:    root.cfg_RandomizeWallpaper
+        switchTimerRead:           root.cfg_SwitchTimer
+        // Runtime watches this for changes (see main.qml). Not relevant
+        // here because editorMode gates the watcher off, but kept wired
+        // for symmetry / tooling.
+        playlistsReloadSeqRead:    root.wallpaperConfiguration
+                                       ? (root.wallpaperConfiguration["PlaylistsReloadSeq"] || 0)
+                                       : 0
 
         // ActivePlaylistId / CurrentItemIndex: write directly to
         // wallpaperConfiguration so they propagate live to the runtime
@@ -173,12 +172,10 @@ ColumnLayout {
         // WallpaperWorkShopId / WallpaperSource: keep going through cfg_*
         // (legacy flow used by manual wallpaper picks; Apply commits).
         setActivePlaylistId: function(id) {
-            console.log("[WEK-DBG dialog setActivePlaylistId]", id);
             if (root.wallpaperConfiguration)
                 root.wallpaperConfiguration["ActivePlaylistId"] = id;
         }
         setCurrentItemIndex: function(idx) {
-            console.log("[WEK-DBG dialog setCurrentItemIndex]", idx);
             if (root.wallpaperConfiguration)
                 root.wallpaperConfiguration["CurrentItemIndex"] = idx;
         }
@@ -192,9 +189,16 @@ ColumnLayout {
         // sees zero diff and stays grayed. The runtime's live write to
         // `wallpaper.configuration.WallpaperSource` is what actually
         // changes the user's wallpaper; the dialog doesn't need to echo it.
-        setWallpaperFromItem: function(item) {
-            console.log("[WEK-DBG dialog setWallpaperFromItem (no-op)]",
-                "wid:", item.workshopid);
+        setWallpaperFromItem: function(item) { }
+        // Editor side: every CRUD writes to playlists.json + the mgr emits
+        // persisted(). The controller calls this to bump the live wcfg
+        // counter so the runtime mgr re-reads the file and picks up the
+        // user's edits (interval change, items added/removed, mode swap)
+        // without a plasmashell restart.
+        bumpReloadSeq: function() {
+            if (!root.wallpaperConfiguration) return;
+            const cur = root.wallpaperConfiguration["PlaylistsReloadSeq"] || 0;
+            root.wallpaperConfiguration["PlaylistsReloadSeq"] = cur + 1;
         }
     }
 

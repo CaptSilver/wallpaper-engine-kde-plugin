@@ -19,6 +19,14 @@ class PlaylistManager : public QObject {
     Q_PROPERTY(QString activePlaylistId READ activePlaylistId WRITE setActivePlaylistId NOTIFY
                    activePlaylistIdChanged)
     Q_PROPERTY(int currentItemIndex READ currentItemIndex NOTIFY currentItemIndexChanged)
+    // Editor mode: when true, activate/deactivate/onTimerTick/acceptPick skip
+    // the tick + arm-timer path. The mgr still tracks m_activeId for UI
+    // display + still does CRUD + persist normally — but it does NOT drive
+    // wallpaper switches. The runtime mgr (editorMode=false) is the sole
+    // owner of the playback cycle. Without this gate, the dialog's mgr and
+    // the runtime mgr both arm independent timers on the same playlist and
+    // race to write CurrentItemIndex + pick different shuffle indices.
+    Q_PROPERTY(bool editorMode READ editorMode WRITE setEditorMode NOTIFY editorModeChanged)
 
 public:
     explicit PlaylistManager(QObject* parent = nullptr);
@@ -29,6 +37,8 @@ public:
     PlaylistsModel*          playlistsModel() const { return m_listModel; }
     QString                  activePlaylistId() const { return m_activeId; }
     int                      currentItemIndex() const { return m_currentIndex; }
+    bool                     editorMode() const { return m_editorMode; }
+    void                     setEditorMode(bool on);
 
     // CRUD
     Q_INVOKABLE QString createPlaylist(const QString& name);
@@ -59,6 +69,13 @@ public:
     Q_INVOKABLE void resumeTicks();
     Q_INVOKABLE void setFilteredLibraryIntervalMin(int minutes);
 
+    // Re-read playlists.json from disk, preserving the active playlist + cycle
+    // position when possible (clamped to new item count; cleared if the active
+    // playlist was deleted). Runtime ctrl calls this when the dialog bumps
+    // PlaylistsReloadSeq so user-edited intervals/items take effect without a
+    // plasmashell restart.
+    Q_INVOKABLE void reload();
+
     // Items model accessor (cached per playlist id)
     Q_INVOKABLE PlaylistItemsModel* itemsModel(const QString& playlistId);
 
@@ -77,10 +94,14 @@ signals:
     void playlistsChanged();
     void activePlaylistIdChanged();
     void currentItemIndexChanged();
+    void editorModeChanged();
     void tick(const QString& workshopId);
     void requestFilteredPick();
     void activationFailed(const QString& id);
     void persistFailed(const QString& reason);
+    // Fired after every successful persist() to disk. Editor-mode mgrs use
+    // this to bump cfg_PlaylistsReloadSeq so the runtime mgr knows to reload.
+    void persisted();
 
 private:
     QString configFilePath() const;
@@ -100,6 +121,7 @@ private:
     QTimer              m_timer;
     qint64              m_remainingMs    = -1; // -1 = no pause-state
     qint64              m_lastArmEpochMs = 0;
+    bool                m_editorMode     = false;
 
     PlaylistsModel*                     m_listModel = nullptr;
     QHash<QString, PlaylistItemsModel*> m_itemsModels;

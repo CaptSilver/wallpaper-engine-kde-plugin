@@ -380,16 +380,8 @@ RowLayout {
                     autoCommitOnIndexResolve: !cfg_WallpaperSource
 
                     onItemClicked: (item, index) => {
-                        const oldSrc = cfg_WallpaperSource;
-                        const oldWid = cfg_WallpaperWorkShopId;
-                        const newSrc = Common.packWallpaperSource(item);
-                        const newWid = item.workshopid;
-                        cfg_WallpaperSource = newSrc;
-                        cfg_WallpaperWorkShopId = newWid;
-                        console.log("[WEK-DBG WallpaperPage.onItemClicked]",
-                            "wid:", oldWid, "→", newWid,
-                            "srcChanged:", oldSrc !== newSrc,
-                            "widChanged:", oldWid !== newWid);
+                        cfg_WallpaperSource = Common.packWallpaperSource(item);
+                        cfg_WallpaperWorkShopId = item.workshopid;
                     }
                     onItemRightClicked: (item, index, x, y) => {
                         if (!wallpaperPageRoot.playlistManager) return;

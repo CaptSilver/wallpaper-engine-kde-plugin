@@ -30,15 +30,32 @@ Item {
     property int    currentItemIndexRead: 0
     property bool   randomizeWallpaperRead: false
     property int    switchTimerRead: 15
+    // Cross-context reload bump: runtime watches this for changes (dialog
+    // CRUD bumped it → re-read playlists.json). Editor side ignores its own
+    // bumps. Default 0 means "untracked" for callers that don't wire it.
+    property int    playlistsReloadSeqRead: 0
 
     // Writes — parent provides setters. Setters are responsible for
     // routing the value to the correct config field in their scope.
     property var setActivePlaylistId: function(id) { }
     property var setCurrentItemIndex: function(idx) { }
     property var setWallpaperFromItem: function(item) { } // applies WallpaperSource + WallpaperWorkShopId
+    // Editor-side callback: invoked after every mgr.persisted() to bump
+    // wallpaper.configuration.PlaylistsReloadSeq so the runtime mgr knows
+    // to re-read playlists.json. Default no-op for runtime (which never
+    // persists from QML — only the dialog's CRUD triggers writes).
+    property var bumpReloadSeq: function() { }
+
+    // editorMode flips this ctrl's mgr into a UI-only shadow: it still
+    // tracks activeId / does CRUD / persists, but never ticks the wallpaper
+    // and never arms a timer. The runtime ctrl (editorMode=false) is the
+    // sole owner of playback. Default false preserves single-instance
+    // behaviour (e.g. for tests that don't split editor vs runtime).
+    property bool editorMode: false
 
     PlaylistManager {
         id: mgr
+        editorMode: root.editorMode
         onTick: function(workshopId) { root._applyWorkshopId(workshopId); }
         onRequestFilteredPick: { root._serveFilteredPick(); }
         onPersistFailed: function(reason) { console.warn("[playlist] persist failed:", reason); }
@@ -55,15 +72,19 @@ Item {
                 root.setActivePlaylistId("");
         }
         onActivePlaylistIdChanged: {
-            console.warn("[WEK-DIAG ctrl mgrIdChanged]",
-                "mgr.activeId:", mgr.activePlaylistId,
-                "read:", root.activePlaylistIdRead);
             if (root.activePlaylistIdRead !== mgr.activePlaylistId)
                 root.setActivePlaylistId(mgr.activePlaylistId);
         }
         onCurrentItemIndexChanged: {
             if (root.currentItemIndexRead !== mgr.currentItemIndex)
                 root.setCurrentItemIndex(mgr.currentItemIndex);
+        }
+        // Editor mode only: every successful persist() to playlists.json
+        // bumps a plasmoid-config counter so the runtime mgr in main.qml
+        // re-reads the file (otherwise dialog-side interval/items edits
+        // would only take effect after a plasmashell restart).
+        onPersisted: {
+            if (root.editorMode) root.bumpReloadSeq();
         }
     }
 
@@ -126,7 +147,6 @@ Item {
         const item = _resolveItem(workshopId);
         if (!item) {
             if (_modelsAreEmpty()) {
-                console.warn("[WEK-DIAG ctrl] _applyWorkshopId queuing pending=", workshopId);
                 root._pendingWorkshopId = workshopId;
                 return;
             }
@@ -134,9 +154,6 @@ Item {
             mgr.skipCurrent();
             return;
         }
-        const replayed = root._pendingWorkshopId === workshopId;
-        console.warn("[WEK-DIAG ctrl] _applyWorkshopId →setWallpaperFromItem wid=",
-            workshopId, "replayedFromPending=", replayed);
         root._pendingWorkshopId = "";
         root.setWallpaperFromItem(item);
     }
@@ -145,11 +162,8 @@ Item {
         target: root.wpListModel
         ignoreUnknownSignals: true
         function onModelRefreshed() {
-            if (root._pendingWorkshopId) {
-                console.warn("[WEK-DIAG ctrl] modelRefreshed → replay pending=",
-                    root._pendingWorkshopId);
+            if (root._pendingWorkshopId)
                 root._applyWorkshopId(root._pendingWorkshopId);
-            }
         }
     }
 
@@ -193,9 +207,6 @@ Item {
     // config dialog updates plasmoid config but the runtime controller's
     // manager stays inactive — wallpapers don't cycle.
     onActivePlaylistIdReadChanged: {
-        console.warn("[WEK-DIAG ctrl readChanged]",
-            "read:", root.activePlaylistIdRead,
-            "mgr.activeId:", mgr.activePlaylistId);
         if (root.activePlaylistIdRead === mgr.activePlaylistId) return;
         if (root.activePlaylistIdRead === "") {
             mgr.deactivate();
@@ -220,5 +231,15 @@ Item {
         } else if (mgr.activePlaylistId === "__filtered_library__") {
             mgr.deactivate();
         }
+    }
+
+    // Runtime-side reload trigger: the dialog mgr persists user edits to
+    // disk AND bumps cfg_PlaylistsReloadSeq. The runtime sees the bump and
+    // re-reads playlists.json — picking up new intervals, items, modes,
+    // names — without a plasmashell restart. Editor side ignores (its mgr
+    // is already in sync with what it just wrote).
+    onPlaylistsReloadSeqReadChanged: {
+        if (root.editorMode) return;
+        mgr.reload();
     }
 }

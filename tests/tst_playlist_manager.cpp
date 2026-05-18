@@ -946,6 +946,339 @@ private slots:
         QCOMPARE(mgr.activePlaylistId(), id);
         QCOMPARE(mgr.currentItemIndex(), 0);
     }
+
+    // ── editorMode + reload + persisted ───────────────────────────────────
+    // These tests pin the "single mgr shared via plasmoid lifecycle"
+    // semantics: dialog mgr (editorMode=true) is a UI-only shadow that
+    // doesn't tick or arm a timer, even when its activate() is called.
+    // The runtime mgr (editorMode=false) is the sole playback owner, and
+    // reload() lets it pick up the dialog's persisted edits without a
+    // plasmashell restart.
+
+    // editor mgr.activate sets m_activeId for UI display but emits NO
+    // `tick` and arms NO timer. Critical: prevents the dialog mgr from
+    // racing the runtime mgr's playback cycle (different shuffle picks +
+    // independent timers writing to CurrentItemIndex).
+    void editorMode_activateDoesNotTickOrArm() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        mgr.setEditorMode(true);
+        QCOMPARE(mgr.editorMode(), true);
+
+        const QString id = mgr.createPlaylist("Editor");
+        mgr.setMode(id, wekde::PlaylistMode::Shuffle);
+        mgr.addItem(id, "A");
+        mgr.addItem(id, "B");
+
+        QSignalSpy tickSpy(&mgr, &wekde::PlaylistManager::tick);
+        QSignalSpy idSpy(&mgr, &wekde::PlaylistManager::activePlaylistIdChanged);
+
+        QVERIFY(mgr.activate(id));
+        QCOMPARE(mgr.activePlaylistId(), id);     // tracked for UI
+        QCOMPARE(mgr.currentItemIndex(), 0);      // editor never picks shuffle index
+        QCOMPARE(tickSpy.count(), 0);             // CRITICAL: no tick
+        QVERIFY(idSpy.count() >= 1);              // UI gets the activate signal
+        // No timer armed → nextIntervalMsForTest is what the mgr WOULD use,
+        // but isActive is the real "would tick" check. Quick proxy: drive
+        // onTimerTick manually and verify the editor short-circuit fires
+        // before the cycle picks a new index.
+        const int before = mgr.currentItemIndex();
+        mgr.onTimerTick();
+        QCOMPARE(mgr.currentItemIndex(), before); // editor onTimerTick short-circuits
+        QCOMPARE(tickSpy.count(), 0);
+    }
+
+    // editor mgr.activate is idempotent on same id — matches non-editor
+    // semantics. Without the early-return, a re-activation would emit
+    // spurious activePlaylistIdChanged + reset currentItemIndex (which
+    // would race the runtime if the runtime had advanced past 0).
+    void editorMode_activateIdempotent() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        mgr.setEditorMode(true);
+        const QString id = mgr.createPlaylist("E");
+        mgr.addItem(id, "A");
+
+        QVERIFY(mgr.activate(id));
+        QSignalSpy idSpy(&mgr, &wekde::PlaylistManager::activePlaylistIdChanged);
+        QVERIFY(mgr.activate(id)); // same id again
+        QCOMPARE(idSpy.count(), 0);
+    }
+
+    // editor mgr.deactivate clears m_activeId without touching the timer
+    // (already not armed). Mirrors the runtime deactivate signal pattern
+    // so the controller's onActivePlaylistIdChanged still fires.
+    void editorMode_deactivate() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        mgr.setEditorMode(true);
+        const QString id = mgr.createPlaylist("E");
+        mgr.addItem(id, "A");
+        QVERIFY(mgr.activate(id));
+
+        QSignalSpy idSpy(&mgr, &wekde::PlaylistManager::activePlaylistIdChanged);
+        mgr.deactivate();
+        QCOMPARE(mgr.activePlaylistId(), QString(""));
+        QVERIFY(idSpy.count() >= 1);
+        // Idempotent.
+        idSpy.clear();
+        mgr.deactivate();
+        QCOMPARE(idSpy.count(), 0);
+    }
+
+    // acceptPick + onTimerTick in editor mode must NOT emit tick — the
+    // editor is forbidden from driving the wallpaper cycle.
+    void editorMode_acceptPickAndTickAreInert() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        mgr.setEditorMode(true);
+        mgr.setFilteredLibraryIntervalMin(10);
+        QVERIFY(mgr.activate(wekde::kFilteredLibraryId));
+
+        QSignalSpy tickSpy(&mgr, &wekde::PlaylistManager::tick);
+        QSignalSpy reqSpy(&mgr, &wekde::PlaylistManager::requestFilteredPick);
+        mgr.acceptPick("workshop-xyz");
+        QCOMPARE(tickSpy.count(), 0);
+        QCOMPARE(reqSpy.count(), 0);
+        mgr.onTimerTick();
+        QCOMPARE(tickSpy.count(), 0);
+        QCOMPARE(reqSpy.count(), 0);
+    }
+
+    // setEditorMode is idempotent + emits editorModeChanged on flip.
+    void editorMode_setterFires() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        QSignalSpy spy(&mgr, &wekde::PlaylistManager::editorModeChanged);
+        QCOMPARE(mgr.editorMode(), false);
+        mgr.setEditorMode(false); // idempotent
+        QCOMPARE(spy.count(), 0);
+        mgr.setEditorMode(true);
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(mgr.editorMode(), true);
+        mgr.setEditorMode(true); // idempotent
+        QCOMPARE(spy.count(), 1);
+        mgr.setEditorMode(false);
+        QCOMPARE(spy.count(), 2);
+    }
+
+    // persist() emits persisted() on success. This is the signal the
+    // dialog's PlaylistController connects to so it can bump
+    // cfg_PlaylistsReloadSeq. Every CRUD path (create / rename / setMode
+    // / setIntervalMin / addItem / removeItem / moveItem / delete) routes
+    // through persist() → at least one persisted() emit per op.
+    void persisted_emittedAfterEveryCrud() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        QSignalSpy spy(&mgr, &wekde::PlaylistManager::persisted);
+
+        // create → persist
+        const QString id = mgr.createPlaylist("P");
+        QVERIFY(spy.count() >= 1);
+        spy.clear();
+
+        mgr.renamePlaylist(id, "P2");
+        QCOMPARE(spy.count(), 1);
+        spy.clear();
+
+        mgr.setMode(id, wekde::PlaylistMode::Shuffle);
+        QCOMPARE(spy.count(), 1);
+        spy.clear();
+
+        mgr.setIntervalMin(id, 30);
+        QCOMPARE(spy.count(), 1);
+        spy.clear();
+
+        mgr.addItem(id, "A");
+        QCOMPARE(spy.count(), 1);
+        spy.clear();
+
+        mgr.addItem(id, "B");
+        spy.clear();
+
+        mgr.moveItem(id, 0, 1);
+        QCOMPARE(spy.count(), 1);
+        spy.clear();
+
+        mgr.removeItem(id, 0);
+        QCOMPARE(spy.count(), 1);
+        spy.clear();
+
+        mgr.deletePlaylist(id);
+        QCOMPARE(spy.count(), 1);
+    }
+
+    // reload() re-reads playlists.json + preserves the active playlist /
+    // index when possible. The runtime ctrl calls this after the dialog
+    // bumps the reload-seq so user edits propagate without a plasmashell
+    // restart. Uses two mgrs sharing the same XDG_CONFIG_HOME so that
+    // editor mgr A's persist is visible to runtime mgr B's reload.
+    void reload_picksUpDialogEditedInterval() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        QString id;
+        {
+            wekde::PlaylistManager dialogMgr; // editorMode=false, fine here
+            id = dialogMgr.createPlaylist("Shared");
+            dialogMgr.addItem(id, "A");
+            dialogMgr.setIntervalMin(id, 15);
+        }
+        wekde::PlaylistManager runtimeMgr;
+        QVERIFY(runtimeMgr.activate(id));
+        QCOMPARE(runtimeMgr.nextIntervalMsForTest(), 15 * 60 * 1000);
+
+        // Dialog edits the interval (separate mgr instance, same disk file).
+        {
+            wekde::PlaylistManager dialogMgr;
+            dialogMgr.setEditorMode(true);
+            QVERIFY(dialogMgr.setIntervalMin(id, 45));
+        }
+        // Before reload: runtimeMgr's in-memory pl->intervalMin is stale.
+        QCOMPARE(runtimeMgr.nextIntervalMsForTest(), 15 * 60 * 1000);
+        // reload() → pulls fresh data from disk.
+        runtimeMgr.reload();
+        QCOMPARE(runtimeMgr.nextIntervalMsForTest(), 45 * 60 * 1000);
+        QCOMPARE(runtimeMgr.activePlaylistId(), id); // active preserved
+    }
+
+    // reload preserves currentItemIndex when valid + clamps when the
+    // dialog removed items past it. This is the "user removed items
+    // while runtime was mid-cycle" case.
+    void reload_clampsIndexWhenItemsRemoved() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        QString id;
+        {
+            wekde::PlaylistManager initMgr;
+            id = initMgr.createPlaylist("X");
+            initMgr.addItem(id, "A");
+            initMgr.addItem(id, "B");
+            initMgr.addItem(id, "C");
+        }
+        wekde::PlaylistManager runtimeMgr;
+        QVERIFY(runtimeMgr.activate(id));
+        // Drive currentIndex to 2 (last item) sequentially.
+        runtimeMgr.onTimerTick(); // 0 → 1
+        runtimeMgr.onTimerTick(); // 1 → 2
+        QCOMPARE(runtimeMgr.currentItemIndex(), 2);
+
+        // Dialog removes items B + C → only A remains at index 0.
+        {
+            wekde::PlaylistManager dialogMgr;
+            dialogMgr.setEditorMode(true);
+            QVERIFY(dialogMgr.removeItem(id, 2));
+            QVERIFY(dialogMgr.removeItem(id, 1));
+        }
+        runtimeMgr.reload();
+        QCOMPARE(runtimeMgr.activePlaylistId(), id); // still active
+        QCOMPARE(runtimeMgr.currentItemIndex(), 0);  // clamped to new size-1
+    }
+
+    // reload clears active state when the dialog deleted the active
+    // playlist outright. Runtime can't keep ticking a stale id.
+    void reload_clearsWhenActivePlaylistDeleted() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        QString id;
+        {
+            wekde::PlaylistManager initMgr;
+            id = initMgr.createPlaylist("Y");
+            initMgr.addItem(id, "A");
+        }
+        wekde::PlaylistManager runtimeMgr;
+        QVERIFY(runtimeMgr.activate(id));
+        QCOMPARE(runtimeMgr.activePlaylistId(), id);
+
+        {
+            wekde::PlaylistManager dialogMgr;
+            dialogMgr.setEditorMode(true);
+            QVERIFY(dialogMgr.deletePlaylist(id));
+        }
+        QSignalSpy idSpy(&runtimeMgr, &wekde::PlaylistManager::activePlaylistIdChanged);
+        runtimeMgr.reload();
+        QCOMPARE(runtimeMgr.activePlaylistId(), QString(""));
+        QVERIFY(idSpy.count() >= 1);
+    }
+
+    // reload on an inactive mgr is a clean no-op (no signals, no crash).
+    // Anchors the savedActiveId.isEmpty() early-return.
+    void reload_inactiveIsNoOp() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        QSignalSpy idSpy(&mgr, &wekde::PlaylistManager::activePlaylistIdChanged);
+        QSignalSpy idxSpy(&mgr, &wekde::PlaylistManager::currentItemIndexChanged);
+        mgr.reload();
+        QCOMPARE(idSpy.count(), 0);
+        QCOMPARE(idxSpy.count(), 0);
+        QCOMPARE(mgr.activePlaylistId(), QString(""));
+    }
+
+    // reload on the Filtered Library re-arms with the latest interval
+    // (the dialog may have changed SwitchTimer in between). Anchors the
+    // `savedActiveId == kFilteredLibraryId` branch.
+    void reload_filteredLibraryRePicksUpInterval() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        mgr.setFilteredLibraryIntervalMin(10);
+        QVERIFY(mgr.activate(wekde::kFilteredLibraryId));
+        mgr.acceptPick("xyz"); // arms timer at 10min
+        QCOMPARE(mgr.nextIntervalMsForTest(), 10 * 60 * 1000);
+
+        // User edits SwitchTimer via dialog — in real flow that goes via
+        // setFilteredLibraryIntervalMin from the ctrl. Simulate.
+        mgr.setFilteredLibraryIntervalMin(45);
+        mgr.reload(); // simulates "dialog persisted; runtime reloads"
+        QCOMPARE(mgr.activePlaylistId(), wekde::kFilteredLibraryId);
+        QCOMPARE(mgr.nextIntervalMsForTest(), 45 * 60 * 1000);
+    }
+
+    // reload in editorMode does NOT try to re-arm the timer — editor never
+    // had one. Just re-pulls disk data for UI display.
+    void reload_editorModeJustRefreshesData() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        QString id;
+        {
+            wekde::PlaylistManager initMgr;
+            id = initMgr.createPlaylist("Z");
+            initMgr.addItem(id, "A");
+            initMgr.setIntervalMin(id, 5);
+        }
+        wekde::PlaylistManager editorMgr;
+        editorMgr.setEditorMode(true);
+        QCOMPARE(editorMgr.playlists().size(), 1);
+        QCOMPARE(editorMgr.playlists().first().intervalMin, 5);
+
+        // Out-of-band edit (simulating a second editor session writing
+        // through the same XDG_CONFIG_HOME).
+        {
+            wekde::PlaylistManager otherMgr;
+            otherMgr.setEditorMode(true);
+            QVERIFY(otherMgr.setIntervalMin(id, 99));
+        }
+        editorMgr.reload();
+        QCOMPARE(editorMgr.playlists().first().intervalMin, 99);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstPlaylistManager)

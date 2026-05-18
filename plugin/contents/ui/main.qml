@@ -126,11 +126,6 @@ Rectangle {
     }
 
     function applySource() {
-        console.log("[WEK-DBG main.applySource]",
-            "source:", source,
-            "WallpaperWorkShopId:", wallpaper.configuration.WallpaperWorkShopId,
-            "ActivePlaylistId:", (wallpaper.configuration.ActivePlaylistId || "<empty>"),
-            "currentBackend:", nowBackend);
         // Ensure user props are loaded for the current wallpaper before loading backend.
         // When both WallpaperWorkShopId and WallpaperSource change simultaneously,
         // QML may evaluate source first, so workshopid/curOpt/userPropsJson could be stale.
@@ -290,24 +285,25 @@ Rectangle {
         noRandomWhilePaused: background.noRandomWhilePaused
         desktopOk: background.ok
 
-        activePlaylistIdRead:    wallpaper.configuration.ActivePlaylistId
-        currentItemIndexRead:    wallpaper.configuration.CurrentItemIndex
-        randomizeWallpaperRead:  wallpaper.configuration.RandomizeWallpaper
-        switchTimerRead:         wallpaper.configuration.SwitchTimer
+        // Runtime mgr owns the playback cycle. (editorMode defaults to false.)
+        activePlaylistIdRead:      wallpaper.configuration.ActivePlaylistId
+        currentItemIndexRead:      wallpaper.configuration.CurrentItemIndex
+        randomizeWallpaperRead:    wallpaper.configuration.RandomizeWallpaper
+        switchTimerRead:           wallpaper.configuration.SwitchTimer
+        // Bumped by the dialog after every playlist CRUD. PlaylistController
+        // watches this and calls mgr.reload() so dialog-side edits propagate
+        // to the runtime mgr without a plasmashell restart.
+        playlistsReloadSeqRead:    wallpaper.configuration.PlaylistsReloadSeq
 
         // Writes happen here so `wallpaper.configuration` is in lexical scope —
         // QML can resolve Q_PROPERTY assignments correctly.
         setActivePlaylistId: function(id) {
-            console.log("[WEK-DBG runtime setActivePlaylistId]", id);
             wallpaper.configuration.ActivePlaylistId = id;
         }
         setCurrentItemIndex: function(idx) {
-            console.log("[WEK-DBG runtime setCurrentItemIndex]", idx);
             wallpaper.configuration.CurrentItemIndex = idx;
         }
         setWallpaperFromItem: function(item) {
-            console.log("[WEK-DBG runtime setWallpaperFromItem]",
-                "wid:", item.workshopid);
             wallpaper.configuration.WallpaperWorkShopId = item.workshopid;
             wallpaper.configuration.WallpaperSource = Common.packWallpaperSource(item);
         }

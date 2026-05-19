@@ -20,6 +20,7 @@ BuildRequires: mpv-libs-devel
 BuildRequires: qt6-qtbase-private-devel
 BuildRequires: qt6-qtwebchannel-devel
 BuildRequires: freetype-devel
+BuildRequires: pulseaudio-libs-devel
 
 Requires: plasma-workspace
 Requires: gstreamer1-libav

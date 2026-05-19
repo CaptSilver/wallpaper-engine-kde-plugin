@@ -21,6 +21,7 @@ Build-Depends:
  libmpv-dev,
  liblz4-dev,
  libfreetype-dev,
+ libpulse-dev,
  pkg-config,
 Standards-Version: 4.6.2
 Homepage: https://github.com/CaptSilver/wallpaper-engine-kde-plugin

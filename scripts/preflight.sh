@@ -25,7 +25,15 @@
 
 set -euo pipefail
 
-cd "$(git rev-parse --show-toplevel)"
+# Resolve to the parent repo's working tree even when invoked from inside the
+# `src/backend_scene` submodule.  Plain --show-toplevel would land us in the
+# submodule, which silently swaps `git ls-files` (lint scope) and `cmake -B
+# build/sub -S src/backend_scene` (path doubling) — that wedge once mass-
+# reformatted third_party/ headers and tried to build src/backend_scene/src/
+# backend_scene.  --show-superproject-working-tree is empty in the parent and
+# the submodule path when called from inside the submodule, so we prefer it.
+_SUPER=$(git rev-parse --show-superproject-working-tree 2>/dev/null || true)
+cd "${_SUPER:-$(git rev-parse --show-toplevel)}"
 
 # ── Args ──────────────────────────────────────────────────────────────────────
 MODE=full

@@ -680,6 +680,16 @@ RowLayout {
                         }
                     }
                 }
+                Component {
+                    id: right_opt_color
+                    // Override ColorButton's per-channel-floats res_val with
+                    // Qt's color string so the per-wallpaper override
+                    // round-trips through the same BackgroundColor format the
+                    // global setting uses (and Rectangle.color accepts).
+                    ColorButton {
+                        res_val: colorValue.toString()
+                    }
+                }
 
                 OptionGroup {
                     id: right_opts
@@ -804,6 +814,24 @@ RowLayout {
                                     def_val: cfg_DisplayMode,
                                 }
                             },
+                            // DISABLED: per-wallpaper Background Color picker.
+                            // UI hidden + main.qml Rectangle reverted to read
+                            // wallpaper.configuration.BackgroundColor directly
+                            // while we debug the "weirdness" the user hit.
+                            // right_opt_color Component + main.qml
+                            // backgroundColor property are still wired —
+                            // re-enable by uncommenting this entry and
+                            // flipping main.qml's Rectangle color binding
+                            // back to background.backgroundColor.
+                            // {
+                            //     mark_: markModel,
+                            //     text: 'Background Color',
+                            //     config_key: 'background_color',
+                            //     comp: right_opt_color,
+                            //     props: {
+                            //         def_val: cfg_BackgroundColor,
+                            //     },
+                            // },
                             {
                                 text: 'Mute Audio',
                                 config_key: 'mute_audio',
@@ -840,8 +868,8 @@ RowLayout {
                             text: modelData.text
                             text_color: Kirigami.Theme.textColor
 
-                            property bool is_changed: right_opts.config && 
-                                right_opts.config_changes && 
+                            property bool is_changed: right_opts.config &&
+                                right_opts.config_changes &&
                                 right_opts.has_change(modelData.config_key)
 
                             icon: is_changed ? Qt.resolvedUrl('../../images/edit-pencil.svg') : ''

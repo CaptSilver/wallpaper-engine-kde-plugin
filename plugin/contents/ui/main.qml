@@ -8,6 +8,10 @@ WallpaperItem {
 Rectangle {
     id: background
     anchors.fill: parent
+    // Per-wallpaper Background Color override DISABLED — reading the
+    // global cfg_BackgroundColor directly. To re-enable: switch back to
+    // `background.backgroundColor` and uncomment the model entry in
+    // WallpaperPage.qml.
     color: wallpaper.configuration.BackgroundColor
     
     property string steamlibrary: Qt.resolvedUrl(wallpaper.configuration.SteamLibraryPath).toString()
@@ -47,6 +51,7 @@ Rectangle {
     // Update all derived properties when curOpt changes
     onCurOptChanged: {
         displayMode = get_opt_value('display_mode', wallpaper.configuration.DisplayMode);
+        backgroundColor = get_opt_value('background_color', wallpaper.configuration.BackgroundColor);
         mute = get_opt_value('mute_audio', wallpaper.configuration.MuteAudio);
         volume = get_opt_value('volume', wallpaper.configuration.Volume);
         speed = get_opt_value('speed', wallpaper.configuration.Speed);
@@ -55,6 +60,7 @@ Rectangle {
     }
 
     property int    displayMode: get_opt_value('display_mode', wallpaper.configuration.DisplayMode)
+    property string backgroundColor: get_opt_value('background_color', wallpaper.configuration.BackgroundColor)
     property bool   mute: get_opt_value('mute_audio', wallpaper.configuration.MuteAudio)
     property int    volume: get_opt_value('volume', wallpaper.configuration.Volume)
     property real   speed: get_opt_value('speed', wallpaper.configuration.Speed)
@@ -66,6 +72,9 @@ Rectangle {
         target: wallpaper.configuration
         function onDisplayModeChanged() {
             background.displayMode = background.get_opt_value('display_mode', wallpaper.configuration.DisplayMode);
+        }
+        function onBackgroundColorChanged() {
+            background.backgroundColor = background.get_opt_value('background_color', wallpaper.configuration.BackgroundColor);
         }
         function onMuteAudioChanged() {
             background.mute = background.get_opt_value('mute_audio', wallpaper.configuration.MuteAudio);

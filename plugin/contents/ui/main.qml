@@ -8,11 +8,12 @@ WallpaperItem {
 Rectangle {
     id: background
     anchors.fill: parent
-    // Per-wallpaper Background Color override DISABLED — reading the
-    // global cfg_BackgroundColor directly. To re-enable: switch back to
-    // `background.backgroundColor` and uncomment the model entry in
-    // WallpaperPage.qml.
-    color: wallpaper.configuration.BackgroundColor
+    // Per-wallpaper Background Color override: the per-wallpaper value
+    // (background_color in <id>.json) falling back to the global
+    // cfg_BackgroundColor.  In Keep-Aspect-Ratio mode backend/Scene.qml
+    // sizes the renderer to the wallpaper's native aspect so this color
+    // shows through the letterbox bars instead of the renderer's own.
+    color: background.backgroundColor
     
     property string steamlibrary: Qt.resolvedUrl(wallpaper.configuration.SteamLibraryPath).toString()
     property string source: Qt.resolvedUrl(wallpaper.configuration.WallpaperSource).toString()
@@ -100,13 +101,17 @@ Rectangle {
     // detect TTY switch and pause wallpaper(s)
     TTYSwitchMonitor {
         id: ttyMonitor
-        onTtySwitch: {
+        // Pause/resume the active backend on VT switch or sleep.  `this` is the
+        // TTYSwitchMonitor (no play/pause) — the wallpaper is backendLoader.item,
+        // which can be null mid-load, so guard it.  (function form: Qt6 deprecates
+        // injecting the `sleep` parameter into a bare `onTtySwitch:` handler.)
+        function onTtySwitch(sleep) {
             if (sleep) {
                 console.log("Preparing for sleep (possibly a VT switch)");
-                this.pause();
+                if (backendLoader.item) backendLoader.item.pause();
             } else {
                 console.log("Waking up (VT switch back)");
-                this.play();
+                if (backendLoader.item) backendLoader.item.play();
             }
         }
     }
@@ -325,7 +330,7 @@ Rectangle {
         repeat: false
         interval: 300
         onTriggered: {
-            backendLoader.item.pause();
+            if (backendLoader.item) backendLoader.item.pause();
             playTimer.start();
         }
     }
@@ -503,9 +508,9 @@ Rectangle {
     }
    
     function autoPause() {
-        background.ok
-            ? backendLoader.item.play()
-            : backendLoader.item.pause();
+        if (! backendLoader.item) return;
+        if (background.ok) backendLoader.item.play();
+        else backendLoader.item.pause();
     }
 
     Component.onCompleted: {

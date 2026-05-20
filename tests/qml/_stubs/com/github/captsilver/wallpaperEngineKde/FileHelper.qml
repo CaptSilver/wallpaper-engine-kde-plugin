@@ -17,7 +17,7 @@ QtObject {
     function readWallpaperConfig(id)     { return ({}); }
     function writeWallpaperConfig(id, c) { return; }
     function resetWallpaperConfig(id)    { return; }
-    function readActiveBindings(id)      { return ({}); }
+    function readActiveBindings(id)      { return []; }
     function scanVideoFolder(path)       { return _scanVideoFolderReturns; }
     // Always reports success in tests. Real impl refuses paths outside the
     // user's cache root; tests that need to exercise the refusal path

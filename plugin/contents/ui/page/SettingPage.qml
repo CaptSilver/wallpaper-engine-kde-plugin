@@ -542,6 +542,7 @@ Flickable {
         objectName: "clearShaderCacheConfirm"
         title: "Clear shader cache"
         modal: true
+        implicitWidth: Kirigami.Units.gridUnit * 22
         anchors.centerIn: Overlay.overlay
         contentItem: Label {
             text: "Delete all cached compiled shaders? They will be regenerated on the next wallpaper load (first frame may be slower)."

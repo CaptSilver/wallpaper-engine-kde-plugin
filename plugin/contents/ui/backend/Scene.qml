@@ -77,7 +77,21 @@ Item{
 
     SceneViewer {
         id: player
-        anchors.fill: parent
+        // Keep-Aspect-Ratio (ASPECTFIT): size the renderer to the wallpaper's
+        // native aspect and centre it, so the letterbox region is the parent
+        // `background` Rectangle (BackgroundColor) showing through rather than
+        // the renderer painting opaque bars.  Stretch/Crop — and the interval
+        // before the scene loads (nativeAspectRatio == 0) — fill the whole area.
+        anchors.centerIn: parent
+        readonly property bool letterbox: sceneItem.displayMode === Common.DisplayMode.Aspect && nativeAspectRatio > 0
+        width: {
+            if (!letterbox) return parent.width;
+            return nativeAspectRatio > parent.width / parent.height ? parent.width : parent.height * nativeAspectRatio;
+        }
+        height: {
+            if (!letterbox) return parent.height;
+            return nativeAspectRatio > parent.width / parent.height ? parent.width / nativeAspectRatio : parent.height;
+        }
         fps: background.fps
         muted: background.mute
         speed: background.speed

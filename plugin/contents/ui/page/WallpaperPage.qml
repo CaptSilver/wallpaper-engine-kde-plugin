@@ -42,6 +42,7 @@ RowLayout {
         objectName: "resetSceneOptsConfirm"
         title: "Reset scene options"
         modal: true
+        implicitWidth: Kirigami.Units.gridUnit * 20
         anchors.centerIn: Overlay.overlay
         contentItem: Label {
             text: "Reset all per-wallpaper scene options to defaults? This cannot be undone."
@@ -59,6 +60,7 @@ RowLayout {
         objectName: "resetUserPropsConfirm"
         title: "Reset wallpaper properties"
         modal: true
+        implicitWidth: Kirigami.Units.gridUnit * 20
         anchors.centerIn: Overlay.overlay
         contentItem: Label {
             text: "Reset this wallpaper's user properties to defaults? Any tuning you've done will be lost."
@@ -491,7 +493,7 @@ RowLayout {
                     Layout.fillWidth: true
                     Layout.minimumHeight: implicitHeight
 
-                    text: right_content.wpmodel.title
+                    text: right_content.wpmodel?.title ?? ""
                     color: Kirigami.Theme.textColor
                     font.bold: true
                     textFormat: Text.PlainText
@@ -517,7 +519,7 @@ RowLayout {
                         contentItem: Text {
                             color: Kirigami.Theme.textColor
                             font.capitalization: Font.Capitalize
-                            text: right_content.wpmodel.type
+                            text: right_content.wpmodel?.type ?? ""
                         }
                     }
 
@@ -603,17 +605,27 @@ RowLayout {
                     model: ListModel {}
                     readonly property bool _set_model: {
                         const wpmodel = right_content.wpmodel;
-                        const tags = right_content.wpmodel.tags;
-                        const playlists = right_content.wpmodel.playlists;
                         const _model = this.model;
                         _model.clear();
-                        for(const i of Array(tags.length).keys())
-                            _model.append(tags.get(i));
-                        for(const i of Array(playlists.length).keys()){
-                            var playlist = playlists.get(i);
-                            if(playlist != null) { _model.append(playlists.get(i)); }
-                        }
-                        _model.append({key: wpmodel.contentrating});
+                        // tags/playlists are ListModels (.count + .get) at runtime
+                        // but can be arrays or empty/undefined in transient states.
+                        // Resolve length from .count OR .length and append only real
+                        // objects — `Array(model.length)` is `[undefined]` for a
+                        // ListModel (no .length), which silently dropped all but the
+                        // first row and appended a non-object.
+                        const _appendAll = (src) => {
+                            if (! src) return;
+                            const n = (src.count !== undefined) ? src.count
+                                    : (src.length !== undefined ? src.length : 0);
+                            for (let i = 0; i < n; ++i) {
+                                const v = src.get ? src.get(i) : src[i];
+                                if (v && typeof v === "object") _model.append(v);
+                            }
+                        };
+                        _appendAll(wpmodel ? wpmodel.tags : null);
+                        _appendAll(wpmodel ? wpmodel.playlists : null);
+                        if (wpmodel && wpmodel.contentrating !== undefined)
+                            _model.append({key: wpmodel.contentrating});
                         return true;
                     }
                     clip: false
@@ -814,24 +826,19 @@ RowLayout {
                                     def_val: cfg_DisplayMode,
                                 }
                             },
-                            // DISABLED: per-wallpaper Background Color picker.
-                            // UI hidden + main.qml Rectangle reverted to read
-                            // wallpaper.configuration.BackgroundColor directly
-                            // while we debug the "weirdness" the user hit.
-                            // right_opt_color Component + main.qml
-                            // backgroundColor property are still wired —
-                            // re-enable by uncommenting this entry and
-                            // flipping main.qml's Rectangle color binding
-                            // back to background.backgroundColor.
-                            // {
-                            //     mark_: markModel,
-                            //     text: 'Background Color',
-                            //     config_key: 'background_color',
-                            //     comp: right_opt_color,
-                            //     props: {
-                            //         def_val: cfg_BackgroundColor,
-                            //     },
-                            // },
+                            // Per-wallpaper Background Color override.  Shows
+                            // through the letterbox bars in Keep-Aspect-Ratio
+                            // mode now that backend/Scene.qml sizes the renderer
+                            // to the wallpaper's native aspect (nativeAspectRatio).
+                            {
+                                mark_: markModel,
+                                text: 'Background Color',
+                                config_key: 'background_color',
+                                comp: right_opt_color,
+                                props: {
+                                    def_val: cfg_BackgroundColor,
+                                },
+                            },
                             {
                                 text: 'Mute Audio',
                                 config_key: 'mute_audio',
@@ -993,7 +1000,7 @@ RowLayout {
                                 propConfig = res || {};
                             });
                             pyext.read_active_bindings(workshopid).then(res => {
-                                activeBindings = res || [];
+                                activeBindings = Array.isArray(res) ? res : [];
                             });
                         } else {
                             propConfig = {};
@@ -1112,8 +1119,11 @@ RowLayout {
                             text_color: Kirigami.Theme.textColor
 
                             // Gray out properties not bound to any shader
-                            property bool isBound: user_props_group.activeBindings.length === 0
-                                || user_props_group.activeBindings.indexOf(modelData.key) >= 0
+                            property bool isBound: {
+                                const ab = user_props_group.activeBindings;
+                                return !Array.isArray(ab) || ab.length === 0
+                                    || ab.indexOf(modelData.key) >= 0;
+                            }
                             enabled: isBound
                             opacity: isBound ? 1.0 : 0.4
 

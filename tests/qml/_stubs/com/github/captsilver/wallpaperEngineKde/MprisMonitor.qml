@@ -15,4 +15,5 @@ QtObject {
     signal userShortcutRequested(string name)
 
     function invokeShortcut(name) {}
+    function engage() {}
 }

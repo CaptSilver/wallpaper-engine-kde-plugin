@@ -60,7 +60,7 @@ Item{
         volume: 0
         Connections {
             ignoreUnknownSignals: true
-            onFirstFrame: {
+            function onFirstFrame() {
                 background.sig_backendFirstFrame('mpv');
                 loadWatchdog.stop();
             }

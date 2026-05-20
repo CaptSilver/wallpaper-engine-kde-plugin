@@ -1,6 +1,7 @@
 import QtQuick 2.8
 import QtQuick.Controls 2.1
 import QtQuick.Dialogs
+import org.kde.kirigami as Kirigami
 
 // Color picker button that shows current color and opens ColorDialog on
 // click. Now keyboard-accessible: Tab focuses, Space/Enter opens the
@@ -30,7 +31,7 @@ Rectangle {
     color: colorValue
     // Outer border thickens + accent-colors when keyboard-focused so the
     // user can tell where they are without a mouse.
-    border.color: activeFocus ? palette.highlight : Qt.darker(colorValue, 1.2)
+    border.color: activeFocus ? Kirigami.Theme.highlightColor : Qt.darker(colorValue, 1.2)
     border.width: activeFocus ? 2 : 1
 
     activeFocusOnTab: true

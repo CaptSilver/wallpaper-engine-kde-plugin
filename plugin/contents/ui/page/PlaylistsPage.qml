@@ -567,6 +567,7 @@ Item {
         objectName: "deleteConfirmPrompt"
         title: "Delete playlist"
         modal: true
+        implicitWidth: Kirigami.Units.gridUnit * 20
         anchors.centerIn: parent
         property string _selectedName: {
             if (!root.manager || root._selectedId === "") return "";

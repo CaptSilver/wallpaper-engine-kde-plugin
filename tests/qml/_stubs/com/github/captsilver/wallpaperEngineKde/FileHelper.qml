@@ -6,6 +6,7 @@ QtObject {
     property var _readReturns: ""
     property var _patchedHtmlReturns: ""
     property var _scanVideoFolderReturns: []
+    property var _wallpaperConfigReturns: ({})
 
     signal thumbnailReady(string videoPath, string outPath, bool ok)
 
@@ -14,7 +15,7 @@ QtObject {
     function qwebChannelSource()         { return ""; }
     function getDirSize(path, depth)     { return 0; }
     function getFolderList(path, opt)    { return []; }
-    function readWallpaperConfig(id)     { return ({}); }
+    function readWallpaperConfig(id)     { return _wallpaperConfigReturns; }
     function writeWallpaperConfig(id, c) { return; }
     function resetWallpaperConfig(id)    { return; }
     function readActiveBindings(id)      { return []; }

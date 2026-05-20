@@ -1,6 +1,7 @@
 import QtQuick 2.5
 import com.github.captsilver.wallpaperEngineKde 1.2
 import ".."
+import "../js/layout.mjs" as Layout
 
 Item{
     id: sceneItem
@@ -15,28 +16,11 @@ Item{
         (volume) => { player.volume = volume / 100.0; }
     )
 
-    onDisplayModeChanged: {
-        if(displayMode == Common.DisplayMode.Scale)
-            player.fillMode = SceneViewer.STRETCH;
-        else if(displayMode == Common.DisplayMode.Aspect)
-            player.fillMode = SceneViewer.ASPECTFIT;
-        else if(displayMode == Common.DisplayMode.Crop)
-            player.fillMode = SceneViewer.ASPECTCROP;
-    }
-
-    // Force fillMode update on background.displayMode change
-    Timer {
-        id: displayModeFixTimer
-        interval: 50
-        repeat: false
-        onTriggered: sceneItem.displayModeChanged()
-    }
-    Connections {
-        target: background
-        function onDisplayModeChanged() {
-            displayModeFixTimer.restart();
-        }
-    }
+    // displayMode no longer drives fillMode imperatively: the player binds its
+    // size + fillMode to the pure Layout helpers below, so both follow
+    // displayMode and nativeAspectRatio reactively (the old onDisplayModeChanged
+    // handler + a 50ms displayModeFixTimer that fought a separate item-letterbox
+    // are gone).
 
     // MPRIS media-control + metadata bridge. SceneScript JS in scene
     // wallpapers can subscribe to playback state, properties (title /
@@ -77,21 +61,35 @@ Item{
 
     SceneViewer {
         id: player
-        // Keep-Aspect-Ratio (ASPECTFIT): size the renderer to the wallpaper's
-        // native aspect and centre it, so the letterbox region is the parent
-        // `background` Rectangle (BackgroundColor) showing through rather than
-        // the renderer painting opaque bars.  Stretch/Crop — and the interval
-        // before the scene loads (nativeAspectRatio == 0) — fill the whole area.
+        // Keep-Aspect-Ratio: size the renderer to the wallpaper's native aspect
+        // and centre it, so the letterbox region is the parent `background`
+        // Rectangle (BackgroundColor) showing through.  fillMode is STRETCH once
+        // the native aspect is known (the item is already native-aspect, so the
+        // renderer fills it exactly with NO opaque padding); the previous code
+        // left it ASPECTFIT, which painted black bars whenever the item stayed
+        // full-size.  Size + fillMode are bindings over the pure Layout helpers
+        // (plugin/contents/ui/js/layout.mjs) so they are unit-testable and follow
+        // displayMode/nativeAspectRatio reactively.
         anchors.centerIn: parent
-        readonly property bool letterbox: sceneItem.displayMode === Common.DisplayMode.Aspect && nativeAspectRatio > 0
-        width: {
-            if (!letterbox) return parent.width;
-            return nativeAspectRatio > parent.width / parent.height ? parent.width : parent.height * nativeAspectRatio;
-        }
-        height: {
-            if (!letterbox) return parent.height;
-            return nativeAspectRatio > parent.width / parent.height ? parent.width / nativeAspectRatio : parent.height;
-        }
+        readonly property bool isAspect: sceneItem.displayMode === Common.DisplayMode.Aspect
+        readonly property bool isCrop:   sceneItem.displayMode === Common.DisplayMode.Crop
+        readonly property var  _box: Layout.letterboxSize(isAspect, nativeAspectRatio,
+                                                          parent.width, parent.height)
+        width:  _box.width
+        height: _box.height
+        fillMode: Layout.fillModeFor(isAspect, isCrop, nativeAspectRatio,
+                                     { STRETCH: SceneViewer.STRETCH,
+                                       ASPECTFIT: SceneViewer.ASPECTFIT,
+                                       ASPECTCROP: SceneViewer.ASPECTCROP })
+
+        // Diagnostic (kept per debug-logging policy): one-shot per load, lets a
+        // real multi-monitor install confirm in journalctl that nativeAspectRatio
+        // reaches QML (>0) on the ultrawide.  Grep: "WEK] letterbox".
+        onNativeAspectRatioChanged: if (nativeAspectRatio > 0)
+            console.log("[WEK] letterbox: nativeAspect=" + nativeAspectRatio
+                + " parent=" + parent.width + "x" + parent.height
+                + " item=" + width + "x" + height + " fillMode=" + fillMode);
+
         fps: background.fps
         muted: background.mute
         speed: background.speed
@@ -123,7 +121,6 @@ Item{
 
     Component.onCompleted: {
         background.nowBackend = 'scene';
-        sceneItem.displayModeChanged();
     }
     function play() {
         volumeFade.start();

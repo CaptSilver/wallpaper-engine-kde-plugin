@@ -39,16 +39,22 @@ TestCase {
         verify(t !== undefined);
     }
 
-    function test_displayModeAspect_setsAspectFitFillMode() {
+    function test_displayModeAspect_loaded_setsStretch() {
+        const p = _findScenePlayer();
         background.displayMode = Plugin.Common.DisplayMode.Aspect;
-        scene.displayModeChanged();
-        verify(true);
+        p.nativeAspectRatio = 16 / 9;
+        compare(p.fillMode, 0 /* STRETCH */);
     }
-
-    function test_displayModeCrop_setsAspectCropFillMode() {
+    function test_displayModeAspect_notLoaded_setsAspectFit() {
+        const p = _findScenePlayer();
+        background.displayMode = Plugin.Common.DisplayMode.Aspect;
+        p.nativeAspectRatio = 0;
+        compare(p.fillMode, 1 /* ASPECTFIT */);
+    }
+    function test_displayModeCrop_setsAspectCrop() {
+        const p = _findScenePlayer();
         background.displayMode = Plugin.Common.DisplayMode.Crop;
-        scene.displayModeChanged();
-        verify(true);
+        compare(p.fillMode, 2 /* ASPECTCROP */);
     }
 
     // ── MprisMonitor signal handlers ──────────────────────────────────────────
@@ -117,9 +123,9 @@ TestCase {
         verify(true);
     }
 
-    function test_displayModeScale_setsStretchFillMode() {
+    function test_displayModeScale_setsStretch() {
+        const p = _findScenePlayer();
         background.displayMode = Plugin.Common.DisplayMode.Scale;
-        scene.displayModeChanged();
-        verify(true);
+        compare(p.fillMode, 0 /* STRETCH */);
     }
 }

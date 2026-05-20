@@ -100,7 +100,14 @@ inside_fedora() {
 }
 
 container_exists() {
-    distrobox list 2>/dev/null | grep -qE "^\S+\s*\|\s*${CONTAINER_NAME}\s"
+    # Capture first, then grep the string. Piping `distrobox list` into
+    # `grep -q` makes grep close the pipe as soon as it matches; the writer
+    # then takes SIGPIPE (exit 141) and `set -o pipefail` reports that as the
+    # pipeline status — so this check spuriously failed and the dep bootstrap
+    # ran on every host invocation.
+    local list
+    list=$(distrobox list 2>/dev/null || true)
+    grep -qE "^\S+\s*\|\s*${CONTAINER_NAME}\s" <<<"$list"
 }
 
 bootstrap_fedora() {
@@ -159,8 +166,13 @@ fi
 
 # ── 1. Lint: clang-format ─────────────────────────────────────────────────────
 step "Lint (clang-format)"
-if ! command -v clang-format >/dev/null; then
-    fail "clang-format not found (install clang-tools-extra or clang)"
+# Route clang-format through the distrobox (DBOX_PREFIX) exactly like the builds
+# below, so the container's clang-format is used whether preflight runs from the
+# host or from inside the box. Keeps formatting deterministic and removes the
+# dependency on a host clang-format being installed (or matching the box's
+# version). DBOX_PREFIX is empty inside the box, so this is a no-op there.
+if ! dbox "command -v clang-format >/dev/null"; then
+    fail "clang-format not found in the fedora distrobox (run: scripts/preflight.sh --bootstrap)"
 fi
 
 # Parent-repo C/C++ files only. git ls-files does not recurse into submodules,
@@ -176,8 +188,8 @@ else
             # `clang-format --dry-run --Werror` exits non-zero on violations.
             # With set -euo pipefail that kills the substitution before -i
             # ever runs, so explicitly swallow the pipeline status.
-            BEFORE_HASH=$(clang-format --dry-run --Werror "${SRCS[@]}" 2>&1 | wc -l || true)
-            clang-format -i "${SRCS[@]}"
+            BEFORE_HASH=$("${DBOX_PREFIX[@]}" clang-format --dry-run --Werror "${SRCS[@]}" 2>&1 | wc -l || true)
+            "${DBOX_PREFIX[@]}" clang-format -i "${SRCS[@]}"
             if [[ "$BEFORE_HASH" -gt 0 ]]; then
                 CHANGED=$(git diff --name-only -- "${SRCS[@]}" | wc -l)
                 ok "auto-formatted ${CHANGED} files (review with 'git diff' before committing)"
@@ -186,7 +198,7 @@ else
             fi
             ;;
         *)
-            if ! clang-format --dry-run --Werror "${SRCS[@]}" 2>&1; then
+            if ! "${DBOX_PREFIX[@]}" clang-format --dry-run --Werror "${SRCS[@]}" 2>&1; then
                 fail "clang-format violations — run 'scripts/preflight.sh --fix' to auto-format"
             fi
             ok "clang-format clean (${#SRCS[@]} files)"

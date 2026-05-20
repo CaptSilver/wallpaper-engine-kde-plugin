@@ -364,6 +364,53 @@ else()
     message(STATUS "node not found — skipping JavaScript tests")
 endif()
 
+# ── C++ end-to-end integration harness (Phase 3) ──────────────────────────────
+# Loads the real main.qml with `wallpaper` as a context property backed by a
+# code-generated config QObject, so main.qml's reactive Connections fire. A second
+# tier alongside the qmltestrunner rig; skips gracefully without Qt6QuickTest.
+find_package(Qt6 COMPONENTS QuickTest Qml Quick QUIET)
+if(Qt6QuickTest_FOUND AND Qt6Qml_FOUND AND Qt6Quick_FOUND)
+    if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+        set(_wekde_repo_root_e2e "${CMAKE_CURRENT_SOURCE_DIR}/..")
+    else()
+        set(_wekde_repo_root_e2e "${CMAKE_SOURCE_DIR}")
+    endif()
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
+    set(_e2e_gen_dir "${CMAKE_CURRENT_BINARY_DIR}/qml_integration_gen")
+    set(_e2e_gen_hdr "${_e2e_gen_dir}/FakeConfiguration.gen.h")
+    add_custom_command(
+        OUTPUT  "${_e2e_gen_hdr}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${_e2e_gen_dir}"
+        COMMAND ${Python3_EXECUTABLE}
+                "${_wekde_repo_root_e2e}/tools/genconfig/gen_fake_config.py"
+                "${_wekde_repo_root_e2e}/plugin/contents/config/main.xml"
+                "${_e2e_gen_hdr}"
+        DEPENDS "${_wekde_repo_root_e2e}/tools/genconfig/gen_fake_config.py"
+                "${_wekde_repo_root_e2e}/plugin/contents/config/main.xml"
+        COMMENT "Generating FakeConfiguration.gen.h from main.xml"
+        VERBATIM)
+
+    add_executable(tst_main_integration
+        qml_integration/main.cpp
+        qml_integration/FakeWallpaper.h
+        "${_e2e_gen_hdr}")
+    set_target_properties(tst_main_integration PROPERTIES AUTOMOC ON)
+    target_include_directories(tst_main_integration PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/qml_integration"
+        "${_e2e_gen_dir}")
+    target_compile_definitions(tst_main_integration PRIVATE
+        WEKDE_REPO_DIR="${_wekde_repo_root_e2e}"
+        QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml_integration")
+    target_link_libraries(tst_main_integration PRIVATE
+        Qt6::QuickTest Qt6::Qml Qt6::Quick)
+    add_test(NAME tst_main_integration COMMAND tst_main_integration)
+    set_tests_properties(tst_main_integration PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+else()
+    message(STATUS "Qt6QuickTest not found — skipping tst_main_integration (Phase 3)")
+endif()
+
 # ── Coverage report target ────────────────────────────────────────────────────
 if(COVERAGE)
     find_program(LLVM_PROFDATA llvm-profdata REQUIRED)

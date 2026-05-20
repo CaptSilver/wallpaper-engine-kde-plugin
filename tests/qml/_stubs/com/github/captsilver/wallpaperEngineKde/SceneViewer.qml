@@ -19,6 +19,7 @@ Item {
     property bool   hdrOutput:      false
     property string postprocessingOverride: ""  // wallpaper-default when empty
     property bool   systemAudioCapture: false
+    property real   nativeAspectRatio:  0  // 0 = scene not loaded yet (real type's sentinel)
 
     signal firstFrame()
     signal userShortcutRequested(string name)

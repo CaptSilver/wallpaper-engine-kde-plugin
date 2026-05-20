@@ -869,6 +869,17 @@ RowLayout {
                                     dStepSize: 0.1,
                                 },
                             },
+                            // ON → "ultra" (HDR mip-chain bloom), OFF → scene
+                            // default. Experimental: Ultra can look too dark on
+                            // some scenes (audit open); opt-in per wallpaper.
+                            {
+                                text: 'Postprocessing (Ultra, experimental)',
+                                config_key: 'postprocessing',
+                                comp: right_opt_switch,
+                                props: {
+                                    def_val: false,
+                                },
+                            },
 
                         ]
                         OptionItem {

@@ -33,7 +33,7 @@ Rectangle {
     property bool   pauseOnBatPower: wallpaper.configuration.PauseOnBatPower
     property int    pauseBatPercent: wallpaper.configuration.PauseBatPercent
     property bool   hdrOutput: wallpaper.configuration.HdrOutput
-    property string postProcessing: wallpaper.configuration.PostProcessing
+    property string postProcessing: get_opt_value('postprocessing', false) ? "ultra" : ""
     property bool   systemAudioCapture: wallpaper.configuration.SystemAudioCapture
 
     

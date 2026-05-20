@@ -182,6 +182,18 @@ bootstrap_fedora() {
         " || fail "dnf install failed"
         ok "fedora deps installed"
     fi
+
+    # qmltestrunner ships in /usr/lib64/qt6/bin (qt6-qtdeclarative-devel) which is
+    # NOT on PATH; CMake's find_program() looks for qmltestrunner-qt6/qmltestrunner6/
+    # qmltestrunner. Without a discoverable binary the QML test suite (tst_qml,
+    # qmlcov) is silently skipped. Worse, any host linuxbrew Qt 6.11 qmltestrunner
+    # leaking into PATH is ABI-incompatible with the system Qt 6.10 plasma.core
+    # plugin, so main.qml fails to load and the tests no-op. Link the system runner
+    # under CMake's first-choice name so the matching-Qt runner always wins.
+    distrobox enter "$FEDORA_BOX" -- bash -lc "
+        sudo ln -sf /usr/lib64/qt6/bin/qmltestrunner /usr/local/bin/qmltestrunner-qt6
+    " || fail "qmltestrunner-qt6 symlink failed"
+    ok "qmltestrunner-qt6 linked (system Qt6 runner for QML tests)"
 }
 
 build_fedora() {

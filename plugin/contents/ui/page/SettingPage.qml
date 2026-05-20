@@ -33,7 +33,6 @@ Flickable {
     property alias cfg_PauseOnBatPower: chkbox_pauseOnBatPower.checked
     property alias cfg_PauseBatPercent: spin_pauseBatPercent.value
     property alias cfg_HdrOutput: ckbox_hdrOutput.checked
-    property string cfg_PostProcessing: ""
     property alias cfg_SystemAudioCapture: ckbox_systemAudioCapture.checked
     // Color drawn behind the wallpaper. Visible as letterbox/pillarbox
     // bars when display mode is "Keep Aspect Ratio" and the wallpaper
@@ -440,40 +439,6 @@ Flickable {
                         color: Kirigami.Theme.disabledTextColor
                         text: "Pass HDR colors to the compositor without tonemapping. Requires Plasma HDR support."
                         wrapMode: Text.Wrap
-                    }
-                }
-            }
-            OptionItem {
-                text: 'Postprocessing  (disabled — under audit)'
-                text_color: Kirigami.Theme.disabledTextColor
-                actor: ComboBox {
-                    id: cb_postProcessing
-                    // Disabled until the HDR mip-chain bloom audit lands —
-                    // the "Ultra" path renders too dark, and rather than
-                    // expose only some of the choices we lock the whole
-                    // selector to "Scene default" for now.
-                    enabled: false
-                    ToolTip.text: "Override the bloom pipeline scenes use. "
-                        + "Disabled while the HDR 'Ultra' path is being audited "
-                        + "(output renders too dark). Will force a scene reload when re-enabled."
-                    ToolTip.visible: hovered
-                    ToolTip.delay: 500
-                    model: [
-                        { text: "Scene default", value: "" },
-                        { text: "Low (LDR)", value: "low" },
-                        { text: "Medium (LDR)", value: "medium" },
-                        { text: "Ultra (HDR mip-chain bloom)", value: "ultra" },
-                        { text: "Display HDR", value: "displayhdr" }
-                    ]
-                    textRole: "text"
-                    onActivated: cfg_PostProcessing = model[currentIndex].value
-                    Component.onCompleted: {
-                        // Force "Scene default" while the dropdown is disabled
-                        // — anyone who previously saved another option (e.g.
-                        // "ultra") gets migrated back so they aren't stuck
-                        // looking at a value they can no longer change.
-                        cfg_PostProcessing = "";
-                        currentIndex = 0;
                     }
                 }
             }

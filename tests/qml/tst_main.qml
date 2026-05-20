@@ -73,6 +73,22 @@ TestCase {
         compare(bg.get_opt_value("my_key", -1), 42);
     }
 
+    function test_postProcessing_switchOn_mapsToUltra() {
+        const bg = _findBackground();
+        if (!bg) return;
+        bg.curOpt = { postprocessing: true };
+        compare(bg.postProcessing, "ultra");
+    }
+
+    function test_postProcessing_switchOffOrUnset_mapsToEmpty() {
+        const bg = _findBackground();
+        if (!bg) return;
+        bg.curOpt = { postprocessing: false };
+        compare(bg.postProcessing, "");
+        bg.curOpt = {};
+        compare(bg.postProcessing, "");
+    }
+
     function test_curOptChanged_handlerFires() {
         const bg = _findBackground();
         if (!bg) return;

@@ -61,6 +61,10 @@ private slots:
     // status() derives from idle-active + pause
     void status_initially_stopped();
 
+    // Part A: initialized Q_PROPERTY + loud failure.
+    void initialized_trueAfterSuccessfulInit();
+    void successfulInit_doesNotWarn();
+
     // play/pause guards (no-op outside the matching state)
     void play_whenStopped_isNoop();
     void pause_whenStopped_isNoop();
@@ -266,6 +270,30 @@ void TestMpvBackend::firstFrame_afterSourceFlip_emitsExactlyOnce() {
     obj->checkAndEmitFirstFrame(); // already true: no emit
     obj->checkAndEmitFirstFrame(); // still true: no emit
     QCOMPARE(spy.count(), 1);
+}
+
+// A normally-constructed MpvObject (libmpv present in the test env) must report
+// initialized()==true — the contract QML uses to avoid a black void.
+void TestMpvBackend::initialized_trueAfterSuccessfulInit() {
+    auto obj = makeObject();
+    QVERIFY(obj->initialized());
+}
+
+// A successful init must NOT emit the "video backend unavailable" warning (the
+// loud path is for the failure case only).
+void TestMpvBackend::successfulInit_doesNotWarn() {
+    static bool sawUnavailable = false;
+    sawUnavailable             = false;
+    auto* prev =
+        qInstallMessageHandler([](QtMsgType t, const QMessageLogContext&, const QString& m) {
+            if (t == QtWarningMsg && m.contains("video backend unavailable")) sawUnavailable = true;
+        });
+    {
+        auto obj = makeObject();
+        QVERIFY(obj->initialized());
+    }
+    qInstallMessageHandler(prev);
+    QVERIFY(! sawUnavailable);
 }
 
 QTEST_MAIN(TestMpvBackend)

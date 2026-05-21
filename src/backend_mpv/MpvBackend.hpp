@@ -32,6 +32,7 @@ class MpvObject : public QQuickFramebufferObject {
     Q_PROPERTY(bool mute READ mute WRITE setMute)
     Q_PROPERTY(QString logfile READ logfile WRITE setLogfile)
     Q_PROPERTY(int volume READ volume WRITE setVolume)
+    Q_PROPERTY(bool initialized READ initialized NOTIFY initializedChanged)
 
     friend class MpvRender;
 
@@ -50,6 +51,9 @@ public:
     };
     Q_ENUM(Status)
     Status  status() const;
+    // True only after mpv_create() AND mpv_initialize() both succeeded. QML reads
+    // this to fall back instead of presenting a black void when mpv is unavailable.
+    bool    initialized() const { return m_mpv != nullptr && m_inited_ok; }
     QUrl    source() const;
     bool    mute() const;
     QString logfile() const;
@@ -74,6 +78,7 @@ public slots:
 signals:
     void initFinished();
     void statusChanged();
+    void initializedChanged();
     void sourceChanged();
     void firstFrame();
 
@@ -81,6 +86,7 @@ private:
     bool   inited = false;
     QUrl   m_source;
     Status m_status = Stopped;
+    bool   m_inited_ok { false }; // set once mpv_initialize() succeeds
 
 private:
     mpv_handle*                m_mpv { nullptr };

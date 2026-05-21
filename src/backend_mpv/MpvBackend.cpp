@@ -124,14 +124,20 @@ int CreateMpvContex(mpv_handle* mpv, mpv_render_context** mpv_gl) {
 } // namespace
 
 bool MpvObject::command(const QVariant& params) {
-    auto* mpv       = m_mpv;
-    int   errorCode = mpv::qt::get_error(mpv::qt::command(mpv, params));
+    if (! m_mpv) {
+        qWarning() << "MpvObject::command on uninitialized mpv (video backend unavailable)";
+        return false;
+    }
+    int errorCode = mpv::qt::get_error(mpv::qt::command(m_mpv, params));
     return (errorCode >= 0);
 }
 
 bool MpvObject::setProperty(const QString& name, const QVariant& value) {
-    auto* mpv       = m_mpv;
-    int   errorCode = mpv::qt::get_error(mpv::qt::set_property(mpv, name, value));
+    if (! m_mpv) {
+        qWarning() << "MpvObject::setProperty on uninitialized mpv:" << name;
+        return false;
+    }
+    int errorCode = mpv::qt::get_error(mpv::qt::set_property(m_mpv, name, value));
     _Q_DEBUG() << "Setting property" << name << "to" << value;
     return (errorCode >= 0);
 }
@@ -140,6 +146,10 @@ QVariant MpvObject::getProperty(const QString& name, bool* ok) const {
     auto* mpv = m_mpv;
     if (ok) *ok = false;
 
+    if (! mpv) {
+        qWarning() << "MpvObject::getProperty on uninitialized mpv:" << name;
+        return QVariant();
+    }
     if (name.isEmpty()) {
         return QVariant();
     }
@@ -356,7 +366,7 @@ MpvObject::MpvObject(QQuickItem* parent)
     m_mpv = m_shared_mpv.get()->handle;
 
     if (! m_mpv) {
-        _Q_DEBUG() << "could not create mpv context";
+        qWarning() << "MpvObject: mpv_create() failed — video backend unavailable";
         return;
     }
     // All options must be set BEFORE mpv_initialize: post-init the option
@@ -368,7 +378,12 @@ MpvObject::MpvObject(QQuickItem* parent)
     mpv_set_option_string(m_mpv, "vo", "libmpv");
     mpv_set_option_string(m_mpv, "loop", "inf");
 
-    if (mpv_initialize(m_mpv) < 0) _Q_DEBUG() << "could not initialize mpv context";
+    if (mpv_initialize(m_mpv) < 0) {
+        qWarning() << "MpvObject: mpv_initialize() failed — video backend unavailable";
+        return;
+    }
+    m_inited_ok = true;
+    Q_EMIT initializedChanged();
 }
 
 MpvObject::~MpvObject() {}

@@ -25,9 +25,43 @@ TestCase {
         const ps = rig.powerSource();
         const ds = rig._find(ps, o => typeof o.connectSource === "function" && typeof o.data !== "undefined");
         verify(ds !== null);
+
+        // Discharging on battery -> reqPause true -> background.ok false.
         ds.data = { "Battery": { "Has Battery": true, "State": "Discharging", "Percent": 80 } };
         tryVerify(() => ps.reqPause === true, 2000, "PowerSource.reqPause did not engage");
         tryVerify(() => rig.background().ok === false, 2000, "background.ok did not drop on battery pause");
+
+        // Back on AC -> reqPause false -> background.ok recovers true. Proves the
+        // binding is reactive (re-evaluates on st_battery_state change), not a
+        // one-way latch — the user-visible resume-on-replug behaviour.
+        ds.data = { "Battery": { "Has Battery": true, "State": "Charging", "Percent": 80 } };
+        tryVerify(() => ps.reqPause === false, 2000, "PowerSource.reqPause did not clear on AC");
+        tryVerify(() => rig.background().ok === true, 2000, "background.ok did not recover on AC");
+
+        rig.destroy();
+    }
+
+    // ── Item 01: percent-threshold arm of reqPause through background.ok ────
+    function test_powerSource_lowPercent_pauses_via_ok() {
+        failOnWarning(/wallpaper is not defined/);
+        const rig = rigComp.createObject(tc, { screenGeometry: Qt.rect(0, 0, 1920, 1080) });
+        tryVerify(() => rig.powerSource() !== null, 2000);
+        // PauseOnBatPower stays false; only the percent threshold should drive it.
+        rig.setConfig({ PauseBatPercent: 20 });
+        const ps = rig.powerSource();
+        const ds = rig._find(ps, o => typeof o.connectSource === "function" && typeof o.data !== "undefined");
+        verify(ds !== null);
+
+        // Below threshold -> reqPause true -> ok false.
+        ds.data = { "Battery": { "Has Battery": true, "State": "Charging", "Percent": 10 } };
+        tryVerify(() => ps.reqPause === true, 2000, "low-percent reqPause did not engage");
+        tryVerify(() => rig.background().ok === false, 2000, "background.ok did not drop on low charge");
+
+        // Above threshold -> reqPause false -> ok true.
+        ds.data = { "Battery": { "Has Battery": true, "State": "Charging", "Percent": 50 } };
+        tryVerify(() => ps.reqPause === false, 2000, "reqPause did not clear above threshold");
+        tryVerify(() => rig.background().ok === true, 2000, "background.ok did not recover above threshold");
+
         rig.destroy();
     }
 

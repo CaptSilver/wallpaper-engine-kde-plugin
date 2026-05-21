@@ -257,10 +257,9 @@ Rectangle {
 
     PowerSource {
         id: powerSource
-        readonly property bool reqPause: {
-            (background.pauseOnBatPower && (st_battery_state == 'NoCharge' || st_battery_state == 'Discharging')) ||
+        readonly property bool reqPause:
+            (background.pauseOnBatPower && (st_battery_state === 'NoCharge' || st_battery_state === 'Discharging')) ||
             (background.pauseBatPercent !== 0 && st_battery_has && st_battery_percent < background.pauseBatPercent)
-        }
     }
 
     Pyext {

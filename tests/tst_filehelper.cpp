@@ -774,6 +774,49 @@ private slots:
         QCOMPARE(result.size(), 0);
     }
 
+#ifndef Q_OS_WIN
+    // Item 18: a self-referential symlink (dir/loop -> dir) must NOT cause an
+    // infinite walk. PASSING == termination (a regression hangs; the suite has a
+    // TIMEOUT so it fails loudly). The real video is listed exactly once.
+    void scanVideoFolder_symlinkLoopTerminates() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        QFile vid(d.filePath("real.mp4"));
+        QVERIFY(vid.open(QIODevice::WriteOnly));
+        vid.write("v");
+        vid.close();
+        // dir/loop -> dir  (a cycle for a FollowSymlinks walker).
+        QVERIFY(QFile::link(d.path(), d.filePath("loop")));
+
+        FileHelper   helper;
+        QVariantList result = helper.scanVideoFolder(d.path());
+        // Exactly one entry — the real video, not re-counted through the loop.
+        QCOMPARE(result.size(), 1);
+        QCOMPARE(result.first().toMap().value("name").toString(), QStringLiteral("real.mp4"));
+    }
+
+    // A symlink inside the folder pointing to an OUTSIDE dir that contains a
+    // video must NOT pull that outside video into the listing.
+    void scanVideoFolder_doesNotEscapeViaSymlink() {
+        QTemporaryDir inside, outside;
+        QVERIFY(inside.isValid());
+        QVERIFY(outside.isValid());
+        QFile out(outside.filePath("external.mp4"));
+        QVERIFY(out.open(QIODevice::WriteOnly));
+        out.write("x");
+        out.close();
+        // inside/escape -> outside
+        QVERIFY(QFile::link(outside.path(), inside.filePath("escape")));
+
+        FileHelper   helper;
+        QVariantList result = helper.scanVideoFolder(inside.path());
+        QStringList  names;
+        for (const auto& v : result) names << v.toMap().value("name").toString();
+        QVERIFY(! names.contains("external.mp4"));
+        QCOMPARE(result.size(), 0); // nothing inside except the (unfollowed) link
+    }
+#endif
+
     // ── atomicWriteJson ───────────────────────────────────────────────────────
     void atomicWriteJson_writesAndIsReReadable() {
         QTemporaryDir d;
@@ -945,6 +988,70 @@ private slots:
         // Directory itself stays valid (contents-only clear).
         QVERIFY(QFileInfo(root).exists());
     }
+
+#ifndef Q_OS_WIN
+    // Item 18 HEADLINE data-loss regression: a directory symlink INSIDE the cache
+    // that points OUTSIDE must be unlinked as a link only — clearCacheDir must NOT
+    // recurse through it and delete the target's contents.
+    void clearCacheDir_doesNotDeleteThroughEscapingDirSymlink() {
+        const QString root = cacheRootCanonical();
+        QVERIFY(! root.isEmpty());
+        const QString target = root + "/wek-test-escape";
+        QDir().mkpath(target);
+
+        // Outside dir (NOT under the cache root) holding a file that must survive.
+        QTemporaryDir outside;
+        QVERIFY(outside.isValid());
+        QFile keep(outside.filePath("keep-me.txt"));
+        QVERIFY(keep.open(QIODevice::WriteOnly));
+        keep.write("must survive");
+        keep.close();
+
+        // <target>/escape -> <outside>  (a directory symlink escaping the cache)
+        const QString link = target + "/escape";
+        QVERIFY(QFile::link(outside.path(), link));
+
+        FileHelper fh;
+        // Spec decision: an escaping directory symlink is a hard failure
+        // (qWarning + return false) — surface the misconfiguration loudly.
+        QCOMPARE(fh.clearCacheDir(target), false);
+
+        // The outside dir + its file survive; only the link's existence matters.
+        QVERIFY(QFileInfo(outside.filePath("keep-me.txt")).exists());
+        QVERIFY(QDir(outside.path()).exists());
+
+        QDir(target).removeRecursively();
+    }
+
+    // A plain (file) symlink inside the cache pointing outside is removed as a
+    // link only; the outside file survives. This branch succeeds (no escape via
+    // recursion is possible for a file symlink).
+    void clearCacheDir_removesPlainSymlinkFileWithoutTarget() {
+        const QString root = cacheRootCanonical();
+        QVERIFY(! root.isEmpty());
+        const QString target = root + "/wek-test-filelink";
+        QDir().mkpath(target);
+
+        QTemporaryDir outside;
+        QVERIFY(outside.isValid());
+        QFile ext(outside.filePath("external.txt"));
+        QVERIFY(ext.open(QIODevice::WriteOnly));
+        ext.write("survive");
+        ext.close();
+
+        const QString link = target + "/lnk";
+        QVERIFY(QFile::link(outside.filePath("external.txt"), link));
+
+        FileHelper fh;
+        QCOMPARE(fh.clearCacheDir(target), true);
+        // The link is gone; the outside file survives.
+        QVERIFY(! QFileInfo(link).isSymLink());
+        QVERIFY(! QFileInfo::exists(link));
+        QVERIFY(QFileInfo(outside.filePath("external.txt")).exists());
+
+        QDir(target).removeRecursively();
+    }
+#endif
 
     // ── writeWallpaperConfig nested QVariantMap round-trip ─────────────────
     // SceneScript user properties are arbitrary JSON objects; the config

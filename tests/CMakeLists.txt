@@ -89,6 +89,9 @@ if(COVERAGE)
 endif()
 
 add_test(NAME tst_filehelper COMMAND tst_filehelper -v2)
+# A scanVideoFolder symlink-loop regression would hang; cap the suite so it
+# fails loudly (TIMEOUT) instead of wedging CI/preflight.
+set_tests_properties(tst_filehelper PROPERTIES TIMEOUT 120)
 
 # ── MprisMonitor color extraction tests ───────────────────────────────────────
 find_package(Qt6 COMPONENTS Gui Network DBus Quick QUIET)

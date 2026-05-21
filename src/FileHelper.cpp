@@ -323,7 +323,38 @@ bool FileHelper::clearCacheDir(const QString& path) {
     const QFileInfoList entries =
         dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden);
     for (const QFileInfo& fi : entries) {
+        if (fi.isSymLink()) {
+            // A symlink to a DIRECTORY whose target escapes the cache is the
+            // dangerous case — recursing through it would delete the target's
+            // contents — so refuse loudly rather than guess. Internal symlinks and
+            // file symlinks are safe to unlink as a link (never followed). Note
+            // isDir() follows the link, so it is true for a directory symlink.
+            if (fi.isDir()) {
+                const QString tgt = fi.canonicalFilePath();
+                if (tgt.isEmpty() || ! isUnderRoot(tgt, cacheRoot)) {
+                    qWarning() << "FileHelper::clearCacheDir refused escaping directory symlink:"
+                               << fi.absoluteFilePath() << "->" << fi.symLinkTarget();
+                    return false;
+                }
+            }
+            // Unlink the link only — never follow it. QFile::remove on a symlink
+            // unlinks the link, not the target.
+            if (! QFile::remove(fi.absoluteFilePath())) {
+                qWarning() << "FileHelper::clearCacheDir failed to unlink" << fi.absoluteFilePath();
+                return false;
+            }
+            continue;
+        }
         if (fi.isDir()) {
+            // Defense in depth: confirm the real dir's canonical target is still
+            // under cacheRoot before recursing (a TOCTOU-swapped entry, bind
+            // mount, or junction can't escape). Reuses the isUnderRoot belt.
+            const QString entryCanon = QFileInfo(fi.absoluteFilePath()).canonicalFilePath();
+            if (entryCanon.isEmpty() || ! isUnderRoot(entryCanon, cacheRoot)) {
+                qWarning() << "FileHelper::clearCacheDir refused entry outside cache root:"
+                           << fi.absoluteFilePath();
+                return false;
+            }
             QDir sub(fi.absoluteFilePath());
             if (! sub.removeRecursively()) {
                 qWarning() << "FileHelper::clearCacheDir failed on" << fi.absoluteFilePath();
@@ -408,9 +439,11 @@ QVariantList FileHelper::scanVideoFolder(const QString& path) {
     QDir                     root(path);
     if (! root.exists()) return out;
 
-    QDirIterator it(root.absolutePath(),
-                    QDir::Files | QDir::NoDotAndDotDot,
-                    QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
+    // No FollowSymlinks: matches getDirSize and keeps the scan inside the chosen
+    // folder — a symlink to an outside directory must not pull external files
+    // into the listing (and guards against following a dir/a -> dir self-loop).
+    QDirIterator it(
+        root.absolutePath(), QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
     while (it.hasNext()) {
         const QString   full = it.next();
         const QFileInfo fi(full);

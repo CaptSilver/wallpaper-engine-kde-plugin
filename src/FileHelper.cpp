@@ -27,6 +27,33 @@ namespace
 static bool isUnderRoot(const QString& canon, const QString& root) {
     return canon == root || canon.startsWith(root + QLatin1Char('/'));
 }
+
+// Find the index just past the closing '>' of the first real <head start tag
+// that is NOT inside an HTML comment. Returns -1 when there is no usable head.
+// Attribute-tolerant (matches `<head lang="en">`), case-insensitive,
+// allocation-free, no regex.
+static int headInsertPos(const QString& html) {
+    int searchFrom = 0;
+    while (true) {
+        const int lt = html.indexOf(QStringLiteral("<head"), searchFrom, Qt::CaseInsensitive);
+        if (lt < 0) return -1;
+        // Reject "<header"/"<heading": the char after "<head" must be '>',
+        // whitespace, or '/'. (When "<head" is at the very end, treat as '>'.)
+        const QChar after = (lt + 5 < html.size()) ? html.at(lt + 5) : QChar(u'>');
+        const bool  isHeadTag =
+            after == QLatin1Char('>') || after.isSpace() || after == QLatin1Char('/');
+        // Reject a match inside a comment: the nearest "<!--" before lt has no
+        // "-->" between it and lt.
+        const int  cOpen     = html.lastIndexOf(QStringLiteral("<!--"), lt);
+        const int  cClose    = (cOpen >= 0) ? html.indexOf(QStringLiteral("-->"), cOpen) : -1;
+        const bool inComment = cOpen >= 0 && (cClose < 0 || cClose > lt);
+        if (isHeadTag && ! inComment) {
+            const int gt = html.indexOf(QLatin1Char('>'), lt);
+            if (gt >= 0) return gt + 1; // just past the '>' of <head ...>
+        }
+        searchFrom = lt + 5;
+    }
+}
 } // namespace
 
 FileHelper::FileHelper(QObject* parent): QObject(parent) {
@@ -104,14 +131,22 @@ QString FileHelper::patchedHtml(const QString& path) {
         "})();"
         "</script>");
 
-    // Insert after <head> so it runs before any other scripts
-    int idx = html.indexOf(QLatin1String("<head>"), 0, Qt::CaseInsensitive);
-    if (idx >= 0) {
-        html.insert(idx + 6, patch);
-    } else {
-        // No <head> tag — prepend to the document
-        html.prepend(patch);
+    // Insert after the real <head ...> tag so the shim runs before any other
+    // scripts. Attribute-tolerant + comment-aware (untrusted third-party web
+    // wallpapers ship arbitrary HTML).
+    int pos = headInsertPos(html);
+    if (pos < 0) {
+        // No usable <head>. Fall back to after <html ...>, then after the
+        // doctype, else prepend — but NEVER before <!DOCTYPE> (quirks mode).
+        const int htmlOpen = html.indexOf(QStringLiteral("<html"), 0, Qt::CaseInsensitive);
+        const int htmlGt   = htmlOpen >= 0 ? html.indexOf(QLatin1Char('>'), htmlOpen) : -1;
+        const int docOpen  = html.indexOf(QStringLiteral("<!doctype"), 0, Qt::CaseInsensitive);
+        const int docGt    = docOpen >= 0 ? html.indexOf(QLatin1Char('>'), docOpen) : -1;
+        pos                = htmlGt >= 0 ? htmlGt + 1 : (docGt >= 0 ? docGt + 1 : 0);
+        qWarning() << "FileHelper::patchedHtml: no clean <head>; inserting shim at offset" << pos
+                   << "(after <html>/doctype or prepend)";
     }
+    html.insert(pos, patch);
 
     return html;
 }

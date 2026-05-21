@@ -558,6 +558,94 @@ private slots:
         QVERIFY(result.contains("SecurityError"));
     }
 
+    // ── Item 16: adversarial patchedHtml head injection ───────────────────────
+    // Attributed <head> (Angular/framework scaffolds — the very pages the
+    // SecurityError shim targets). The literal "<head>" is absent, so the old
+    // code prepended BEFORE <!DOCTYPE> → quirks mode. The shim must land after
+    // the '>' of <head lang="en"> and the doctype must still be first.
+    void patchedHtml_attributedHead_insertsInsideHead() {
+        QString path = m_tmp.filePath("attrhead.html");
+        QFile   f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("<!DOCTYPE html><html><head lang=\"en\"><title>x</title></head>"
+                "<body></body></html>");
+        f.close();
+
+        FileHelper helper;
+        QString    result = helper.patchedHtml(path);
+
+        // Doctype is still first → no quirks mode.
+        QVERIFY(result.startsWith("<!DOCTYPE html>"));
+        const int doctypeIdx = result.indexOf("<!DOCTYPE html>");
+        const int headTagIdx = result.indexOf("<head lang=\"en\">");
+        const int headClose  = headTagIdx + QString("<head lang=\"en\">").length();
+        const int scriptIdx  = result.indexOf("<script>");
+        // Script is after the doctype...
+        QVERIFY(scriptIdx > doctypeIdx);
+        // ...and exactly after the '>' of the attributed head tag.
+        QCOMPARE(scriptIdx, headClose);
+        // <title> (the head's own content) comes AFTER the injected script.
+        QVERIFY(result.indexOf("<title>x</title>") > scriptIdx);
+        QVERIFY(result.contains("history.replaceState"));
+    }
+
+    // A <head> inside a comment is a decoy; the shim must land in the REAL head.
+    void patchedHtml_headInComment_skipsDecoy() {
+        QString path = m_tmp.filePath("commenthead.html");
+        QFile   f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("<!DOCTYPE html><!-- <head> --><html><head><title>real</title></head>"
+                "<body></body></html>");
+        f.close();
+
+        FileHelper helper;
+        QString    result = helper.patchedHtml(path);
+        // The decoy "<head>" is inside the comment; the real one is after <html>.
+        const int commentEnd = result.indexOf("-->");
+        const int scriptIdx  = result.indexOf("<script>");
+        QVERIFY(scriptIdx > commentEnd); // shim is past the comment, in the real head
+        // And it precedes the real head's <title>.
+        QVERIFY(result.indexOf("<title>real</title>") > scriptIdx);
+    }
+
+    // <header> (and <heading>) must NOT match the <head start-tag scan; with no
+    // real <head>, fall back after <html>/doctype (never before the doctype).
+    void patchedHtml_headerTag_notMatched() {
+        QString path = m_tmp.filePath("headertag.html");
+        QFile   f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("<!DOCTYPE html><html><body><header>nav</header></body></html>");
+        f.close();
+
+        FileHelper helper;
+        QString    result = helper.patchedHtml(path);
+        QVERIFY(result.startsWith("<!DOCTYPE html>")); // doctype still first
+        const int htmlIdx   = result.indexOf("<html>");
+        const int scriptIdx = result.indexOf("<script>");
+        const int headerIdx = result.indexOf("<header>");
+        // Fell back to just after <html>, NOT into/at <header>.
+        QCOMPARE(scriptIdx, htmlIdx + QString("<html>").length());
+        QVERIFY(scriptIdx < headerIdx);
+    }
+
+    // No <head> at all, but a doctype present → insert after the doctype,
+    // never before it.
+    void patchedHtml_noHeadButDoctype_insertsAfterDoctype() {
+        QString path = m_tmp.filePath("nohead_doctype.html");
+        QFile   f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        // No <html> tag either, so the fallback must use the doctype.
+        f.write("<!DOCTYPE html><body>hi</body>");
+        f.close();
+
+        FileHelper helper;
+        QString    result = helper.patchedHtml(path);
+        QVERIFY(result.startsWith("<!DOCTYPE html>"));
+        const int doctypeEnd =
+            result.indexOf("<!DOCTYPE html>") + QString("<!DOCTYPE html>").length();
+        QCOMPARE(result.indexOf("<script>"), doctypeEnd);
+    }
+
     // ── readActiveBindings ───────────────────────────────────────────────────
     void bindings_readNonExistent_returnsEmpty() {
         FileHelper helper;

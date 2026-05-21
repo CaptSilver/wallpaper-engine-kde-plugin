@@ -47,8 +47,14 @@ Item {
 
     function get_dir_size(path, depth) {
         if (depth === undefined) depth = 3;
-        const size = fileHelper.getDirSize(path, depth);
-        return _makePromise(size);
+        // Async: requestDirSize runs the walk off the GUI thread and resolves via
+        // onDirSizeReady, so a multi-GB cache tree never blocks the compositor.
+        return new Promise((resolve) => {
+            if (! root._dirSizeWaiters[path])
+                root._dirSizeWaiters[path] = [];
+            root._dirSizeWaiters[path].push(resolve);
+            fileHelper.requestDirSize(path, depth);
+        });
     }
 
     function get_folder_list(path, opt) {
@@ -91,6 +97,9 @@ Item {
     // {resolve, reject, outPath} callbacks waiting on the next thumbnailReady
     // signal matching that videoPath.
     property var _thumbWaiters: ({})
+    // Pending getDirSize requests keyed by absolute path. Each entry is an array
+    // of resolve callbacks waiting on the next dirSizeReady for that path.
+    property var _dirSizeWaiters: ({})
 
     function generate_thumbnail(videoPath, outPath, atSeconds) {
         return new Promise((resolve, reject) => {
@@ -111,6 +120,11 @@ Item {
                 if (ok) w.resolve(outPath);
                 else w.reject(new Error("thumbnail generation failed: " + videoPath));
             }
+        }
+        function onDirSizeReady(path, bytes) {
+            const waiters = root._dirSizeWaiters[path] || [];
+            delete root._dirSizeWaiters[path];
+            for (let i = 0; i < waiters.length; i++) waiters[i](bytes);
         }
     }
 }

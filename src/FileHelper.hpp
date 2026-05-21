@@ -21,7 +21,19 @@ public:
     Q_INVOKABLE QByteArray   readFile(const QString& path);
     Q_INVOKABLE QString      qwebChannelSource();
     Q_INVOKABLE QString      patchedHtml(const QString& path);
+    // Synchronous, recursive directory byte total. `depth` semantics:
+    //   depth <= 0  => UNLIMITED recursion (historical sentinel — note this is the
+    //                  OPPOSITE of "current dir only"; kept for the public contract);
+    //   depth == 1  => top-level files only;
+    //   depth == N  => files up to N directory levels below `path`.
+    // Hidden (dotfile) bytes ARE counted. Runs on the CALLING thread — for the
+    // GUI/QML thread prefer requestDirSize() on large trees.
     Q_INVOKABLE qint64       getDirSize(const QString& path, int depth = 3);
+    // Asynchronous getDirSize: dispatches the (pure) walk on QThreadPool and emits
+    // dirSizeReady(path, bytes) on the GUI thread when done, so a QML cache-size
+    // readout never blocks the compositor on a multi-GB tree. Mirrors the
+    // generateThumbnail async idiom.
+    Q_INVOKABLE void         requestDirSize(const QString& path, int depth = 3);
     Q_INVOKABLE QVariantMap  getFolderList(const QString& path, const QVariantMap& opt = {});
     Q_INVOKABLE QVariantList scanVideoFolder(const QString& path);
 
@@ -54,6 +66,7 @@ public:
 
 signals:
     void thumbnailReady(const QString& videoPath, const QString& outPath, bool ok);
+    void dirSizeReady(const QString& path, qint64 bytes);
 
 private:
     QString configDir() const;

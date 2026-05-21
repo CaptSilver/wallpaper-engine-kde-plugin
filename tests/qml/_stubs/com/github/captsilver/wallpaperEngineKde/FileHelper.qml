@@ -9,6 +9,7 @@ QtObject {
     property var _wallpaperConfigReturns: ({})
 
     signal thumbnailReady(string videoPath, string outPath, bool ok)
+    signal dirSizeReady(string path, real bytes)
 
     function readFile(path)              { return _readReturns; }
     function patchedHtml(path)           { return _patchedHtmlReturns; }
@@ -28,5 +29,10 @@ QtObject {
         // Fire the signal synchronously in the stub so tests can resolve
         // promises immediately without a QSignalSpy/wait.
         Qt.callLater(() => stub.thumbnailReady(videoPath, outPath, true));
+    }
+    // Fire dirSizeReady via callLater so get_dir_size's promise resolves without
+    // a QSignalSpy/wait (mirrors the generateThumbnail stub).
+    function requestDirSize(path, depth) {
+        Qt.callLater(() => stub.dirSizeReady(path, 0));
     }
 }

@@ -52,8 +52,13 @@ TestCase {
 
     function test_get_dir_size_defaultsDepthToThree() {
         let observed = null;
-        pyext.get_dir_size("/x").then(v => { observed = v; });
-        compare(observed, 0); // stub returns 0
+        const p = pyext.get_dir_size("/x"); // depth defaults to 3
+        verify(p && typeof p.then === "function"); // real Promise now
+        p.then(v => { observed = v; });
+        // Stub fires dirSizeReady(path, 0) via Qt.callLater — poll like the
+        // generate_thumbnail resolves-on-signal test.
+        tryVerify(() => observed === 0, 2000);
+        compare(observed, 0);
     }
 
     function test_get_folder_list_defaultsOptToEmpty() {

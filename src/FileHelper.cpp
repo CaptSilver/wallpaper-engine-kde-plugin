@@ -152,45 +152,49 @@ QString FileHelper::patchedHtml(const QString& path) {
 }
 
 qint64 FileHelper::getDirSize(const QString& path, int depth) {
-    qint64 totalSize = 0;
-    QDir   dir(path);
+    // depth <= 0  => unlimited recursion (historical sentinel; see FileHelper.hpp).
+    // depth == N  => count files up to N directory levels below `path`
+    //                (depth==1 = top-level files only).
+    // One unified QDirIterator walk replaces the former two-branch impl
+    // (unlimited-vs-hand-rolled-lambda). QDir::Hidden makes hidden files count
+    // consistently (the old unlimited branch counted them via bare QDir::Files).
+    QDir root(path);
+    if (! root.exists()) return 0;
+    const QString base = root.absolutePath();
+    const QDir    baseDir(base);
 
-    if (! dir.exists()) {
-        return 0;
-    }
-
-    if (depth <= 0) {
-        // Recursive with no depth limit
-        QDirIterator it(path, QDir::Files, QDirIterator::Subdirectories);
-        while (it.hasNext()) {
-            it.next();
-            totalSize += it.fileInfo().size();
+    qint64       total = 0;
+    QDirIterator it(base,
+                    QDir::Files | QDir::Hidden | QDir::NoDotAndDotDot,
+                    depth <= 0   ? QDirIterator::Subdirectories
+                    : depth == 1 ? QDirIterator::NoIteratorFlags
+                                 : QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        it.next();
+        if (depth > 1) {
+            // Reject files deeper than `depth` levels. A top-level file's relative
+            // path has 0 separators (depth 1); each extra separator is one level.
+            const QString rel        = baseDir.relativeFilePath(it.filePath());
+            const int     fileLevels = rel.count(QLatin1Char('/')) + 1;
+            if (fileLevels > depth) continue;
         }
-    } else {
-        std::function<qint64(const QString&, int)> calcSize = [&](const QString& dirPath,
-                                                                  int currentDepth) -> qint64 {
-            if (currentDepth > depth) return 0;
-
-            qint64 size = 0;
-            QDir   d(dirPath);
-
-            for (const QFileInfo& info : d.entryInfoList(QDir::Files | QDir::NoDotAndDotDot)) {
-                size += info.size();
-            }
-
-            if (currentDepth < depth) {
-                for (const QFileInfo& info : d.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) {
-                    size += calcSize(info.absoluteFilePath(), currentDepth + 1);
-                }
-            }
-
-            return size;
-        };
-
-        totalSize = calcSize(path, 1);
+        total += it.fileInfo().size();
     }
+    return total;
+}
 
-    return totalSize;
+void FileHelper::requestDirSize(const QString& path, int depth) {
+    // Capture by value; the pure getDirSize touches no instance state, so it is
+    // safe to call on the pool thread. Only the emit marshals back to the GUI.
+    QThreadPool::globalInstance()->start([this, path, depth]() {
+        const qint64 bytes = getDirSize(path, depth);
+        QMetaObject::invokeMethod(
+            this,
+            [this, path, bytes]() {
+                emit dirSizeReady(path, bytes);
+            },
+            Qt::QueuedConnection);
+    });
 }
 
 QVariantMap FileHelper::getFolderList(const QString& path, const QVariantMap& opt) {

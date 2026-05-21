@@ -163,6 +163,50 @@ private slots:
         QCOMPARE(helper.getDirSize(d.path(), 0), qint64(500));
     }
 
+    // Item 13: hidden (dotfile) bytes are counted. The old unlimited branch used
+    // bare QDir::Files (which DOES include hidden files), so the unified walk must
+    // keep counting them — locks the QDir::Hidden choice.
+    void getDirSize_hiddenFilesCounted() {
+        QTemporaryDir d;
+        QVERIFY(writeBytes(d.filePath("visible.txt"), 100));
+        QVERIFY(writeBytes(d.filePath(".hidden"), 40));
+        FileHelper helper;
+        QCOMPARE(helper.getDirSize(d.path(), 1), qint64(140)); // depth=1 incl. .hidden
+    }
+
+    // One unified depth-bounded path: a 3-level tree counts only up to `depth`.
+    void getDirSize_depthBoundExcludesDeeper() {
+        QTemporaryDir d;
+        QVERIFY(writeBytes(d.filePath("root.txt"), 10));
+        QDir(d.path()).mkdir("l1");
+        QVERIFY(writeBytes(d.filePath("l1/a.txt"), 20));
+        QDir(d.filePath("l1")).mkdir("l2");
+        QVERIFY(writeBytes(d.filePath("l1/l2/b.txt"), 40));
+        FileHelper helper;
+        QCOMPARE(helper.getDirSize(d.path(), 1), qint64(10)); // only root.txt
+        QCOMPARE(helper.getDirSize(d.path(), 2), qint64(30)); // root + l1
+        QCOMPARE(helper.getDirSize(d.path(), 3), qint64(70)); // + l1/l2
+    }
+
+    // The async wrapper dispatches the walk off-thread and emits dirSizeReady on
+    // the GUI thread. Proves async result == sync result and the emit is queued.
+    void requestDirSize_emitsDirSizeReady() {
+        QTemporaryDir d;
+        QVERIFY(writeBytes(d.filePath("a.txt"), 100));
+        QDir(d.path()).mkdir("sub");
+        QVERIFY(writeBytes(d.filePath("sub/b.txt"), 50));
+
+        FileHelper   helper;
+        const qint64 expected = helper.getDirSize(d.path(), 3); // 150 (root + sub)
+
+        QSignalSpy spy(&helper, &FileHelper::dirSizeReady);
+        helper.requestDirSize(d.path(), 3);
+        QCOMPARE(spy.count(), 0); // async: nothing emitted synchronously
+        QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 5000);
+        QCOMPARE(spy.at(0).at(0).toString(), d.path());
+        QCOMPARE(spy.at(0).at(1).toLongLong(), expected);
+    }
+
     // ── getFolderList ─────────────────────────────────────────────────────────
     void getFolderList_nonExistentDirNoFallback() {
         FileHelper  helper;

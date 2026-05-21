@@ -2,7 +2,11 @@
 
 #include <QDBusInterface>
 #include <QDBusMessage>
+#include <QDBusPendingCall>
+#include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
 #include <QDBusReply>
+#include <QDBusVariant>
 #include <QImage>
 #include <QNetworkReply>
 #include <QSet>
@@ -122,27 +126,75 @@ void MprisMonitor::ensureEngaged() {
 }
 
 void MprisMonitor::findActivePlayer() {
-    QDBusMessage msg = QDBusMessage::createMethodCall(
+    // Async fan-out/fan-in.  Start a new scan generation so any late replies
+    // from a previous (now-superseded) scan are ignored — e.g. when an active
+    // player vanishes and re-triggers this while an earlier scan is still in
+    // flight.
+    const quint64 gen = ++m_scanGeneration;
+    m_scanPending     = 0;
+    m_scanBest.clear();
+    m_scanFoundPlaying = false;
+
+    QDBusMessage listMsg = QDBusMessage::createMethodCall(
         "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "ListNames");
-    QDBusReply<QStringList> reply = m_sessionBus.call(msg);
-    if (! reply.isValid()) return;
+    auto* listWatcher = new QDBusPendingCallWatcher(m_sessionBus.asyncCall(listMsg), this);
+    connect(listWatcher,
+            &QDBusPendingCallWatcher::finished,
+            this,
+            [this, gen](QDBusPendingCallWatcher* w) {
+                w->deleteLater();
+                if (gen != m_scanGeneration) return; // superseded by a newer scan
+                QDBusPendingReply<QStringList> reply = *w;
+                if (! reply.isValid()) return;
 
-    QString bestService;
-    for (const QString& name : reply.value()) {
-        if (! name.startsWith(MPRIS_PREFIX)) continue;
-        // Prefer a player that's currently playing
-        QDBusInterface       iface(name, MPRIS_PATH, DBUS_PROPS_IF, m_sessionBus);
-        QDBusReply<QVariant> statusReply = iface.call("Get", MPRIS_PLAYER_IF, "PlaybackStatus");
-        if (statusReply.isValid() && statusReply.value().toString() == "Playing") {
-            bestService = name;
-            break;
-        }
-        if (bestService.isEmpty()) bestService = name;
-    }
+                // Collect MPRIS-prefixed names, preserving ListNames order so the
+                // first-seen preference (when nothing is "Playing") is stable
+                // regardless of async reply arrival order.
+                QStringList players;
+                for (const QString& name : reply.value()) {
+                    if (name.startsWith(MPRIS_PREFIX)) players << name;
+                }
+                if (players.isEmpty()) return;
 
-    if (! bestService.isEmpty()) {
-        connectToPlayer(bestService);
-    }
+                m_scanPending   = players.size();
+                m_scanBestIndex = -1;
+                for (int i = 0; i < players.size(); ++i) {
+                    const QString name = players.at(i);
+                    QDBusMessage  statusMsg =
+                        QDBusMessage::createMethodCall(name, MPRIS_PATH, DBUS_PROPS_IF, "Get");
+                    statusMsg << QString(MPRIS_PLAYER_IF) << QStringLiteral("PlaybackStatus");
+                    auto* sw = new QDBusPendingCallWatcher(m_sessionBus.asyncCall(statusMsg), this);
+                    connect(sw,
+                            &QDBusPendingCallWatcher::finished,
+                            this,
+                            [this, gen, i, name](QDBusPendingCallWatcher* sw2) {
+                                sw2->deleteLater();
+                                if (gen != m_scanGeneration) return; // superseded
+                                QDBusPendingReply<QVariant> statusReply = *sw2;
+                                const bool                  playing     = statusReply.isValid() &&
+                                                     statusReply.value().toString() == "Playing";
+                                // Match the old synchronous preference exactly: the
+                                // lowest-ListNames-index "Playing" player wins; with
+                                // nothing playing, the lowest-index player wins. A
+                                // playing candidate always beats a non-playing one;
+                                // among equal playing-ness, the lower index wins.
+                                // Tracking by index keeps this stable no matter what
+                                // order the async replies arrive in.
+                                const bool better =
+                                    m_scanBestIndex < 0 || (playing && ! m_scanFoundPlaying) ||
+                                    (playing == m_scanFoundPlaying && i < m_scanBestIndex);
+                                if (better) {
+                                    m_scanBestIndex    = i;
+                                    m_scanBest         = name;
+                                    m_scanFoundPlaying = playing;
+                                }
+
+                                if (--m_scanPending <= 0 && ! m_scanBest.isEmpty()) {
+                                    connectToPlayer(m_scanBest);
+                                }
+                            });
+                }
+            });
 }
 
 void MprisMonitor::connectToPlayer(const QString& service) {
@@ -187,50 +239,88 @@ void MprisMonitor::disconnectFromPlayer() {
     }
 }
 
+void MprisMonitor::applyPlaybackStatus(const QString& status) {
+    int state = toPlaybackState(status);
+    if (state != m_playbackState) {
+        m_playbackState = state;
+        emit playbackStateChanged(state);
+        if (state == 1)
+            m_positionTimer.start();
+        else
+            m_positionTimer.stop();
+    }
+}
+
+void MprisMonitor::applyMetadata(const QVariantMap& meta) {
+    auto md    = parseMprisMetadata(meta);
+    m_duration = md.duration;
+    emit propertiesChanged(md.title, md.artist, md.album, md.albumArtist, md.genres, m_duration);
+    if (md.artUrl != m_lastArtUrl || ! m_artUrlEverProcessed) {
+        m_lastArtUrl          = md.artUrl;
+        m_artUrlEverProcessed = true;
+        processArtUrl(md.artUrl);
+    }
+}
+
+// Issue an async org.freedesktop.DBus.Properties.Get(MPRIS_PLAYER_IF, prop)
+// against the active player. The reply is delivered on a later event-loop turn
+// (so a hung player never blocks the GUI thread) and routed to `onReply` with
+// the unwrapped property QVariant. Returns the watcher (parented to `this`, so
+// it self-cleans) or nullptr when there's no active service.
+template<class Fn>
+static QDBusPendingCallWatcher*
+asyncGetProperty(QObject* parent, QDBusConnection& bus, const QString& service, const QString& path,
+                 const QString& iface, const QString& prop, Fn onReply) {
+    if (service.isEmpty()) return nullptr;
+    QDBusMessage msg = QDBusMessage::createMethodCall(service, path, DBUS_PROPS_IF, "Get");
+    msg << iface << prop;
+    auto* watcher = new QDBusPendingCallWatcher(bus.asyncCall(msg), parent);
+    QObject::connect(
+        watcher, &QDBusPendingCallWatcher::finished, parent, [onReply](QDBusPendingCallWatcher* w) {
+            QDBusPendingReply<QVariant> reply = *w;
+            if (reply.isValid()) onReply(reply.value());
+            w->deleteLater();
+        });
+    return watcher;
+}
+
 void MprisMonitor::fetchAllProperties() {
-    QDBusInterface iface(m_activeService, MPRIS_PATH, DBUS_PROPS_IF, m_sessionBus);
+    const QString service = m_activeService;
 
-    // PlaybackStatus
-    {
-        QDBusReply<QVariant> r = iface.call("Get", MPRIS_PLAYER_IF, "PlaybackStatus");
-        if (r.isValid()) {
-            int state = toPlaybackState(r.value().toString());
-            if (state != m_playbackState) {
-                m_playbackState = state;
-                emit playbackStateChanged(state);
-                if (state == 1)
-                    m_positionTimer.start();
-                else
-                    m_positionTimer.stop();
-            }
-        }
-    }
+    // PlaybackStatus — async; the reply may arrive after a later event-loop turn.
+    asyncGetProperty(this,
+                     m_sessionBus,
+                     service,
+                     MPRIS_PATH,
+                     MPRIS_PLAYER_IF,
+                     "PlaybackStatus",
+                     [this](const QVariant& v) {
+                         applyPlaybackStatus(v.toString());
+                     });
 
-    // Metadata
-    {
-        QDBusReply<QVariant> r = iface.call("Get", MPRIS_PLAYER_IF, "Metadata");
-        if (r.isValid()) {
-            QVariantMap meta = qdbus_cast<QVariantMap>(r.value().value<QDBusArgument>());
-            auto        md   = parseMprisMetadata(meta);
-            m_duration       = md.duration;
-            emit propertiesChanged(
-                md.title, md.artist, md.album, md.albumArtist, md.genres, m_duration);
-            if (md.artUrl != m_lastArtUrl || ! m_artUrlEverProcessed) {
-                m_lastArtUrl          = md.artUrl;
-                m_artUrlEverProcessed = true;
-                processArtUrl(md.artUrl);
-            }
-        }
-    }
+    // Metadata — async; unmarshal the QDBusArgument before handing to the
+    // shared applyMetadata helper.
+    asyncGetProperty(this,
+                     m_sessionBus,
+                     service,
+                     MPRIS_PATH,
+                     MPRIS_PLAYER_IF,
+                     "Metadata",
+                     [this](const QVariant& v) {
+                         applyMetadata(qdbus_cast<QVariantMap>(v.value<QDBusArgument>()));
+                     });
 
-    // Position
-    {
-        QDBusReply<QVariant> r = iface.call("Get", MPRIS_PLAYER_IF, "Position");
-        if (r.isValid()) {
-            m_lastPosition = r.value().toLongLong() / 1e6;
-            emit timelineChanged(m_lastPosition, m_duration, m_playbackState);
-        }
-    }
+    // Position — async; emits its own timelineChanged when it lands.
+    asyncGetProperty(this,
+                     m_sessionBus,
+                     service,
+                     MPRIS_PATH,
+                     MPRIS_PLAYER_IF,
+                     "Position",
+                     [this](const QVariant& v) {
+                         m_lastPosition = v.toLongLong() / 1e6;
+                         emit timelineChanged(m_lastPosition, m_duration, m_playbackState);
+                     });
 }
 
 void MprisMonitor::handlePropertiesChanged(const QString& interface, const QVariantMap& changed,
@@ -238,22 +328,15 @@ void MprisMonitor::handlePropertiesChanged(const QString& interface, const QVari
     if (interface != MPRIS_PLAYER_IF) return;
 
     if (changed.contains("PlaybackStatus")) {
-        int state = toPlaybackState(changed["PlaybackStatus"].toString());
-        if (state != m_playbackState) {
-            m_playbackState = state;
-            emit playbackStateChanged(state);
-            if (state == 1)
-                m_positionTimer.start();
-            else
-                m_positionTimer.stop();
-        }
+        applyPlaybackStatus(changed["PlaybackStatus"].toString());
     }
 
     if (changed.contains("Metadata")) {
         // handlePropertiesChanged may be invoked from tests with a plain
         // QVariantMap wrapper (not a real QDBusArgument).  Handle both: if it's
         // a QDBusArgument, unmarshal via qdbus_cast; otherwise take the map
-        // directly.
+        // directly.  The unmarshalled map is then handed to applyMetadata,
+        // shared with the fetchAllProperties async-reply path.
         QVariantMap     meta;
         const QVariant& v = changed["Metadata"];
         if (v.canConvert<QDBusArgument>()) {
@@ -262,20 +345,13 @@ void MprisMonitor::handlePropertiesChanged(const QString& interface, const QVari
         if (meta.isEmpty()) {
             meta = v.toMap();
         }
-        auto md    = parseMprisMetadata(meta);
-        m_duration = md.duration;
-        emit propertiesChanged(
-            md.title, md.artist, md.album, md.albumArtist, md.genres, m_duration);
-        if (md.artUrl != m_lastArtUrl || ! m_artUrlEverProcessed) {
-            m_lastArtUrl          = md.artUrl;
-            m_artUrlEverProcessed = true;
-            processArtUrl(md.artUrl);
-        }
+        applyMetadata(meta);
     }
 }
 
 void MprisMonitor::handleNameOwnerChanged(const QString& name, const QString& oldOwner,
                                           const QString& newOwner) {
+    Q_UNUSED(oldOwner)
     if (! name.startsWith(MPRIS_PREFIX)) return;
 
     if (! newOwner.isEmpty() && m_activeService.isEmpty()) {
@@ -290,12 +366,24 @@ void MprisMonitor::handleNameOwnerChanged(const QString& name, const QString& ol
 
 void MprisMonitor::pollPosition() {
     if (m_activeService.isEmpty()) return;
-    QDBusInterface       iface(m_activeService, MPRIS_PATH, DBUS_PROPS_IF, m_sessionBus);
-    QDBusReply<QVariant> r = iface.call("Get", MPRIS_PLAYER_IF, "Position");
-    if (r.isValid()) {
-        m_lastPosition = r.value().toLongLong() / 1e6;
-        emit timelineChanged(m_lastPosition, m_duration, m_playbackState);
-    }
+    // Skip if a previous poll is still in flight — a slow/hung player must not
+    // let the 1Hz timer pile up overlapping Get(Position) calls.
+    if (m_pollPending) return;
+
+    QDBusMessage msg =
+        QDBusMessage::createMethodCall(m_activeService, MPRIS_PATH, DBUS_PROPS_IF, "Get");
+    msg << QString(MPRIS_PLAYER_IF) << QStringLiteral("Position");
+    m_pollPending = true;
+    auto* watcher = new QDBusPendingCallWatcher(m_sessionBus.asyncCall(msg), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher* w) {
+        m_pollPending                     = false;
+        QDBusPendingReply<QVariant> reply = *w;
+        if (reply.isValid()) {
+            m_lastPosition = reply.value().toLongLong() / 1e6;
+            emit timelineChanged(m_lastPosition, m_duration, m_playbackState);
+        }
+        w->deleteLater();
+    });
 }
 
 void MprisMonitor::processArtUrl(const QString& artUrl) {

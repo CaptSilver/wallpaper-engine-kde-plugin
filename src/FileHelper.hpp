@@ -47,8 +47,10 @@ public:
 
     // Atomic JSON write: encode `doc` to UTF-8, write to <path>.tmp, flush,
     // then rename(2) to `path`. Returns false on any failure; the temp file
-    // is removed on failure to avoid clutter.
-    bool atomicWriteJson(const QString& path, const QJsonDocument& doc);
+    // is removed on failure to avoid clutter. Uses no instance state — static
+    // so callers (e.g. PlaylistManager::persist) need not construct a throwaway
+    // FileHelper (whose ctor mkpaths the wallpaper config dir as a side effect).
+    static bool atomicWriteJson(const QString& path, const QJsonDocument& doc);
 
 signals:
     void thumbnailReady(const QString& videoPath, const QString& outPath, bool ok);

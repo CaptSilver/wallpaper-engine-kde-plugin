@@ -101,8 +101,9 @@ TestCase {
         let resolvedWith = null;
         const p = pyext.generate_thumbnail("/x.mp4", "/tmp/out.jpg", 0.5);
         p.then((outPath) => { resolvedWith = outPath; });
-        // Stub's Qt.callLater fires the signal — wait one event loop turn.
-        wait(50);
+        // Stub's Qt.callLater fires the signal — poll until the promise
+        // resolves into the local JS var (tryCompare can't poll a JS var).
+        tryVerify(() => resolvedWith === "/tmp/out.jpg", 2000);
         compare(resolvedWith, "/tmp/out.jpg");
     }
 

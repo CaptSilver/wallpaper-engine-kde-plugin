@@ -94,8 +94,9 @@ bool PlaylistManager::persist() {
 
     const QString path = configFilePath();
     QDir().mkpath(QFileInfo(path).absolutePath());
-    FileHelper helper;
-    if (! helper.atomicWriteJson(path, QJsonDocument(root))) {
+    // Call the static directly — constructing a FileHelper here would mkpath
+    // the unrelated wallpaper config dir as a ctor side effect.
+    if (! FileHelper::atomicWriteJson(path, QJsonDocument(root))) {
         emit persistFailed("write failed");
         return false;
     }

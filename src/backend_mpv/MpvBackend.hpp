@@ -7,6 +7,7 @@
 #include <QtQuick/QQuickItem>
 #include <QtQuick/QQuickFramebufferObject>
 #include <QtCore/QLoggingCategory>
+#include <atomic>
 #include <memory>
 
 #include "qthelper.hpp"
@@ -84,7 +85,10 @@ private:
 private:
     mpv_handle*                m_mpv { nullptr };
     std::shared_ptr<MpvHandle> m_shared_mpv { nullptr };
-    bool                       m_first_frame { true };
+    // Written on the GUI thread (setSource) and read+written on the Qt Quick
+    // render thread (checkAndEmitFirstFrame, via MpvRender::synchronize), so it
+    // must be atomic.  Mirrors the sibling MpvRender::m_dirty atomic style.
+    std::atomic<bool> m_first_frame { true };
 };
 } // namespace mpv
 

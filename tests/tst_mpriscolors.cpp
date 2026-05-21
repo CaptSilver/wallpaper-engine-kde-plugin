@@ -1071,30 +1071,33 @@ void TestMprisColors::findActivePlayer_picksUpRegisteredFakeService() {
     FakeMprisRegistration reg(&svc, "find_active");
     if (! reg.ok()) QSKIP("session bus or service registration unavailable in this env");
 
-    // Constructing a fresh MprisMonitor calls findActivePlayer() in the ctor,
-    // which will iterate ListNames, find our fake, call Get(PlaybackStatus),
-    // see "Playing", set bestService, then call connectToPlayer()→
-    // fetchAllProperties() (the latter exercises the PlaybackStatus / Metadata
-    // / Position valid-reply branches).  All signals fire synchronously
-    // inside the ctor — we can't observe them via QSignalSpy attached after
-    // construction.  The proof that all branches ran is that
-    // activeService() now reports our fake, which only happens via the
-    // findActivePlayer→connectToPlayer success path.
+    // engage() lazily wires up the D-Bus watch and runs findActivePlayer(),
+    // which asynchronously runs ListNames, finds our fake, fires an async
+    // Get(PlaybackStatus), sees "Playing", picks it, then calls connectToPlayer()
+    // → fetchAllProperties() (the latter exercises the async PlaybackStatus /
+    // Metadata / Position valid-reply branches).  Because the scan is now async
+    // (QDBusConnection::asyncCall + QDBusPendingCallWatcher — so a hung player
+    // can't block the GUI thread), the result lands on a later event-loop turn,
+    // so we spin the loop until activeService() resolves before asserting.
     MprisMonitor m;
+    m.engage();
+
+    // Pump the event loop so the async ListNames + per-service PlaybackStatus
+    // replies are delivered.  Bounded wait; loopback DBus resolves in well
+    // under this budget.
+    for (int i = 0; i < 100 && m.activeService().isEmpty(); ++i) QTest::qWait(20);
 
     // If the bus arbitrarily picked another already-registered MPRIS player
     // (rare in test env but possible), our fake's Get won't have been
-    // invoked.  Skip rather than fail.
+    // selected.  Skip rather than fail.
     if (m.activeService() != reg.serviceName()) {
         QSKIP("session bus already has another MPRIS player; fake not selected");
     }
 
-    // We *did* enter findActivePlayer's per-name iface.call("Get",
-    // "PlaybackStatus") for our fake (Lines 120-126 of MprisMonitor.cpp),
-    // saw "Playing", broke out, then called connectToPlayer (Line 130) →
-    // fetchAllProperties which queried PlaybackStatus / Metadata / Position
-    // (lines 174-211).  The next test (`pollPosition_withActiveService_*`)
-    // re-uses the same kind of fake to drive Position separately and
+    // The async findActivePlayer→connectToPlayer success path ran for our fake
+    // (ListNames → async Get(PlaybackStatus) → "Playing" → connectToPlayer →
+    // fetchAllProperties' async PlaybackStatus/Metadata/Position reads).  The
+    // next test re-uses the same kind of fake to drive Position separately and
     // observe a signal.
     QCOMPARE(m.activeService(), reg.serviceName());
 }
@@ -1105,15 +1108,18 @@ void TestMprisColors::pollPosition_withActiveService_emitsTimeline() {
     if (! reg.ok()) QSKIP("session bus or service registration unavailable in this env");
 
     MprisMonitor m;
+    m.engage();
+    // findActivePlayer is async now — pump the loop until it connects.
+    for (int i = 0; i < 100 && m.activeService().isEmpty(); ++i) QTest::qWait(20);
     if (m.activeService() != reg.serviceName())
         QSKIP("session bus already has another MPRIS player; fake not selected");
 
     QSignalSpy spy(&m, &MprisMonitor::timelineChanged);
-    // Update fake's reported position so we can detect the new emission.
-    // Re-trigger pollPosition; the slot calls Get(Position) and emits
-    // timelineChanged with the freshly-fetched value.
+    // Re-trigger pollPosition; the slot now fires an async Get(Position) and
+    // emits timelineChanged from the reply watcher on a later event-loop turn,
+    // so we wait for the signal rather than asserting synchronously.
     invokeSlot(&m, "pollPosition");
-    QVERIFY(spy.count() >= 1);
+    QVERIFY(spy.wait(2000));
     QCOMPARE(spy.last().at(0).toDouble(), 12.5);
     QCOMPARE(spy.last().at(1).toDouble(), 30.0);
 }

@@ -238,9 +238,9 @@ TestCase {
             items: [{ name: "abc123", mtime: 1 }],
         }]);
         // loadFolderLists chains native Promise.all (per-item readfile
-        // fan-in) before populating folderWorker.model. wait() pumps the
-        // QML event loop so the microtask queue drains.
-        wait(50);
+        // fan-in) before populating folderWorker.model. Poll the lookup
+        // until the fan-in lands (tryCompare can't poll a function call).
+        tryVerify(() => wpModel.findItem("abc123") !== null, 2000);
         const it = wpModel.findItem("abc123");
         verify(it !== null);
         compare(it.workshopid, "abc123");
@@ -257,7 +257,9 @@ TestCase {
             folder: "/wp",
             items: [{ name: "id-1", mtime: 1 }],
         }]);
-        wait(50);
+        // Poll titleOf until the fan-in populates (JS function call, not a
+        // QObject property → tryVerify, not tryCompare).
+        tryVerify(() => wpModel.titleOf("id-1") === "Named One", 2000);
         compare(wpModel.titleOf("id-1"), "Named One");
     }
 

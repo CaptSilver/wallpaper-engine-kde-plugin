@@ -8,6 +8,27 @@
 #   scripts/preflight.sh --no-build   # skip cmake builds, run existing tests only
 #   scripts/preflight.sh --no-fuzz    # skip fuzz smoke (lint + tests still run)
 #   scripts/preflight.sh --bootstrap  # (re-)provision fedora distrobox + deps and exit
+#   scripts/preflight.sh --tsan       # opt-in TSAN leg: WEK_SANITIZE=thread, runs
+#                                      #   scenescript_tests + backend_scene_thread_tests
+#   scripts/preflight.sh --sanitize=address,undefined  # opt-in ASAN+UBSAN leg over the
+#                                      #   parent + submodule suites (currently NON-FATAL —
+#                                      #   surfaces findings, does not fail the run)
+#   scripts/preflight.sh --werror     # opt-in -Werror leg: configures the full project
+#                                      #   with -DWEK_WERROR=ON and builds the shippable
+#                                      #   targets. NON-FATAL today (surfaces residual
+#                                      #   warnings); flip WERROR_FATAL=1 once the tree is
+#                                      #   warning-clean to make it a gate.
+#   scripts/preflight.sh --render-smoke # opt-in headless render smoke (D10a): builds the
+#                                      #   plain GLFW sceneviewer, renders a tiny fixture
+#                                      #   under Mesa lavapipe (CPU Vulkan, no GPU), asserts
+#                                      #   rc==0 + non-blank framebuffer. SKIPS cleanly when
+#                                      #   lavapipe / a display / WE assets are absent.
+#                                      #   NOT in the default gate (lavapipe CPU runs slow).
+#
+# The --tsan / --sanitize / --werror / --render-smoke legs are standalone (lint
+# + that one build/run only); they use fresh build dirs (build/impl-tsan /
+# build/impl-asan / build/impl-werror / build/impl-d10) and do not run the
+# normal build/test/fuzz flow.
 #
 # Env: FUZZ_SECS=N overrides per-target fuzz duration (default 20; 7 targets ≈ 2.3 min).
 #
@@ -38,6 +59,7 @@ cd "${_SUPER:-$(git rev-parse --show-toplevel)}"
 # ── Args ──────────────────────────────────────────────────────────────────────
 MODE=full
 NO_FUZZ=0
+SAN_SPEC=""
 for arg in "$@"; do
     case "$arg" in
         --lint-only) MODE=lint ;;
@@ -45,8 +67,12 @@ for arg in "$@"; do
         --no-build)  MODE=test-only ;;
         --no-fuzz)   NO_FUZZ=1 ;;
         --bootstrap) MODE=bootstrap ;;
+        --tsan)      MODE=sanitize; SAN_SPEC="thread" ;;
+        --sanitize=*) MODE=sanitize; SAN_SPEC="${arg#--sanitize=}" ;;
+        --werror)    MODE=werror ;;
+        --render-smoke) MODE=render-smoke ;;
         -h|--help)
-            sed -n '2,24p' "$0"
+            sed -n '2,44p' "$0"
             exit 0
             ;;
         *) echo "unknown flag: $arg" >&2; exit 2 ;;
@@ -95,7 +121,21 @@ DEPS_FEDORA=(
 )
 
 # ── Distrobox detection + bootstrap ──────────────────────────────────────────
+# Returns true when we are already inside a usable Fedora build context, so the
+# script runs the gates DIRECTLY instead of trying to `distrobox create`.
+#
+# Two ways to qualify:
+#   1. CI short-circuit: WEK_IN_CI=1 (explicit) or the standard CI=true that CI
+#      runners export.  A stock `fedora:latest` container is plain podman/docker
+#      with a different (or absent) name= in /run/.containerenv, so the distrobox
+#      name probe below would miss it and wrongly attempt a distrobox-create that
+#      cannot work inside a container.  The env gate lets preflight run as the
+#      comprehensive gate inside ANY Fedora context (CI image, plain container).
+#   2. The real distrobox probe: /run/.containerenv carries name="fedora".
+# The superproject-CWD guard above still holds — this only changes whether we
+# wrap commands in `distrobox enter`, not where we run them.
 inside_fedora() {
+    [[ "${WEK_IN_CI:-}" == "1" || "${CI:-}" == "true" || "${CI:-}" == "1" ]] && return 0
     [[ -f /run/.containerenv ]] && grep -q 'name="fedora"' /run/.containerenv 2>/dev/null
 }
 
@@ -161,6 +201,171 @@ dbox() { "${DBOX_PREFIX[@]}" bash -lc "$*"; }
 # Bootstrap-only mode: don't run lint/build/tests.
 if [[ "$MODE" == "bootstrap" ]]; then
     printf '\n%sBootstrap complete — re-run without --bootstrap to lint/build/test.%s\n' "$GREEN" "$RESET"
+    exit 0
+fi
+
+# ── Sanitizer legs (opt-in, standalone) ───────────────────────────────────────
+# --tsan                    => WEK_SANITIZE=thread  (FATAL on a race)
+# --sanitize=address,undefined (etc) => ASAN/UBSAN  (NON-FATAL: surfaces findings)
+# Both use fresh build dirs and skip the normal lint/build/test/fuzz flow.
+if [[ "$MODE" == "sanitize" ]]; then
+    REPO_ROOT="$(pwd)"
+    case "$SAN_SPEC" in
+        thread)
+            step "TSAN leg (WEK_SANITIZE=thread)"
+            # Build the Qt SceneScript suite + the focused thread repro under TSAN.
+            # backend_scene_thread_tests links wpScene (no Vulkan) and drives the
+            # real B5(b) parent-tree fix + a generic atomic<shared_ptr> repro (B5a).
+            dbox "CC=/usr/bin/clang CXX=/usr/bin/clang++ \
+                  cmake -B build/impl-tsan -S src/backend_scene -G Ninja \
+                        -DBUILD_TESTS=ON -DWEK_SANITIZE=thread \
+                        -DCMAKE_BUILD_TYPE=Debug \
+                  && cmake --build build/impl-tsan \
+                        --target scenescript_tests backend_scene_thread_tests" \
+                || fail "TSAN build failed"
+            ok "TSAN targets built"
+
+            # halt_on_error=1 + a non-zero exitcode make any race fail the leg.
+            # Suppress only known-benign Qt/glib/libstdc++ runtime internals.
+            local_tsan_opts="suppressions=${REPO_ROOT}/tsan.supp:halt_on_error=1:exitcode=66"
+
+            step "Run backend_scene_thread_tests under TSAN"
+            dbox "TSAN_OPTIONS='${local_tsan_opts}' \
+                  QT_QPA_PLATFORM=offscreen \
+                  ./build/impl-tsan/src/Test/backend_scene_thread_tests" \
+                || fail "backend_scene_thread_tests reported a TSAN race (or crashed)"
+            ok "backend_scene_thread_tests: TSAN clean"
+
+            step "Run scenescript_tests under TSAN"
+            dbox "TSAN_OPTIONS='${local_tsan_opts}' \
+                  QT_QPA_PLATFORM=offscreen \
+                  ./build/impl-tsan/src/Test/scenescript_tests" \
+                || fail "scenescript_tests reported a TSAN race (or a test failed)"
+            ok "scenescript_tests: TSAN clean"
+
+            printf '\n%sTSAN leg passed — no races detected.%s\n' "$GREEN" "$RESET"
+            exit 0
+            ;;
+        *)
+            # ASAN/UBSAN (and any address/undefined combo).  NON-FATAL: this leg
+            # surfaces findings to the log but does not fail preflight yet (the
+            # suites have not been audited clean under sanitizers).  Build with
+            # BUILD_FUZZERS=OFF so the fuzzers' own -fsanitize=fuzzer,... flags
+            # don't double-instrument.
+            step "Sanitizer leg (WEK_SANITIZE=${SAN_SPEC}) — NON-FATAL (surfaces findings)"
+
+            # Submodule suites.
+            dbox "CC=/usr/bin/clang CXX=/usr/bin/clang++ \
+                  cmake -B build/impl-asan -S src/backend_scene -G Ninja \
+                        -DBUILD_TESTS=ON -DBUILD_FUZZERS=OFF \
+                        -DWEK_SANITIZE=${SAN_SPEC} \
+                        -DCMAKE_BUILD_TYPE=Debug \
+                  && cmake --build build/impl-asan \
+                        --target backend_scene_tests scenescript_tests" \
+                || warn "submodule sanitizer build had errors (see log)"
+
+            # detect_leaks=0: the parsers intentionally retain some long-lived
+            # state in these short-lived test runs; LSAN noise would drown the
+            # heap/UB findings we care about.  halt_on_error=0 + recover so the
+            # full suite runs and ALL findings print (leg is non-fatal anyway).
+            asan_opts="detect_leaks=0:halt_on_error=0:print_stacktrace=1"
+            ubsan_opts="halt_on_error=0:print_stacktrace=1"
+
+            step "Run backend_scene_tests under ${SAN_SPEC} (non-fatal)"
+            # WEKDE_HAS_AUDIO_DEVICE intentionally unset (avoids the device-enum hang).
+            dbox "ASAN_OPTIONS='${asan_opts}' UBSAN_OPTIONS='${ubsan_opts}' \
+                  ./build/impl-asan/src/Test/backend_scene_tests" \
+                || warn "backend_scene_tests surfaced sanitizer findings (non-fatal — see log)"
+
+            step "Run scenescript_tests under ${SAN_SPEC} (non-fatal)"
+            dbox "ASAN_OPTIONS='${asan_opts}' UBSAN_OPTIONS='${ubsan_opts}' \
+                  QT_QPA_PLATFORM=offscreen \
+                  ./build/impl-asan/src/Test/scenescript_tests" \
+                || warn "scenescript_tests surfaced sanitizer findings (non-fatal — see log)"
+
+            # Parent project suites (FileHelper, mpvbackend, etc.).
+            step "Build + run parent tests under ${SAN_SPEC} (non-fatal)"
+            dbox "CC=/usr/bin/clang CXX=/usr/bin/clang++ \
+                  cmake -B build/impl-asan-main -S tests -G Ninja \
+                        -DWEK_SANITIZE=${SAN_SPEC} \
+                        -DCMAKE_BUILD_TYPE=Debug \
+                  && cmake --build build/impl-asan-main" \
+                || warn "parent-tests sanitizer build had errors (see log)"
+            dbox "ASAN_OPTIONS='${asan_opts}' UBSAN_OPTIONS='${ubsan_opts}' \
+                  QT_QPA_PLATFORM=offscreen \
+                  ctest --test-dir build/impl-asan-main --output-on-failure" \
+                || warn "parent ctest surfaced sanitizer findings (non-fatal — see log)"
+
+            printf '\n%sSanitizer leg complete (NON-FATAL) — review the log above for findings.%s\n' "$YELLOW" "$RESET"
+            exit 0
+            ;;
+    esac
+fi
+
+# ── -Werror leg (opt-in, standalone) ──────────────────────────────────────────
+# Configures the FULL project with -DWEK_WERROR=ON and builds it.  WEK_WERROR
+# appends -Werror to the first-party warn lists ONLY (third_party + Qt MOC keep
+# their own flags by construction), and keeps the -Wconversion/-Wsign-conversion
+# family WARNING-only.  Fresh build dir build/impl-werror; skips lint/test/fuzz.
+#
+# NON-FATAL by default: the shippable targets (plugin .so, backend_mpv, the QML
+# bridge, wpParticle) are -Wall -Wextra clean, but the wider renderer libs have
+# not yet been audited under -Werror, so a residual -Wall/-Wextra warning there
+# would fail the build.  Until the whole tree is clean this leg surfaces the
+# breakage without failing preflight.  Flip it to a gate with WERROR_FATAL=1
+# (and then wire it into the default flow / pre-push hook).
+if [[ "$MODE" == "werror" ]]; then
+    step "-Werror leg (WEK_WERROR=ON) — ${YELLOW}NON-FATAL${RESET} unless WERROR_FATAL=1"
+    WERR_GEN=""
+    [[ ! -f build/impl-werror/CMakeCache.txt ]] && WERR_GEN="-G Ninja"
+    if dbox "CC=/usr/bin/clang CXX=/usr/bin/clang++ \
+             cmake -B build/impl-werror -S . $WERR_GEN \
+                   -DWEK_WERROR=ON -DCMAKE_BUILD_TYPE=Debug \
+             && cmake --build build/impl-werror"; then
+        ok "-Werror build clean (first-party targets warning-free under -Wall -Wextra)"
+        printf '\n%sWEK_WERROR leg passed.%s\n' "$GREEN" "$RESET"
+        exit 0
+    else
+        if [[ "${WERROR_FATAL:-0}" == "1" ]]; then
+            fail "-Werror build failed (WERROR_FATAL=1) — a first-party -Wall/-Wextra warning is now an error"
+        fi
+        warn "-Werror build had warnings-as-errors (non-fatal — see log; set WERROR_FATAL=1 to gate)"
+        printf '\n%s-Werror leg complete (NON-FATAL) — residual first-party warnings above.%s\n' "$YELLOW" "$RESET"
+        exit 0
+    fi
+fi
+
+# ── Render-smoke leg (opt-in, standalone) — D10a ──────────────────────────────
+# Builds the plain GLFW sceneviewer and renders a tiny fixture scene headless
+# under Mesa lavapipe (CPU Vulkan), asserting rc==0 + a NON-BLANK framebuffer.
+# This is the ONLY gate that actually runs the product (Vulkan device creation,
+# render-graph build, SPIR-V compile, pass execution, swapchain readback) on a
+# machine with no GPU — it catches the "renders all-black / device-init crash"
+# regression class that the Vulkan-free unit tests structurally cannot.
+#
+# DELIBERATELY opt-in (not in the default flow): a CPU-Vulkan render is slow.
+# The driver (scripts/render-smoke.sh) self-probes lavapipe + a display
+# (xvfb-run preferred, else a live Wayland/X11 session) + the WE assets dir, and
+# exits 77 to mean "capability missing — SKIP" so this leg is graceful on a box
+# without lavapipe/Xvfb (mirrors the existing skip patterns).
+#
+# NOTE: the deterministic framebuffer-HASH form (D10b) is deferred — it needs
+# the frame-indexed capture trigger from D11 (P1.2); the current wall-clock
+# capture varies run-to-run, so only the structural non-blank oracle runs here.
+if [[ "$MODE" == "render-smoke" ]]; then
+    step "Render smoke (D10a — headless Vulkan via lavapipe)"
+    rc=0
+    dbox "scripts/render-smoke.sh" || rc=$?
+    case "$rc" in
+        0)  ok "render smoke passed (rc==0, framebuffer non-blank)"
+            printf '\n%sRender-smoke leg passed.%s\n' "$GREEN" "$RESET"
+            ;;
+        77) ok "render smoke skipped (no lavapipe / display / WE assets — see log)"
+            printf '\n%sRender-smoke leg skipped (capability missing).%s\n' "$YELLOW" "$RESET"
+            ;;
+        *)  fail "render smoke failed (rc=$rc) — render path crashed or framebuffer was BLANK"
+            ;;
+    esac
     exit 0
 fi
 

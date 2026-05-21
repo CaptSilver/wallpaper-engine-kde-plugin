@@ -56,6 +56,69 @@ cmake --build build/sub
 ./build/sub/src/Test/scenescript_tests         # 162 tests
 ```
 
+### Local CI / preflight (the comprehensive gate)
+
+This project uses a **local** verification gate, not cloud CI. `scripts/preflight.sh`
+is the single source of truth. The default run is the comprehensive gate:
+
+1. **clang-format lint** — parent-repo C/C++ (excludes `build|tests/build|tests/fixtures`).
+2. **Submodule build + tests** — `backend_scene_tests` + `scenescript_tests`.
+3. **Main project ctest** — the `tests/` binaries.
+4. **Fuzz smoke** — 7 libFuzzer harnesses, cold-start (`FUZZ_SECS=N` to tune, default 20s each).
+
+Coverage and mutation testing are **separate opt-ins** (`-DCOVERAGE=ON` / `-DMUTATION_TESTING=ON`),
+not part of the default preflight path — run them on demand (see the topic memory files).
+
+**Install the pre-push hook so the gate isn't silently bypassed:**
+
+```bash
+git config core.hooksPath scripts/git-hooks   # enable (runs preflight on every `git push`)
+git push --no-verify                           # skip once (avoid for non-trivial pushes)
+git config --unset core.hooksPath              # disable
+```
+
+The hook is a 5-line wrapper that `exec`s `scripts/preflight.sh`. A full run is ~3-5 min
+(fuzz alone ≈ 2.3 min); a silent push is the hook working, not a hang.
+
+Preflight runs inside the Fedora distrobox automatically (it wraps commands in `distrobox enter`
+when run from the host, or runs them directly when already inside the box). To run it inside a
+plain Fedora container (or any CI context) **without** a distrobox-create attempt, export
+`WEK_IN_CI=1` (or the standard `CI=true`) — that short-circuits the distrobox detection and runs
+the gates directly. The script always resolves to the **superproject** working tree, so it is safe
+to invoke from inside the `src/backend_scene` submodule.
+
+**Opt-in legs** (standalone — lint + that one build/run, fresh build dirs, skip the normal flow):
+
+```bash
+scripts/preflight.sh --werror     # build full project with -DWEK_WERROR=ON (see Warning flags)
+scripts/preflight.sh --tsan       # WEK_SANITIZE=thread over the SceneScript + thread suites
+scripts/preflight.sh --sanitize=address,undefined   # ASAN+UBSAN over parent + submodule suites
+```
+
+`--werror` and `--sanitize=...` are **non-fatal** today (they surface findings without failing the
+run); `--tsan` is a gate (FATAL on a race). See `scripts/preflight.sh --help`.
+
+### Warning flags & `-Werror`
+
+The renderer libs build with the full `warn_opts`
+(`-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion`, in
+`src/backend_scene/src/CMakeLists.txt`). The shippable / dlopen'd targets — the plugin `.so`,
+`backend_mpv`, the `wescene-renderer-qml` bridge, and `wpParticle` — carry the conservative
+`wek_warn_opts` (`-Wall -Wextra`), defined in `src/backend_scene/cmake/WekWarnings.cmake` (one
+canonical file, included from the root and submodule CMake so the parent and standalone-submodule
+builds agree, mirroring `WekSanitize.cmake`).
+
+`-DWEK_WERROR=ON` (OFF by default) appends `-Werror` to the **first-party** warn lists only.
+third_party is excluded **by construction** (it never receives these flags — no global
+`add_compile_options`), and the signed/unsigned diagnostic family stays **warning-only** under
+`-Werror` (`-Wno-error=conversion` / `-Wno-error=sign-conversion` / `-Wno-error=sign-compare`)
+since it is noisy across the renderer. Verify with `scripts/preflight.sh --werror`. The leg is
+**non-fatal** today: the four shippable targets are `-Wall -Wextra` clean, but the wider renderer
+libs (Vulkan/RenderGraph/VulkanRender/Scene/Audio) still trip `-Wall/-Wextra` errors
+(`-Wmismatched-tags`, `-Wunused-parameter/-function/-lambda-capture/-private-field`,
+`-Wmissing-braces`) and need a separate audit pass before `-Werror` can gate. Set `WERROR_FATAL=1`
+to make the leg fail (and then wire it into the default flow / pre-push hook).
+
 ## Architecture
 
 ### Main plugin (this repo)

@@ -11,6 +11,7 @@
 #include <QtTest>
 #include <QGuiApplication>
 #include <QSignalSpy>
+#include <QTemporaryFile>
 #include <QUrl>
 #include <QVariant>
 
@@ -67,6 +68,13 @@ private slots:
     // Regression: constructor used to set `loop`, `vo`, `hwdec`, `config`
     // *after* mpv_initialize(), where mpv silently drops them.
     void constructor_setsLoopOptionBeforeInit();
+
+    // m_first_frame is atomic + flipped via exchange(); checkAndEmitFirstFrame
+    // must emit firstFrame() at most once per setSource transition (the GUI
+    // thread writes m_first_frame=false, the render thread flips it back true
+    // and emits exactly once — see MpvBackend.cpp:checkAndEmitFirstFrame).
+    void firstFrame_freshObject_doesNotEmit();
+    void firstFrame_afterSourceFlip_emitsExactlyOnce();
 };
 
 namespace
@@ -215,6 +223,49 @@ void TestMpvBackend::pause_whenStopped_isNoop() {
 void TestMpvBackend::constructor_setsLoopOptionBeforeInit() {
     auto obj = makeObject();
     QCOMPARE(obj->getProperty("loop").toString(), QStringLiteral("inf"));
+}
+
+// A freshly-constructed object has m_first_frame == true (no source loaded
+// yet), so checkAndEmitFirstFrame() must NOT emit — and repeated calls must
+// stay idempotent (the exchange keeps it true and never fires).
+void TestMpvBackend::firstFrame_freshObject_doesNotEmit() {
+    auto       obj = makeObject();
+    QSignalSpy spy(obj.get(), &MpvObject::firstFrame);
+    obj->checkAndEmitFirstFrame();
+    obj->checkAndEmitFirstFrame();
+    obj->checkAndEmitFirstFrame();
+    QCOMPARE(spy.count(), 0);
+}
+
+// After a successful setSource (which flips m_first_frame false on the GUI
+// thread), the render thread's checkAndEmitFirstFrame() must emit firstFrame()
+// exactly once even if synchronize() calls it repeatedly — the exchange(true)
+// guarantees the single edge.
+void TestMpvBackend::firstFrame_afterSourceFlip_emitsExactlyOnce() {
+    auto obj = makeObject();
+    obj->initCallback(); // mark inited so setSource takes the live loadfile path
+
+    // A real on-disk file so the `loadfile` command is accepted (mpv queues
+    // the load asynchronously and returns success regardless of decodability),
+    // which is what flips m_first_frame to false inside setSource.
+    QTemporaryFile file(QStringLiteral("/tmp/wekde-mpv-firstframeXXXXXX.mp4"));
+    QVERIFY(file.open());
+    file.write(QByteArrayLiteral("\x00\x00\x00\x18"
+                                 "ftypmp42"));
+    file.flush();
+
+    obj->setSource(QUrl::fromLocalFile(file.fileName()));
+    // Precondition: the source was accepted (loadfile succeeded → m_first_frame
+    // is now false).  If mpv refused the file in this environment the source
+    // stays empty; skip the strict edge check rather than flake.
+    QVERIFY2(! obj->source().isEmpty(),
+             "setSource did not accept the temp file; loadfile path not exercised");
+
+    QSignalSpy spy(obj.get(), &MpvObject::firstFrame);
+    obj->checkAndEmitFirstFrame(); // first render tick: false -> true, emit
+    obj->checkAndEmitFirstFrame(); // already true: no emit
+    obj->checkAndEmitFirstFrame(); // still true: no emit
+    QCOMPARE(spy.count(), 1);
 }
 
 QTEST_MAIN(TestMpvBackend)

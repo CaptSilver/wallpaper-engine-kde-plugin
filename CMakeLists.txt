@@ -128,6 +128,19 @@ install(CODE "
 set(QMLPLUGIN_URI "com.github.captsilver.wallpaperEngineKde")
 string(REPLACE "." "/" QMLPLUGIN_INSTALL_URI ${QMLPLUGIN_URI})
 
+# Sanitizer plumbing (WEK_SANITIZE option + wek_apply_sanitizers helper).
+# Canonical helper lives in the submodule's cmake/ so the SAME file is consumed
+# whether the build is configured from here (-S .) or the submodule standalone
+# (-S src/backend_scene).  Declared before add_subdirectory(src) so the option
+# is visible to every target.
+include(${CMAKE_CURRENT_SOURCE_DIR}/src/backend_scene/cmake/WekSanitize.cmake)
+
+# Warning-flag plumbing (WEK_WERROR option + wek_warn_opts list).  Same
+# canonical-file pattern as WekSanitize above so the parent and the submodule-
+# standalone build share one definition.  Declared before add_subdirectory(src)
+# so wek_warn_opts is in scope for the plugin .so and backend_mpv targets.
+include(${CMAKE_CURRENT_SOURCE_DIR}/src/backend_scene/cmake/WekWarnings.cmake)
+
 add_subdirectory(src)
 
 option(BUILD_TESTS "Build unit tests (requires only Qt6 Core+Test)" OFF)

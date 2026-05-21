@@ -70,6 +70,9 @@ bool ThumbnailGrabber::grab(const QString& videoPath, const QString& outPath, do
         else if (ev->event_id == MPV_EVENT_END_FILE)
             return false;
     }
+    // Seek timed out without a PLAYBACK_RESTART — bail rather than screenshot a
+    // wrong-position (typically t=0) frame and falsely report success.
+    if (! seeked) return false;
 
     const char* shotcmd[] = { "screenshot-to-file", op.constData(), "video", nullptr };
     if (mpv_command(d->mpv, shotcmd) < 0) return false;

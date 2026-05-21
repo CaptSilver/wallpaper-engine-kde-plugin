@@ -58,7 +58,7 @@ using namespace mpv;
 
 namespace
 {
-void on_mpv_events(void* ctx) { Q_UNUSED(ctx) }
+[[maybe_unused]] void on_mpv_events(void* ctx) { Q_UNUSED(ctx) }
 
 void on_mpv_redraw(void* ctx);
 
@@ -109,7 +109,8 @@ int CreateMpvContex(mpv_handle* mpv, mpv_render_context** mpv_gl) {
     return code;
 }
 
-QSGTexture* createTextureFromGl(uint32_t handle, QSize size, QQuickWindow* window) {
+[[maybe_unused]] QSGTexture* createTextureFromGl(uint32_t handle, QSize size,
+                                                 QQuickWindow* window) {
 #if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
     return QNativeInterface::QSGOpenGLTexture::fromNative(handle, window, size);
 #elif (QT_VERSION >= QT_VERSION_CHECK(5, 14, 0))
@@ -231,7 +232,7 @@ void MpvObject::setSource(const QUrl& source) {
         m_source = source;
         Q_EMIT sourceChanged();
 
-        m_first_frame = false;
+        m_first_frame.store(false);
     }
 }
 
@@ -242,7 +243,10 @@ class MpvRender : public QObject, public QQuickFramebufferObject::Renderer {
     Q_OBJECT
 public:
     MpvRender(std::shared_ptr<MpvHandle> mpv, QQuickWindow* win)
-        : m_shared_mpv(mpv), m_mpv(mpv.get()->handle), m_window(win) {}
+        // Match member declaration order (m_mpv, m_window, m_shared_mpv) to
+        // silence -Wreorder-ctor; all three read the `mpv`/`win` params, not
+        // each other, so the order is behaviourally identical.
+        : m_mpv(mpv.get()->handle), m_window(win), m_shared_mpv(mpv) {}
 
     virtual ~MpvRender() {
         _Q_DEBUG() << "destroyed";
@@ -370,8 +374,11 @@ MpvObject::MpvObject(QQuickItem* parent)
 MpvObject::~MpvObject() {}
 
 void MpvObject::checkAndEmitFirstFrame() {
-    if (! m_first_frame) {
-        m_first_frame = true;
+    // m_first_frame starts true; setSource flips it false on a successful
+    // loadfile; the first render tick flips it back true and emits exactly
+    // once.  exchange() makes the test-and-flip atomic so a self-racing
+    // synchronize() can never emit twice (mirrors MpvRender::m_dirty.exchange).
+    if (! m_first_frame.exchange(true)) {
         Q_EMIT firstFrame();
     }
 }

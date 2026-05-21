@@ -1120,6 +1120,25 @@ private slots:
         QCOMPARE(spy.count(), 1);
     }
 
+    // F17: persist() now calls FileHelper::atomicWriteJson statically instead
+    // of constructing a throwaway FileHelper, whose ctor unconditionally
+    // mkpaths the (unrelated) wallpaper config dir as a side effect. A
+    // playlist save must not create ".../wekde/wallpaper/".
+    void persist_doesNotCreateWallpaperConfigDirSideEffect() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        const QString path = setupConfigHome(d); // redirects XDG_CONFIG_HOME
+        // The wallpaper config dir lives beside playlists.json under wekde/.
+        const QString wallpaperDir = QFileInfo(path).absolutePath() + "/wallpaper";
+
+        wekde::PlaylistManager mgr;       // ctor load() → persist() (fresh file)
+        mgr.createPlaylist("Side FX");    // another persist()
+        QVERIFY(QFileInfo::exists(path)); // sanity: playlists.json written here
+
+        // Pre-fix, the throwaway FileHelper ctor created this dir on persist.
+        QVERIFY(! QFileInfo::exists(wallpaperDir));
+    }
+
     // reload() re-reads playlists.json + preserves the active playlist /
     // index when possible. The runtime ctrl calls this after the dialog
     // bumps the reload-seq so user edits propagate without a plasmashell

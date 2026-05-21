@@ -1,0 +1,19 @@
+{
+	"dependencies" : 
+	[
+		"materials/effects/myfirstshader.json",
+		"shaders/effects/myfirstshader.frag",
+		"shaders/effects/myfirstshader.vert"
+	],
+	"editable" : true,
+	"group" : "localeffects",
+	"name" : "MyFirstShader",
+	"passes" : 
+	[
+		{
+			"material" : "materials/effects/myfirstshader.json"
+		}
+	],
+	"replacementkey" : "myfirstshader",
+	"version" : 1
+}

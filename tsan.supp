@@ -1,0 +1,41 @@
+# ThreadSanitizer suppressions for the WEK test suites.
+#
+# Referenced by scripts/preflight.sh's --tsan leg:
+#   TSAN_OPTIONS="suppressions=$PWD/tsan.supp ..." ./build/.../scenescript_tests
+#
+# Scope: suppress KNOWN-BENIGN reports from third-party runtime internals only
+# (Qt/glib lazy static init, libstdc++'s atomic<shared_ptr> sharded-lock impl,
+# the dynamic loader).  Keep entries NARROW (library-prefix / well-known
+# function), never silence first-party (wallpaper::*) frames — those are the
+# races the leg exists to catch.
+#
+# Format: https://github.com/google/sanitizers/wiki/ThreadSanitizerSuppressions
+# `race:<substr>` matches the function name OR the library; `called_from_lib:`
+# matches when the racy access originates inside the named shared library.
+
+# ── Qt internals ────────────────────────────────────────────────────────────
+# QMetaType / QObject / QJSEngine one-time lazy init touched from the Qt event
+# machinery (scenescript_tests instantiates QJSEngine + SceneTimerBridge).
+called_from_lib:libQt6Core
+called_from_lib:libQt6Qml
+called_from_lib:libQt6Gui
+race:QMetaType
+race:QtPrivate::
+
+# ── glib (pulled in transitively by Qt platform/dbus) ────────────────────────
+called_from_lib:libglib-2.0
+called_from_lib:libgobject-2.0
+race:g_private_get
+race:g_slice
+
+# ── libstdc++ runtime ────────────────────────────────────────────────────────
+# std::atomic<std::shared_ptr<T>> is implemented with a sharded spinlock/mutex
+# table in libstdc++; its internal bookkeeping can surface as benign reports.
+# Also covers libstdc++'s own lazy locale/facet init.
+called_from_lib:libstdc++
+race:__gnu_cxx::
+
+# ── dynamic loader / C runtime ────────────────────────────────────────────────
+# dlopen of Qt plugins and __cxa_* one-time guards.
+called_from_lib:libc.so
+race:__cxa_

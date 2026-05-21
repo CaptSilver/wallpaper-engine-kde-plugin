@@ -16,7 +16,9 @@ endif()
 # to CXX-only.
 enable_language(C)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Test)
+# Qt 6.6 floor — matches the primary find_package in src/CMakeLists.txt so a
+# standalone tests configure errors clearly on a too-old Qt6 (Plasma 6 baseline).
+find_package(Qt6 6.6 REQUIRED COMPONENTS Core Test)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
@@ -33,6 +35,13 @@ if(COVERAGE)
     set(_cov_compile_flags -fprofile-instr-generate -fcoverage-mapping -g -O0)
     set(_cov_link_flags -fprofile-instr-generate)
 endif()
+
+# Sanitizer plumbing (WEK_SANITIZE + wek_apply_sanitizers).  Same canonical
+# helper the root + submodule include; idempotent guard makes a repeat include
+# (when built from the parent) a no-op.  Referenced relative to this dir so a
+# standalone `cmake -B build/tests -S tests` configure (e.g. the ASAN preflight
+# leg) still declares the option.  Mirrors how FetchMull.cmake is referenced.
+include(${CMAKE_CURRENT_SOURCE_DIR}/../src/backend_scene/cmake/WekSanitize.cmake)
 
 # ── FileHelper unit tests ──────────────────────────────────────────────────────
 # FileHelper::generateThumbnail uses ThumbnailGrabber (libmpv) when WEKDE_HAS_MPV
@@ -100,7 +109,23 @@ if(Qt6Gui_FOUND AND Qt6Quick_FOUND)
             -fpass-plugin=${MULL_PLUGIN_PATH}
             -g -grecord-command-line)
     endif()
-    add_test(NAME tst_mpriscolors COMMAND tst_mpriscolors -v2)
+    # Run under a private session bus when available so the self-registered
+    # FakeMprisService round-trip cases (findActivePlayer / pollPosition) execute
+    # instead of QSKIPping. dbus-run-session spins up a clean, empty bus for the
+    # child; the test brings its own fake service, so no external MPRIS player is
+    # needed. When dbus-run-session is absent the bare command is used and the
+    # bus-dependent cases skip gracefully (current behaviour) — keeps the test
+    # runnable everywhere.
+    find_program(DBUS_RUN_SESSION dbus-run-session)
+    if(DBUS_RUN_SESSION)
+        add_test(NAME tst_mpriscolors
+            COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_mpriscolors> -v2)
+    else()
+        message(STATUS "dbus-run-session not found — tst_mpriscolors runs without a private bus")
+        add_test(NAME tst_mpriscolors COMMAND tst_mpriscolors -v2)
+    endif()
+    set_tests_properties(tst_mpriscolors PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
     # ── MouseGrabber event forwarding tests ───────────────────────────────────
     add_executable(tst_mousegrabber
@@ -355,7 +380,11 @@ endif()
 # ── JavaScript tests (Node.js) ────────────────────────────────────────────────
 find_program(NODE_EXECUTABLE NAMES node nodejs)
 if(NODE_EXECUTABLE)
-    file(GLOB _js_test_files
+    # CONFIGURE_DEPENDS: re-run the glob at build time so a newly-added
+    # *.test.mjs is picked up without a manual reconfigure (this glob feeds a
+    # test command's argument list, not a compiled target's sources, so it is
+    # the right, low-risk use of CONFIGURE_DEPENDS).
+    file(GLOB _js_test_files CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/js/*.test.mjs")
     add_test(NAME tst_js
         COMMAND ${NODE_EXECUTABLE} --test ${_js_test_files}
@@ -410,6 +439,20 @@ if(Qt6QuickTest_FOUND AND Qt6Qml_FOUND AND Qt6Quick_FOUND)
 else()
     message(STATUS "Qt6QuickTest not found — skipping tst_main_integration (Phase 3)")
 endif()
+
+# ── Apply opt-in sanitizers to every C++ test target ──────────────────────────
+# No-op unless -DWEK_SANITIZE=... is set.  Guarded by if(TARGET ...) because
+# several targets are conditional on optional Qt components / libmpv.  The
+# QML (tst_qml) and JS (tst_js) tests are add_test-only (qmltestrunner / node),
+# not C++ executables, so they are not listed.
+foreach(_wek_test_target
+        tst_filehelper tst_mpriscolors tst_mousegrabber tst_mpvbackend
+        tst_thumbnail_grabber tst_webaudio tst_migrationhelper
+        tst_playlist_manager tst_main_integration)
+    if(TARGET ${_wek_test_target})
+        wek_apply_sanitizers(${_wek_test_target})
+    endif()
+endforeach()
 
 # ── Coverage report target ────────────────────────────────────────────────────
 if(COVERAGE)

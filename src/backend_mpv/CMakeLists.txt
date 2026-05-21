@@ -24,3 +24,7 @@ target_link_libraries(${PROJECT_NAME}
 	${MPV_LIBRARIES}
 )
 target_include_directories(${PROJECT_NAME} PUBLIC .) #${INCLUDE_DIRECTORIES})
+# Warning flags for the video backend (linked into the plugin .so).  Previously
+# carried none; wek_warn_opts is -Wall -Wextra (+/-Werror under WEK_WERROR),
+# defined in src/backend_scene/cmake/WekWarnings.cmake.
+target_compile_options(${PROJECT_NAME} PRIVATE ${wek_warn_opts})

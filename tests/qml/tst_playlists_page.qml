@@ -243,7 +243,7 @@ TestCase {
     // _editing flag flips on double-click. Find it by objectName, set
     // text, and call accepted() to commit.
     function test_inlineRenameOnAccept_callsManager() {
-        wait(50); // let lvPlaylists materialise delegates
+        tryVerify(() => _findById(page, "plNameEdit_p1") !== null, 2000); // let lvPlaylists materialise delegates
         const tf = _findById(page, "plNameEdit_p1");
         verify(tf !== null);
         // Force the row into edit mode (the production path is double-click;
@@ -260,7 +260,7 @@ TestCase {
     }
 
     function test_inlineRenameOnEscape_revertsAndCancels() {
-        wait(50);
+        tryVerify(() => _findById(page, "plNameEdit_p1") !== null, 2000);
         const tf = _findById(page, "plNameEdit_p1");
         verify(tf !== null);
         const delegate = tf.parent.parent;
@@ -278,7 +278,7 @@ TestCase {
     }
 
     function test_inlineRenameEmptyName_doesNotCommit() {
-        wait(50);
+        tryVerify(() => _findById(page, "plNameEdit_p1") !== null, 2000);
         const tf = _findById(page, "plNameEdit_p1");
         verify(tf !== null);
         const delegate = tf.parent.parent;
@@ -308,7 +308,7 @@ TestCase {
     // Synthesise a JS MouseEvent-shaped object so the handler body runs.
     // qmltestrunner can't construct a real QQuickMouseEvent.
     function test_rowSingleClickSelects() {
-        wait(50);
+        tryVerify(() => page.playlistsView.itemAtIndex(0) !== null, 2000);
         const delegate = page.playlistsView.itemAtIndex(0);
         verify(delegate !== null);
         page._selectedId = "";
@@ -323,7 +323,7 @@ TestCase {
     }
 
     function test_rowDoubleClickEngagesRename() {
-        wait(50);
+        tryVerify(() => page.playlistsView.itemAtIndex(0) !== null, 2000);
         const delegate = page.playlistsView.itemAtIndex(0);
         verify(delegate !== null);
         const ma = _findRowMouseArea(delegate);
@@ -344,9 +344,9 @@ TestCase {
     // These tests verify focus chain + the inline-rename Escape handler.
 
     function test_listViewsAcceptFocus() {
-        wait(50);
         // ListView is focusable by default. Verifying it doesn't have
-        // `focus: false` slipped in.
+        // `focus: false` slipped in. The views exist at component
+        // completion, so no materialisation poll is needed here.
         verify(page.playlistsView.activeFocusOnTab !== false,
                "lvPlaylists must be reachable via Tab");
         verify(page.itemsView.activeFocusOnTab !== false,
@@ -354,7 +354,7 @@ TestCase {
     }
 
     function test_inlineRenameTextFieldFocusable() {
-        wait(50);
+        tryVerify(() => _findById(page, "plNameEdit_p1") !== null, 2000);
         const tf = _findById(page, "plNameEdit_p1");
         verify(tf !== null);
         verify(tf.activeFocusOnTab !== false,
@@ -370,7 +370,7 @@ TestCase {
     // observable contract: cancel reverts text to `name` and clears
     // _editing without calling renamePlaylist.
     function test_inlineRenameEscapeContract() {
-        wait(50);
+        tryVerify(() => _findById(page, "plNameEdit_p1") !== null, 2000);
         const tf = _findById(page, "plNameEdit_p1");
         verify(tf !== null);
         const delegate = tf.parent.parent;
@@ -386,7 +386,7 @@ TestCase {
     }
 
     function test_inlineRenameCommitOnFocusLoss_coverageHit() {
-        wait(50);
+        tryVerify(() => _findById(page, "plNameEdit_p1") !== null, 2000);
         const tf = _findById(page, "plNameEdit_p1");
         verify(tf !== null);
         const delegate = tf.parent.parent;
@@ -405,13 +405,12 @@ TestCase {
         page._selectedId = "p1";
         // Items list is populated from itemsModel("p1") which returns a
         // ListModel with 2 entries.
-        wait(50); // give the ListView time to materialise delegates
-        verify(page.itemsView.count >= 2);
+        tryVerify(() => page.itemsView.count >= 2, 2000, "items did not materialise");
     }
 
     function test_clickItemUpButton() {
         page._selectedId = "p1";
-        wait(50);
+        tryVerify(() => page.itemsView.itemAtIndex(1) !== null, 2000);
         const delegate = page.itemsView.itemAtIndex(1);
         verify(delegate !== null);
         const btn = _findButton(delegate, "↑");
@@ -424,7 +423,7 @@ TestCase {
 
     function test_clickItemDownButton() {
         page._selectedId = "p1";
-        wait(50);
+        tryVerify(() => page.itemsView.itemAtIndex(0) !== null, 2000);
         const delegate = page.itemsView.itemAtIndex(0);
         verify(delegate !== null);
         const btn = _findButton(delegate, "↓");
@@ -434,7 +433,7 @@ TestCase {
 
     function test_clickItemRemoveButton() {
         page._selectedId = "p1";
-        wait(50);
+        tryVerify(() => page.itemsView.itemAtIndex(0) !== null, 2000);
         const delegate = page.itemsView.itemAtIndex(0);
         verify(delegate !== null);
         const btn = _findButton(delegate, "×");
@@ -453,7 +452,7 @@ TestCase {
     // closes the coverage gap for the handler entry.
     function test_itemDelegateDropHandlerFiresForCoverage() {
         page._selectedId = "p1";
-        wait(50);
+        tryVerify(() => page.itemsView.itemAtIndex(1) !== null, 2000);
         const delegate = page.itemsView.itemAtIndex(1);
         verify(delegate !== null);
         const da = _findDropArea(delegate);
@@ -474,7 +473,7 @@ TestCase {
     function test_userPlaylistActivateButtonClickCallsManager() {
         page._selectedId = "p1";
         page.cfg_ActivePlaylistId = "";
-        wait(50);
+        tryVerify(() => _findAllButtons(page, "Activate").length >= 2, 2000);
         const candidates = _findAllButtons(page, "Activate");
         verify(candidates.length >= 2);
         candidates[1].clicked();  // user-playlist editor's button
@@ -485,7 +484,7 @@ TestCase {
     function test_userPlaylistDeactivateButtonClickCallsManager() {
         page._selectedId = "p1";
         page.cfg_ActivePlaylistId = "p1";  // makes user-playlist button read "Deactivate"
-        wait(50);
+        tryVerify(() => _findAllButtons(page, "Deactivate").length >= 1, 2000);
         const candidates = _findAllButtons(page, "Deactivate");
         // Filtered-library button reads "Activate" here (cfg != "__filtered_library__"),
         // so the user-playlist Deactivate is the ONLY "Deactivate" in the tree.
@@ -496,9 +495,9 @@ TestCase {
 
     function test_modeComboBoxTriggersSetMode() {
         page._selectedId = "p1";
-        wait(50);
         // Find the ComboBox via traversal — it's the only non-button control
         // with a `currentIndex` property in the editor header row.
+        tryVerify(() => _findFirstByProp(page, "currentIndex") !== null, 2000);
         const cb = _findFirstByProp(page, "currentIndex");
         verify(cb !== null);
         cb.activated(1);
@@ -507,8 +506,8 @@ TestCase {
 
     function test_intervalSpinBoxTriggersSetIntervalMin() {
         page._selectedId = "p1";
-        wait(50);
         // Top-level interval SpinBox — find it by `from` and `to`.
+        tryVerify(() => _findIntervalSpinBox(page) !== null, 2000);
         const sb = _findIntervalSpinBox(page);
         verify(sb !== null);
         sb.value = 30;

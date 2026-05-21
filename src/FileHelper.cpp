@@ -18,6 +18,17 @@
 namespace wekde
 {
 
+namespace
+{
+// True iff `canon` is the root itself or a descendant of `root`. A bare
+// QString::startsWith would also accept a *sibling* whose name shares the
+// root's prefix (e.g. ".../wek-evil" startsWith ".../wek") — require either
+// an exact match or a child separated by '/'.
+static bool isUnderRoot(const QString& canon, const QString& root) {
+    return canon == root || canon.startsWith(root + QLatin1Char('/'));
+}
+} // namespace
+
 FileHelper::FileHelper(QObject* parent): QObject(parent) {
     // Ensure config directory exists
     QDir dir(wallpaperConfigDir());
@@ -219,17 +230,14 @@ void FileHelper::writeWallpaperConfig(const QString& id, const QVariantMap& chan
         config[it.key()] = it.value();
     }
 
-    // Write back
-    QString filePath = wallpaperConfigFile(id);
-    QFile   file(filePath);
-
-    if (! file.open(QIODevice::WriteOnly)) {
+    // Write back atomically (write-tmp-then-rename) so a crash or full disk
+    // mid-write can never truncate the live config — a truncated file would
+    // make readWallpaperConfig silently return an empty map (settings lost).
+    QString             filePath = wallpaperConfigFile(id);
+    const QJsonDocument doc(QJsonObject::fromVariantMap(config));
+    if (! atomicWriteJson(filePath, doc)) {
         qWarning() << "FileHelper: Cannot write config:" << filePath;
-        return;
     }
-
-    QJsonDocument doc(QJsonObject::fromVariantMap(config));
-    file.write(doc.toJson());
 }
 
 void FileHelper::resetWallpaperConfig(const QString& id) {
@@ -261,7 +269,7 @@ bool FileHelper::clearCacheDir(const QString& path) {
         while (! parent.exists() && parent.cdUp()) { /* walk up */
         }
         const QString parentCanon = QFileInfo(parent.absolutePath()).canonicalFilePath();
-        if (parentCanon.isEmpty() || ! parentCanon.startsWith(cacheRoot)) {
+        if (parentCanon.isEmpty() || ! isUnderRoot(parentCanon, cacheRoot)) {
             qWarning() << "FileHelper::clearCacheDir refused missing path "
                           "outside cache root:"
                        << path;
@@ -269,7 +277,7 @@ bool FileHelper::clearCacheDir(const QString& path) {
         }
         return true; // nothing to clear
     }
-    if (! canon.startsWith(cacheRoot)) {
+    if (! isUnderRoot(canon, cacheRoot)) {
         qWarning() << "FileHelper::clearCacheDir refused path outside cache root:" << path;
         return false;
     }

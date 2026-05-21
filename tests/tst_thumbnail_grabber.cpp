@@ -88,6 +88,32 @@ private slots:
         // libmpv version; no further assertion.
     }
 
+    // F16: on a seek timeout (no MPV_EVENT_PLAYBACK_RESTART within budget),
+    // grab() must return false BEFORE running screenshot-to-file — otherwise a
+    // wrong-position (typically t=0) frame is cached and reported as success.
+    // The directly-observable consequence of the new `if (!seeked) return
+    // false;` guard: when ok==false, no output file was written.
+    //
+    // We push the seek-timeout/END-without-restart branch via a past-end
+    // absolute seek. Some libmpv builds clamp the seek and emit
+    // PLAYBACK_RESTART (ok==true, the existing happy path); on those this
+    // assertion is vacuously satisfied but still correct. On builds that take
+    // the false branch, it locks in "no file on a failed seek".
+    void grab_seekPastEndNeverCapturesT0Frame() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        const QString in = QFINDTESTDATA("fixtures/tiny.webm");
+        if (! QFileInfo::exists(in)) QSKIP("fixtures/tiny.webm missing in this environment");
+        const QString out = d.filePath("never_t0.jpg");
+
+        ThumbnailGrabber grabber;
+        const bool       ok = grabber.grab(in, out, /*atSeconds=*/100.0);
+        if (! ok) {
+            // Guard fired before the screenshot — no garbage frame on disk.
+            QVERIFY(! QFile::exists(out));
+        }
+    }
+
     void generateThumbnail_emitsThumbnailReady() {
         QTemporaryDir d;
         const QString in  = QFINDTESTDATA("fixtures/tiny.webm");

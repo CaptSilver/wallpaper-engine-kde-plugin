@@ -1,8 +1,14 @@
 #pragma once
 #include <QQuickItem>
 #include <QDBusConnection>
+#include <QDBusPendingCall>
+#include <QDBusPendingCallWatcher>
+#include <QPointer>
+#include <QSet>
+#include <QStringList>
 #include <QTimer>
 #include <QVariantList>
+#include <QVariantMap>
 #include <QNetworkAccessManager>
 
 namespace wekde
@@ -117,6 +123,19 @@ private:
     void fetchAllProperties();
     void processArtUrl(const QString& artUrl);
     void extractColors(const QImage& img);
+    // Apply a PlaybackStatus string (the value of the "PlaybackStatus" MPRIS
+    // property): map to the int state, emit playbackStateChanged on a real
+    // transition, and start/stop the 1Hz position poll. Shared by the
+    // fetchAllProperties async reply path and handlePropertiesChanged. Pure
+    // side-effect on member state + signals; no DBus I/O.
+    void applyPlaybackStatus(const QString& status);
+    // Apply an already-unmarshalled "Metadata" QVariantMap: parse it, cache
+    // the duration, emit propertiesChanged, and (de-duplicated on artUrl)
+    // kick off art processing. Takes a plain QVariantMap so both the async
+    // reply path (which unmarshals the QDBusArgument first) and the
+    // PropertiesChanged path (which keeps its test-friendly fallback) can
+    // share the body. No DBus I/O.
+    void applyMetadata(const QVariantMap& meta);
     // Idempotent: subscribe to NameOwnerChanged + scan for an active
     // MPRIS player. Called lazily on the first invokePlayer /
     // invokeShortcut so wallpapers that never touch media controls
@@ -134,6 +153,26 @@ private:
     bool            m_engaged { false }; // true once D-Bus watch started
     QString         m_lastArtUrl;
     bool            m_artUrlEverProcessed { false };
+
+    // Async D-Bus state. All reads (position poll, the findActivePlayer scan,
+    // and fetchAllProperties) now go through QDBusConnection::asyncCall +
+    // QDBusPendingCallWatcher so a hung media player can never block the GUI
+    // (plasmashell compositor) thread for the 25s D-Bus default.
+    //
+    // m_pollPending guards against piling up overlapping position polls: the
+    // 1Hz timer must not fan out a new Get(Position) while a previous one is
+    // still in flight against a slow player.
+    bool m_pollPending { false };
+    // findActivePlayer fan-out/fan-in: m_scanGeneration bumps on every scan so
+    // late replies from a superseded scan are ignored; m_scanPending counts the
+    // per-service PlaybackStatus probes still outstanding; m_scanBest holds the
+    // first-seen (or first "Playing") candidate; m_scanFoundPlaying short-
+    // circuits the rest once a playing player is seen.
+    quint64 m_scanGeneration { 0 };
+    int     m_scanPending { 0 };
+    QString m_scanBest;
+    int     m_scanBestIndex { -1 };
+    bool    m_scanFoundPlaying { false };
 
     QNetworkAccessManager m_nam;
 };

@@ -818,6 +818,46 @@ private slots:
         QDir(target).removeRecursively();
     }
 
+    // Regression (F15): a sibling directory whose name merely *prefixes* the
+    // cache root (e.g. ".../<cacheRoot>-sibling") must be refused. A bare
+    // QString::startsWith(cacheRoot) belt would accept it and recursively
+    // delete its contents — data loss outside the cache. The fix requires an
+    // exact match or a child separated by '/'.
+    void clearCacheDir_refusesSiblingPrefixOfCacheRoot() {
+        const QString root = cacheRootCanonical();
+        QVERIFY(! root.isEmpty());
+        // A real dir OUTSIDE the canonical root but sharing its name prefix.
+        const QString sibling = root + "-sibling";
+        QDir().mkpath(sibling);
+        QVERIFY(QFileInfo(sibling).exists());
+        const QString victim = sibling + "/keep-me.txt";
+        QFile         f(victim);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("must survive");
+        f.close();
+
+        FileHelper fh;
+        QCOMPARE(fh.clearCacheDir(sibling), false);
+        // The belt must not have deleted anything in the sibling.
+        QVERIFY(QFileInfo(victim).exists());
+
+        // Clean up.
+        QDir(sibling).removeRecursively();
+    }
+
+    // The exact-match arm of the F15 predicate must remain reachable: the
+    // cache root itself is the live binding target (plugin_info.cache_path)
+    // and clearing its own contents is the normal case.
+    void clearCacheDir_acceptsCacheRootItself() {
+        const QString root = cacheRootCanonical();
+        QVERIFY(! root.isEmpty());
+        QDir().mkpath(root);
+        FileHelper fh;
+        QCOMPARE(fh.clearCacheDir(root), true);
+        // Directory itself stays valid (contents-only clear).
+        QVERIFY(QFileInfo(root).exists());
+    }
+
     // ── writeWallpaperConfig nested QVariantMap round-trip ─────────────────
     // SceneScript user properties are arbitrary JSON objects; the config
     // path needs to preserve the structure across write→read without
@@ -847,6 +887,85 @@ private slots:
         const QVariantMap readInner = readUserProps.value("nested").toMap();
         QCOMPARE(readInner.value("alpha").toDouble(), 0.42);
         QCOMPARE(readInner.value("beta").toList().size(), 3);
+    }
+
+    // F17: writeWallpaperConfig now routes through atomicWriteJson
+    // (write-tmp-then-rename) so a crash/full-disk can't truncate the live
+    // config. Observable proof the atomic path ran: no <file>.tmp lingers
+    // after a successful write, and the data round-trips.
+    void writeWallpaperConfig_atomicLeavesNoTmpAndRoundTrips() {
+        FileHelper fh;
+
+        QVariantMap m;
+        m["foo"] = "bar";
+        m["n"]   = 11;
+        fh.writeWallpaperConfig("atomic-id", m);
+
+        const auto read = fh.readWallpaperConfig("atomic-id");
+        QCOMPARE(read.value("foo").toString(), QString("bar"));
+        QCOMPARE(read.value("n").toInt(), 11);
+
+        // Recompute the config file path exactly as FileHelper does. Under
+        // QStandardPaths::setTestModeEnabled (initTestCase), GenericConfigLocation
+        // resolves to the test sandbox and ignores XDG_CONFIG_HOME.
+        const QString cfgFile =
+            QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
+            "/wekde/wallpaper/atomic-id.json";
+        QVERIFY(QFileInfo::exists(cfgFile)); // sanity: write landed here
+        // The .tmp sibling must not linger — its presence would mean the
+        // atomic rename step never ran.
+        QVERIFY(! QFileInfo::exists(cfgFile + ".tmp"));
+    }
+
+    // F17: an unwritable target must NOT leave a truncated stub OR an orphan
+    // <file>.tmp. Pre-fix, the raw WriteOnly open (no Truncate, unchecked
+    // write) could create/clobber the file; post-fix, atomicWriteJson writes
+    // to <file>.tmp first, checks the result, and removes the tmp on failure,
+    // never touching the real path. Mirrors config_writeUnopenable_silentlyFails
+    // (lock the real test-mode config dir read-only) and adds the .tmp check
+    // that is specific to the atomic path. writeWallpaperConfig is void →
+    // assert via existence.
+    void writeWallpaperConfig_failureLeavesNoPartialNorTmp() {
+        FileHelper    helper;
+        const QString cfgDir =
+            QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
+            "/wekde/wallpaper";
+        QDir().mkpath(cfgDir);
+        const QString id   = "test_atomic_fail";
+        const QString path = cfgDir + "/" + id + ".json";
+        QFile::remove(path);
+        QFile::remove(path + ".tmp");
+
+        // Lock the directory read-only so the inner QFile open (of the .tmp)
+        // cannot create the file. RAII guard restores perms even on a failed
+        // QVERIFY so subsequent tests aren't poisoned.
+        const QFile::Permissions origPerms = QFile(cfgDir).permissions();
+        struct PermsGuard {
+            QString            path;
+            QFile::Permissions perms;
+            bool               restored { false };
+            ~PermsGuard() {
+                if (! restored) QFile::setPermissions(path, perms);
+            }
+        } guard { cfgDir, origPerms, false };
+        QVERIFY(QFile::setPermissions(cfgDir, QFile::ReadOwner | QFile::ReadUser));
+
+        // Sanity: confirm the env actually disallowed writes (else SKIP).
+        {
+            QFile probe(path + ".tmp");
+            if (probe.open(QIODevice::WriteOnly)) {
+                probe.close();
+                QFile::remove(path + ".tmp");
+                QSKIP("filesystem permits write regardless of mode (likely running as root)");
+            }
+        }
+
+        helper.writeWallpaperConfig(id, { { "x", 1 } }); // void; must not crash
+        QVERIFY(! QFile::exists(path));                  // no truncated stub
+        QVERIFY(! QFile::exists(path + ".tmp"));         // tmp removed on failure
+
+        guard.restored = true;
+        QFile::setPermissions(cfgDir, origPerms);
     }
 };
 

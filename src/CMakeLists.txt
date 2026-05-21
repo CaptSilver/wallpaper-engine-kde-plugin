@@ -1,4 +1,7 @@
-find_package(Qt6 REQUIRED COMPONENTS Quick Qml Core DBus)
+# Qt 6.6 floor: the plugin targets Plasma 6 (Qt 6 era); pin a realistic minimum
+# so a too-old Qt6 fails at configure with a clear message instead of late and
+# cryptically.  6.6 matches the lowest Qt the supported distros ship.
+find_package(Qt6 6.6 REQUIRED COMPONENTS Quick Qml Core DBus)
 
 add_subdirectory(backend_mpv)
 
@@ -42,6 +45,11 @@ target_link_libraries(${PROJECT_NAME}
 	KF6::ConfigCore
 )
 target_compile_definitions(${PROJECT_NAME} PRIVATE WEKDE_HAS_MPV)
+# Warning flags for the shippable plugin .so (dlopen'd into plasmashell — a
+# crash here takes down the desktop).  wek_warn_opts comes from
+# src/backend_scene/cmake/WekWarnings.cmake (included at the root before
+# add_subdirectory(src)); -Wall -Wextra, plus -Werror under WEK_WERROR.
+target_compile_options(${PROJECT_NAME} PRIVATE ${wek_warn_opts})
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_VISIBILITY_PRESET hidden)
 set_target_properties(${PROJECT_NAME}
                        PROPERTIES LINK_FLAGS "-Wl,--exclude-libs,ALL")

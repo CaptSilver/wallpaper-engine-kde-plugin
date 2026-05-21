@@ -513,10 +513,10 @@ Rectangle {
     }
 
     Component.onCompleted: {
-        // catsout → captsilver one-shot migration. No-op when marker present
-        // or no catsout config exists. Spawns wek-migrate-from-catsout via
-        // QProcess::startDetached, which restarts plasmashell — so anything
-        // we do after this call may not finish.
+        // catsout → captsilver one-shot migration. No-op when the marker is
+        // present or no catsout config exists. Runs IN-PROCESS via KConfig
+        // (no subprocess, no plasmashell restart) and returns normally, so it
+        // is safe to run applySource() and the signal connects below after it.
         MigrationHelper.runIfNeeded();
 
         // load first backend

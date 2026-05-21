@@ -40,6 +40,8 @@ bool MigrationHelper::shouldRun() const {
 }
 
 void MigrationHelper::runIfNeeded() {
+    if (m_attempted) return; // already attempted by this instance
+    m_attempted = true;
     if (! shouldRun()) return;
 
     // Migration runs in-process via KConfig — no plasmashell stop/start, no

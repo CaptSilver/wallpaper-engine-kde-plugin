@@ -50,7 +50,7 @@ public:
         Paused,
     };
     Q_ENUM(Status)
-    Status  status() const;
+    Status status() const;
     // True only after mpv_create() AND mpv_initialize() both succeeded. QML reads
     // this to fall back instead of presenting a black void when mpv is unavailable.
     bool    initialized() const { return m_mpv != nullptr && m_inited_ok; }

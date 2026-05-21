@@ -9,6 +9,7 @@
 #include <QDBusVariant>
 #include <QImage>
 #include <QNetworkReply>
+#include <QThreadPool>
 #include <QSet>
 #include <QUrl>
 #include <QDebug>
@@ -390,11 +391,30 @@ void MprisMonitor::processArtUrl(const QString& artUrl) {
     switch (classifyArtUrl(artUrl)) {
     case MprisArtUrlKind::Empty: emit thumbnailChanged(false, {}); return;
     case MprisArtUrlKind::LocalFile: {
-        QImage img(QUrl(artUrl).toLocalFile());
-        if (! img.isNull())
-            extractColors(img);
-        else
-            emit thumbnailChanged(false, {});
+        const QString localPath = QUrl(artUrl).toLocalFile();
+        const quint64 gen       = ++m_artGeneration;
+        QThreadPool::globalInstance()->start([this, localPath, gen]() {
+            QImage img(localPath); // decode off the compositor thread
+            if (img.isNull()) {
+                QMetaObject::invokeMethod(
+                    this,
+                    [this, gen]() {
+                        if (gen != m_artGeneration) return; // superseded by a newer cover
+                        emit thumbnailChanged(false, {});
+                    },
+                    Qt::QueuedConnection);
+                return;
+            }
+            // extractDominantColors touches no `this`/shared state — safe here.
+            const QVariantList colors = wekde::extractDominantColors(img);
+            QMetaObject::invokeMethod(
+                this,
+                [this, gen, colors]() {
+                    if (gen != m_artGeneration) return; // superseded by a newer cover
+                    emit thumbnailChanged(true, colors);
+                },
+                Qt::QueuedConnection);
+        });
         return;
     }
     case MprisArtUrlKind::Http: {

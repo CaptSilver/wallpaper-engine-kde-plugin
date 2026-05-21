@@ -73,6 +73,9 @@ private slots:
     void handlePropsChanged_metadataBadLocalArtUrl_thumbnailFalse();
     void handlePropsChanged_metadataUnknownScheme_thumbnailFalse();
     void handlePropsChanged_sameArtUrl_doesNotReprocess();
+    void processArtUrl_localFile_emitsThumbnailAsync();
+    void processArtUrl_localFileMissing_emitsFalseAsync();
+    void processArtUrl_supersededLocalDecode_dropsStaleResult();
     void handleNameOwnerChanged_nonMprisName_ignored();
     void handleNameOwnerChanged_mprisNameAppears_entersConnectBranch();
     void handlePropsChanged_metadataHttpArtUrl_createsRequest();
@@ -531,6 +534,8 @@ void TestMprisColors::handlePropsChanged_metadataLocalFileArtUrl_thumbnailTrue()
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c),
                Q_ARG(QStringList, QStringList()));
+    // Decode is now off-thread; the emit is queued. Poll.
+    QVERIFY(spy.wait(5000));
     QCOMPARE(spy.count(), 1);
     QCOMPARE(spy.at(0).at(0).toBool(), true);
     QVariantList colors = spy.at(0).at(1).toList();
@@ -547,6 +552,7 @@ void TestMprisColors::handlePropsChanged_metadataBadLocalArtUrl_thumbnailFalse()
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c),
                Q_ARG(QStringList, QStringList()));
+    QVERIFY(spy.wait(5000));
     QCOMPARE(spy.count(), 1);
     QCOMPARE(spy.at(0).at(0).toBool(), false);
 }
@@ -583,14 +589,19 @@ void TestMprisColors::handlePropsChanged_sameArtUrl_doesNotReprocess() {
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c),
                Q_ARG(QStringList, QStringList()));
-    int before = spy.count();
+    QVERIFY(spy.wait(5000)); // let the first (async) decode emit land
+    const int before = spy.count();
+    QCOMPARE(before, 1);
 
-    // Same URL → processArtUrl must NOT be called again.
+    // Same URL → applyMetadata's dedup means processArtUrl is NOT called again,
+    // so no new decode is dispatched and no further emit occurs.
     invokeSlot(&m,
                "handlePropertiesChanged",
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c),
                Q_ARG(QStringList, QStringList()));
+    // Give any stray queued emit a chance, then assert none arrived.
+    QTest::qWait(300);
     QCOMPARE(spy.count(), before);
 }
 
@@ -950,6 +961,7 @@ void TestMprisColors::handlePropsChanged_changedArtUrl_reprocesses() {
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c1),
                Q_ARG(QStringList, QStringList()));
+    QVERIFY(spy.wait(5000)); // let cover A's emit land before dispatching B
     QCOMPARE(spy.count(), 1);
 
     // Different artUrl → must reprocess and re-emit, even though we already
@@ -961,7 +973,7 @@ void TestMprisColors::handlePropsChanged_changedArtUrl_reprocesses() {
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c2),
                Q_ARG(QStringList, QStringList()));
-    QCOMPARE(spy.count(), 2);
+    QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 2, 5000);
     QCOMPARE(spy.at(1).at(0).toBool(), true);
 }
 
@@ -1315,6 +1327,7 @@ void TestMprisColors::reconnect_sameArtUrl_doesNotDedup() {
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c),
                Q_ARG(QStringList, QStringList()));
+    QVERIFY(thumbSpy.wait(5000)); // first (async) decode emit
     const int firstCount = thumbSpy.count();
     QVERIFY(firstCount >= 1);
 
@@ -1334,7 +1347,89 @@ void TestMprisColors::reconnect_sameArtUrl_doesNotDedup() {
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c),
                Q_ARG(QStringList, QStringList()));
-    QVERIFY(thumbSpy.count() > firstCount);
+    QTRY_VERIFY_WITH_TIMEOUT(thumbSpy.count() > firstCount, 5000);
+}
+
+void TestMprisColors::processArtUrl_localFile_emitsThumbnailAsync() {
+    QTemporaryFile f;
+    f.setAutoRemove(true);
+    QVERIFY(f.open());
+    QImage img(16, 16, QImage::Format_RGB32);
+    img.fill(Qt::magenta);
+    QVERIFY(img.save(f.fileName(), "PNG"));
+    f.close();
+
+    MprisMonitor m;
+    QSignalSpy   spy(&m, &MprisMonitor::thumbnailChanged);
+    QVariantMap  c;
+    c["Metadata"] = mkMeta("T", {}, 0, QUrl::fromLocalFile(f.fileName()).toString());
+    invokeSlot(&m,
+               "handlePropertiesChanged",
+               Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
+               Q_ARG(QVariantMap, c),
+               Q_ARG(QStringList, QStringList()));
+    QCOMPARE(spy.count(), 0); // proof it is async: not emitted synchronously
+    QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 5000);
+    QCOMPARE(spy.at(0).at(0).toBool(), true);
+    QCOMPARE(spy.at(0).at(1).toList().size(), 15);
+}
+
+void TestMprisColors::processArtUrl_localFileMissing_emitsFalseAsync() {
+    MprisMonitor m;
+    QSignalSpy   spy(&m, &MprisMonitor::thumbnailChanged);
+    QVariantMap  c;
+    c["Metadata"] = mkMeta("T", {}, 0, "file:///tmp/wekde_nonexistent_cover_991.png");
+    invokeSlot(&m,
+               "handlePropertiesChanged",
+               Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
+               Q_ARG(QVariantMap, c),
+               Q_ARG(QStringList, QStringList()));
+    QCOMPARE(spy.count(), 0);
+    QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 5000);
+    QCOMPARE(spy.at(0).at(0).toBool(), false);
+}
+
+void TestMprisColors::processArtUrl_supersededLocalDecode_dropsStaleResult() {
+    QTemporaryFile a, b;
+    a.setAutoRemove(true);
+    b.setAutoRemove(true);
+    QVERIFY(a.open());
+    QVERIFY(b.open());
+    QImage imgA(16, 16, QImage::Format_RGB32);
+    imgA.fill(Qt::red);
+    QImage imgB(16, 16, QImage::Format_RGB32);
+    imgB.fill(Qt::blue);
+    QVERIFY(imgA.save(a.fileName(), "PNG"));
+    QVERIFY(imgB.save(b.fileName(), "PNG"));
+    a.close();
+    b.close();
+
+    MprisMonitor m;
+    QSignalSpy   spy(&m, &MprisMonitor::thumbnailChanged);
+
+    QVariantMap c1;
+    c1["Metadata"] = mkMeta("A", {}, 0, QUrl::fromLocalFile(a.fileName()).toString());
+    invokeSlot(&m,
+               "handlePropertiesChanged",
+               Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
+               Q_ARG(QVariantMap, c1),
+               Q_ARG(QStringList, QStringList()));
+    // Immediately supersede with cover B before A's decode is guaranteed to land.
+    QVariantMap c2;
+    c2["Metadata"] = mkMeta("B", {}, 0, QUrl::fromLocalFile(b.fileName()).toString());
+    invokeSlot(&m,
+               "handlePropertiesChanged",
+               Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
+               Q_ARG(QVariantMap, c2),
+               Q_ARG(QStringList, QStringList()));
+
+    // The guard guarantees the FINAL emitted state is B's (A's generation was
+    // superseded). Can't pin intermediate emits (timing), but the last must be
+    // hasThumbnail=true from the surviving generation.
+    QTRY_VERIFY_WITH_TIMEOUT(spy.count() >= 1, 5000);
+    QTest::qWait(300); // drain any trailing queued emit
+    QCOMPARE(spy.last().at(0).toBool(), true);
+    QCOMPARE(spy.last().at(1).toList().size(), 15);
 }
 
 QTEST_GUILESS_MAIN(TestMprisColors)

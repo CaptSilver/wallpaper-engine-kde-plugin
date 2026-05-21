@@ -153,6 +153,11 @@ private:
     bool            m_engaged { false }; // true once D-Bus watch started
     QString         m_lastArtUrl;
     bool            m_artUrlEverProcessed { false };
+    // Bumped on every art dispatch. An off-thread LocalFile decode captures the
+    // value and drops its result on the GUI-thread emit if the generation
+    // advanced — so a slow decode of a previous cover can't overwrite the newer
+    // one's colors. Mirrors m_scanGeneration.
+    quint64 m_artGeneration { 0 };
 
     // Async D-Bus state. All reads (position poll, the findActivePlayer scan,
     // and fetchAllProperties) now go through QDBusConnection::asyncCall +

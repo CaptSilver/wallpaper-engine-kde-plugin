@@ -1,5 +1,6 @@
 #pragma once
 #include <QString>
+#include <memory>
 
 namespace wekde
 {
@@ -16,7 +17,7 @@ public:
 
 private:
     struct Impl;
-    Impl* d;
+    std::unique_ptr<Impl> d;
 };
 
 } // namespace wekde

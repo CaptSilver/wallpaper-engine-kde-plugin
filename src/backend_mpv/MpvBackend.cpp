@@ -326,8 +326,6 @@ public slots:
      * This happens on the initial frame.
      */
     QOpenGLFramebufferObject* createFramebufferObject(const QSize& size) override {
-        // QMetaObject::invokeMethod(m_obj, "initCallback", Qt::QueuedConnection);
-        // emit m_updater.inited();
         return QQuickFramebufferObject::Renderer::createFramebufferObject(size);
     }
 
@@ -341,7 +339,6 @@ public slots:
         MpvObject* mpv_obj = static_cast<MpvObject*>(item);
 
         if (m_mpv_context == nullptr) {
-            // mpv_set_wakeup_callback(m_mpv_handle, on_mpv_events, nullptr);
             if (CreateMpvContex(m_mpv, &m_mpv_context) >= 0) {
                 mpv_render_context_set_update_callback(m_mpv_context, on_mpv_redraw, this);
                 Q_EMIT this->inited();

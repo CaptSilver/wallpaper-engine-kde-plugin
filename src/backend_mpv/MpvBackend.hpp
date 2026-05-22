@@ -93,6 +93,8 @@ signals:
     void firstFrame();
 
 private:
+    // Render context ready: set by the queued initCallback() after MpvRender emits
+    // inited(); gates setSource()'s loadfile. Distinct from m_inited_ok (mpv_initialize).
     bool inited = false;
     QUrl m_source;
     // Last status surfaced via statusChanged(); the diff anchor so the signal

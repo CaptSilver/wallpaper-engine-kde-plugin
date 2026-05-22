@@ -122,7 +122,6 @@ private:
     void findActivePlayer();
     void fetchAllProperties();
     void processArtUrl(const QString& artUrl);
-    void extractColors(const QImage& img);
     // Apply a PlaybackStatus string (the value of the "PlaybackStatus" MPRIS
     // property): map to the int state, emit playbackStateChanged on a real
     // transition, and start/stop the 1Hz position poll. Shared by the

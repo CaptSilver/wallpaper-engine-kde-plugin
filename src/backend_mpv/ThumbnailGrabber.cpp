@@ -33,8 +33,8 @@ struct ThumbnailGrabber::Impl {
     }
 };
 
-ThumbnailGrabber::ThumbnailGrabber(): d(new Impl) {}
-ThumbnailGrabber::~ThumbnailGrabber() { delete d; }
+ThumbnailGrabber::ThumbnailGrabber(): d(std::make_unique<Impl>()) {}
+ThumbnailGrabber::~ThumbnailGrabber() = default;
 
 bool ThumbnailGrabber::grab(const QString& videoPath, const QString& outPath, double atSeconds) {
     if (! d->mpv) return false;

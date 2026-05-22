@@ -535,8 +535,3 @@ QVariantList wekde::extractDominantColors(const QImage& img) {
     }
     return colors;
 }
-
-void MprisMonitor::extractColors(const QImage& img) {
-    QVariantList colors = wekde::extractDominantColors(img);
-    emit         thumbnailChanged(true, colors);
-}

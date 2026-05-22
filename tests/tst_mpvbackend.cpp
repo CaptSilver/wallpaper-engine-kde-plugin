@@ -69,6 +69,14 @@ private slots:
     void play_whenStopped_isNoop();
     void pause_whenStopped_isNoop();
 
+    // status NOTIFY wiring: pure derivation, change-diff/emit, event-queue drain.
+    void deriveStatus_idleActive_isStopped();
+    void deriveStatus_active_paused_isPaused();
+    void deriveStatus_active_unpaused_isPlaying();
+    void refreshStatus_changed_emitsOnce();
+    void refreshStatus_unchanged_doesNotEmit();
+    void onMpvEvents_idlePlayer_doesNotEmit();
+
     // Regression: constructor used to set `loop`, `vo`, `hwdec`, `config`
     // *after* mpv_initialize(), where mpv silently drops them.
     void constructor_setsLoopOptionBeforeInit();
@@ -294,6 +302,53 @@ void TestMpvBackend::successfulInit_doesNotWarn() {
     }
     qInstallMessageHandler(prev);
     QVERIFY(! sawUnavailable);
+}
+
+// status() is a pure mapping of mpv's (idle-active, pause) flags: idle wins
+// (Stopped) regardless of pause; otherwise pause picks Paused vs Playing.
+void TestMpvBackend::deriveStatus_idleActive_isStopped() {
+    QCOMPARE(MpvObject::deriveStatus(true, false), MpvObject::Stopped);
+    QCOMPARE(MpvObject::deriveStatus(true, true), MpvObject::Stopped);
+}
+
+void TestMpvBackend::deriveStatus_active_paused_isPaused() {
+    QCOMPARE(MpvObject::deriveStatus(false, true), MpvObject::Paused);
+}
+
+void TestMpvBackend::deriveStatus_active_unpaused_isPlaying() {
+    QCOMPARE(MpvObject::deriveStatus(false, false), MpvObject::Playing);
+}
+
+// A status transition emits statusChanged exactly once per crossing and reports
+// that it changed — the emit site that was previously missing entirely.
+void TestMpvBackend::refreshStatus_changed_emitsOnce() {
+    auto       obj = makeObject(); // status anchor starts Stopped
+    QSignalSpy spy(obj.get(), &MpvObject::statusChanged);
+    QVERIFY(obj->refreshStatus(false, false)); // Stopped -> Playing
+    QCOMPARE(spy.count(), 1);
+    QVERIFY(obj->refreshStatus(false, true)); // Playing -> Paused
+    QCOMPARE(spy.count(), 2);
+}
+
+// No spurious emit when the derived status is unchanged (the diff guard that
+// keeps QML bindings from churning on every observed-property event).
+void TestMpvBackend::refreshStatus_unchanged_doesNotEmit() {
+    auto       obj = makeObject(); // anchor Stopped
+    QSignalSpy spy(obj.get(), &MpvObject::statusChanged);
+    QVERIFY(! obj->refreshStatus(true, false)); // Stopped -> Stopped
+    QVERIFY(! obj->refreshStatus(true, true));  // still Stopped
+    QCOMPARE(spy.count(), 0);
+}
+
+// Draining mpv's event queue (including the initial property-change events that
+// mpv_observe_property delivers on registration) must not emit statusChanged
+// while the player is idle.
+void TestMpvBackend::onMpvEvents_idlePlayer_doesNotEmit() {
+    auto       obj = makeObject();
+    QSignalSpy spy(obj.get(), &MpvObject::statusChanged);
+    obj->onMpvEvents(); // idle player => Stopped => no change
+    QCOMPARE(spy.count(), 0);
+    QCOMPARE(obj->status(), MpvObject::Stopped);
 }
 
 QTEST_MAIN(TestMpvBackend)

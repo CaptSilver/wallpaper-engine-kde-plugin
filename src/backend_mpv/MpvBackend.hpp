@@ -37,7 +37,9 @@ class MpvObject : public QQuickFramebufferObject {
     friend class MpvRender;
 
 public:
-    static void on_update(void* ctx);
+    // mpv's wakeup callback fires on an arbitrary player thread; it must only
+    // marshal back to the GUI thread (queued), never touch QObject state direct.
+    static void wakeup(void* ctx);
 
     explicit MpvObject(QQuickItem* parent = nullptr);
     virtual ~MpvObject();
@@ -51,6 +53,11 @@ public:
     };
     Q_ENUM(Status)
     Status status() const;
+    // Pure mapping of mpv's (idle-active, pause) flags to a playback Status.
+    static Status deriveStatus(bool idleActive, bool paused);
+    // Re-derive from the given flags; emit statusChanged() iff the status
+    // crossed a boundary vs the last seen value. Returns whether it changed.
+    bool refreshStatus(bool idleActive, bool paused);
     // True only after mpv_create() AND mpv_initialize() both succeeded. QML reads
     // this to fall back instead of presenting a black void when mpv is unavailable.
     bool    initialized() const { return m_mpv != nullptr && m_inited_ok; }
@@ -74,6 +81,9 @@ public slots:
     QVariant getProperty(const QString& name, bool* ok = nullptr) const;
     void     initCallback();
     void     checkAndEmitFirstFrame();
+    // GUI-thread drain of mpv's event queue (posted by wakeup()); emits
+    // statusChanged() when an observed property moves the derived status.
+    void onMpvEvents();
 
 signals:
     void initFinished();
@@ -83,9 +93,11 @@ signals:
     void firstFrame();
 
 private:
-    bool   inited = false;
-    QUrl   m_source;
-    Status m_status = Stopped;
+    bool inited = false;
+    QUrl m_source;
+    // Last status surfaced via statusChanged(); the diff anchor so the signal
+    // fires once per real transition rather than per observed-property event.
+    Status m_lastStatus { Stopped };
     bool   m_inited_ok { false }; // set once mpv_initialize() succeeds
 
 private:

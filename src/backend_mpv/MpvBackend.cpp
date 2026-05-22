@@ -193,10 +193,40 @@ void MpvObject::stop() {
     }
 }
 
+MpvObject::Status MpvObject::deriveStatus(bool idleActive, bool paused) {
+    return idleActive ? Stopped : (paused ? Paused : Playing);
+}
+
 MpvObject::Status MpvObject::status() const {
-    const bool stopped = getProperty("idle-active").toBool();
-    const bool paused  = getProperty("pause").toBool();
-    return stopped ? Stopped : (paused ? Paused : Playing);
+    return deriveStatus(getProperty("idle-active").toBool(), getProperty("pause").toBool());
+}
+
+bool MpvObject::refreshStatus(bool idleActive, bool paused) {
+    const Status now = deriveStatus(idleActive, paused);
+    if (now == m_lastStatus) return false;
+    m_lastStatus = now;
+    _Q_DEBUG() << "status ->" << now;
+    Q_EMIT statusChanged();
+    return true;
+}
+
+// mpv surfaces pause/idle-active changes through its event queue after
+// mpv_observe_property; wakeup() posts this drain to the GUI thread.
+void MpvObject::onMpvEvents() {
+    if (! m_mpv) return;
+    while (true) {
+        mpv_event* ev = mpv_wait_event(m_mpv, 0); // non-blocking
+        if (ev->event_id == MPV_EVENT_NONE) break;
+        if (ev->event_id == MPV_EVENT_PROPERTY_CHANGE) {
+            refreshStatus(getProperty("idle-active").toBool(), getProperty("pause").toBool());
+        }
+    }
+}
+
+void MpvObject::wakeup(void* ctx) {
+    // Runs on an arbitrary mpv thread — only marshal to the GUI thread.
+    auto* self = static_cast<MpvObject*>(ctx);
+    QMetaObject::invokeMethod(self, "onMpvEvents", Qt::QueuedConnection);
 }
 
 QUrl MpvObject::source() const { return m_source; }
@@ -383,10 +413,24 @@ MpvObject::MpvObject(QQuickItem* parent)
         return;
     }
     m_inited_ok = true;
+
+    // Observe the properties that define Status and pump mpv's event queue so
+    // statusChanged() actually fires — QML bindings on `status` depend on it.
+    // The wakeup callback runs on an mpv thread; it only queues onMpvEvents().
+    m_lastStatus = status();
+    mpv_observe_property(m_mpv, 0, "pause", MPV_FORMAT_FLAG);
+    mpv_observe_property(m_mpv, 0, "idle-active", MPV_FORMAT_FLAG);
+    mpv_set_wakeup_callback(m_mpv, &MpvObject::wakeup, this);
+
     Q_EMIT initializedChanged();
 }
 
-MpvObject::~MpvObject() {}
+MpvObject::~MpvObject() {
+    // The wakeup callback dereferences `this`; clear it before destruction so a
+    // late player-thread event can't call into a destroyed object. The .so is
+    // dlopen'd into plasmashell, where a dangling callback would crash the desktop.
+    if (m_mpv) mpv_set_wakeup_callback(m_mpv, nullptr, nullptr);
+}
 
 void MpvObject::checkAndEmitFirstFrame() {
     // m_first_frame starts true; setSource flips it false on a successful

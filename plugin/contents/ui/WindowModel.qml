@@ -7,6 +7,8 @@ import org.kde.plasma.plasma5support as Plasma5Support
 
 import org.kde.taskmanager 0.1 as TaskManager
 
+import "js/windowplay.mjs" as WindowPlay
+
 /*
 https://github.com/KDE/plasma-workspace/blob/master/libtaskmanager/abstracttasksmodel.h
     enum AdditionalRoles {
@@ -161,41 +163,6 @@ Item {
         }
     }
 
-    /*
-    filters {
-        IsWindows: true
-    }
-    callback(getproperty) { return getproperty("IsWindows") === true }
-    */
-    function genTaskModelFilter(model) {
-        function doCallback(idx, callback) {
-            return callback((property) => model.getProperty(idx, property));
-        }
-        function filter(callback, inArray) {
-            const array = inArray ? inArray : Array.from(Array(model.count).keys());
-            return array.filter(el => {
-                const idx = model.makeModelIndex(el);
-                return doCallback(idx, callback);
-            });
-        }
-        return {
-            filter: function(filters, array) {
-                return filter((getProperty) => {
-                    const nfilters = filters ? filters : {};
-                    for(const [key, value] of Object.entries(nfilters)) {
-                        const property = getProperty(key);
-                        if(property !== undefined && property !== value)
-                            return false;
-                    };
-                    return true;
-                }, array);
-            },
-            filterCallback: function(callback, array) {
-                return filter(callback, array);
-            }
-        };
-    }
-
     function updateWindowsinfo() {
         triggerTimer.start();
     }
@@ -204,77 +171,44 @@ Item {
             playBy(true);
             return;
         }
-        const basefilters = {
-            IsWindow: true,
-//            SkipTaskbar: false,
-//            SkipPager: false
-        };
-        const taskFilter = genTaskModelFilter(tasksModel);
-        const baseWModel = taskFilter.filterCallback((getproperty) => {
-            const activities = getproperty("Activities");
-            if(activities && activities.length) {
-                for(let i=0;i < activities.length;i++) {
-                    if(activities[i] === wModel.activity)
-                        return true;
-                }
-                return false;
-            }
-            // true when model don't have activities info
-            return true;
-        }, taskFilter.filter(basefilters));
-        const notMinWModel = taskFilter.filter({IsMinimized: false}, baseWModel);
 
-        // can simply skip when "activity != currentActivity", but use full filter
-        //const notMinWModel = filterTaskModel(tasksModel, Object.assign({IsMinimized: false}, basefilters)).filter();
-        const maxWModel = taskFilter.filterCallback((getproperty) => {
-            return getproperty("IsMaximized") === true || getproperty("IsFullScreen") === true;
-        }, notMinWModel);
-
-        const fullSModel = taskFilter.filterCallback((getproperty) => {
-            return getproperty("IsFullScreen") === true;
-        }, notMinWModel);
-
-        const activeModel = taskFilter.filter({IsActive: true}, notMinWModel);
-
-
-        switch (modePlay) {
-        case Common.PauseMode.FocusOrMax:
-            playBy(maxWModel.length === 0 && activeModel.length === 0);
-            break;
-        case Common.PauseMode.Any:
-            playBy(notMinWModel.length === 0);
-            break;
-        case Common.PauseMode.Max:
-            playBy(maxWModel.length === 0);
-            break;
-        case Common.PauseMode.FullScreen:
-            // Diagnostic was unconditional — fired on every window-state
-            // tick in FullScreen pause mode. Gate on `logging` so it
-            // matches the rest of the noisy-dump path.
-            if (logging) console.log("fullScreen", fullSModel);
-            playBy(fullSModel.length === 0);
-            break;
-        case Common.PauseMode.Focus:
-            playBy(activeModel.length === 0);
-            break;
-        default:
-            playBy(true);
+        // Single pass over the task model: read each row once, keep windows that
+        // are real windows in the current activity, and build a plain descriptor
+        // for the pure decision function. Replaces the previous six chained
+        // filter() passes (each of which allocated an index array + a result
+        // array) — the decision only ever needs a handful of counts.
+        const windows = [];
+        const n = tasksModel.count;
+        for(let i = 0; i < n; i++) {
+            const idx = tasksModel.makeModelIndex(i);
+            if(tasksModel.data(idx, TaskManager.AbstractTasksModel.IsWindow) === false)
+                continue;
+            // Activity filter (done manually here because TasksModel.filterByActivity
+            // is unavailable — see the comment on tasksModel above): keep a window
+            // when it has no activity info, or one of its activities is the current.
+            const activities = tasksModel.data(idx, TaskManager.AbstractTasksModel.Activities);
+            if(activities && activities.length && activities.indexOf(wModel.activity) === -1)
+                continue;
+            windows.push({
+                isMinimized:  tasksModel.data(idx, TaskManager.AbstractTasksModel.IsMinimized)  === true,
+                isMaximized:  tasksModel.data(idx, TaskManager.AbstractTasksModel.IsMaximized)  === true,
+                isFullScreen: tasksModel.data(idx, TaskManager.AbstractTasksModel.IsFullScreen) === true,
+                isActive:     tasksModel.data(idx, TaskManager.AbstractTasksModel.IsActive)     === true,
+            });
         }
 
+        playBy(WindowPlay.shouldPlay(windows, modePlay));
+
         if(logging) {
-            const printW = (i) => {
-                const idx = tasksModel.makeModelIndex(i);
-                const name = tasksModel.data(idx, TaskManager.AbstractTasksModel.AppName);
-                const activity = tasksModel.data(idx, TaskManager.AbstractTasksModel.Activities);
-                console.error("--", name, activity);
-            }
-            console.error("--------Not Minimized--------");
-            notMinWModel.forEach(printW);
-            console.error("---------Maximized----------");
-            maxWModel.forEach(printW);
-            console.error("-----------Active-----------");
-            activeModel.forEach(printW);
-            console.error("\n\n\n")
+            // Keep the diagnostic dump (gated on `logging`, off the hot path).
+            const printW = (label, pred) => {
+                console.error("--------" + label + "--------");
+                windows.filter(pred).forEach((win) => console.error("--", win));
+            };
+            printW("Not Minimized", (win) => !win.isMinimized);
+            printW("Maximized",     (win) => !win.isMinimized && (win.isMaximized || win.isFullScreen));
+            printW("Active",        (win) => !win.isMinimized && win.isActive);
+            console.error("\n\n\n");
         }
     }
 }

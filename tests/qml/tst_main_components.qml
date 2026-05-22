@@ -75,7 +75,7 @@ TestCase {
         const tm = rig._find(wm, o => typeof o._windows !== "undefined");
         verify(tm !== null);
         tm._windows = [{
-            isActive: false, isMaximized: false, isFullScreen: false,
+            isWindow: true, isActive: false, isMaximized: false, isFullScreen: false,
             isMinimized: false, activities: [], appName: "win1",
         }];
         wm.updateWindowsinfo();

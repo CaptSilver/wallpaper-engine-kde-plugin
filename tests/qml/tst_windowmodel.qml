@@ -96,93 +96,168 @@ TestCase {
         if (tt) tt.triggered();           // fire synchronously
     }
 
+    // Settle the play timer so reqPause reflects the deferred play() reset.
+    function _settlePlay() {
+        const pt = _findPlayTimer();
+        if (pt) pt.triggered();
+    }
+
     function test_updateNeverMode_alwaysPlays() {
         wm.modePlay = Plugin.Common.PauseMode.Never;
         _setWindows([]);
         _runUpdate();
-        verify(true);
+        _settlePlay();
+        // Never mode: early-return playBy(true) regardless of windows.
+        compare(wm.reqPause, false);
     }
 
     function test_updateAnyMode_pausesWhenWindowsExist() {
         wm.modePlay = Plugin.Common.PauseMode.Any;
         _setWindows([{
-            isActive: false, isMaximized: false, isFullScreen: false,
+            isWindow: true, isActive: false, isMaximized: false, isFullScreen: false,
             isMinimized: false, activities: [], appName: "win1",
         }]);
         _runUpdate();
-        verify(true);
+        // One non-minimized window in Any mode -> pause.
+        compare(wm.reqPause, true);
+    }
+
+    function test_updateAnyMode_playsWhenOnlyMinimized() {
+        wm.modePlay = Plugin.Common.PauseMode.Any;
+        _setWindows([{
+            isWindow: true, isActive: false, isMaximized: false, isFullScreen: false,
+            isMinimized: true, activities: [], appName: "minimized",
+        }]);
+        _runUpdate();
+        _settlePlay();
+        // Only a minimized window -> no non-minimized -> play.
+        compare(wm.reqPause, false);
     }
 
     function test_updateMaxMode_pausesWhenMaximized() {
         wm.modePlay = Plugin.Common.PauseMode.Max;
         _setWindows([{
-            isActive: false, isMaximized: true, isFullScreen: false,
+            isWindow: true, isActive: false, isMaximized: true, isFullScreen: false,
             isMinimized: false, activities: [], appName: "max1",
         }]);
         _runUpdate();
-        verify(true);
+        // Maximized non-minimized window in Max mode -> pause.
+        compare(wm.reqPause, true);
+    }
+
+    function test_updateMaxMode_playsWhenNonMaximized() {
+        wm.modePlay = Plugin.Common.PauseMode.Max;
+        _setWindows([{
+            isWindow: true, isActive: false, isMaximized: false, isFullScreen: false,
+            isMinimized: false, activities: [], appName: "plain",
+        }]);
+        _runUpdate();
+        _settlePlay();
+        // Plain non-minimized window in Max mode -> no maximized -> play.
+        compare(wm.reqPause, false);
     }
 
     function test_updateFullScreenMode_pausesWhenFullscreen() {
         wm.modePlay = Plugin.Common.PauseMode.FullScreen;
         _setWindows([{
-            isActive: false, isMaximized: false, isFullScreen: true,
+            isWindow: true, isActive: false, isMaximized: false, isFullScreen: true,
             isMinimized: false, activities: [], appName: "fs1",
         }]);
         _runUpdate();
-        verify(true);
+        // Fullscreen non-minimized window -> pause.
+        compare(wm.reqPause, true);
+    }
+
+    function test_updateFullScreenMode_playsWhenMaximizedNotFullscreen() {
+        wm.modePlay = Plugin.Common.PauseMode.FullScreen;
+        _setWindows([{
+            isWindow: true, isActive: false, isMaximized: true, isFullScreen: false,
+            isMinimized: false, activities: [], appName: "maxonly",
+        }]);
+        _runUpdate();
+        _settlePlay();
+        // Maximized-but-not-fullscreen in FullScreen mode -> play.
+        compare(wm.reqPause, false);
     }
 
     function test_updateFocusMode_pausesWhenActive() {
         wm.modePlay = Plugin.Common.PauseMode.Focus;
         _setWindows([{
-            isActive: true, isMaximized: false, isFullScreen: false,
+            isWindow: true, isActive: true, isMaximized: false, isFullScreen: false,
             isMinimized: false, activities: [], appName: "act1",
         }]);
         _runUpdate();
-        verify(true);
+        // Active non-minimized window in Focus mode -> pause.
+        compare(wm.reqPause, true);
+    }
+
+    function test_updateFocusMode_playsWhenNonActive() {
+        wm.modePlay = Plugin.Common.PauseMode.Focus;
+        _setWindows([{
+            isWindow: true, isActive: false, isMaximized: false, isFullScreen: false,
+            isMinimized: false, activities: [], appName: "inact",
+        }]);
+        _runUpdate();
+        _settlePlay();
+        // Non-active window in Focus mode -> play.
+        compare(wm.reqPause, false);
     }
 
     function test_updateFocusOrMax_pausesWhenEither() {
         wm.modePlay = Plugin.Common.PauseMode.FocusOrMax;
         _setWindows([{
-            isActive: true, isMaximized: false, isFullScreen: false,
+            isWindow: true, isActive: true, isMaximized: false, isFullScreen: false,
             isMinimized: false, activities: [], appName: "act1",
         }]);
         _runUpdate();
-        verify(true);
+        // Active window -> FocusOrMax pauses.
+        compare(wm.reqPause, true);
+    }
+
+    function test_updateFocusOrMax_playsWhenNeitherActiveNorMaximized() {
+        wm.modePlay = Plugin.Common.PauseMode.FocusOrMax;
+        _setWindows([{
+            isWindow: true, isActive: false, isMaximized: false, isFullScreen: false,
+            isMinimized: false, activities: [], appName: "plain",
+        }]);
+        _runUpdate();
+        _settlePlay();
+        // Neither active nor maximized -> play.
+        compare(wm.reqPause, false);
     }
 
     function test_updateWithMixedActivities_filtersOnlyMatchingActivity() {
         wm.activity = "act-A";
         wm.modePlay = Plugin.Common.PauseMode.Any;
         _setWindows([
-            { isActive: true, isMaximized: false, isFullScreen: false,
+            { isWindow: true, isActive: true, isMaximized: false, isFullScreen: false,
               isMinimized: false, activities: ["act-A"], appName: "matching" },
-            { isActive: false, isMaximized: false, isFullScreen: false,
+            { isWindow: true, isActive: false, isMaximized: false, isFullScreen: false,
               isMinimized: false, activities: ["act-B"], appName: "other" },
         ]);
         _runUpdate();
-        verify(true);
+        // Only the act-A window passes the activity filter -> one non-min -> pause.
+        compare(wm.reqPause, true);
     }
 
     function test_updateMinimizedWindowsExcluded() {
         wm.modePlay = Plugin.Common.PauseMode.Any;
         _setWindows([{
-            isActive: false, isMaximized: false, isFullScreen: false,
+            isWindow: true, isActive: false, isMaximized: false, isFullScreen: false,
             isMinimized: true, activities: [], appName: "minimized",
         }]);
         _runUpdate();
-        // notMinWModel should be empty → playBy(true)
-        verify(true);
+        _settlePlay();
+        // Minimized window excluded -> no non-minimized -> play.
+        compare(wm.reqPause, false);
     }
 
     function test_loggingOn_runsPrintWLoopWithoutThrowing() {
         wm.logging = true;
         wm.modePlay = Plugin.Common.PauseMode.Any;
         _setWindows([{
-            isActive: true, isMaximized: true, isFullScreen: false,
-            isMinimized: false, activities: ["x"], appName: "logged",
+            isWindow: true, isActive: true, isMaximized: true, isFullScreen: false,
+            isMinimized: false, activities: [], appName: "logged",
         }]);
         _runUpdate();
         wm.logging = false;

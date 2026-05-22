@@ -1,5 +1,5 @@
 module org.kde.taskmanager
 TasksModel 0.1 TasksModel.qml
-AbstractTasksModel 0.1 AbstractTasksModel.qml
+singleton AbstractTasksModel 0.1 AbstractTasksModel.qml
 ActivityInfo 0.1 ActivityInfo.qml
 VirtualDesktopInfo 0.1 VirtualDesktopInfo.qml

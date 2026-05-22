@@ -93,6 +93,42 @@ add_test(NAME tst_filehelper COMMAND tst_filehelper -v2)
 # fails loudly (TIMEOUT) instead of wedging CI/preflight.
 set_tests_properties(tst_filehelper PROPERTIES TIMEOUT 120)
 
+# ── PluginInfo property contract tests ───────────────────────────────────────
+# version() is a pure-header inline (QStringLiteral(WEK_VERSION)); only the
+# header is compiled in — PluginInfo.cpp is excluded because it includes
+# SceneBackend.hpp which pulls in the full Vulkan backend.  Qt6::Core+Test
+# suffices; no heavy backend link required.
+#
+# WEK_PROJECT_VERSION: tests/CMakeLists.txt is standalone-capable and declares
+# its own project() with no VERSION clause, so PROJECT_VERSION is empty in
+# that mode.  Read it from the superproject's VERSION file directly.
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION" _wek_version_str)
+    string(STRIP "${_wek_version_str}" _wek_version_str)
+else()
+    set(_wek_version_str "${PROJECT_VERSION}")
+endif()
+add_executable(tst_plugininfo
+    tst_plugininfo.cpp
+    ${WEKDE_SRC_DIR}/PluginInfo.hpp
+)
+target_include_directories(tst_plugininfo PRIVATE ${WEKDE_SRC_DIR})
+target_compile_definitions(tst_plugininfo PRIVATE
+    WEK_VERSION="${_wek_version_str}")
+target_link_libraries(tst_plugininfo PRIVATE Qt6::Core Qt6::Test)
+if(COVERAGE)
+    target_compile_options(tst_plugininfo PRIVATE ${_cov_compile_flags})
+    target_link_options(tst_plugininfo PRIVATE ${_cov_link_flags})
+endif()
+if(MUTATION_TESTING)
+    target_compile_options(tst_plugininfo PRIVATE
+        -fpass-plugin=${MULL_PLUGIN_PATH}
+        -g -grecord-command-line)
+endif()
+add_test(NAME tst_plugininfo COMMAND tst_plugininfo -v2)
+set_tests_properties(tst_plugininfo PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
 # ── MprisMonitor color extraction tests ───────────────────────────────────────
 find_package(Qt6 COMPONENTS Gui Network DBus Quick QUIET)
 if(Qt6Gui_FOUND AND Qt6Quick_FOUND)
@@ -449,7 +485,7 @@ endif()
 # QML (tst_qml) and JS (tst_js) tests are add_test-only (qmltestrunner / node),
 # not C++ executables, so they are not listed.
 foreach(_wek_test_target
-        tst_filehelper tst_mpriscolors tst_mousegrabber tst_mpvbackend
+        tst_filehelper tst_plugininfo tst_mpriscolors tst_mousegrabber tst_mpvbackend
         tst_thumbnail_grabber tst_webaudio tst_migrationhelper
         tst_playlist_manager tst_main_integration)
     if(TARGET ${_wek_test_target})

@@ -27,8 +27,6 @@ QtObject {
         Mpv
     }
 
-    readonly property string version: '0.6.0'
-
     readonly property string repo_url: 'https://github.com/CaptSilver/wallpaper-engine-kde-plugin'
 
     readonly property var videoExtensions: [".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v"]

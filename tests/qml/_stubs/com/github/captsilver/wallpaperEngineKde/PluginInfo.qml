@@ -1,5 +1,5 @@
 import QtQuick
 QtObject {
-    property string version: "stub-1.0"
+    property string version: "test-stub"
     property string cache_path: ""
 }

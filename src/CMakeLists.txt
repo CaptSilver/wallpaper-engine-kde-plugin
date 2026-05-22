@@ -45,6 +45,8 @@ target_link_libraries(${PROJECT_NAME}
 	KF6::ConfigCore
 )
 target_compile_definitions(${PROJECT_NAME} PRIVATE WEKDE_HAS_MPV)
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    WEK_VERSION="${PROJECT_VERSION}")
 # Warning flags for the shippable plugin .so (dlopen'd into plasmashell — a
 # crash here takes down the desktop).  wek_warn_opts comes from
 # src/backend_scene/cmake/WekWarnings.cmake (included at the root before

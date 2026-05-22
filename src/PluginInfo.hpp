@@ -1,5 +1,6 @@
 #pragma once
 #include <QObject>
+#include <QUrl>
 
 namespace wekde
 {
@@ -8,19 +9,21 @@ class PluginInfo : public QObject {
     Q_OBJECT
     // Q_PROPERTY(READ WRITE NOTIFY)
     Q_PROPERTY(QUrl cache_path READ cache_path NOTIFY cache_pathChanged)
-    Q_PROPERTY(QUrl version READ version NOTIFY versionChanged)
+    Q_PROPERTY(QString version READ version CONSTANT)
 
 public:
-    PluginInfo(QObject* parent = nullptr);
-    virtual ~PluginInfo();
+    explicit PluginInfo(QObject* parent = nullptr): QObject(parent) {}
+    ~PluginInfo() override = default;
 
     QUrl cache_path() const;
 
-    QString version() const { return "0.6.0"; };
+    // Build-time version string injected by CMake via WEK_VERSION.
+    // CONSTANT: the value is fixed at compile time and never changes at
+    // runtime; no NOTIFY signal is needed or emitted.
+    QString version() const { return QStringLiteral(WEK_VERSION); }
 
 protected:
 signals:
     void cache_pathChanged();
-    void versionChanged();
 };
 } // namespace wekde

@@ -46,6 +46,10 @@ TestCase {
         verify(cfg.plugin_info !== null);
         // Either the stub PluginInfo or the no-lib fallback.
         compare(typeof cfg.plugin_info.version, "string");
+        // The stub must not carry the old hardcoded literal — guards against
+        // accidental reintroduction of the stale value in stub or production code.
+        verify(cfg.plugin_info.version !== "0.6.0",
+               "plugin_info.version must not be the stale '0.6.0' sentinel");
     }
 
     function test_pyext_isCreated() {

@@ -131,9 +131,9 @@ Flickable {
                     color: Kirigami.Theme.disabledTextColor
                     text: `
                         <ul>
-                        <li>plugin: ${Common.version}</li>
-                        <li>plugin lib: ${plugin_info.version}</li>
-                        ${Common.version != plugin_info.version ? "<br><b>warning: The lib version is inconsistent with the plugin version</b>" : ""}
+                        <li>plugin (qml): ${plugin_info.version}</li>
+                        <li>plugin (lib): ${plugin_info.version}</li>
+                        ${plugin_info.version === "-" ? "<br><b>warning: Native plugin lib not loaded — version unavailable</b>" : ""}
                         <li>kde: ${Qt.application.version}</li>
                         <li>file helper: native</li>
                         </ul>

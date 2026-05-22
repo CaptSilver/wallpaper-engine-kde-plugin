@@ -443,11 +443,14 @@ QVariantList FileHelper::scanVideoFolder(const QString& path) {
     QDir                     root(path);
     if (! root.exists()) return out;
 
-    // No FollowSymlinks: matches getDirSize and keeps the scan inside the chosen
-    // folder — a symlink to an outside directory must not pull external files
-    // into the listing (and guards against following a dir/a -> dir self-loop).
-    QDirIterator it(
-        root.absolutePath(), QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
+    // FollowSymlinks: users commonly curate their Videos folder with symlinks
+    // pointing at live-wallpaper .mp4s under the WE workshop tree and at
+    // external-storage media; we follow them so those entries actually appear
+    // in the tab. Qt's QDirIterator records visited canonical paths internally
+    // and terminates on cycles (dir/loop -> dir walks the real contents once).
+    QDirIterator it(root.absolutePath(),
+                    QDir::Files | QDir::NoDotAndDotDot,
+                    QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
     while (it.hasNext()) {
         const QString   full = it.next();
         const QFileInfo fi(full);

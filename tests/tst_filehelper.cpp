@@ -819,9 +819,10 @@ private slots:
     }
 
 #ifndef Q_OS_WIN
-    // Item 18: a self-referential symlink (dir/loop -> dir) must NOT cause an
-    // infinite walk. PASSING == termination (a regression hangs; the suite has a
-    // TIMEOUT so it fails loudly). The real video is listed exactly once.
+    // A self-referential symlink (dir/loop -> dir) under FollowSymlinks must
+    // NOT cause an infinite walk — Qt's QDirIterator tracks visited canonical
+    // paths and terminates. PASSING == termination (a regression hangs; the
+    // suite has a TIMEOUT so it fails loudly). The real video is listed once.
     void scanVideoFolder_symlinkLoopTerminates() {
         QTemporaryDir d;
         QVERIFY(d.isValid());
@@ -839,9 +840,11 @@ private slots:
         QCOMPARE(result.first().toMap().value("name").toString(), QStringLiteral("real.mp4"));
     }
 
-    // A symlink inside the folder pointing to an OUTSIDE dir that contains a
-    // video must NOT pull that outside video into the listing.
-    void scanVideoFolder_doesNotEscapeViaSymlink() {
+    // A directory symlink inside the chosen folder that points at an OUTSIDE
+    // directory IS followed: users curate ~/Videos with symlinks into the WE
+    // workshop tree and onto external storage. The outside video appears in
+    // the listing.
+    void scanVideoFolder_followsDirSymlinkOutsideFolder() {
         QTemporaryDir inside, outside;
         QVERIFY(inside.isValid());
         QVERIFY(outside.isValid());
@@ -854,10 +857,35 @@ private slots:
 
         FileHelper   helper;
         QVariantList result = helper.scanVideoFolder(inside.path());
-        QStringList  names;
-        for (const auto& v : result) names << v.toMap().value("name").toString();
-        QVERIFY(! names.contains("external.mp4"));
-        QCOMPARE(result.size(), 0); // nothing inside except the (unfollowed) link
+        QCOMPARE(result.size(), 1);
+        QCOMPARE(result.first().toMap().value("name").toString(), QStringLiteral("external.mp4"));
+    }
+
+    // A FILE symlink inside the chosen folder pointing at an OUTSIDE video
+    // file is listed under its link name. (mpv resolves the symlink itself
+    // when opening, so playback works.)
+    void scanVideoFolder_followsFileSymlinkOutsideFolder() {
+        QTemporaryDir inside, outside;
+        QVERIFY(inside.isValid());
+        QVERIFY(outside.isValid());
+        QFile real(outside.filePath("real.mp4"));
+        QVERIFY(real.open(QIODevice::WriteOnly));
+        real.write("v");
+        real.close();
+        // inside/link.mp4 -> outside/real.mp4
+        QVERIFY(QFile::link(outside.filePath("real.mp4"), inside.filePath("link.mp4")));
+
+        FileHelper   helper;
+        QVariantList result = helper.scanVideoFolder(inside.path());
+        QCOMPARE(result.size(), 1);
+        QCOMPARE(result.first().toMap().value("name").toString(), QStringLiteral("link.mp4"));
+        // Path the QML side feeds to mpv must be a real, readable file once
+        // the symlink is resolved.
+        const QString p = result.first().toMap().value("path").toString();
+        QFileInfo     fi(p);
+        QVERIFY(fi.exists());
+        QCOMPARE(fi.canonicalFilePath(),
+                 QFileInfo(outside.filePath("real.mp4")).canonicalFilePath());
     }
 #endif
 

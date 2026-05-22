@@ -4,7 +4,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(KF_MIN_VERSION "5.68.0")
+set(KF_MIN_VERSION  "5.68.0")   # KF5 series floor (legacy fallback path)
+set(KF6_MIN_VERSION "6.0.0")    # KF6 series floor — matches Plasma 6.0 launch
 
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" WEK_PROJECT_VERSION)
 string(STRIP "${WEK_PROJECT_VERSION}" WEK_PROJECT_VERSION)
@@ -13,11 +14,11 @@ project("WallpaperEngineKde" VERSION ${WEK_PROJECT_VERSION})
 
 configure_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/plugin/metadata.json.in"
-  "${CMAKE_CURRENT_SOURCE_DIR}/plugin/metadata.json"
+  "${CMAKE_CURRENT_BINARY_DIR}/metadata.json"
   @ONLY)
 configure_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/plugin/metadata.desktop.in"
-  "${CMAKE_CURRENT_SOURCE_DIR}/plugin/metadata.desktop"
+  "${CMAKE_CURRENT_BINARY_DIR}/metadata.desktop"
   @ONLY)
 
 
@@ -53,7 +54,7 @@ set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH} ${CMAKE_MODULE_PATH})
 
 if(ECM_VERSION_MAJOR EQUAL 6)
   find_package(Plasma REQUIRED)
-  find_package(KF6 ${KF_MIN_VERSION} REQUIRED COMPONENTS Package Config)
+  find_package(KF6 ${KF6_MIN_VERSION} REQUIRED COMPONENTS Package Config)
   include(KDEInstallDirs6)
 else()
   find_package(KF5 ${KF_MIN_VERSION} REQUIRED COMPONENTS Package Plasma)
@@ -67,6 +68,13 @@ endif()
 if(NOT USE_PLASMAPKG)
   plasma_install_package(plugin com.github.captsilver.wallpaperEngineKde wallpapers
                          wallpaper)
+
+  set(_captsilver_pkg_dest
+      "${KDE_INSTALL_DATADIR}/plasma/wallpapers/com.github.captsilver.wallpaperEngineKde")
+  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/metadata.json"
+          DESTINATION "${_captsilver_pkg_dest}")
+  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/metadata.desktop"
+          DESTINATION "${_captsilver_pkg_dest}")
 
   # Transitional shim: install a second package directory at the old catsout URI
   # so existing user installs with `wallpaperplugin=com.github.catsout.…` lines

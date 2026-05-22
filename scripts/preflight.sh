@@ -24,11 +24,16 @@
 #                                      #   rc==0 + non-blank framebuffer. SKIPS cleanly when
 #                                      #   lavapipe / a display / WE assets are absent.
 #                                      #   NOT in the default gate (lavapipe CPU runs slow).
+#   scripts/preflight.sh --render-oracle # opt-in headless render self-comparison: motion
+#                                      #   (frame@early != frame@late) + warm==cold (byte-
+#                                      #   identical across a cold->warm SPV-cache run) on the
+#                                      #   fantasticcar default. SKIPS when assets absent.
+#                                      #   NOT in the default gate (lavapipe CPU runs slow).
 #
-# The --tsan / --sanitize / --werror / --render-smoke legs are standalone (lint
-# + that one build/run only); they use fresh build dirs (build/impl-tsan /
-# build/impl-asan / build/impl-werror / build/impl-d10) and do not run the
-# normal build/test/fuzz flow.
+# The --tsan / --sanitize / --werror / --render-smoke / --render-oracle legs are
+# standalone (lint + that one build/run only); they use fresh build dirs
+# (build/impl-tsan / build/impl-asan / build/impl-werror / build/impl-d10 /
+# build/impl-oracle) and do not run the normal build/test/fuzz flow.
 #
 # Env: FUZZ_SECS=N overrides per-target fuzz duration (default 20; 7 targets ≈ 2.3 min).
 #
@@ -71,6 +76,7 @@ for arg in "$@"; do
         --sanitize=*) MODE=sanitize; SAN_SPEC="${arg#--sanitize=}" ;;
         --werror)    MODE=werror ;;
         --render-smoke) MODE=render-smoke ;;
+        --render-oracle) MODE=render-oracle ;;
         -h|--help)
             sed -n '2,44p' "$0"
             exit 0
@@ -364,6 +370,31 @@ if [[ "$MODE" == "render-smoke" ]]; then
             printf '\n%sRender-smoke leg skipped (capability missing).%s\n' "$YELLOW" "$RESET"
             ;;
         *)  fail "render smoke failed (rc=$rc) — render path crashed or framebuffer was BLANK"
+            ;;
+    esac
+    exit 0
+fi
+
+# ── opt-in: headless render ORACLE (self-comparison) ──────────────────────────
+# Deeper than --render-smoke: renders the fantasticcar bundled default in
+# deterministic mode and asserts MOTION (frame@early != frame@late) and
+# WARM==COLD (byte-identical capture across a cold->warm SPV-cache run).  Catches
+# the "skip work on a cached/warm/per-frame path" regression class (RC2 freeze,
+# LD2-B texture-clear) that green headless unit tests cannot.  Opt-in, not in the
+# default gate (CPU-Vulkan rendering is slow); self-probes + exits 77 to SKIP
+# when lavapipe / display / WE assets / the fantasticcar fixture are absent.
+if [[ "$MODE" == "render-oracle" ]]; then
+    step "Render oracle (self-comparison — headless Vulkan via lavapipe)"
+    rc=0
+    dbox "scripts/render-oracle.sh" || rc=$?
+    case "$rc" in
+        0)  ok "render oracle passed (motion + warm==cold)"
+            printf '\n%sRender-oracle leg passed.%s\n' "$GREEN" "$RESET"
+            ;;
+        77) ok "render oracle skipped (no lavapipe / display / WE assets / fixture — see log)"
+            printf '\n%sRender-oracle leg skipped (capability missing).%s\n' "$YELLOW" "$RESET"
+            ;;
+        *)  fail "render oracle failed (rc=$rc) — motion or warm==cold assertion failed"
             ;;
     esac
     exit 0

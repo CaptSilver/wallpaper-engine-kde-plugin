@@ -54,9 +54,9 @@ void TestTTYSwitchMonitor::handlePrepareForSleep_sameStateIsIdempotent() {
     QSignalSpy       spy(&mon, &TTYSwitchMonitor::ttySwitch);
     mon.handlePrepareForSleep(false); // already false → no emit
     QCOMPARE(spy.count(), 0);
-    mon.handlePrepareForSleep(true);  // false→true → emit
-    mon.handlePrepareForSleep(true);  // true→true  → no emit
-    mon.handlePrepareForSleep(true);  // true→true  → no emit
+    mon.handlePrepareForSleep(true); // false→true → emit
+    mon.handlePrepareForSleep(true); // true→true  → no emit
+    mon.handlePrepareForSleep(true); // true→true  → no emit
     QCOMPARE(spy.count(), 1);
     QCOMPARE(mon.isSleeping(), true);
 }

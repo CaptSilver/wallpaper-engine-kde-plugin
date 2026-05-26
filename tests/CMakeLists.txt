@@ -184,6 +184,30 @@ if(Qt6Gui_FOUND AND Qt6Quick_FOUND)
             -g -grecord-command-line)
     endif()
     add_test(NAME tst_mousegrabber COMMAND tst_mousegrabber -v2)
+
+    # ── TTYSwitchMonitor suspend/wake dispatch tests ──────────────────────────
+    # The D-Bus connect in the ctor only succeeds against a live system bus
+    # (gracefully degrades otherwise), but the slot logic + signal contract
+    # is plain Qt code: exercise it directly without standing up a fake bus.
+    add_executable(tst_ttyswitchmonitor
+        tst_ttyswitchmonitor.cpp
+        ${WEKDE_SRC_DIR}/TTYSwitchMonitor.cpp
+    )
+    target_include_directories(tst_ttyswitchmonitor PRIVATE ${WEKDE_SRC_DIR})
+    target_link_libraries(tst_ttyswitchmonitor PRIVATE
+        Qt6::Core Qt6::Test Qt6::Gui Qt6::Quick Qt6::DBus)
+    if(COVERAGE)
+        target_compile_options(tst_ttyswitchmonitor PRIVATE ${_cov_compile_flags})
+        target_link_options(tst_ttyswitchmonitor PRIVATE ${_cov_link_flags})
+    endif()
+    if(MUTATION_TESTING)
+        target_compile_options(tst_ttyswitchmonitor PRIVATE
+            -fpass-plugin=${MULL_PLUGIN_PATH}
+            -g -grecord-command-line)
+    endif()
+    add_test(NAME tst_ttyswitchmonitor COMMAND tst_ttyswitchmonitor -v2)
+    set_tests_properties(tst_ttyswitchmonitor PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
 
 # ── MpvBackend Q_PROPERTY round-trip tests ────────────────────────────────────
@@ -487,7 +511,7 @@ endif()
 foreach(_wek_test_target
         tst_filehelper tst_plugininfo tst_mpriscolors tst_mousegrabber tst_mpvbackend
         tst_thumbnail_grabber tst_webaudio tst_migrationhelper
-        tst_playlist_manager tst_main_integration)
+        tst_playlist_manager tst_main_integration tst_ttyswitchmonitor)
     if(TARGET ${_wek_test_target})
         wek_apply_sanitizers(${_wek_test_target})
     endif()

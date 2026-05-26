@@ -620,22 +620,23 @@ void TestMprisColors::handleNameOwnerChanged_nonMprisName_ignored() {
 void TestMprisColors::handleNameOwnerChanged_mprisNameAppears_entersConnectBranch() {
     MprisMonitor m;
     // Name starts with MPRIS prefix AND newOwner is non-empty → connectToPlayer
-    // code path runs (call may fail silently without a live service; that's OK).
-    // If test env already found an active player, `m_activeService.isEmpty()`
-    // is false, so the branch is skipped — no assertion beyond no-crash.
+    // code path runs. After the invoke, m_activeService is non-empty in both
+    // branches: ctor already found one (branch skipped, ctor's value persists),
+    // or we entered the connect branch (m_activeService set to our injection).
     invokeSlot(&m,
                "handleNameOwnerChanged",
                Q_ARG(QString, "org.mpris.MediaPlayer2.testfakeplayer"),
                Q_ARG(QString, ""),
                Q_ARG(QString, ":1.99"));
-    QVERIFY(true); // didn't crash
+    QVERIFY(! m.activeService().isEmpty());
 }
 
 void TestMprisColors::handlePropsChanged_metadataHttpArtUrl_createsRequest() {
     MprisMonitor m;
-    // http URL → processArtUrl enters the Http branch and fires a network
-    // request.  The thumbnail signal only fires asynchronously; here we just
-    // exercise the line without waiting for it.
+    // http URL → processArtUrl enters the Http branch and fires an async
+    // network request. The thumbnail signal is async; the synchronous
+    // observable is that propertiesChanged was forwarded with the title.
+    QSignalSpy  propsSpy(&m, &MprisMonitor::propertiesChanged);
     QVariantMap c;
     c["Metadata"] = mkMeta("T", {}, 0, "http://localhost:1/fake-cover.png");
     invokeSlot(&m,
@@ -643,7 +644,8 @@ void TestMprisColors::handlePropsChanged_metadataHttpArtUrl_createsRequest() {
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c),
                Q_ARG(QStringList, QStringList()));
-    QVERIFY(true); // coverage is the goal; no assertion on timing-dependent signal
+    QCOMPARE(propsSpy.count(), 1);
+    QCOMPARE(propsSpy.at(0).at(0).toString(), QString("T"));
 }
 
 void TestMprisColors::pollPosition_noActiveService_noSignals() {
@@ -739,10 +741,13 @@ static bool injectFakeService(MprisMonitor&  m,
 
 void TestMprisColors::invokePlayer_emptyMethod_noop() {
     MprisMonitor m;
-    // Empty method hits the `method.isEmpty()` early-out — safe regardless
-    // of whether a service is connected.
+    // Empty method hits the `method.isEmpty()` early-out — must not fire
+    // playback / timeline / properties signals (allowlist gate).
+    QSignalSpy playbackSpy(&m, &MprisMonitor::playbackStateChanged);
+    QSignalSpy timelineSpy(&m, &MprisMonitor::timelineChanged);
     m.invokePlayer("");
-    QVERIFY(true); // didn't crash
+    QCOMPARE(playbackSpy.count(), 0);
+    QCOMPARE(timelineSpy.count(), 0);
 }
 
 void TestMprisColors::invokePlayer_noActiveService_noop() {
@@ -753,32 +758,43 @@ void TestMprisColors::invokePlayer_noActiveService_noop() {
     // the no-service branch.
     if (! m.activeService().isEmpty())
         QSKIP("session bus has a real MPRIS player; can't test empty-service branch");
+    QSignalSpy playbackSpy(&m, &MprisMonitor::playbackStateChanged);
+    QSignalSpy timelineSpy(&m, &MprisMonitor::timelineChanged);
     m.invokePlayer("Play");
-    QVERIFY(true);
+    QCOMPARE(playbackSpy.count(), 0);
+    QCOMPARE(timelineSpy.count(), 0);
 }
 
 void TestMprisColors::invokePlayer_rejectsNonAllowlisted() {
     MprisMonitor m;
     if (! injectFakeService(m)) QSKIP("could not establish an active MPRIS service for this test");
-    // Non-allowlisted method → qWarning + early return (exercises the
-    // allowlist guard rather than dispatching a DBus call).
+    // Non-allowlisted method → qWarning + early return. The allowlist
+    // guard MUST NOT emit any signals nor change activeService.
+    QSignalSpy    playbackSpy(&m, &MprisMonitor::playbackStateChanged);
+    const QString svcBefore = m.activeService();
     m.invokePlayer("ArbitraryEvilMethod");
-    QVERIFY(true);
+    QCOMPARE(playbackSpy.count(), 0);
+    QCOMPARE(m.activeService(), svcBefore);
 }
 
 void TestMprisColors::invokePlayer_allowlistedMethod_exercisesSendPath() {
     MprisMonitor m;
     if (! injectFakeService(m)) QSKIP("could not establish an active MPRIS service for this test");
-    // Allowlisted method → createMethodCall + asyncCall.  Against a fake
-    // service the DBus call silently fails, but the lines run.  This is
-    // the critical test for invokePlayer line coverage.
+    // Allowlisted method → createMethodCall + asyncCall. Against a fake
+    // service the DBus call silently fails, but the lines run. We must
+    // not emit synchronous signals from these invocations (signals only
+    // fire when the bus replies back). The send path is exercised; assert
+    // activeService stayed intact + no surprise signal emission.
+    QSignalSpy    playbackSpy(&m, &MprisMonitor::playbackStateChanged);
+    const QString svcBefore = m.activeService();
     m.invokePlayer("Play");
     m.invokePlayer("Pause");
     m.invokePlayer("PlayPause");
     m.invokePlayer("Stop");
     m.invokePlayer("Next");
     m.invokePlayer("Previous");
-    QVERIFY(true);
+    QCOMPARE(playbackSpy.count(), 0);
+    QCOMPARE(m.activeService(), svcBefore);
 }
 
 void TestMprisColors::invokeShortcut_recognizedName_returnsTrue() {

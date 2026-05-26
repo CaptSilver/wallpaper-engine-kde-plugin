@@ -348,28 +348,32 @@ void TestMouseGrabber::mouseMove_nullTarget_noCrash() {
     TestableMouseGrabber g;
     auto                 ev = mkMouse(QEvent::MouseMove);
     g.mouseMoveEvent(&ev);
-    QVERIFY(true);
+    // Move ignores by contract (MouseGrabber.cpp:95) — bubble to parent for hover.
+    QVERIFY(! ev.isAccepted());
 }
 
 void TestMouseGrabber::mouseRelease_nullTarget_noCrash() {
     TestableMouseGrabber g;
     auto                 ev = mkMouse(QEvent::MouseButtonRelease);
     g.mouseReleaseEvent(&ev);
-    QVERIFY(true);
+    // Release ignores by contract (MouseGrabber.cpp:100).
+    QVERIFY(! ev.isAccepted());
 }
 
 void TestMouseGrabber::mouseDoubleClick_nullTarget_noCrash() {
     TestableMouseGrabber g;
     auto                 ev = mkMouse(QEvent::MouseButtonDblClick);
     g.mouseDoubleClickEvent(&ev);
-    QVERIFY(true);
+    // Double-click ignores by contract (MouseGrabber.cpp:105).
+    QVERIFY(! ev.isAccepted());
 }
 
 void TestMouseGrabber::hoverMove_nullTarget_noCrash() {
     TestableMouseGrabber g;
     auto                 ev = mkHover();
     g.hoverMoveEvent(&ev);
-    QVERIFY(true);
+    // Hover ignores by contract (MouseGrabber.cpp:127).
+    QVERIFY(! ev.isAccepted());
 }
 
 // ---------------------------------------------------------------------------

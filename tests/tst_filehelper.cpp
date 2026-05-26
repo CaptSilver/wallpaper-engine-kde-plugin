@@ -207,6 +207,29 @@ private slots:
         QCOMPARE(spy.at(0).at(1).toLongLong(), expected);
     }
 
+    // Plasma can destroy the FileHelper mid-walk on wallpaper switch. The
+    // pool lambda used to touch instance-owned state (mutex + inflight set);
+    // promoting that to a shared_ptr-managed sync block lets the lambda
+    // outlive *this* without UAF on the unlock. We exercise the same pool +
+    // QMetaObject::invokeMethod marshal pattern by destroying the helper
+    // while requestDirSize is in flight. Silent on glibc without ASAN, but
+    // pins the contract — turns red under ASAN/TSan.
+    void destroy_during_async_dirSize_does_not_crash() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        QDir(d.path()).mkdir("sub");
+        for (int i = 0; i < 200; ++i) {
+            QVERIFY(writeBytes(d.filePath(QStringLiteral("sub/f%1.dat").arg(i)), 1024));
+        }
+
+        auto* helper = new FileHelper;
+        helper->requestDirSize(d.path(), 0); // unlimited recursion
+        QTest::qWait(0);                     // yield so the pool task actually starts
+        delete helper;
+        QCoreApplication::processEvents(); // drain any queued events targeting it
+        QVERIFY(true);                     // no sanitizer trip, no hang
+    }
+
     // ── getFolderList ─────────────────────────────────────────────────────────
     void getFolderList_nonExistentDirNoFallback() {
         FileHelper  helper;

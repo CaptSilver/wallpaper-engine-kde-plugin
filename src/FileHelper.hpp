@@ -6,6 +6,7 @@
 #include <QSet>
 #include <QMutex>
 #include <QJsonDocument>
+#include <QThreadPool>
 
 namespace wekde
 {
@@ -75,6 +76,14 @@ private:
 
     QMutex        m_inflightMutex;
     QSet<QString> m_inflight; // key = videoPath
+
+    // Per-instance pool so the dtor can waitForDone() and guarantee no
+    // background task is touching *this* (m_inflightMutex or, via
+    // QMetaObject::invokeMethod, the QObject d_ptr) after destruction.
+    // Plasma can tear FileHelper down mid-grab on wallpaper switch — the
+    // global pool offers no such handle. Worst-case dtor block is the
+    // current libmpv thumbnail timeout (~3s).
+    QThreadPool m_pool;
 };
 
 } // namespace wekde

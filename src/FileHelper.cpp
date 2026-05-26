@@ -64,7 +64,13 @@ FileHelper::FileHelper(QObject* parent): QObject(parent) {
     }
 }
 
-FileHelper::~FileHelper() {}
+FileHelper::~FileHelper() {
+    // Block until all background tasks finish so a pool-thread lambda
+    // can't touch the QObject (mutex / invokeMethod target) after we go
+    // out of scope. This is the dlopen'd plugin .so — a UAF here crashes
+    // plasmashell.
+    m_pool.waitForDone();
+}
 
 QString FileHelper::configDir() const {
     QString xdgConfig = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
@@ -184,9 +190,9 @@ qint64 FileHelper::getDirSize(const QString& path, int depth) {
 }
 
 void FileHelper::requestDirSize(const QString& path, int depth) {
-    // Capture by value; the pure getDirSize touches no instance state, so it is
-    // safe to call on the pool thread. Only the emit marshals back to the GUI.
-    QThreadPool::globalInstance()->start([this, path, depth]() {
+    // Pure walk runs on the pool thread; emit marshals back to the GUI.
+    // m_pool is per-instance + waitForDone() in dtor — see ~FileHelper.
+    m_pool.start([this, path, depth]() {
         const qint64 bytes = getDirSize(path, depth);
         QMetaObject::invokeMethod(
             this,
@@ -418,7 +424,7 @@ void FileHelper::generateThumbnail(const QString& videoPath, const QString& outP
         if (m_inflight.contains(videoPath)) return;
         m_inflight.insert(videoPath);
     }
-    QThreadPool::globalInstance()->start([this, videoPath, outPath, atSeconds]() {
+    m_pool.start([this, videoPath, outPath, atSeconds]() {
         // Ensure cache dir exists before libmpv writes the JPEG.
         QDir().mkpath(QFileInfo(outPath).absolutePath());
         wekde::ThumbnailGrabber grabber;

@@ -1,7 +1,6 @@
 #include "ThumbnailGrabber.hpp"
 #include <QDebug>
 #include <QFileInfo>
-#include <clocale>
 #include <mpv/client.h>
 
 namespace wekde
@@ -11,8 +10,12 @@ struct ThumbnailGrabber::Impl {
     mpv_handle* mpv { nullptr };
 
     Impl() {
-        // libmpv requires LC_NUMERIC=C; calling here is idempotent and safe.
-        std::setlocale(LC_NUMERIC, "C");
+        // libmpv requires LC_NUMERIC=C — pinned process-wide at plugin
+        // startup in plugin.cpp's registerTypes (idempotent and held for the
+        // plasmashell lifetime).  Re-applying here would mutate process-global
+        // locale state from a QThreadPool worker, which is UB by the C
+        // standard (std::setlocale is not thread-safe) even though glibc
+        // appears stable in practice.
         mpv = mpv_create();
         if (! mpv) return;
         mpv_set_option_string(mpv, "vo", "null");

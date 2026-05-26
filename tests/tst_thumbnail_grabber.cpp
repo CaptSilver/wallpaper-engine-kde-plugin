@@ -6,6 +6,7 @@
 #include <QImage>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <clocale>
 #include "ThumbnailGrabber.hpp"
 #include "FileHelper.hpp"
 
@@ -16,6 +17,16 @@ class TestThumbnailGrabber : public QObject {
     Q_OBJECT
 
 private slots:
+    void initTestCase() {
+        // libmpv requires LC_NUMERIC=C; production sets it in plugin.cpp
+        // registerTypes (which this test binary doesn't link).  Pin it here
+        // once on the test main thread before any libmpv call — std::setlocale
+        // mutates a process-global so this MUST run on the main thread, not
+        // from a pool worker (which is what ThumbnailGrabber::Impl used to do
+        // unsafely).
+        std::setlocale(LC_NUMERIC, "C");
+    }
+
 
     void grab_writesValidJpeg() {
         QTemporaryDir d;

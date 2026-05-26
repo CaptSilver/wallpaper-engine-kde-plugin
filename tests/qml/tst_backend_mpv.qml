@@ -12,6 +12,17 @@ TestCase {
 
     BackgroundFake { id: background }
 
+    // loadInfoShow recorder — the Mpv watchdog handler calls
+    // `videoItem.parent.loadInfoShow(...)` when libmpv fails to produce
+    // a frame within 15s. Mpv's parent is this TestCase, so wiring a
+    // function here lets us observe the watchdog firing the InfoShow path.
+    property int    loadInfoShowCount: 0
+    property string lastLoadInfoMsg:   ""
+    function loadInfoShow(msg) {
+        loadInfoShowCount += 1;
+        lastLoadInfoMsg    = msg;
+    }
+
     Backend.Mpv {
         id: mpv
         source: "stub://video.mp4"
@@ -22,9 +33,18 @@ TestCase {
     }
 
     function test_play_pause_doNotThrow() {
+        // play() forwards to player.play() (Mpv.qml:95); pause() starts
+        // pauseTimer (no immediate player.pause), so only play increments
+        // the counter here. The pauseTimer handler is exercised separately.
+        const p = _findMpvPlayer();
+        const n = p.playCount;
         mpv.play();
+        compare(p.playCount, n + 1);
         mpv.pause();
-        verify(true);
+        // pause() does NOT call player.pause() directly — it starts a
+        // 200ms pauseTimer whose onTriggered does so. So playCount must
+        // be unchanged and pauseCount must still be its prior value.
+        compare(p.playCount, n + 1);
     }
 
     function test_getMouseTargetReturnsUndefined() {
@@ -33,27 +53,53 @@ TestCase {
     }
 
     function test_displayModeBranches() {
-        for (const m of [
-            Plugin.Common.DisplayMode.Aspect,
-            Plugin.Common.DisplayMode.Crop,
-            Plugin.Common.DisplayMode.Scale,
-        ]) {
-            background.displayMode = m;
-            mpv.displayModeChanged();
+        // onDisplayModeChanged calls player.setProperty('keepaspect', …)
+        // and player.setProperty('panscan', …) per branch (Mpv.qml:18-29).
+        // The Mpv stub records lastSetProperty {name, val} on every call,
+        // so we can assert the panscan value the wrapper computes for
+        // each DisplayMode (panscan is set last, so lastSetProperty
+        // reflects it). videoItem.displayMode is bound to
+        // background.displayMode (Mpv.qml:9) so reassignment alone
+        // fires onDisplayModeChanged — no explicit emit needed.
+        const p = _findMpvPlayer();
+        const cases = [
+            { mode: Plugin.Common.DisplayMode.Crop,   panscan: 1.0, keepaspect: true  },
+            { mode: Plugin.Common.DisplayMode.Aspect, panscan: 0.0, keepaspect: true  },
+            { mode: Plugin.Common.DisplayMode.Scale,  panscan: 0.0, keepaspect: false },
+        ];
+        for (const c of cases) {
+            const n = p.setPropertyCount;
+            background.displayMode = c.mode;
+            // Two setProperty calls per branch — keepaspect then panscan.
+            compare(p.setPropertyCount, n + 2);
+            compare(p.lastSetProperty.name, "panscan");
+            compare(p.lastSetProperty.val,  c.panscan);
         }
-        verify(true);
     }
 
     function test_statsToggleFires() {
+        // onStatsChanged emits player.command(["script-binding","stats/display-stats-toggle"])
+        // unconditionally (Mpv.qml:45-47). videoItem.stats is bound to
+        // background.mpvStats, so toggling the source propagates and
+        // auto-emits the handler — no explicit emit needed.
+        const p = _findMpvPlayer();
+        const n = p.commandCount;
         background.mpvStats = !background.mpvStats;
-        mpv.statsChanged();
-        verify(true);
+        compare(p.commandCount, n + 1);
+        compare(p.lastCommand[0], "script-binding");
+        compare(p.lastCommand[1], "stats/display-stats-toggle");
     }
 
     function test_videoRateChangedSetsSpeedProperty() {
+        // onVideoRateChanged forwards to player.setProperty('speed', videoRate)
+        // (Mpv.qml:49). videoRate is bound to background.speed, so the
+        // assignment propagates and auto-fires the handler.
+        const p = _findMpvPlayer();
+        const n = p.setPropertyCount;
         background.speed = 2.5;
-        mpv.videoRateChanged();
-        verify(true);
+        compare(p.setPropertyCount, n + 1);
+        compare(p.lastSetProperty.name, "speed");
+        compare(p.lastSetProperty.val,  2.5);
     }
 
     function _findMpvPlayer() {
@@ -69,18 +115,24 @@ TestCase {
 
     function test_playerFirstFrame_routesToBackground() {
         // Mpv.qml uses a Connections block (with `ignoreUnknownSignals: true`)
-        // to listen for the player's firstFrame signal.
+        // to listen for the player's firstFrame signal and forward it via
+        // background.sig_backendFirstFrame('mpv') (Mpv.qml:63-65). The
+        // BackgroundFake records hits via firstFrameCount + lastFirstFrameName.
         const player = _findMpvPlayer();
         verify(player !== null);
+        const n = background.firstFrameCount;
         player.firstFrame();
-        verify(true);
+        compare(background.firstFrameCount, n + 1);
+        compare(background.lastFirstFrameName, "mpv");
     }
 
     // loadWatchdog Timer onTriggered@79 — the 15s fallback that surfaces
     // a missing-frame failure to InfoShow when libmpv silently can't
     // produce the first frame. Find by its interval (15000) and fire
-    // triggered() directly. The handler reads videoItem.parent.loadInfoShow
-    // — typeof check guards a null parent in the test environment.
+    // triggered() directly. The handler calls
+    // `videoItem.parent.loadInfoShow(msg)` when the parent exposes it —
+    // this TestCase declares loadInfoShow above so the routed call is
+    // observable via loadInfoShowCount + lastLoadInfoMsg.
     function test_loadWatchdog_triggerRunsBody() {
         function findWatchdog(parent) {
             const buckets = [parent.children || [], parent.data || []];
@@ -96,16 +148,20 @@ TestCase {
         }
         const wd = findWatchdog(mpv);
         verify(wd !== null);
-        // Firing triggered() runs the handler body. The typeof check
-        // inside the handler keeps it safe even when parent has no
-        // loadInfoShow.
-        try { wd.triggered(); } catch (e) {}
-        verify(true);
+        const n = loadInfoShowCount;
+        wd.triggered();
+        compare(loadInfoShowCount, n + 1);
+        // Production assembles a "MPV failed to produce a frame within 15s …"
+        // message (Mpv.qml:82-83); assert the load-failure substring is
+        // routed verbatim so a future i18n/format slip is caught.
+        verify(lastLoadInfoMsg.indexOf("MPV failed") !== -1);
     }
 
     function test_pauseTimerTriggeredEventuallyPausesPlayer() {
         // pause() starts pauseTimer (interval 200ms). We don't wait — fire
-        // the timer's triggered() directly to exercise the inner handler.
+        // the timer's triggered() directly to exercise the inner handler,
+        // which calls player.pause() (Mpv.qml:107-109). Assert via the
+        // stub's pauseCount recorder.
         function findTimer(parent) {
             const buckets = [parent.children || [], parent.data || []];
             for (const b of buckets) {
@@ -119,7 +175,10 @@ TestCase {
             return null;
         }
         const timer = findTimer(mpv);
-        if (timer) timer.triggered();
-        verify(true);
+        verify(timer !== null);
+        const p = _findMpvPlayer();
+        const n = p.pauseCount;
+        timer.triggered();
+        compare(p.pauseCount, n + 1);
     }
 }

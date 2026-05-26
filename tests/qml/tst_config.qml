@@ -76,16 +76,11 @@ TestCase {
     }
 
     function test_saveConfig_delegatesToWallpaperPage() {
-        // Just verify the function exists and doesn't throw with the
-        // empty wallpaper page state.
-        try {
-            cfg.saveConfig();
-            verify(true);
-        } catch (e) {
-            // saveConfig may legitimately fail without a Steam dir set;
-            // we accept either path as long as the function exists.
-            verify(typeof cfg.saveConfig === "function");
-        }
+        // Structural check + best-effort call. saveConfig may legitimately
+        // fail without a Steam dir set; either path is acceptable. The
+        // useful assertion is that the function exists on the config root.
+        verify(typeof cfg.saveConfig === "function");
+        try { cfg.saveConfig(); } catch (e) {}
     }
 
     // ── BackgroundColor wiring ───────────────────────────────────────────────

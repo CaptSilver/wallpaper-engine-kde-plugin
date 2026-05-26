@@ -2,26 +2,24 @@ import QtQuick
 import QtTest
 
 import "../../plugin/contents/ui/backend" as Backend
+import Helpers 1.0
 
 TestCase {
     name: "InfoShow"
     width: 200; height: 100
     when: windowShown
 
-    // InfoShow's Component.onCompleted writes to a `background` global,
-    // so we provide a fake outer scope via a wrapper Item.
-    Item {
-        id: bg
-        property string nowBackend: ""
-        // Expose a `background` alias to the production component.
-        property var background: bg
+    // Sibling `background` provides the wek context surface. InfoShow's
+    // Component.onCompleted writes background.nowBackend = "InfoShow"
+    // (InfoShow.qml:129-130) — the sibling-id pattern lets QML scope
+    // resolution reach it the same way the production main.qml does.
+    BackgroundFake { id: background }
 
-        Backend.InfoShow {
-            id: info
-            info: "test message"
-            type: "scene"
-            wid: "12345"
-        }
+    Backend.InfoShow {
+        id: info
+        info: "test message"
+        type: "scene"
+        wid: "12345"
     }
 
     function test_propertiesAssignedFromTestFixture() {
@@ -36,11 +34,8 @@ TestCase {
         verify(info.getMouseTarget === undefined || info.getMouseTarget() === undefined);
     }
 
-    // The Component.onCompleted handler references `background.nowBackend`.
-    // It runs when the component is instantiated — we just verify the
-    // instrumentation tick fires (by virtue of this test running).
-    function test_componentOnCompletedRanWithoutThrowing() {
-        verify(true);
+    function test_componentOnCompleted_setsBackgroundNowBackend() {
+        compare(background.nowBackend, "InfoShow");
     }
 
     // clipboardHelper.onTextChanged@120 — the small "copy to clipboard"

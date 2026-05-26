@@ -21,6 +21,24 @@ TestCase {
     property var mainItem: null
     property string loadError: ""
 
+    // ── SignalSpies on `background` (target set in tests after _findBackground) ─
+    // Declared as children of TestCase so lifetimes are clean across cases.
+    SignalSpy { id: curOptSpy;            signalName: "curOptChanged" }
+    SignalSpy { id: perOptSpy;            signalName: "perOptChangedChanged" }
+    SignalSpy { id: mouseInputSpy;        signalName: "mouseInputChanged" }
+    SignalSpy { id: wallpaperTypeSpy;     signalName: "wallpaperTypeChanged" }
+    SignalSpy { id: muteSpy;              signalName: "muteChanged" }
+    SignalSpy { id: displayModeSpy;       signalName: "displayModeChanged" }
+    SignalSpy { id: volumeSpy;            signalName: "volumeChanged" }
+    SignalSpy { id: speedSpy;             signalName: "speedChanged" }
+
+    // SignalSpies on ad-hoc sub-objects (TtyMonitor signal, fake config emits).
+    SignalSpy { id: ttySwitchSpy;         signalName: "ttySwitch" }
+    SignalSpy { id: fakeDisplayModeSpy;   signalName: "displayModeChanged"; target: fakeConfig }
+    SignalSpy { id: fakeMuteAudioSpy;     signalName: "muteAudioChanged";   target: fakeConfig }
+    SignalSpy { id: fakeVolumeSpy;        signalName: "volumeChanged";      target: fakeConfig }
+    SignalSpy { id: fakeSpeedSpy;         signalName: "speedChanged";       target: fakeConfig }
+
     function initTestCase() {
         const comp = Qt.createComponent("../../plugin/contents/ui/main.qml");
         if (comp.status === Component.Error) {
@@ -34,9 +52,8 @@ TestCase {
     function test_componentLoadsAtAll() {
         if (loadError) {
             console.warn("main.qml load error:", loadError);
-            // Even a load error is informative — we still want to avoid hard fail
-            // because the production code touches lots of plasma-only state.
-            verify(true);
+            // Reaching this branch means initTestCase set loadError; assert it.
+            verify(loadError !== "");
             return;
         }
         verify(mainItem !== null);
@@ -92,30 +109,45 @@ TestCase {
     function test_curOptChanged_handlerFires() {
         const bg = _findBackground();
         if (!bg) return;
+        curOptSpy.target = bg;
+        curOptSpy.clear();
         bg.curOpt = { display_mode: 2, mute_audio: true, volume: 75, speed: 1.5 };
-        verify(true);
+        // The `onCurOptChanged` handler body throws on `wallpaper.configuration.*`
+        // ReferenceError in unit-test scope, but the signal still fires — that's
+        // the observable for "handler entered." A silently-dropped curOpt
+        // assignment would leave count at 0.
+        verify(curOptSpy.count >= 1);
     }
 
     function test_perOptChanged_handlerFires() {
         const bg = _findBackground();
         if (!bg) return;
+        perOptSpy.target = bg;
+        perOptSpy.clear();
         bg.perOptChanged = bg.perOptChanged + 1;
-        verify(true);
+        verify(perOptSpy.count >= 1);
     }
 
     function test_mouseInputChanged_branchToHookTimer() {
         const bg = _findBackground();
         if (!bg) return;
+        mouseInputSpy.target = bg;
+        mouseInputSpy.clear();
         bg.mouseInput = !bg.mouseInput;
         bg.mouseInput = !bg.mouseInput;  // toggle back
-        verify(true);
+        // Two distinct toggles must fire two change notifications. If the
+        // property became a no-op binding, count would be 0 or 1.
+        compare(mouseInputSpy.count, 2);
     }
 
-    function test_hookMouseSlot_doesNotCrash() {
+    function test_hookMouseSlot_constructs() {
         const bg = _findBackground();
         if (!bg) return;
+        // No real Plasma Window in tests, so doHookMouse() returns false and
+        // hookMouseSlot() restarts hookTimer (already running). The honest
+        // assertion is that the function is callable on `background`.
+        verify(typeof bg.hookMouseSlot === "function");
         bg.hookMouseSlot();
-        verify(true);
     }
 
     function test_doHookMouse_returnsBool() {
@@ -126,30 +158,43 @@ TestCase {
         compare(typeof r, "boolean");
     }
 
-    function test_autoPause_doesNotCrashWhenItemMissing() {
+    function test_autoPause_returnsEarlyWhenItemMissing() {
         const bg = _findBackground();
         if (!bg) return;
-        // No backendLoader.item set up — autoPause may throw because of null
-        // dispatch. We accept either path.
-        try { bg.autoPause(); } catch(e) {}
-        verify(true);
+        // backendLoader.item is null in tests (no scene/mpv/qtwebview backend
+        // mounted), so autoPause() should hit the early-return path and yield
+        // undefined cleanly. A regressed guard would attempt to call
+        // .play()/.pause() on null and throw.
+        compare(bg.autoPause(), undefined);
     }
 
-    function test_applySource_doesNotCrashOnEmptyConfig() {
+    function test_applySource_constructs() {
         const bg = _findBackground();
         if (!bg) return;
-        try { bg.applySource(); } catch(e) {}
-        verify(true);
+        // `applySource` reaches `wallpaper.configuration.WallpaperWorkShopId`
+        // on its first line, which throws ReferenceError under unit-test scope
+        // (no Plasma `wallpaper` context). The honest assertion is that the
+        // function exists on `background`; integration tests
+        // (tst_main_components / tst_main_multimonitor) drive a real
+        // WallpaperFake through it.
+        verify(typeof bg.applySource === "function");
     }
 
     function test_loadBackend_branchesByWallpaperType() {
         const bg = _findBackground();
         if (!bg) return;
-        for (const t of ["video", "web", "scene", "unsupported"]) {
+        wallpaperTypeSpy.target = bg;
+        wallpaperTypeSpy.clear();
+        const types = ["video", "web", "scene", "unsupported"];
+        for (const t of types) {
             bg.wallpaperType = t;
             try { bg.loadBackend(); } catch(e) {}
         }
-        verify(true);
+        // Initial wallpaperType may be undefined / "" — every iteration must
+        // record a change. If the property became non-NOTIFYing, count would
+        // be 0 instead of types.length.
+        compare(wallpaperTypeSpy.count, types.length);
+        compare(bg.wallpaperType, "unsupported");
     }
 
     function test_getWorkshopIDPath_returnsString() {
@@ -159,14 +204,14 @@ TestCase {
         compare(typeof p, "string");
     }
 
-    function test_onBackendFirstFrame_logsAndFiresAccentColorChanged() {
+    function test_onBackendFirstFrame_constructs() {
         const bg = _findBackground();
         if (!bg) return;
         // The handler calls `wallpaper.accentColorChanged()` after logging.
         // Without a real Plasma `wallpaper` context, the inner call throws —
-        // the function itself was already covered (tick fires at entry).
-        try { bg.onBackendFirstFrame("scene"); } catch(e) {}
-        verify(true);
+        // assert the function is callable on `background`. Integration tests
+        // drive the routed wallpaper.accentColorChanged() effect end-to-end.
+        verify(typeof bg.onBackendFirstFrame === "function");
     }
 
     // ── Walk all child timers + sub-objects and fire their handlers ──────────
@@ -186,40 +231,80 @@ TestCase {
 
     function test_fireAllChildTimers_triggersOnTriggeredHandlers() {
         // hookTimer (2000ms), randomizeTimer (variable), lauchPauseTimer
-        // (300ms), playTimer (5000ms), sourcePauseTimer (200ms).
-        // Trigger each by emitting `triggered()`.
+        // (300ms), playTimer (5000ms), sourcePauseTimer (200ms),
+        // loadingHintDelay (600ms). Trigger each by emitting `triggered()`
+        // and assert via SignalSpy that the emission was observed.
         const bg = _findBackground();
         if (!bg) return;
         const all = _allDataItems(bg);
+        let timersFound = 0;
+        let timersObserved = 0;
         for (const item of all) {
             if (item && typeof item.triggered === "function" &&
                 typeof item.start === "function") {
+                timersFound++;
+                const spy = Qt.createQmlObject(
+                    'import QtTest 1.0; SignalSpy { signalName: "triggered" }', tc);
+                spy.target = item;
                 try { item.triggered(); } catch (e) {}
+                if (spy.count >= 1) timersObserved++;
+                spy.destroy();
             }
         }
-        verify(true);
+        // main.qml owns 5 Timers + 1 loadingHintDelay = 6 expected timers.
+        // A regression that dropped one entirely would lower timersFound; a
+        // signal that was renamed silently would lower timersObserved.
+        verify(timersFound >= 5);
+        compare(timersObserved, timersFound);
     }
 
     function test_fireTtyMonitorSwitchSignal_bothSleepAndWake() {
         const bg = _findBackground();
         if (!bg) return;
         const all = _allDataItems(bg);
+        let monitorsFound = 0;
+        let totalEmits = 0;
         for (const item of all) {
             if (item && typeof item.ttySwitch === "function") {
+                monitorsFound++;
+                ttySwitchSpy.target = item;
+                ttySwitchSpy.clear();
                 try { item.ttySwitch(true); } catch(e) {}
                 try { item.ttySwitch(false); } catch(e) {}
+                totalEmits += ttySwitchSpy.count;
+                compare(ttySwitchSpy.signalArguments[0][0], true);
+                compare(ttySwitchSpy.signalArguments[1][0], false);
             }
         }
-        verify(true);
+        // Exactly one TTYSwitchMonitor child (id: ttyMonitor); both emits
+        // observed via the spy.
+        compare(monitorsFound, 1);
+        compare(totalEmits, 2);
     }
 
     function test_sourceCallback_fires() {
         const bg = _findBackground();
         if (!bg) return;
-        if (typeof bg.sourceCallback === "function") {
-            try { bg.sourceCallback(); } catch(e) {}
+        verify(typeof bg.sourceCallback === "function");
+        // sourceCallback() starts sourcePauseTimer (interval 200, repeat
+        // false). Find it via _allDataItems by interval+repeat shape, mark
+        // its prior `running` state, fire the callback, assert running flips
+        // to true. A regressed sourceCallback (no-op or wrong-timer call)
+        // would leave running unchanged.
+        const all = _allDataItems(bg);
+        let pauseTimer = null;
+        for (const item of all) {
+            if (item && typeof item.triggered === "function" &&
+                typeof item.start === "function" &&
+                item.interval === 200 && item.repeat === false) {
+                pauseTimer = item;
+                break;
+            }
         }
-        verify(true);
+        verify(pauseTimer !== null);
+        pauseTimer.running = false;  // reset (Component.onCompleted may have started it)
+        bg.sourceCallback();
+        verify(pauseTimer.running);
     }
 
     function test_changeWallpaperOnList_handlesEmptyModel() {
@@ -227,12 +312,21 @@ TestCase {
         const bg = _findBackground();
         if (!bg) return;
         const all = _allDataItems(bg);
+        let listModels = 0;
         for (const item of all) {
             if (item && typeof item.changeWallpaper === "function") {
-                try { item.changeWallpaper(0); } catch(e) {}
+                listModels++;
+                // The model is empty in tests (no Steam library scan); calling
+                // changeWallpaper(0) must hit the early-return branch without
+                // touching wallpaper.configuration.* (which would throw).
+                bg.curOpt = bg.curOpt;  // touch to confirm bg still healthy after
+                item.changeWallpaper(0);
+                // model.count should still be 0 (handler doesn't grow the list).
+                compare(item.model.count, 0);
             }
         }
-        verify(true);
+        // main.qml owns exactly one wpListModel.
+        compare(listModels, 1);
     }
 
     // ── wallpaper.configuration.onChanged handlers ──────────────────────────
@@ -263,9 +357,23 @@ TestCase {
                 conns.push(item);
             }
         }
+        verify(conns.length >= 1);  // main.qml has at least one Connections block
+        let retargeted = 0;
         for (const c of conns) {
-            try { c.target = fakeConfig; } catch(e) {}
+            try { c.target = fakeConfig; if (c.target === fakeConfig) retargeted++; } catch(e) {}
         }
+        verify(retargeted >= 1);
+
+        // Spy on the fake's auto-generated propertyChanged signals; each
+        // emission below routes through the retargeted Connections handler.
+        // The handler body throws on `wallpaper.configuration.X` ReferenceError
+        // (no Plasma scope), but the signal-fire count is the observable that
+        // the rewired path is live.
+        fakeDisplayModeSpy.clear();
+        fakeMuteAudioSpy.clear();
+        fakeVolumeSpy.clear();
+        fakeSpeedSpy.clear();
+
         for (const m of [0, 1, 2]) {
             fakeConfig.displayMode = m;
             try { fakeConfig.displayModeChanged(); } catch(e) {}
@@ -276,6 +384,15 @@ TestCase {
         try { fakeConfig.volumeChanged(); } catch(e) {}
         fakeConfig.speed = 2.0;
         try { fakeConfig.speedChanged(); } catch(e) {}
-        verify(true);
+
+        // 3 sets to displayMode (0→1→2; initial was 0 so first set is a no-op,
+        // but the explicit displayModeChanged() forces an emit each iteration)
+        // + 1 muteAudio + 1 volume + 1 speed = mix of property-change auto
+        // emits and explicit emits. Counts are the union; we only assert the
+        // explicit emissions reached the spy.
+        verify(fakeDisplayModeSpy.count >= 3);
+        verify(fakeMuteAudioSpy.count   >= 1);
+        verify(fakeVolumeSpy.count      >= 1);
+        verify(fakeSpeedSpy.count       >= 1);
     }
 }

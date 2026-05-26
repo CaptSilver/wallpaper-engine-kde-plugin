@@ -12,12 +12,34 @@ TestCase {
 
     BackgroundFake { id: background }
 
+    // loadInfoShow recorder — production's onLoadingChanged failed branch
+    // calls `webItem.parent.loadInfoShow(msg)` for the FIRST top-level
+    // nav failure (QtWebView.qml:182-186). webItem's parent is this
+    // TestCase, so the routed call lands here.
+    property int    loadInfoShowCount: 0
+    property string lastLoadInfoMsg:   ""
+    function loadInfoShow(msg) {
+        loadInfoShowCount += 1;
+        lastLoadInfoMsg    = msg;
+    }
+
+    // patchedHtml + readfile recorders — production calls these from
+    // loadWallpaper() and the webobj onLoadedChanged handler. Recording
+    // here is test-local (no stub modification) and lets us assert the
+    // forwarded call paths without relying on Chromium-internal observables.
+    property int    patchedHtmlCount: 0
+    property var    lastPatchedHtmlArg: undefined
+    property int    readfileCount: 0
+    property var    lastReadfileArg: undefined
+
     Backend.QtWebView {
         id: web
         source: "file:///tmp/fake_wallpaper.html"
         readfile: function(p) {
             // QtWebView reads project.json via readfile() to populate
             // userProperties. Return a parseable JSON string in a thenable.
+            readfileCount  += 1;
+            lastReadfileArg = p;
             return {
                 then: function(cb) {
                     cb('{"general":{"properties":{"sliderProp":{"value":50}}}}');
@@ -25,19 +47,40 @@ TestCase {
                 },
             };
         }
-        patchedHtml: function(_) { return "<html><body>stub</body></html>"; }
+        patchedHtml: function(p) {
+            patchedHtmlCount  += 1;
+            lastPatchedHtmlArg = p;
+            return "<html><body>stub</body></html>";
+        }
         qwebChannelJs: "<<qwebchannel-js-stub-content>>".repeat(20);
     }
 
-    function test_loadWallpaper_doesNotThrowEvenWhenScriptsNotReady() {
+    SignalSpy { id: userPropsSpy;    signalName: "sigUserProperties"    }
+    SignalSpy { id: generalPropsSpy; signalName: "sigGeneralProperties" }
+
+    function test_loadWallpaper_callsPatchedHtmlEvenWhenScriptsNotReady() {
+        // loadWallpaper() unconditionally invokes patchedHtml(filePath)
+        // (QtWebView.qml:32) regardless of web._scriptsReady — that gate
+        // only protects the onSourceChanged auto-fire path. So calling
+        // it directly should always route through patchedHtml. We
+        // observe via the test-local recorder.
+        const n = patchedHtmlCount;
         web.loadWallpaper();
-        verify(true);
+        compare(patchedHtmlCount, n + 1);
+        verify(typeof lastPatchedHtmlArg === "string");
     }
 
     function test_play_pause_togglePausedFlag() {
-        web.play();
+        // play()  → web.paused = false  (QtWebView.qml:289-291)
+        // pause() → web.paused = true   (QtWebView.qml:292-295)
+        // The inner WebEngineView stub exposes `paused` as a plain bool
+        // property; we read it back to confirm the toggle round-trips.
+        const wev = _findWebEngineView();
+        verify(wev !== null);
         web.pause();
-        verify(true);
+        compare(wev.paused, true);
+        web.play();
+        compare(wev.paused, false);
     }
 
     function test_getMouseTargetReturnsBinding() {
@@ -45,22 +88,47 @@ TestCase {
         verify(t !== undefined);
     }
 
-    function test_userPropsJsonChange_doesNotThrowWhenWebobjUnloaded() {
+    function test_userPropsJsonChange_earlyReturnsWhenWebobjUnloaded() {
+        // onUserPropsJsonChanged early-returns when !webobj.loaded
+        // (QtWebView.qml:46). The delta-emit code path that fires
+        // webobj.sigUserProperties MUST be skipped — assert via SignalSpy
+        // count.  (Reset loaded to false in case a prior alphabetic test
+        // — e.g. test_audioBuffer / test_webobjLoaded — flipped it.)
+        const webobj = _findWebobj();
+        verify(webobj !== null);
+        webobj.loaded = false;
+        userPropsSpy.target = webobj;
+        userPropsSpy.clear();
         background.userPropsJson = '{"sliderProp": 75}';
-        web.userPropsJsonChanged();
-        verify(true);
+        compare(userPropsSpy.count, 0);
     }
 
-    function test_fpsChange_doesNotThrowWhenWebobjUnloaded() {
+    function test_fpsChange_earlyReturnsWhenWebobjUnloaded() {
+        // onFpsChanged is guarded by `if(webobj.loaded)` (QtWebView.qml:70-75)
+        // so loaded=false MUST suppress the sigGeneralProperties emission.
+        // Reset loaded to false (prior tests may have flipped it).
+        const webobj = _findWebobj();
+        verify(webobj !== null);
+        webobj.loaded = false;
+        generalPropsSpy.target = webobj;
+        generalPropsSpy.clear();
         background.fps = 60;
-        web.fpsChanged();
-        verify(true);
+        compare(generalPropsSpy.count, 0);
     }
 
     function test_sourceChange_re_triggersLoadWallpaper() {
+        // onSourceChanged calls loadWallpaper() iff web._scriptsReady
+        // (QtWebView.qml:19-22). Component.onCompleted sets _scriptsReady
+        // = true, so a fresh source assignment must trigger another
+        // loadWallpaper → patchedHtml(newFilePath). Observe via the
+        // patchedHtml recorder.
+        const wev = _findWebEngineView();
+        verify(wev !== null);
+        verify(wev._scriptsReady);
+        const n = patchedHtmlCount;
         web.source = "file:///tmp/another_wallpaper.html";
-        web.sourceChanged();
-        verify(true);
+        compare(patchedHtmlCount, n + 1);
+        verify(lastPatchedHtmlArg.indexOf("another_wallpaper.html") !== -1);
     }
 
     function _findInner(predicate) {
@@ -73,22 +141,59 @@ TestCase {
         return null;
     }
 
+    function _findWebEngineView() {
+        return _findInner(c => typeof c.loadHtml === "function" &&
+                               typeof c.audioMuted !== "undefined");
+    }
+
+    function _findWebobj() {
+        return _findInner(c => c && typeof c.loaded !== "undefined" &&
+                               typeof c.sigUserProperties === "function" &&
+                               typeof c.sigGeneralProperties === "function");
+    }
+
+    function _findPauseImage() {
+        return _findInner(c => c && typeof c.source !== "undefined" &&
+                               typeof c.enabled !== "undefined" &&
+                               c.enabled === false);
+    }
+
     // ── WebEngineView.onLoadingChanged: 26 LOC handler — covers Failed +
     //    Succeeded branches plus the paused-true re-fire path ───────────────
     function test_webEngineOnLoadingChanged_succeededAndFailed() {
-        const wev = _findInner(c => typeof c.loadHtml === "function" &&
-                                     typeof c.audioMuted !== "undefined");
+        const wev = _findWebEngineView();
         if (!wev) return;
+        // Reset _firstLoadOk so the failed-then-succeeded ordering below
+        // exercises the InfoShow path. Component.onCompleted may have
+        // already flipped it, depending on stub init order.
+        wev._firstLoadOk = false;
+
+        // Failed first — production calls loadInfoShow when
+        // !_firstLoadOk + parent supplies it (QtWebView.qml:176-187).
+        const ls0 = loadInfoShowCount;
+        const failedInfo = { status: 3, url: "", errorString: "broken" };
+        wev.loadingChanged(failedInfo);
+        compare(loadInfoShowCount, ls0 + 1);
+        verify(lastLoadInfoMsg.indexOf("broken") !== -1);
+
+        // Succeeded — sets _firstLoadOk=true, fires
+        // background.sig_backendFirstFrame('QtWebEngine')
+        // (QtWebView.qml:188-196).
+        const ff0 = background.firstFrameCount;
         const succeededInfo = {
             status: 2,  // WebEngineView.LoadSucceededStatus
             url: "file:///tmp/x.html", errorString: "",
         };
-        try { wev.loadingChanged(succeededInfo); } catch (e) {}
-        const failedInfo = { status: 3, url: "", errorString: "broken" };
-        try { wev.loadingChanged(failedInfo); } catch (e) {}
+        wev.loadingChanged(succeededInfo);
+        compare(wev._firstLoadOk, true);
+        compare(background.firstFrameCount, ff0 + 1);
+        compare(background.lastFirstFrameName, "QtWebEngine");
+
+        // Succeeded again while paused — should fire play() then pause()
+        // (QtWebView.qml:191-194) so paused remains true at the end.
         wev.paused = true;
-        try { wev.loadingChanged(succeededInfo); } catch (e) {}
-        verify(true);
+        wev.loadingChanged(succeededInfo);
+        compare(wev.paused, true);
     }
 
     // ── WebAudioBridge.onAudioBuffer@93: relays a 128-sample audio
@@ -129,19 +234,43 @@ TestCase {
     function test_webobjLoaded_triggersUserPropertyLoad() {
         // webobj is a QtObject sibling of WebEngineView with a `loaded`
         // property and signals `sigUserProperties` + `sigGeneralProperties`.
-        const webobj = _findInner(c =>
-            c && typeof c.loaded !== "undefined" &&
-            typeof c.sigUserProperties === "function" &&
-            typeof c.sigGeneralProperties === "function");
-        if (!webobj) return;
+        const webobj = _findWebobj();
+        verify(webobj !== null);
+        userPropsSpy.target    = webobj;
+        generalPropsSpy.target = webobj;
+        userPropsSpy.clear();
+        generalPropsSpy.clear();
+        const rfn = readfileCount;
+
         // Set webItem.userPropsJson so the inner overrides loop runs too.
         web.userPropsJson = '{"sliderProp":42}';
-        try { webobj.loaded = true; } catch (e) {}
-        verify(true);
+        webobj.loaded = true;
+
+        // Production reads project.json then emits BOTH signals on the
+        // webobj (QtWebView.qml:114-131). The test's readfile() invokes
+        // the .then() callback synchronously, so by this point all three
+        // observables must have advanced.
+        compare(readfileCount, rfn + 1);
+        verify(lastReadfileArg.indexOf("project.json") !== -1);
+        compare(userPropsSpy.count, 1);
+        compare(generalPropsSpy.count, 1);
     }
 
     // ── pauseTimer onTriggered@242: grabToImage + lifecycle freeze ──────────
-    function test_pauseTimerTriggered_freezesWebViewWhenPaused() {
+    function test_pauseTimerTriggered_freezesWebViewWhenPaused_constructs() {
+        // Genuine "constructs / runs without throw" case.  The timer's
+        // onTriggered calls web.grabToImage(cb) (QtWebView.qml:275) and
+        // the freeze body inside cb early-returns when
+        // `web.visible == false` (QtWebView.qml:277) — and a child Item
+        // under a TestCase has effective visible=false because the
+        // TestCase doesn't expose its window contents.  QML method
+        // properties on the stub are read-only so we cannot install a
+        // grabToImage recorder either.  Assert the structural contract
+        // (300 ms interval, exists on the Backend.QtWebView) and that
+        // firing triggered() after pause() executes without throwing.
+        // (Coverage gap: stubbing grabToImage as a recordable signal
+        // would let us assert the production scheduled exactly one
+        // grab — see tests/qml/_stubs/QtWebEngine/WebEngineView.qml.)
         function findPauseTimer(parent) {
             const buckets = [parent.children || [], parent.data || []];
             for (const b of buckets) {
@@ -155,9 +284,12 @@ TestCase {
             return null;
         }
         const timer = findPauseTimer(web);
-        if (!timer) return;
-        web.pause();  // sets web.paused = true
-        try { timer.triggered(); } catch (e) {}
-        verify(true);
+        verify(timer !== null);
+        compare(timer.interval, 300);
+        const wev = _findWebEngineView();
+        verify(wev !== null);
+        web.pause();             // sets web.paused = true
+        compare(wev.paused, true);
+        timer.triggered();       // exercises the freeze path
     }
 }

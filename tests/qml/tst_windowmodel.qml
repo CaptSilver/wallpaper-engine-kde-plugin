@@ -80,8 +80,18 @@ TestCase {
     }
 
     function test_playBy_truthDispatchesToPlay() {
+        // play() starts the playTimer (deferred reset of _reqPause). Force
+        // the gate true first so a subsequent play() flips reqPause back to
+        // false only AFTER the timer triggers.
+        wm._reqPause = true;
         wm.playBy(true);
-        verify(true);
+        const pt = _findPlayTimer();
+        verify(pt !== null);
+        verify(pt.running, "playBy(true) must start playTimer (deferred reset)");
+        // Settle the timer; reqPause clears.
+        pt.triggered();
+        compare(wm._reqPause, false,
+                "playBy(true) → play() → playTimer settle → _reqPause=false");
     }
 
     function test_playBy_falseDispatchesToPause() {
@@ -252,7 +262,11 @@ TestCase {
         compare(wm.reqPause, false);
     }
 
-    function test_loggingOn_runsPrintWLoopWithoutThrowing() {
+    function test_loggingOn_runsPrintWLoopAndStillPauses() {
+        // logging=true triggers the gated diagnostic block at the bottom of
+        // _updateWindowsinfo. The pause-decision side effect must still
+        // fire: one non-minimized active maximized window in Any mode →
+        // reqPause=true.
         wm.logging = true;
         wm.modePlay = Plugin.Common.PauseMode.Any;
         _setWindows([{
@@ -260,8 +274,9 @@ TestCase {
             isMinimized: false, activities: [], appName: "logged",
         }]);
         _runUpdate();
+        compare(wm.reqPause, true,
+                "logging path must not short-circuit the pause decision");
         wm.logging = false;
-        verify(true);
     }
 
     // ── ActivityInfo / VirtualDesktopInfo signal handlers ────────────────────
@@ -276,23 +291,65 @@ TestCase {
         return null;
     }
 
+    function _findVirtualDesktopInfo() {
+        const buckets = [wm.children || [], wm.data || []];
+        for (const b of buckets) {
+            for (let i = 0; i < b.length; i++) {
+                const v = b[i];
+                if (v && typeof v.currentDesktop !== "undefined"
+                     && typeof v.currentActivity === "undefined"
+                     && !("_windows" in v)) return v;
+            }
+        }
+        return null;
+    }
+
     function test_activityChanged_propagatesToVirtualDesktop() {
+        // Production handler: ActivityInfo.onCurrentActivityChanged calls
+        // virtualDesktopInfo.onCurrentDesktopChanged() which, when the
+        // current activity matches wModel.activity, writes
+        // wModel.desktop = virtualDesktopInfo.currentDesktop. Drive the VDI
+        // stub to a non-zero desktop so the propagation is observable.
         const ai = _findActivityInfo();
-        if (ai) ai.currentActivityChanged();
-        verify(true);
+        const vdi = _findVirtualDesktopInfo();
+        verify(ai !== null);
+        verify(vdi !== null);
+        // Align activity so the propagation gate passes (both default to "").
+        wm.activity = ai.currentActivity;
+        vdi.currentDesktop = 7;
+        ai.currentActivityChanged();
+        compare(wm.desktop, 7,
+                "activityChanged must propagate VDI.currentDesktop to wModel.desktop");
     }
 
     // ── tasksModel signal handlers ───────────────────────────────────────────
     function test_tasksModelActiveTaskChanged_triggersUpdate() {
+        // Production handler: onActiveTaskChanged → updateWindowsinfo() →
+        // triggerTimer.start(). Observable: the (currently-stopped) trigger
+        // timer flips to running after the signal fires.
         const tm = _findTasksModel();
-        if (tm) tm.activeTaskChanged();
-        verify(true);
+        verify(tm !== null);
+        const tt = _findTriggerTimer();
+        verify(tt !== null);
+        tt.stop();   // ensure pristine state
+        tm.activeTaskChanged();
+        verify(tt.running,
+               "onActiveTaskChanged must schedule the triggerTimer");
+        tt.stop();
     }
 
     function test_tasksModelVirtualDesktopChanged_triggersUpdate() {
+        // Production handler: onVirtualDesktopChanged → updateWindowsinfo()
+        // → triggerTimer.start(). Same observable as activeTaskChanged.
         const tm = _findTasksModel();
-        if (tm) tm.virtualDesktopChanged();
-        verify(true);
+        verify(tm !== null);
+        const tt = _findTriggerTimer();
+        verify(tt !== null);
+        tt.stop();
+        tm.virtualDesktopChanged();
+        verify(tt.running,
+               "onVirtualDesktopChanged must schedule the triggerTimer");
+        tt.stop();
     }
 
     function test_tasksModelGetProperty_unknownNameReturnsUndefined() {

@@ -14,6 +14,10 @@ QtObject {
     signal timelineChanged(var position, var duration, int state)
     signal userShortcutRequested(string name)
 
-    function invokeShortcut(name) {}
-    function engage() {}
+    // ── test recorders (test-only stub) ──────────────────────────────────
+    property int  invokeShortcutCount: 0
+    property var  lastShortcut:        undefined
+    property int  engageCount:         0
+    function invokeShortcut(name) { invokeShortcutCount += 1; lastShortcut = name }
+    function engage()             { engageCount += 1 }
 }

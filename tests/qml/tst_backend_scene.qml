@@ -20,18 +20,32 @@ TestCase {
         source: "stub://scene.pkg"
     }
 
+    // SignalSpies on the player surface. `target` is set per-test in the
+    // body (after _findScenePlayer locates the child); declaring them as
+    // children of the TestCase keeps lifetimes clean across cases.
+    SignalSpy { id: playbackSpy;  signalName: "mediaPlaybackChanged"  }
+    SignalSpy { id: propsSpy;     signalName: "mediaPropertiesChanged" }
+    SignalSpy { id: thumbSpy;     signalName: "mediaThumbnailChanged" }
+    SignalSpy { id: timelineSpy;  signalName: "mediaTimelineChanged"  }
+    SignalSpy { id: statusSpy;    signalName: "mediaStatusChanged"    }
+    SignalSpy { id: ffSpy;        target: background; signalName: "sig_backendFirstFrame" }
+
     function test_alphabeticBackendIsSetByOnCompleted() {
         compare(background.nowBackend, "scene");
     }
 
     function test_play_callsPlayerPlay() {
+        const p = _findScenePlayer();
+        const n = p.playCount;
         scene.play();
-        verify(true);
+        compare(p.playCount, n + 1);
     }
 
     function test_pause_callsPlayerPause() {
+        const p = _findScenePlayer();
+        const n = p.pauseCount;
         scene.pause();
-        verify(true);
+        compare(p.pauseCount, n + 1);
     }
 
     function test_getMouseTarget_returnsBinding() {
@@ -69,34 +83,61 @@ TestCase {
     }
 
     function test_mprisPlaybackStateForwardsToPlayer() {
-        const mpris = _findChildByMethodName(scene, "invokeShortcut");
+        const mpris  = _findChildByMethodName(scene, "invokeShortcut");
+        const player = _findScenePlayer();
         verify(mpris !== null);
+        playbackSpy.target = player;
+        playbackSpy.clear();
         mpris.playbackStateChanged("Playing");
-        verify(true);
+        compare(playbackSpy.count, 1);
+        compare(playbackSpy.signalArguments[0][0], "Playing");
     }
 
     function test_mprisPropertiesForwardsToPlayer() {
-        const mpris = _findChildByMethodName(scene, "invokeShortcut");
-        mpris.propertiesChanged("title", "artist", "albumTitle", "albumArtist", "", 0.0);
-        verify(true);
+        const mpris  = _findChildByMethodName(scene, "invokeShortcut");
+        const player = _findScenePlayer();
+        propsSpy.target = player;
+        propsSpy.clear();
+        mpris.propertiesChanged("title", "artist", "albumTitle", "albumArtist", "", 60.0);
+        compare(propsSpy.count, 1);
+        compare(propsSpy.signalArguments[0][0], "title");
+        compare(propsSpy.signalArguments[0][1], "artist");
+        compare(propsSpy.signalArguments[0][2], "albumTitle");
+        compare(propsSpy.signalArguments[0][3], "albumArtist");
+        compare(propsSpy.signalArguments[0][5], 60.0);  // duration
     }
 
     function test_mprisThumbnailForwardsToPlayer() {
-        const mpris = _findChildByMethodName(scene, "invokeShortcut");
+        const mpris  = _findChildByMethodName(scene, "invokeShortcut");
+        const player = _findScenePlayer();
+        thumbSpy.target = player;
+        thumbSpy.clear();
         mpris.thumbnailChanged(true, [Qt.rgba(1,0,0,1)]);
-        verify(true);
+        compare(thumbSpy.count, 1);
+        compare(thumbSpy.signalArguments[0][0], true);
     }
 
     function test_mprisTimelineForwardsToPlayer() {
-        const mpris = _findChildByMethodName(scene, "invokeShortcut");
+        const mpris  = _findChildByMethodName(scene, "invokeShortcut");
+        const player = _findScenePlayer();
+        timelineSpy.target = player;
+        timelineSpy.clear();
         mpris.timelineChanged(0, 60, 1);
-        verify(true);
+        compare(timelineSpy.count, 1);
+        compare(timelineSpy.signalArguments[0][0], 0);
+        compare(timelineSpy.signalArguments[0][1], 60);
+        compare(timelineSpy.signalArguments[0][2], 1);  // state
     }
 
     function test_mprisEnabledForwardsToPlayer() {
-        const mpris = _findChildByMethodName(scene, "invokeShortcut");
-        mpris.enabled = !mpris.enabled;
-        verify(true);
+        const mpris  = _findChildByMethodName(scene, "invokeShortcut");
+        const player = _findScenePlayer();
+        statusSpy.target = player;
+        statusSpy.clear();
+        const want = !mpris.enabled;
+        mpris.enabled = want;
+        compare(statusSpy.count, 1);
+        compare(statusSpy.signalArguments[0][0], want);
     }
 
     // ── SceneViewer Connections handlers ──────────────────────────────────────
@@ -113,14 +154,22 @@ TestCase {
     function test_scenePlayerFirstFrame_routesToBackgroundSignal() {
         const player = _findScenePlayer();
         verify(player !== null);
+        ffSpy.clear();
+        const n = background.firstFrameCount;
         player.firstFrame();
-        verify(true);
+        compare(ffSpy.count, 1);
+        compare(ffSpy.signalArguments[0][0], "scene");
+        compare(background.firstFrameCount, n + 1);
+        compare(background.lastFirstFrameName, "scene");
     }
 
     function test_scenePlayerUserShortcut_routesToMpris() {
         const player = _findScenePlayer();
+        const mpris  = _findChildByMethodName(scene, "invokeShortcut");
+        const n = mpris.invokeShortcutCount;
         player.userShortcutRequested("bplay");
-        verify(true);
+        compare(mpris.invokeShortcutCount, n + 1);
+        compare(mpris.lastShortcut, "bplay");
     }
 
     function test_displayModeScale_setsStretch() {

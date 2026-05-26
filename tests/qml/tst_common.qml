@@ -531,12 +531,19 @@ TestCase {
         handle.stop();
     }
 
-    // ── listProperty — smoke (output goes to console; verify no throw) ───────
-    function test_listProperty_doesNotThrow() {
-        // listProperty iterates `for (var p in obj)` and console.errors each
-        // entry. We just assert it executes without error.
-        Plugin.Common.listProperty({ a: 1, b: "two" });
-        verify(true);
+    // ── listProperty — iterates every enumerable property ────────────────────
+    function test_listProperty_iteratesAllProperties() {
+        // listProperty walks `for (var p in obj)` and console.errors each
+        // entry. Use a probe with property getters that record access to
+        // assert every prop is actually visited.
+        let touched = [];
+        const probe = {
+            get a() { touched.push("a"); return 1; },
+            get b() { touched.push("b"); return "two"; },
+        };
+        Plugin.Common.listProperty(probe);
+        touched.sort();
+        compare(touched, ["a", "b"]);
     }
 
     // ── urlNative — file URL stripping ────────────────────────────────────────

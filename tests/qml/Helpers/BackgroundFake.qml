@@ -47,7 +47,21 @@ QtObject {
     // explicitly causes "Duplicate signal name" errors.
     signal sig_backendFirstFrame(string name)
 
-    function get_opt_value(name) { return ""; }
-    function hookMouse()         {}
-    function hookMouseSlot()     {}
+    // ── test recorders (test-only fake) ──────────────────────────────────
+    // Production routes `player.firstFrame` -> `background.sig_backendFirstFrame('scene')`
+    // (Scene.qml:108-110) and similar paths for the mpv/video backends.
+    // Counting and arg-capture here lets converted verify(true) tests assert
+    // on the routed effect without standing up a SignalSpy.
+    property int  firstFrameCount:    0
+    property var  lastFirstFrameName: undefined
+    onSig_backendFirstFrame: function(name) { firstFrameCount += 1; lastFirstFrameName = name }
+
+    property int  getOptValueCount:   0
+    property var  lastGetOptValueArg: undefined
+    function get_opt_value(name) { getOptValueCount += 1; lastGetOptValueArg = name; return ""; }
+
+    property int  hookMouseCount:     0
+    property int  hookMouseSlotCount: 0
+    function hookMouse()         { hookMouseCount     += 1 }
+    function hookMouseSlot()     { hookMouseSlotCount += 1 }
 }

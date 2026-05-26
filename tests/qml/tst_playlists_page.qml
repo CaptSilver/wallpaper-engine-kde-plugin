@@ -322,16 +322,21 @@ TestCase {
         verify(page._selectedId === "p1" || page._selectedId === "");
     }
 
-    function test_rowDoubleClickEngagesRename() {
+    // Coverage-only: synthesised mouse event may not coerce into a real
+    // QQuickMouseEvent from JS, so the handler may or may not actually run.
+    // What we DO assert is structural — the delegate exposes a MouseArea
+    // with onDoubleClicked. Production double-click engages inline rename
+    // (covered end-to-end in browser-driven integration).
+    function test_rowDoubleClickHandler_constructs() {
         tryVerify(() => page.playlistsView.itemAtIndex(0) !== null, 2000);
         const delegate = page.playlistsView.itemAtIndex(0);
         verify(delegate !== null);
         const ma = _findRowMouseArea(delegate);
         verify(ma !== null);
+        verify(typeof ma.doubleClicked === "function",
+               "row MouseArea must expose a doubleClicked signal");
         delegate._editing = false;
         try { ma.doubleClicked({}); } catch (e) {}
-        // Same coverage-only contract as above.
-        verify(true);
         delegate._editing = false;
     }
 
@@ -385,20 +390,26 @@ TestCase {
         compare(delegate._editing, false);
     }
 
-    function test_inlineRenameCommitOnFocusLoss_coverageHit() {
+    function test_inlineRenameCommitOnFocusLoss_callsManager() {
         tryVerify(() => _findById(page, "plNameEdit_p1") !== null, 2000);
         const tf = _findById(page, "plNameEdit_p1");
         verify(tf !== null);
         const delegate = tf.parent.parent;
         delegate._editing = true;
         tf.text = "FocusLossName";
+        fakeManager.lastCall = {};
         try {
-            // emit with current activeFocus value — handler decides whether
-            // to commit. Coverage credit registers on function entry.
+            // Emit with current activeFocus value (false in offscreen
+            // TestCase) — handler sees `!activeFocus && _editing` true,
+            // text differs from name → commits via renamePlaylist.
             tf.activeFocusChanged(tf.activeFocus);
         } catch (e) {}
-        verify(true);
-        delegate._editing = false;
+        compare(fakeManager.lastCall.fn, "renamePlaylist",
+                "focus-loss with edited text must commit via renamePlaylist");
+        compare(fakeManager.lastCall.id, "p1");
+        compare(fakeManager.lastCall.name, "FocusLossName");
+        compare(delegate._editing, false,
+                "focus-loss handler must clear _editing");
     }
 
     function test_itemsAppearWhenPlaylistSelected() {
@@ -450,17 +461,25 @@ TestCase {
     // still records the unit as hit. End-to-end drag-drop reorder is
     // covered by the production DropArea integration; this test just
     // closes the coverage gap for the handler entry.
-    function test_itemDelegateDropHandlerFiresForCoverage() {
+    // Coverage-only: QQuickDragEvent can't be constructed from JS, so we
+    // can't inject a meaningful drop. What we DO assert is structural —
+    // each item delegate exposes a DropArea with a `dropped` signal +
+    // `containsDrag` property (production reorder uses both). End-to-end
+    // drag-drop reorder is integration-covered.
+    function test_itemDelegateDropArea_constructs() {
         page._selectedId = "p1";
         tryVerify(() => page.itemsView.itemAtIndex(1) !== null, 2000);
         const delegate = page.itemsView.itemAtIndex(1);
         verify(delegate !== null);
         const da = _findDropArea(delegate);
         verify(da !== null);
+        verify(typeof da.dropped === "function",
+               "item delegate must expose a DropArea with a dropped signal");
+        verify(typeof da.containsDrag !== "undefined",
+               "item delegate DropArea must expose containsDrag");
         // The signal cast warning + null-source throw are expected; the
         // handler is reached and instrumented. Wrap to swallow JS errors.
         try { da.dropped(null); } catch (e) {}
-        verify(true);
     }
 
     // onClicked@414 — user-playlist Activate/Deactivate button (line 414).

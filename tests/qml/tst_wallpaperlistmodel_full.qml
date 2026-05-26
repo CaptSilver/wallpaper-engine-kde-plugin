@@ -159,8 +159,15 @@ TestCase {
 
     function test_loadPlaylists_invalidJsonDoesntCrash() {
         fakeFileContent = "not-json";
+        const beforeReads = readfileCalls.length;
         wpModel.loadPlaylists();
-        verify(true);
+        // Production logs a warn + early-returns; readfile WAS called for
+        // the global config path, and playlists stays empty (init() reset
+        // it to {} above).
+        verify(readfileCalls.length > beforeReads,
+               "global config readfile must fire even on invalid JSON");
+        compare(Object.keys(wpModel.playlists).length, 0,
+                "invalid JSON must leave playlists empty (no partial parse)");
     }
 
     // ── refresh — when disabled, returns immediately ────────────────────────
@@ -198,13 +205,25 @@ TestCase {
     }
 
     function test_loadFolderLists_emptyFoldersResolvesQuickly() {
+        const beforeReads = readfileCalls.length;
         wpModel.loadFolderLists([]);
-        verify(true);
+        // No folders → proxyModel stays empty → no per-item readfile +
+        // no initItemOp invocations.
+        compare(initSeen.length, 0,
+                "empty folders must not invoke initItemOp");
+        compare(readfileCalls.length, beforeReads,
+                "empty folders must not trigger per-item readfile");
     }
 
     function test_loadFolderLists_skipsNullFolderEntries() {
+        const beforeReads = readfileCalls.length;
         wpModel.loadFolderLists([null, { folder: "/x", items: [] }, undefined]);
-        verify(true);
+        // null/undefined folders are skipped (early `return` in forEach);
+        // the lone {folder:"/x", items:[]} contributes zero items.
+        compare(initSeen.length, 0,
+                "null/empty folder entries must not invoke initItemOp");
+        compare(readfileCalls.length, beforeReads,
+                "null/empty folder entries must not trigger per-item readfile");
     }
 
     // ── ListModel.assignModel ────────────────────────────────────────────────
@@ -214,15 +233,28 @@ TestCase {
         // folderWorker.model loop.
         wpModel.model.append({ workshopid: "5555", title: "Old", favor: false });
         try { wpModel.model.assignModel(0, { favor: true, title: "New" }); } catch (e) {}
-        verify(true);
+        // ListModel.get(0) is mutated in place by Object.assign — verify the
+        // merged title/favor landed on the model row (the folderWorker.model
+        // branch hits zero entries here, so its only contract is "did not
+        // throw"; the ListModel-side merge IS observable and asserted).
+        const row = wpModel.model.get(0);
+        compare(row.title, "New", "assignModel must update title in ListModel row");
+        compare(row.favor, true,  "assignModel must update favor in ListModel row");
     }
 
     // ── refresh() — fire when enabled=true ──────────────────────────────────
     function test_refresh_runsBodyWhenEnabled() {
+        // Disabled-path early-returns Promise.resolve(null) without setting
+        // scanning or reading any file. Enabled path sets scanning=true
+        // and calls loadPlaylists() which reads the global config.
         wpModel.enabled = true;
+        const beforeReads = readfileCalls.length;
         try { wpModel.refresh(); } catch (e) {}
+        verify(wpModel.scanning,
+               "refresh() with enabled=true must flip scanning to true");
+        verify(readfileCalls.length > beforeReads,
+               "refresh() body must read the global config");
         wpModel.enabled = false;
-        verify(true);
     }
 
     // ── findItem / titleOf — unfiltered-source lookup ────────────────────────

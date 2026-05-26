@@ -407,23 +407,37 @@ TestCase {
     // qmlcov counts the whole handler as one unit, so any single firing
     // marks the unit hit. We still exercise each branch for safety.
     function test_onActivePlaylistIdRead_noopBranch() {
+        // Pre-arm: parent read is "init", mgr is "match". The reassignment
+        // below makes read == mgr at change-time, exercising the early-return
+        // branch. Snapshot the manager recorders and verify neither
+        // activate() nor deactivate() fired.
+        ctrl.activePlaylistIdRead = "init";
         ctrl.manager.activePlaylistId = "match";
-        ctrl.activePlaylistIdRead = "other";  // diverge first
+        const aBefore = ctrl.manager.activateCount;
+        const dBefore = ctrl.manager.deactivateCount;
         ctrl.activePlaylistIdRead = "match";  // matches mgr → early return
-        verify(true);
+        compare(ctrl.manager.activateCount, aBefore,
+                "no-op branch must NOT call mgr.activate");
+        compare(ctrl.manager.deactivateCount, dBefore,
+                "no-op branch must NOT call mgr.deactivate");
     }
 
     function test_onActivePlaylistIdRead_deactivateBranch() {
         ctrl.manager.activePlaylistId = "anything";
         ctrl.activePlaylistIdRead = "some-id";
+        const dBefore = ctrl.manager.deactivateCount;
         ctrl.activePlaylistIdRead = "";  // empty → deactivate branch
-        verify(true);
+        compare(ctrl.manager.deactivateCount, dBefore + 1,
+                "empty read must call mgr.deactivate exactly once");
     }
 
     function test_onActivePlaylistIdRead_activateBranch() {
         ctrl.manager.activePlaylistId = "";
+        const aBefore = ctrl.manager.activateCount;
         ctrl.activePlaylistIdRead = "user-playlist";  // → activate branch
-        verify(true);
+        compare(ctrl.manager.activateCount, aBefore + 1,
+                "non-empty read must call mgr.activate exactly once");
+        compare(ctrl.manager.lastActivateId, "user-playlist");
     }
 
     function test_onActivePlaylistIdRead_activateFilteredBranch() {
@@ -431,8 +445,15 @@ TestCase {
         // path before activate — exercise it for completeness.
         ctrl.manager.activePlaylistId = "";
         ctrl.switchTimerRead = 30;
+        const aBefore = ctrl.manager.activateCount;
+        const sBefore = ctrl.manager.setFilteredLibraryIntervalMinCount;
         ctrl.activePlaylistIdRead = "__filtered_library__";
-        verify(true);
+        compare(ctrl.manager.setFilteredLibraryIntervalMinCount, sBefore + 1,
+                "filtered library activation must seed interval first");
+        compare(ctrl.manager.lastSetFilteredLibraryIntervalMinArg, 30);
+        compare(ctrl.manager.activateCount, aBefore + 1,
+                "filtered library read must call mgr.activate");
+        compare(ctrl.manager.lastActivateId, "__filtered_library__");
     }
 
     // onRandomizeWallpaperReadChanged covers:
@@ -443,28 +464,46 @@ TestCase {
     function test_onRandomizeWallpaperRead_activatesFiltered() {
         ctrl.manager.activePlaylistId = "";
         ctrl.randomizeWallpaperRead = false;
+        const aBefore = ctrl.manager.activateCount;
+        const sBefore = ctrl.manager.setFilteredLibraryIntervalMinCount;
         ctrl.randomizeWallpaperRead = true;  // → activate filtered branch
-        verify(true);
+        compare(ctrl.manager.setFilteredLibraryIntervalMinCount, sBefore + 1,
+                "randomize-on with no active playlist must seed filtered interval");
+        compare(ctrl.manager.activateCount, aBefore + 1,
+                "randomize-on with no active playlist must activate filtered library");
+        compare(ctrl.manager.lastActivateId, "__filtered_library__");
     }
 
     function test_onRandomizeWallpaperRead_skipsWhenPlaylistAlreadyActive() {
         ctrl.manager.activePlaylistId = "user-pl";
         ctrl.randomizeWallpaperRead = false;
+        const aBefore = ctrl.manager.activateCount;
+        const sBefore = ctrl.manager.setFilteredLibraryIntervalMinCount;
         ctrl.randomizeWallpaperRead = true;  // active exists → inner skip
-        verify(true);
+        compare(ctrl.manager.activateCount, aBefore,
+                "randomize-on with active playlist must NOT call activate");
+        compare(ctrl.manager.setFilteredLibraryIntervalMinCount, sBefore,
+                "randomize-on with active playlist must NOT seed interval");
     }
 
     function test_onRandomizeWallpaperRead_deactivatesFiltered() {
         ctrl.manager.activePlaylistId = "__filtered_library__";
         ctrl.randomizeWallpaperRead = true;
+        const dBefore = ctrl.manager.deactivateCount;
         ctrl.randomizeWallpaperRead = false;  // → deactivate branch
-        verify(true);
+        compare(ctrl.manager.deactivateCount, dBefore + 1,
+                "randomize-off while filtered active must call deactivate");
     }
 
     function test_onRandomizeWallpaperRead_leavesOtherPlaylistAloneOnDisable() {
         ctrl.manager.activePlaylistId = "user-pl";
         ctrl.randomizeWallpaperRead = true;
+        const dBefore = ctrl.manager.deactivateCount;
+        const aBefore = ctrl.manager.activateCount;
         ctrl.randomizeWallpaperRead = false;  // not filtered → no-op
-        verify(true);
+        compare(ctrl.manager.deactivateCount, dBefore,
+                "randomize-off while non-filtered active must NOT deactivate");
+        compare(ctrl.manager.activateCount, aBefore,
+                "randomize-off must NOT spuriously re-activate");
     }
 }

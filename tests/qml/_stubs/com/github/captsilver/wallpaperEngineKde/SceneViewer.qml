@@ -24,13 +24,26 @@ Item {
     signal firstFrame()
     signal userShortcutRequested(string name)
     signal mediaPlaybackChanged(string state)
-    signal mediaPropertiesChanged(string title, string artist, string albumTitle, string albumArtist, var genres)
+    // arities mirror the C++ SceneObject::media*Changed Q_INVOKABLEs and the
+    // production routes in plugin/contents/ui/backend/Scene.qml.
+    signal mediaPropertiesChanged(string title, string artist, string albumTitle, string albumArtist, var genres, var duration)
     signal mediaThumbnailChanged(bool hasThumbnail, var colors)
-    signal mediaTimelineChanged(var position, var duration)
+    signal mediaTimelineChanged(var position, var duration, int state)
     signal mediaStatusChanged(bool enabled)
 
-    function play()                 {}
-    function pause()                {}
-    function setAcceptMouse(b)      {}
-    function setAcceptHover(b)      {}
+    // ── test recorders (test-only stub) ──────────────────────────────────
+    // Production wrappers call these imperatively; recording call-count and
+    // last-arg here lets converted verify(true) sites assert observable
+    // effect (compare(player.playCount, n+1)) instead of just "did not
+    // throw." Signal-based forwards (media*Changed) are observed via
+    // SignalSpy on the corresponding signals declared above.
+    property int  playCount:       0
+    property int  pauseCount:      0
+    property var  lastAcceptMouse: undefined
+    property var  lastAcceptHover: undefined
+
+    function play()                 { playCount  += 1 }
+    function pause()                { pauseCount += 1 }
+    function setAcceptMouse(b)      { lastAcceptMouse = b }
+    function setAcceptHover(b)      { lastAcceptHover = b }
 }

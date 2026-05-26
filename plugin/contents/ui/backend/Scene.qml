@@ -54,8 +54,12 @@ Item{
         onTimelineChanged: function(position, duration, state) {
             player.mediaTimelineChanged(position, duration, state);
         }
-        onEnabledChanged: function(enabled) {
-            player.mediaStatusChanged(enabled);
+        // Read MprisMonitor.enabled directly: the C++ signal carries the
+        // bool arg, but in QML the auto-generated property change signal is
+        // parameterless. A function(enabled) wrapper would receive undefined
+        // under a QML stub (bool-coerced to false) and silently mis-route.
+        onEnabledChanged: {
+            player.mediaStatusChanged(mprisMonitor.enabled);
         }
     }
 

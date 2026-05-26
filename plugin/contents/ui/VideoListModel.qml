@@ -9,6 +9,12 @@ Item {
     property string cachePath: ""
     property var pyext: null
 
+    // Mirrors WallpaperListModel: PlaylistController listens for this signal
+    // to retry a queued workshopId once the async folder scan completes.
+    // Without it, a runtime playlist that activates before refresh() resolves
+    // would skipCurrent() on miss + auto-deactivate after 8 ticks.
+    signal modelRefreshed
+
     readonly property ListModel model: ListModel {}
 
     // Generation counter — refresh() bumps it; only the latest scan's
@@ -89,10 +95,12 @@ Item {
             // Thumbnail generation continues async, but the list is
             // committed — flip scanning back off so the UI re-enables.
             root.scanning = false;
+            root.modelRefreshed();
             _kickThumbnails(gen);
         }).catch((e) => {
             root.scanning = false;
             console.warn("VideoListModel: scan failed", e);
+            root.modelRefreshed();
         });
     }
 

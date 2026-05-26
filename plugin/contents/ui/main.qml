@@ -265,6 +265,17 @@ Rectangle {
     Pyext {
         id: pyext
     }
+    // Runtime Videos-tab model.  Editor (config.qml) shares the dialog's
+    // VideoListModel; the runtime side has no dialog so it owns its own.
+    // Without this, a Videos-tab item in an active playlist resolves null
+    // at runtime + the playlist auto-deactivates after 8 consecutive
+    // skipCurrent() ticks.  We don't set cachePath — the thumbnail-gen
+    // branch is dialog-only.
+    VideoListModel {
+        id: runtimeVideoListModel
+        folderPath: wallpaper.configuration.VideoFolderPath
+        pyext: pyext
+    }
     WallpaperListModel {
         id: wpListModel
         // Load the model whenever any playlist is active OR the legacy
@@ -293,7 +304,7 @@ Rectangle {
     PlaylistController {
         id: playlistController
         wpListModel: wpListModel
-        videoListModel: null   // runtime wallpaper has no video list model
+        videoListModel: runtimeVideoListModel
         common: Common
         noRandomWhilePaused: background.noRandomWhilePaused
         desktopOk: background.ok

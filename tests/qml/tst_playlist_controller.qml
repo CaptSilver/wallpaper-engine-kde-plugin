@@ -69,6 +69,10 @@ TestCase {
     QtObject {
         id: emptyVidModel
         property var model: ListModel { id: emptyVidInner }
+        // Symmetric with emptyWpModel — VideoListModel emits modelRefreshed
+        // at the end of refresh().  Tests fire it manually to simulate the
+        // async scan completing.
+        signal modelRefreshed()
     }
 
     // Captured writes from the controller's setter callbacks.
@@ -124,6 +128,47 @@ TestCase {
         ctrl._applyWorkshopId("not-here");
         // Setter was not called for missing items; lastSet stays empty.
         compare(tc.lastSet.fn, undefined);
+    }
+
+    // Regression for W2: a "video:hash"-prefixed Videos-tab item must resolve
+    // through videoListModel + drive setWallpaperFromItem.  Pre-fix, the
+    // runtime PlaylistController bound videoListModel: null so this case
+    // always fell through to skipCurrent() — 8 consecutive skips
+    // auto-deactivated any playlist containing a plain-video entry.
+    function test_applyWorkshopIdVideoItem_callsSetter() {
+        ctrl._applyWorkshopId("video:abcdef");
+        compare(tc.lastSet.fn, "setWallpaperFromItem");
+        compare(tc.lastSet.item.workshopid, "video:abcdef");
+        compare(tc.lastSet.item.title, "ClipA");
+    }
+
+    // Cold-start, video-only race: wp model loaded but empty (no workshop
+    // wallpapers installed) AND video model still scanning.  An active
+    // playlist of plain-video entries must queue, not skipCurrent.
+    function test_coldStart_videoOnly_queuesAndReplaysOnVideoRefresh() {
+        const savedWp  = ctrl.wpListModel;
+        const savedVid = ctrl.videoListModel;
+        emptyWpInner.clear();
+        emptyVidInner.clear();
+        emptyWpModel.countNoFilter = 0;
+        ctrl.wpListModel    = emptyWpModel;
+        ctrl.videoListModel = emptyVidModel;
+
+        tc.lastSet = {};
+        ctrl._applyWorkshopId("video:later");
+        compare(tc.lastSet.fn, undefined, "empty video model should queue, not call setter");
+        compare(ctrl._pendingWorkshopId, "video:later");
+
+        // Populate video model + fire its modelRefreshed — the new Connections
+        // block in PlaylistController replays the pending id.
+        emptyVidInner.append({ workshopid: "video:later", title: "Late Clip" });
+        emptyVidModel.modelRefreshed();
+        compare(tc.lastSet.fn, "setWallpaperFromItem");
+        compare(tc.lastSet.item.workshopid, "video:later");
+        compare(ctrl._pendingWorkshopId, "");
+
+        ctrl.wpListModel    = savedWp;
+        ctrl.videoListModel = savedVid;
     }
 
     // Regression: a wallpaper currently excluded by the user's Wallpapers-tab

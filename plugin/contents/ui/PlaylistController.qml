@@ -167,6 +167,18 @@ Item {
         }
     }
 
+    // Symmetric: a runtime playlist may target a Videos-tab item ("video:hash"
+    // workshopid).  Without this, the wpListModel-only refresh hook would
+    // resolve nothing once that model loads + the pending id stays queued.
+    Connections {
+        target: root.videoListModel
+        ignoreUnknownSignals: true
+        function onModelRefreshed() {
+            if (root._pendingWorkshopId)
+                root._applyWorkshopId(root._pendingWorkshopId);
+        }
+    }
+
     function _serveFilteredPick() {
         if (!root.wpListModel || !root.wpListModel.model) {
             mgr.acceptPick("");

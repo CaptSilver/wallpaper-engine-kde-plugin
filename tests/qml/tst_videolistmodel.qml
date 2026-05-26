@@ -80,4 +80,20 @@ TestCase {
             m.destroy();
         });
     }
+
+    // PlaylistController's _pendingWorkshopId queue depends on this signal
+    // firing once the async folder scan resolves — otherwise a runtime
+    // plain-video playlist that activates before the scan completes would
+    // skipCurrent forever and auto-deactivate after 8 ticks.
+    function test_modelRefreshedFires_onScanComplete() {
+        const m = modelComp.createObject(host, { folderPath: "/tmp/v" });
+        const spy = Qt.createQmlObject(
+            'import QtTest; SignalSpy { signalName: "modelRefreshed" }', tc);
+        spy.target = m;
+        return m.refresh().then(() => {
+            compare(spy.count, 1, "modelRefreshed must fire after a successful scan");
+            spy.destroy();
+            m.destroy();
+        });
+    }
 }

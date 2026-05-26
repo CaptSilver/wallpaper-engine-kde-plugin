@@ -27,7 +27,6 @@ private slots:
         std::setlocale(LC_NUMERIC, "C");
     }
 
-
     void grab_writesValidJpeg() {
         QTemporaryDir d;
         QVERIFY(d.isValid());

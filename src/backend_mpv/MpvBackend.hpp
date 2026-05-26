@@ -7,6 +7,7 @@
 #include <QtQuick/QQuickItem>
 #include <QtQuick/QQuickFramebufferObject>
 #include <QtCore/QLoggingCategory>
+#include <QtCore/QMutex>
 #include <atomic>
 #include <memory>
 
@@ -17,10 +18,21 @@ Q_DECLARE_LOGGING_CATEGORY(wekdeMpv)
 namespace mpv
 {
 
+class MpvObject;
+
 struct MpvHandle {
     MpvHandle(mpv_handle* mpv): handle(mpv) {}
     ~MpvHandle() { mpv_terminate_destroy(handle); }
     mpv_handle* handle;
+
+    // Wakeup callback indirection. The callback runs on an arbitrary mpv
+    // player thread; without this hop it would deref a destroyed MpvObject
+    // (the .so is dlopen'd into plasmashell — a dangling postEvent would
+    // crash the desktop). MpvHandle outlives any single MpvObject via the
+    // MpvRender shared_ptr ref, so the mutex + owner pointer stay valid
+    // until ~MpvHandle joins the player thread via mpv_terminate_destroy.
+    QMutex     wakeup_mutex;
+    MpvObject* owner { nullptr };
 };
 
 class MpvRender;

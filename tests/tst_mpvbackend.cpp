@@ -87,6 +87,11 @@ private slots:
     // and emits exactly once — see MpvBackend.cpp:checkAndEmitFirstFrame).
     void firstFrame_freshObject_doesNotEmit();
     void firstFrame_afterSourceFlip_emitsExactlyOnce();
+
+    // wakeup() runs on an arbitrary mpv player thread; rapid construct/destroy
+    // cycles must not deref a freed MpvObject (the .so is dlopen'd into
+    // plasmashell, where a dangling postEvent would crash the desktop).
+    void destroy_after_brief_lifetime_is_safe();
 };
 
 namespace
@@ -349,6 +354,24 @@ void TestMpvBackend::onMpvEvents_idlePlayer_doesNotEmit() {
     obj->onMpvEvents(); // idle player => Stopped => no change
     QCOMPARE(spy.count(), 0);
     QCOMPARE(obj->status(), MpvObject::Stopped);
+}
+
+// Stress the construct/observe-properties/destroy cycle: each pass starts an
+// mpv player thread, registers two observers (pause, idle-active), wires the
+// wakeup callback, then immediately tears down. Without the MpvHandle.owner
+// indirection + mutex sync in ~MpvObject, a wakeup already on the player
+// thread's call stack would deref a freed QObject when the destructor returns.
+void TestMpvBackend::destroy_after_brief_lifetime_is_safe() {
+    QElapsedTimer t;
+    t.start();
+    for (int i = 0; i < 32; ++i) {
+        auto obj = makeObject();
+        if (! obj->initialized()) return; // libmpv unavailable in env
+        // Pump the GUI loop briefly so any wakeup that fired has a chance
+        // to land before destruction.
+        QTest::qWait(5);
+    }
+    QVERIFY(t.elapsed() < 10000); // 32 × <300 ms each at the loose end
 }
 
 QTEST_MAIN(TestMpvBackend)

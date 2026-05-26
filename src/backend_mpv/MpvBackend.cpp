@@ -224,9 +224,15 @@ void MpvObject::onMpvEvents() {
 }
 
 void MpvObject::wakeup(void* ctx) {
-    // Runs on an arbitrary mpv thread — only marshal to the GUI thread.
-    auto* self = static_cast<MpvObject*>(ctx);
-    QMetaObject::invokeMethod(self, "onMpvEvents", Qt::QueuedConnection);
+    // Runs on an arbitrary mpv thread — must not touch the MpvObject
+    // identity directly. The ctx is the (shared_ptr-owned) MpvHandle, which
+    // outlives any single MpvObject via MpvRender's ref. ~MpvObject clears
+    // owner under wakeup_mutex; the lock here ensures that after that clear
+    // returns, no future wakeup can dispatch into the dead QObject.
+    auto*        mh = static_cast<MpvHandle*>(ctx);
+    QMutexLocker lock(&mh->wakeup_mutex);
+    if (! mh->owner) return;
+    QMetaObject::invokeMethod(mh->owner, "onMpvEvents", Qt::QueuedConnection);
 }
 
 QUrl MpvObject::source() const { return m_source; }
@@ -417,16 +423,27 @@ MpvObject::MpvObject(QQuickItem* parent)
     m_lastStatus = status();
     mpv_observe_property(m_mpv, 0, "pause", MPV_FORMAT_FLAG);
     mpv_observe_property(m_mpv, 0, "idle-active", MPV_FORMAT_FLAG);
-    mpv_set_wakeup_callback(m_mpv, &MpvObject::wakeup, this);
+    {
+        QMutexLocker lock(&m_shared_mpv->wakeup_mutex);
+        m_shared_mpv->owner = this;
+    }
+    mpv_set_wakeup_callback(m_mpv, &MpvObject::wakeup, m_shared_mpv.get());
 
     Q_EMIT initializedChanged();
 }
 
 MpvObject::~MpvObject() {
-    // The wakeup callback dereferences `this`; clear it before destruction so a
-    // late player-thread event can't call into a destroyed object. The .so is
-    // dlopen'd into plasmashell, where a dangling callback would crash the desktop.
+    // Tell libmpv to stop calling our wakeup (best-effort: doesn't block any
+    // in-flight callback). Then take the wakeup_mutex to serialise against
+    // any callback currently dispatching; clearing owner under that lock
+    // means no FUTURE wakeup can ever dispatch into this destroyed QObject.
+    // The .so is dlopen'd into plasmashell — a dangling postEvent here
+    // would crash the desktop.
     if (m_mpv) mpv_set_wakeup_callback(m_mpv, nullptr, nullptr);
+    if (m_shared_mpv) {
+        QMutexLocker lock(&m_shared_mpv->wakeup_mutex);
+        m_shared_mpv->owner = nullptr;
+    }
 }
 
 void MpvObject::checkAndEmitFirstFrame() {

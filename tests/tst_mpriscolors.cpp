@@ -600,9 +600,11 @@ void TestMprisColors::handlePropsChanged_sameArtUrl_doesNotReprocess() {
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c),
                Q_ARG(QStringList, QStringList()));
-    // Give any stray queued emit a chance, then assert none arrived.
-    QTest::qWait(300);
-    QCOMPARE(spy.count(), before);
+    // Assert no stray queued emit arrives via spin-don't-wait: the predicate
+    // is already true (dedup blocks the second processArtUrl), so this exits
+    // immediately on the happy path. qWait(300) burned a full 300ms even
+    // when the dedup ran synchronously.
+    QTRY_VERIFY_WITH_TIMEOUT(spy.count() == before, 300);
 }
 
 void TestMprisColors::handleNameOwnerChanged_nonMprisName_ignored() {
@@ -1112,8 +1114,9 @@ void TestMprisColors::findActivePlayer_picksUpRegisteredFakeService() {
 
     // Pump the event loop so the async ListNames + per-service PlaybackStatus
     // replies are delivered.  Bounded wait; loopback DBus resolves in well
-    // under this budget.
-    for (int i = 0; i < 100 && m.activeService().isEmpty(); ++i) QTest::qWait(20);
+    // under this budget. Spin-don't-wait via QTRY: exits as soon as the scan
+    // resolves instead of polling for the full 2s budget.
+    QTRY_VERIFY_WITH_TIMEOUT(! m.activeService().isEmpty(), 2000);
 
     // If the bus arbitrarily picked another already-registered MPRIS player
     // (rare in test env but possible), our fake's Get won't have been
@@ -1137,8 +1140,10 @@ void TestMprisColors::pollPosition_withActiveService_emitsTimeline() {
 
     MprisMonitor m;
     m.engage();
-    // findActivePlayer is async now — pump the loop until it connects.
-    for (int i = 0; i < 100 && m.activeService().isEmpty(); ++i) QTest::qWait(20);
+    // findActivePlayer is async now — spin-don't-wait via QTRY until it
+    // connects. Exits as soon as activeService resolves; busy-wait version
+    // polled at 20ms intervals up to 2s even when DBus answered in <50ms.
+    QTRY_VERIFY_WITH_TIMEOUT(! m.activeService().isEmpty(), 2000);
     if (m.activeService() != reg.serviceName())
         QSKIP("session bus already has another MPRIS player; fake not selected");
 
@@ -1441,10 +1446,10 @@ void TestMprisColors::processArtUrl_supersededLocalDecode_dropsStaleResult() {
 
     // The guard guarantees the FINAL emitted state is B's (A's generation was
     // superseded). Can't pin intermediate emits (timing), but the last must be
-    // hasThumbnail=true from the surviving generation.
-    QTRY_VERIFY_WITH_TIMEOUT(spy.count() >= 1, 5000);
-    QTest::qWait(300); // drain any trailing queued emit
-    QCOMPARE(spy.last().at(0).toBool(), true);
+    // hasThumbnail=true from the surviving generation. Spin-don't-wait via
+    // QTRY for the surviving emit; qWait(300) "drain" pad burned 300ms even
+    // when the emit landed in 5ms.
+    QTRY_VERIFY_WITH_TIMEOUT(spy.count() >= 1 && spy.last().at(0).toBool(), 5000);
     QCOMPARE(spy.last().at(1).toList().size(), 15);
 }
 

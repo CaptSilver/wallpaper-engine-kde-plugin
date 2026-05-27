@@ -197,7 +197,7 @@ MpvObject::Status MpvObject::deriveStatus(bool idleActive, bool paused) {
     return idleActive ? Stopped : (paused ? Paused : Playing);
 }
 
-MpvObject::Status MpvObject::status() const {
+MpvObject::Status MpvObject::liveStatus() const {
     return deriveStatus(getProperty("idle-active").toBool(), getProperty("pause").toBool());
 }
 
@@ -420,7 +420,9 @@ MpvObject::MpvObject(QQuickItem* parent)
     // Observe the properties that define Status and pump mpv's event queue so
     // statusChanged() actually fires — QML bindings on `status` depend on it.
     // The wakeup callback runs on an mpv thread; it only queues onMpvEvents().
-    m_lastStatus = status();
+    // Bootstrap m_lastStatus from a sync read; subsequent updates come via the
+    // event-driven refreshStatus path so status() can stay pure-cache.
+    m_lastStatus = liveStatus();
     mpv_observe_property(m_mpv, 0, "pause", MPV_FORMAT_FLAG);
     mpv_observe_property(m_mpv, 0, "idle-active", MPV_FORMAT_FLAG);
     {

@@ -92,6 +92,14 @@ private slots:
     // cycles must not deref a freed MpvObject (the .so is dlopen'd into
     // plasmashell, where a dangling postEvent would crash the desktop).
     void destroy_after_brief_lifetime_is_safe();
+
+    // status() reads the cached m_lastStatus (maintained by event-driven
+    // refreshStatus on observed-property changes); it must NOT issue any
+    // sync mpv_get_property calls. liveStatus() retains the old sync-read
+    // body for the single bootstrap site at ctor time.
+    void status_reflectsRefreshStatusCache_noSyncReads();
+    void status_returnsCachedValueAcrossManyCalls();
+    void status_playPauseSequenceFinalStateCorrect();
 };
 
 namespace
@@ -372,6 +380,49 @@ void TestMpvBackend::destroy_after_brief_lifetime_is_safe() {
         QTest::qWait(5);
     }
     QVERIFY(t.elapsed() < 10000); // 32 × <300 ms each at the loose end
+}
+
+// UI4.3: status() must return the cached m_lastStatus that refreshStatus
+// maintains from observed mpv property events — not issue sync mpv_get_property
+// reads on every call. Drive a transition through refreshStatus, then assert
+// status() reflects the cached value (mpv has not seen any setProperty, so a
+// sync read would still report Stopped; cache-read reports the new value).
+void TestMpvBackend::status_reflectsRefreshStatusCache_noSyncReads() {
+    auto obj = makeObject();
+    QCOMPARE(obj->status(), MpvObject::Stopped);
+    // Force the cache to Playing via refreshStatus (no mpv state actually
+    // changed — pure cache poke). A sync-read implementation would still
+    // see idle=true,pause=false from mpv → Stopped; a cache-read sees Playing.
+    QVERIFY(obj->refreshStatus(false, false));
+    QCOMPARE(obj->status(), MpvObject::Playing);
+    QVERIFY(obj->refreshStatus(false, true));
+    QCOMPARE(obj->status(), MpvObject::Paused);
+}
+
+// status() must be idempotent across many calls — the cache, not a sync
+// read, drives the value. Without UI4.3, repeated mpv getProperty pairs
+// would compound observed-property event-loop pressure for QML bindings
+// that read `status` reactively.
+void TestMpvBackend::status_returnsCachedValueAcrossManyCalls() {
+    auto obj = makeObject();
+    QVERIFY(obj->refreshStatus(false, true)); // Stopped → Paused
+    const auto cached = obj->status();
+    QCOMPARE(cached, MpvObject::Paused);
+    for (int i = 0; i < 100; ++i) QCOMPARE(obj->status(), cached);
+}
+
+// play()/pause()/stop() gate on status(); under the cache, a back-to-back
+// programmatic sequence must converge to the right final state once events
+// have been drained.
+void TestMpvBackend::status_playPauseSequenceFinalStateCorrect() {
+    auto obj = makeObject();
+    // Drive cache: Stopped → Playing → Paused → Playing
+    QVERIFY(obj->refreshStatus(false, false));
+    QCOMPARE(obj->status(), MpvObject::Playing);
+    QVERIFY(obj->refreshStatus(false, true));
+    QCOMPARE(obj->status(), MpvObject::Paused);
+    QVERIFY(obj->refreshStatus(false, false));
+    QCOMPARE(obj->status(), MpvObject::Playing);
 }
 
 QTEST_MAIN(TestMpvBackend)

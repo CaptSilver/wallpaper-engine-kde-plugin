@@ -64,7 +64,13 @@ public:
         Paused,
     };
     Q_ENUM(Status)
-    Status status() const;
+    // Returns the cached status maintained by refreshStatus on observed mpv
+    // property-change events. Inline + trivial so QML bindings that read
+    // `status` reactively pay no sync mpv_get_property cost per evaluation.
+    Status status() const { return m_lastStatus; }
+    // Sync read from mpv (the historical status() body). Used at ctor time
+    // to bootstrap m_lastStatus before the event-driven path takes over.
+    Status liveStatus() const;
     // Pure mapping of mpv's (idle-active, pause) flags to a playback Status.
     static Status deriveStatus(bool idleActive, bool paused);
     // Re-derive from the given flags; emit statusChanged() iff the status

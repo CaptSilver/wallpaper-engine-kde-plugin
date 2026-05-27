@@ -38,15 +38,11 @@ void PlaylistItemsModel::resetUnderlying() {
     endResetModel();
 }
 
-void PlaylistItemsModel::beginInsertRow(int row) {
-    beginInsertRows(QModelIndex(), row, row);
-}
+void PlaylistItemsModel::beginInsertRow(int row) { beginInsertRows(QModelIndex(), row, row); }
 
 void PlaylistItemsModel::endInsertRow() { endInsertRows(); }
 
-void PlaylistItemsModel::beginRemoveRow(int row) {
-    beginRemoveRows(QModelIndex(), row, row);
-}
+void PlaylistItemsModel::beginRemoveRow(int row) { beginRemoveRows(QModelIndex(), row, row); }
 
 void PlaylistItemsModel::endRemoveRow() { endRemoveRows(); }
 

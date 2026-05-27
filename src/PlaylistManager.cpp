@@ -33,8 +33,8 @@ PlaylistManager::PlaylistManager(QObject* parent)
     // tuning remains an open question (see specs/UI4 Phase 3.1).
     m_persistDebounceTimer.setSingleShot(true);
     m_persistDebounceTimer.setInterval(250);
-    QObject::connect(&m_persistDebounceTimer, &QTimer::timeout, this,
-                     &PlaylistManager::flushPersist);
+    QObject::connect(
+        &m_persistDebounceTimer, &QTimer::timeout, this, &PlaylistManager::flushPersist);
     load();
 }
 

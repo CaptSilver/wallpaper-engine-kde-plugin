@@ -35,8 +35,8 @@ private:
     // call-site compatibility but is no longer used to redirect config —
     // setTestModeEnabled handles that process-wide in initTestCase().
     QString setupConfigHome(QTemporaryDir&) {
-        return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
-               + "/wekde/playlists.json";
+        return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
+               "/wekde/playlists.json";
     }
 
 private slots:
@@ -770,8 +770,7 @@ private slots:
         wekde::PlaylistManager mgr;
         const QMetaObject*     mo  = mgr.metaObject();
         const int              idx = mo->indexOfMethod("pickShuffle(int,int)");
-        QVERIFY2(idx != -1,
-                 "pickShuffle(int,int) must be Q_INVOKABLE so QML can call it");
+        QVERIFY2(idx != -1, "pickShuffle(int,int) must be Q_INVOKABLE so QML can call it");
     }
 
     // Direct API contract: with size > 1 and a valid `cur` in range, the
@@ -780,8 +779,8 @@ private slots:
     // onTimerTick; this is the seam the QML controller will call into.
     void pickShuffle_directCall_neverReturnsCurForSizeGreaterThanOne() {
         wekde::PlaylistManager mgr;
-        const QMetaObject*     mo = mgr.metaObject();
-        const int idx = mo->indexOfMethod("pickShuffle(int,int)");
+        const QMetaObject*     mo  = mgr.metaObject();
+        const int              idx = mo->indexOfMethod("pickShuffle(int,int)");
         QVERIFY(idx != -1);
         const QMetaMethod method = mo->method(idx);
         // Hammer multiple sizes; track immediate-repeat rate across 1000 calls
@@ -791,13 +790,14 @@ private slots:
             int repeatRate = 0;
             for (int i = 0; i < 1000; ++i) {
                 int returnedIdx = -1;
-                QVERIFY(method.invoke(&mgr, Qt::DirectConnection,
+                QVERIFY(method.invoke(&mgr,
+                                      Qt::DirectConnection,
                                       Q_RETURN_ARG(int, returnedIdx),
                                       Q_ARG(int, curIdx),
                                       Q_ARG(int, size)));
-                QVERIFY2(returnedIdx >= 0 && returnedIdx < size,
-                         qPrintable(QStringLiteral("size=%1 OOB idx=%2")
-                                        .arg(size).arg(returnedIdx)));
+                QVERIFY2(
+                    returnedIdx >= 0 && returnedIdx < size,
+                    qPrintable(QStringLiteral("size=%1 OOB idx=%2").arg(size).arg(returnedIdx)));
                 if (returnedIdx == curIdx) ++repeatRate;
                 curIdx = returnedIdx;
             }
@@ -810,13 +810,14 @@ private slots:
     // first pick of a freshly-activated Filtered Library.
     void pickShuffle_negativeCurSentinel_returnsValidIndex() {
         wekde::PlaylistManager mgr;
-        const QMetaObject*     mo = mgr.metaObject();
-        const int idx = mo->indexOfMethod("pickShuffle(int,int)");
+        const QMetaObject*     mo  = mgr.metaObject();
+        const int              idx = mo->indexOfMethod("pickShuffle(int,int)");
         QVERIFY(idx != -1);
         const QMetaMethod method = mo->method(idx);
         for (int i = 0; i < 100; ++i) {
             int returnedIdx = -1;
-            QVERIFY(method.invoke(&mgr, Qt::DirectConnection,
+            QVERIFY(method.invoke(&mgr,
+                                  Qt::DirectConnection,
                                   Q_RETURN_ARG(int, returnedIdx),
                                   Q_ARG(int, -1),
                                   Q_ARG(int, 5)));
@@ -1137,8 +1138,8 @@ private slots:
         QVERIFY(d.isValid());
         setupConfigHome(d);
         wekde::PlaylistManager mgr;
-        const QString          id1 = mgr.createPlaylist("Keep");
-        const QString          id2 = mgr.createPlaylist("Drop");
+        const QString          id1   = mgr.createPlaylist("Keep");
+        const QString          id2   = mgr.createPlaylist("Drop");
         auto*                  model = mgr.playlistsModel();
         QSignalSpy             removed(model, &QAbstractItemModel::rowsRemoved);
         QSignalSpy             reset(model, &QAbstractItemModel::modelReset);
@@ -1173,7 +1174,7 @@ private slots:
         QVERIFY(d.isValid());
         setupConfigHome(d);
         wekde::PlaylistManager mgr;
-        const QString          id    = mgr.createPlaylist("X");
+        const QString          id = mgr.createPlaylist("X");
         mgr.addItem(id, "A");
         mgr.addItem(id, "B");
         mgr.addItem(id, "C");

@@ -125,18 +125,18 @@ private:
     // UI4.1: schedule a debounced persist() (250ms single-shot). Each CRUD
     // mutator calls this instead of persist() so drag-burst reorders collapse
     // to a single atomicWriteJson at the end of the burst.
-    void    schedulePersist();
+    void schedulePersist();
     // Synchronously flush any pending schedulePersist() — runs from the
     // debounce timer, the dtor, and flushPersistForTest. Safe to call when
     // nothing is pending (early-returns).
-    void    flushPersist();
-    void    rebuildIndex();
+    void flushPersist();
+    void rebuildIndex();
     // UI4.2: like rebuildIndex but skips the view-model reset + playlistsChanged
     // emit. Used by deletePlaylist after the granular beginRemoveRow signal so
     // the internal id->row map stays consistent without forcing a view rebuild.
-    void    rebuildIdIndexOnly();
-    void    armTimerForCurrent();
-    int     advanceSequential(int currentIdx, int size) const;
+    void rebuildIdIndexOnly();
+    void armTimerForCurrent();
+    int  advanceSequential(int currentIdx, int size) const;
 
     QVector<Playlist>   m_playlists;
     QHash<QString, int> m_indexById;

@@ -377,8 +377,12 @@ if(QMLTESTRUNNER)
     add_test(NAME tst_qml
         COMMAND ${QMLTESTRUNNER} -input ${CMAKE_CURRENT_SOURCE_DIR}/qml
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    # QML_XHR_ALLOW_FILE_READ=1: source-text-grep tests (e.g.
+    # tst_main.qml::test_workshopid_isPureBinding_noSideEffectInDecl)
+    # read main.qml via XMLHttpRequest to assert structural properties of
+    # the binding form. Off by default for security; tests are sandbox-OK.
     set_tests_properties(tst_qml PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QML2_IMPORT_PATH=${CMAKE_CURRENT_SOURCE_DIR}/qml/_stubs:${CMAKE_CURRENT_SOURCE_DIR}/qml")
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QML_XHR_ALLOW_FILE_READ=1;QML2_IMPORT_PATH=${CMAKE_CURRENT_SOURCE_DIR}/qml/_stubs:${CMAKE_CURRENT_SOURCE_DIR}/qml")
 
     # ── QML coverage (custom homegrown tracer, target: ≥80%) ──────────────────
     # Re-runs qml tests against an instrumented mirror of plugin/contents/ui,

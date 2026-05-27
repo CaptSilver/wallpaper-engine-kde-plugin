@@ -124,6 +124,35 @@ TestCase {
         verify(back.favor.has("111"));
     }
 
+    // cfg_CustomConf is a live dependency of customConf: changing the encoded
+    // config string at runtime (e.g., favor toggle persisted, KConfig reload)
+    // must recompute customConf so dependent consumers (WallpaperListModel's
+    // initItemOp at config.qml:142-145 reads customConf.favor) see fresh
+    // state. A property binding that self-assigns inside its own evaluator
+    // (`property var customConf: { customConf = load(cfg_CustomConf); }`)
+    // evaluates ONCE — the assignment lands and QML drops the binding — so
+    // the reactivity authored for cfg_CustomConf silently dies. This case
+    // pins the live-recompute contract.
+    function test_customConf_recomputesOnCfgCustomConfChange() {
+        verify(cfg !== null);
+        // Encode a starter conf with one favored workshop id.
+        const v1 = Plugin.Common.prepareCustomConf({ favor: new Set(["111"]) });
+        cfg.cfg_CustomConf = v1;
+        tryCompare(cfg.customConf.favor, "size", 1, 1000);
+        verify(cfg.customConf.favor.has("111"));
+
+        // Mutate cfg_CustomConf with a different favored set. Pre-fix (binding
+        // self-assigns) customConf is frozen at the first eval — favor.size
+        // stays 1, has("222") is false. Post-fix (Component.onCompleted +
+        // onCfg_CustomConfChanged) customConf recomputes to the new set.
+        const v2 = Plugin.Common.prepareCustomConf({ favor: new Set(["222", "333"]) });
+        cfg.cfg_CustomConf = v2;
+        tryCompare(cfg.customConf.favor, "size", 2, 1000);
+        verify(cfg.customConf.favor.has("222"));
+        verify(cfg.customConf.favor.has("333"));
+        verify(!cfg.customConf.favor.has("111"));
+    }
+
     function test_saveConfig_delegatesToWallpaperPage() {
         // Structural check + best-effort call. saveConfig may legitimately
         // fail without a Steam dir set; either path is acceptable. The

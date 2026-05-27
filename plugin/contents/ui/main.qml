@@ -38,10 +38,15 @@ Rectangle {
 
     
     property var curOpt: ({})
-    property string workshopid: {
-        const wid = wallpaper.configuration.WallpaperWorkShopId;
-        pyext.read_wallpaper_config(wid).then((res) => this.curOpt = res);
-        return wid;
+    // workshopid is a pure value binding; the async per-wallpaper config read
+    // lives in the onWorkshopidChanged handler below. Mixing the read into
+    // the binding body made re-evaluation re-fire the read invisibly and the
+    // dependency tracker only saw WallpaperWorkShopId — the side effect was
+    // opaque to the next maintainer. Splitting it makes the data flow
+    // explicit: re-eval ⇒ value change ⇒ handler ⇒ async read ⇒ curOpt.
+    property string workshopid: wallpaper.configuration.WallpaperWorkShopId
+    onWorkshopidChanged: {
+        pyext.read_wallpaper_config(workshopid).then((res) => { curOpt = res; });
     }
     function get_opt_value(key, def) {
         if(curOpt.hasOwnProperty(key))

@@ -68,9 +68,14 @@ ColumnLayout {
     //property alias  cfg_FilterMode: wallpaperPage.cfg_FilterMode
 
     property string cfg_CustomConf
-    property var customConf: {
-        customConf = Common.loadCustomConf(cfg_CustomConf);
-    }
+    // Pure value binding (no self-assign): `customConf` is the decoded form
+    // of `cfg_CustomConf` and recomputes whenever the encoded string changes.
+    // The previous block-body `property var customConf: { customConf = ... }`
+    // form imperatively assigned customConf inside its own evaluator — QML
+    // evaluates once, the assign lands, then the binding is dropped — which
+    // silently killed reactivity for the cfg_CustomConf dep the binding read.
+    // Mirrors main.qml:124's customConf form for parity.
+    property var customConf: Common.loadCustomConf(cfg_CustomConf)
 
     property var iconSizes: {
         if(PlasmaCore.Units) {

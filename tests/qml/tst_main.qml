@@ -345,6 +345,44 @@ TestCase {
         }
     }
 
+    // workshopid was historically `property string workshopid: { ... ; pyext.read_wallpaper_config(wid).then(...); return wid; }`
+    // — a binding whose evaluation also dispatched an async pyext read whose
+    // .then callback wrote curOpt as a side effect. That made re-evaluation
+    // re-fire the read invisibly; the dependency tracker only saw
+    // WallpaperWorkShopId. The proper QML shape is a pure value binding plus
+    // an explicit `onWorkshopidChanged` handler that owns the async dispatch.
+    // Source-text contract: workshopid declaration MUST be a single-expression
+    // binding (no block body containing pyext.read_wallpaper_config), and an
+    // `onWorkshopidChanged` handler MUST exist to do the async work.
+    function test_workshopid_isPureBinding_noSideEffectInDecl() {
+        const xhr = new XMLHttpRequest();
+        xhr.open("GET", Qt.resolvedUrl("../../plugin/contents/ui/main.qml"), false);
+        xhr.send(null);
+        compare(xhr.status, 200, "could not read main.qml source");
+        const src = xhr.responseText;
+
+        // Locate the workshopid declaration. The line MUST be a pure binding
+        // (everything after the colon is a single expression on the same
+        // logical line, no `{` opening a block body before a semicolon).
+        const decl = src.match(/property\s+string\s+workshopid\s*:\s*([^\n]+)/);
+        verify(decl !== null);
+        const rhs = decl[1].trim();
+        // Pre-fix RHS starts with `{` (block body). Post-fix RHS is the
+        // pure expression `wallpaper.configuration.WallpaperWorkShopId`.
+        verify(!rhs.startsWith("{"),
+               "workshopid binding RHS must not be a block body — "
+               + "block bodies enable side-effecting bindings. Found: " + rhs);
+
+        // The async pyext.read_wallpaper_config call belongs in an explicit
+        // handler. Assert one exists in the file. Pre-fix the side effect
+        // lived inside the workshopid binding body; post-fix it moves here.
+        const hasHandler = /onWorkshopidChanged\s*:/.test(src);
+        verify(hasHandler,
+               "expected onWorkshopidChanged handler in main.qml — "
+               + "the async pyext.read_wallpaper_config(workshopid) call "
+               + "moves out of the workshopid binding into this handler");
+    }
+
     function test_wallpaperConfigChange_handlersFireOnFakeTarget() {
         const bg = _findBackground();
         if (!bg) return;

@@ -159,16 +159,51 @@ TestCase {
         if (!ro) return;
         const fh = _findFileHelper();
         verify(fh !== null);
+        // right_opts.config is now sourced from wallpaperPageRoot.
+        // activeConfig (shared with user_props_group), so right_opts no
+        // longer issues a pyext.read_wallpaper_config on its own
+        // workshopidChanged — manually firing the signal must be a no-op
+        // on the read counter. The page-root activeConfig handler is the
+        // single owner of that read; see the lifted block + the
+        // test_rightOpts_initialMount_singleRead invariant below.
         const beforeReads = fh.readWallpaperConfigCount;
         ro.workshopidChanged();
-        if (ro.workshopid) {
-            // Non-empty id branch: read_wallpaper_config fires.
-            compare(fh.readWallpaperConfigCount, beforeReads + 1);
-            compare(fh.lastReadWallpaperConfigId, ro.workshopid);
-        } else {
-            // Empty-id branch: handler clears config without reading.
-            compare(fh.readWallpaperConfigCount, beforeReads);
-        }
+        compare(fh.readWallpaperConfigCount, beforeReads,
+                "right_opts.workshopidChanged must not re-read config; the " +
+                "page-root activeConfig binding owns the read path.");
+    }
+
+    // A wpmodel flip with a new workshopid must produce exactly one
+    // pyext.read_wallpaper_config call across the right pane — not two
+    // (one per OptionGroup) and not three (right_opts.Component.onCompleted
+    // re-issuing the same body the change handler already covered). The
+    // page-root activeConfig binding is the single owner of that read; both
+    // right_opts.config and user_props_group.propConfig are now bound to
+    // wallpaperPageRoot.activeConfig.
+    function test_rightOpts_initialMount_singleRead() {
+        const ro = _findRightOpts();
+        if (!ro) return;
+        const fh = _findFileHelper();
+        verify(fh !== null, "FileHelper stub unreachable");
+
+        // right_content is the parent that owns wpmodel + image_size.
+        const rc = _firstByPredicate(c => typeof c.wpmodel !== "undefined" &&
+                                           typeof c.image_size === "number");
+        verify(rc !== null, "right_content not found in tree");
+
+        // KEYSTONE: exactly ONE read per workshopid flip. Pre-fix this was
+        // two (right_opts + user_props_group each issued one) or three
+        // (right_opts double-firing through Component.onCompleted on mount).
+        const before = fh.readWallpaperConfigCount;
+        rc.wpmodel = { workshopid: "q6_test_init", path: "/x",
+                       title: "", type: "", tags: [], playlists: [],
+                       favor: false, contentrating: "" };
+        wait(0);  // let bindings settle
+        compare(fh.readWallpaperConfigCount, before + 1,
+                "Selection-change must produce exactly one read — both " +
+                "right_opts.config and user_props_group.propConfig source " +
+                "from wallpaperPageRoot.activeConfig.");
+        compare(fh.lastReadWallpaperConfigId, "q6_test_init");
     }
 
     // ── WallpaperPage: user_props_group ──────────────────────────────────────
@@ -236,19 +271,22 @@ TestCase {
         if (!upg) return;
         const fh = _findFileHelper();
         verify(fh !== null);
+        // user_props_group.propConfig is now sourced from wallpaperPageRoot.
+        // activeConfig, so workshopidChanged only fetches active_bindings
+        // (user-props-specific) — read_wallpaper_config stays at the page
+        // root. The handler also clears propChanges/userProperties.
         const beforeReads = fh.readWallpaperConfigCount;
         const beforeBindings = fh.readActiveBindingsCount;
         upg.workshopidChanged();
+        // read_wallpaper_config no longer fires from upg's handler (shared
+        // page-root path owns it). read_active_bindings still does.
+        compare(fh.readWallpaperConfigCount, beforeReads,
+                "user_props_group.workshopidChanged must not duplicate the " +
+                "page-root read; propConfig is bound to activeConfig.");
         if (upg.workshopid) {
-            // Non-empty id branch: read_wallpaper_config + read_active_bindings fire.
-            compare(fh.readWallpaperConfigCount, beforeReads + 1);
             compare(fh.readActiveBindingsCount, beforeBindings + 1);
-            compare(fh.lastReadWallpaperConfigId, upg.workshopid);
         } else {
-            // Empty-id branch: handler clears propConfig/activeBindings only.
-            compare(fh.readWallpaperConfigCount, beforeReads);
             compare(fh.readActiveBindingsCount, beforeBindings);
-            compare(Object.keys(upg.propConfig).length, 0);
         }
         // Unconditional: userProperties cleared at the end of the handler.
         compare(upg.userProperties.length, 0);

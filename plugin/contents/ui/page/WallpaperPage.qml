@@ -30,6 +30,24 @@ RowLayout {
     property string cfg_ActivePlaylistId: ""
     property int    cfg_CurrentItemIndex: 0
 
+    // ── Lifted config-read state (was duplicated across right_opts +
+    // user_props_group, each issuing its own pyext.read_wallpaper_config
+    // per selection change). One read per selection, shared. read_active_
+    // bindings stays in user_props_group (user-props-specific).
+    readonly property string activeWorkshopid:
+        (right_content && right_content.wpmodel) ? (right_content.wpmodel.workshopid || "") : ""
+    property var activeConfig: ({})
+    onActiveWorkshopidChanged: {
+        if (activeWorkshopid) {
+            pyext.read_wallpaper_config(activeWorkshopid).then(res => {
+                activeConfig = res || {};
+            });
+        } else {
+            activeConfig = {};
+        }
+    }
+    Component.onCompleted: activeWorkshopidChanged()
+
     AddToPlaylistMenu {
         id: addToPlaylistMenu
         manager: wallpaperPageRoot.playlistManager
@@ -437,11 +455,18 @@ RowLayout {
 
         readonly property int image_size: 300
         readonly property int content_margin: 16
-        property var wpmodel: { 
-            return picViewLoader.item.currentModel
-            ? Common.wpitemFromQtObject(picViewLoader.item.currentModel)
-            : Common.wpitem_template;
-        }
+        // Source-tracking pair: _wpmodel_src is the bare model reference
+        // (cheap identity-tracked binding); wpmodel is the converted JS
+        // object the ~10 right-pane consumers read. Separating the source
+        // from the converter keeps notify de-dup honest — identical
+        // currentModel references collapse to a single eval instead of
+        // running wpitemFromQtObject on every dependency flicker. wpmodel
+        // stays writable (not `readonly`) — the qmltest harness pins it
+        // directly to drive selection-change branches.
+        readonly property var _wpmodel_src: picViewLoader.item ? picViewLoader.item.currentModel : null
+        property var wpmodel: _wpmodel_src
+            ? Common.wpitemFromQtObject(_wpmodel_src)
+            : Common.wpitem_template
 
         visible: Layout.preferredWidth > image_size + content_margin*2 + right_content_scrollbar.width
 
@@ -708,28 +733,17 @@ RowLayout {
                     id: right_opts
                     Layout.fillWidth: true
 
-                    readonly property string workshopid: right_content.wpmodel.workshopid
+                    readonly property string workshopid: wallpaperPageRoot.activeWorkshopid
 
                     property var config_resets: new Set()
                     property var config_changes: ({})
-                    property var config: ({})
-
-                    onWorkshopidChanged: {
-                        if (workshopid) {
-                            pyext.read_wallpaper_config(workshopid).then(res => {
-                                config = res;
-                            });
-                        } else {
-                            config = {};
-                        }
-                    }
-                    Component.onCompleted: {
-                        if (workshopid) {
-                            pyext.read_wallpaper_config(workshopid).then(res => {
-                                config = res;
-                            });
-                        }
-                    }
+                    // config is sourced from the page-root shared read — one
+                    // pyext.read_wallpaper_config per selection across both
+                    // OptionGroups (used to be two: right_opts + user_props_
+                    // group each issued their own). The downstream
+                    // onConfigChanged Repeater notify (line ~919) still fires
+                    // because reassigning activeConfig emits a notify here.
+                    property var config: wallpaperPageRoot.activeConfig
                     function save_changes() {
                         console.log("save_changes called, config_changes:", JSON.stringify(config_changes));
                         config_resets.forEach((wid) => {
@@ -1003,19 +1017,19 @@ RowLayout {
                     Layout.fillWidth: true
                     visible: user_props_repeater.model.length > 0
 
-                    readonly property string workshopid: right_content.wpmodel.workshopid
+                    readonly property string workshopid: wallpaperPageRoot.activeWorkshopid
                     onWorkshopidChanged: {
                         // Load saved config FIRST so it's available when Repeater creates delegates
                         propChanges = {};
                         if (workshopid) {
-                            pyext.read_wallpaper_config(workshopid).then(res => {
-                                propConfig = res || {};
-                            });
+                            // propConfig is sourced from wallpaperPageRoot.
+                            // activeConfig (one read per selection, shared
+                            // with right_opts); we only need to fetch the
+                            // user-props-specific active bindings here.
                             pyext.read_active_bindings(workshopid).then(res => {
                                 activeBindings = Array.isArray(res) ? res : [];
                             });
                         } else {
-                            propConfig = {};
                             activeBindings = [];
                         }
                         // Clear last — this triggers _loadProps → userProperties → Repeater rebuild
@@ -1023,7 +1037,7 @@ RowLayout {
                     }
 
                     property var userProperties: []
-                    property var propConfig: ({})
+                    property var propConfig: wallpaperPageRoot.activeConfig
                     property var propChanges: ({})
                     property var activeBindings: []
 

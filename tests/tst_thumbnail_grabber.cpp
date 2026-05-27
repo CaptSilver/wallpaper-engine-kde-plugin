@@ -85,7 +85,10 @@ private slots:
         QTemporaryDir    d;
         const QString    out = d.filePath("thumb.jpg");
         ThumbnailGrabber grabber;
-        QCOMPARE(grabber.grab("/tmp/wekde_no_such_video.webm", out, 0.5), false);
+        QTemporaryDir    scratch;
+        QVERIFY(scratch.isValid());
+        const QString nope = scratch.filePath(QStringLiteral("no_such_video.webm"));
+        QCOMPARE(grabber.grab(nope, out, 0.5), false);
         QVERIFY(! QFile::exists(out));
         // Site #4: the missing-input branch must emit a journal breadcrumb so
         // a user with a blank thumbnail tile can grep for the cause.

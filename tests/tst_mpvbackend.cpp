@@ -11,6 +11,7 @@
 #include <QtTest>
 #include <QGuiApplication>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QUrl>
 #include <QVariant>
@@ -175,9 +176,12 @@ void TestMpvBackend::volume_clampedByMpv() {
 }
 
 void TestMpvBackend::setLogfile_roundTrip() {
-    auto obj = makeObject();
-    obj->setLogfile(QStringLiteral("/tmp/wekde-mpv-test.log"));
-    QCOMPARE(obj->logfile(), QStringLiteral("/tmp/wekde-mpv-test.log"));
+    auto          obj = makeObject();
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString logPath = dir.filePath(QStringLiteral("wekde-mpv-test.log"));
+    obj->setLogfile(logPath);
+    QCOMPARE(obj->logfile(), logPath);
 }
 
 void TestMpvBackend::getProperty_emptyName_returnsInvalid() {
@@ -239,7 +243,9 @@ void TestMpvBackend::setSource_beforeInit_storesButDefersLoad() {
     auto obj = makeObject();
     // Without initCallback() the object is not "inited"; setSource should
     // store the URL but not issue a loadfile command.
-    const QUrl url = QUrl::fromLocalFile(QStringLiteral("/tmp/does-not-exist.mp4"));
+    QTemporaryDir scratch;
+    QVERIFY(scratch.isValid());
+    const QUrl url = QUrl::fromLocalFile(scratch.filePath(QStringLiteral("does-not-exist.mp4")));
     obj->setSource(url);
     QCOMPARE(obj->source(), url);
     QCOMPARE(obj->status(), MpvObject::Stopped);
@@ -293,7 +299,8 @@ void TestMpvBackend::firstFrame_afterSourceFlip_emitsExactlyOnce() {
     // A real on-disk file so the `loadfile` command is accepted (mpv queues
     // the load asynchronously and returns success regardless of decodability),
     // which is what flips m_first_frame to false inside setSource.
-    QTemporaryFile file(QStringLiteral("/tmp/wekde-mpv-firstframeXXXXXX.mp4"));
+    // No leading path => Qt6 uses QStandardPaths::TempLocation automatically.
+    QTemporaryFile file(QStringLiteral("wekde-mpv-firstframeXXXXXX.mp4"));
     QVERIFY(file.open());
     file.write(QByteArrayLiteral("\x00\x00\x00\x18"
                                  "ftypmp42"));
@@ -472,7 +479,7 @@ void TestMpvBackend::setSource_validFixture_doesNotEmitSourceLoadFailed() {
     auto obj = makeObject();
     obj->initCallback();
 
-    QTemporaryFile file(QStringLiteral("/tmp/wekde-mpv-okXXXXXX.mp4"));
+    QTemporaryFile file(QStringLiteral("wekde-mpv-okXXXXXX.mp4"));
     QVERIFY(file.open());
     file.write(QByteArrayLiteral("\x00\x00\x00\x18"
                                  "ftypmp42"));
@@ -544,11 +551,13 @@ void TestMpvBackend::volumeChanged_emitsOnSetVolume() {
 }
 
 void TestMpvBackend::logfileChanged_emitsOnSetLogfile() {
-    auto       obj = makeObject();
+    auto          obj = makeObject();
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
     QSignalSpy spy(obj.get(), &mpv::MpvObject::logfileChanged);
-    obj->setLogfile(QStringLiteral("/tmp/wekde-mpv-test.log"));
+    obj->setLogfile(dir.filePath(QStringLiteral("wekde-mpv-test.log")));
     QCOMPARE(spy.count(), 1);
-    obj->setLogfile(QStringLiteral("/tmp/wekde-mpv-other.log"));
+    obj->setLogfile(dir.filePath(QStringLiteral("wekde-mpv-other.log")));
     QCOMPARE(spy.count(), 2);
 }
 

@@ -5,7 +5,7 @@ Maintainer: CaptSilver <https://github.com/CaptSilver>
 Build-Depends:
  debhelper-compat (= 13),
  clang,
- cmake (>= 3.16),
+ cmake (>= 3.22),
  extra-cmake-modules,
  ninja-build,
  libvulkan-dev,

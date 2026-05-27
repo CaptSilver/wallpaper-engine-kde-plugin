@@ -119,6 +119,26 @@ libs (Vulkan/RenderGraph/VulkanRender/Scene/Audio) still trip `-Wall/-Wextra` er
 `-Wmissing-braces`) and need a separate audit pass before `-Werror` can gate. Set `WERROR_FATAL=1`
 to make the leg fail (and then wire it into the default flow / pre-push hook).
 
+### Supported distros (Qt6 + CMake floor matrix)
+
+| Distro                | Qt6   | CMake   | Status                          |
+|-----------------------|-------|---------|---------------------------------|
+| Ubuntu 24.04 LTS      | 6.4   | 3.28    | **Not supported** (Qt too old)  |
+| Ubuntu 24.10          | 6.6   | 3.30    | **Not supported** (Qt too old)  |
+| Ubuntu 25.04          | 6.7   | 3.30    | Supported (floor of record)     |
+| Ubuntu 26.04 LTS      | 6.8+  | 3.32+   | Next LTS (Apr 2026)             |
+| Debian Bookworm       | 6.4   | 3.25    | **Not supported**               |
+| Debian Trixie         | 6.7   | 3.31    | Supported                       |
+| Fedora 41-43          | 6.7-6.8 | 3.30-3.32 | Primary RPM target          |
+| Arch (rolling)        | 6.8+  | 4.x     | Supported                       |
+| Bazzite (Fedora base) | follows Fedora | | Primary distribution target  |
+
+Bump the CMake / Qt floor when the **lowest-row** column moves up:
+- **CMake floor: 3.22** (margin: 3 minor versions below the lowest supported
+  distro's 3.25, leaving room for environments that lag).
+- **Qt6 floor: 6.7** (Ubuntu 25.04 / Debian Trixie value; bump to 6.8 once
+  Ubuntu 25.04 is officially dropped from the supported-distro list).
+
 ## Architecture
 
 ### Main plugin (this repo)

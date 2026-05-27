@@ -1,7 +1,7 @@
 # Can be built standalone:  cmake -B build/tests -S tests
 # Or included from root with: -DBUILD_TESTS=ON
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    cmake_minimum_required(VERSION 3.16)
+    cmake_minimum_required(VERSION 3.22)
     project(WallpaperEngineKdeTests C CXX)
     set(CMAKE_CXX_STANDARD 20)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,9 +16,9 @@ endif()
 # to CXX-only.
 enable_language(C)
 
-# Qt 6.6 floor — matches the primary find_package in src/CMakeLists.txt so a
+# Qt 6.7 floor — matches the primary find_package in src/CMakeLists.txt so a
 # standalone tests configure errors clearly on a too-old Qt6 (Plasma 6 baseline).
-find_package(Qt6 6.6 REQUIRED COMPONENTS Core Test)
+find_package(Qt6 6.7 REQUIRED COMPONENTS Core Test)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 

@@ -1,7 +1,12 @@
-# Qt 6.6 floor: the plugin targets Plasma 6 (Qt 6 era); pin a realistic minimum
-# so a too-old Qt6 fails at configure with a clear message instead of late and
-# cryptically.  6.6 matches the lowest Qt the supported distros ship.
-find_package(Qt6 6.6 REQUIRED COMPONENTS Quick Qml Core DBus Network WebEngineCore)
+# Qt 6.7 floor.  Supported distro matrix (canonical in CLAUDE.md):
+#   * Ubuntu 25.04        - Qt 6.7
+#   * Debian Trixie       - Qt 6.7
+#   * Fedora 41+          - Qt 6.7+
+#   * Arch (rolling)      - Qt 6.8+
+# Pinning to the lowest meets-policy ensures a too-old Qt6 fails fast at
+# configure with a clear error instead of late and cryptically.  Bump again
+# once the floor distro moves to Qt 6.8 (Ubuntu 26.04 LTS expected April 2026).
+find_package(Qt6 6.7 REQUIRED COMPONENTS Quick Qml Core DBus Network WebEngineCore)
 
 add_subdirectory(backend_mpv)
 

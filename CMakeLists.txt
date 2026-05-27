@@ -1,4 +1,8 @@
-cmake_minimum_required(VERSION 3.16)
+# CMake floor at 3.22 matches Debian Trixie (3.31), Ubuntu 24.10+ (3.30+),
+# Fedora 41+ (3.30+), and Arch (rolling).  3.22 (Jan 2022) gives a comfortable
+# margin from the lowest supported distro.  See CLAUDE.md "Build" section for
+# the canonical supported-distro matrix.
+cmake_minimum_required(VERSION 3.22)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

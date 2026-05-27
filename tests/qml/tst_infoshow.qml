@@ -62,4 +62,34 @@ TestCase {
         // After the handler runs, the helper clears its own text.
         compare(helper.text, "");
     }
+
+    // The recovery row's fourth button (added alongside Copy ID / Open
+    // Workshop / Open Folder) emits the pickAnotherRequested signal that
+    // main.qml's loadInfoShow connects to.
+    function _findButtonByText(root, label) {
+        const queue = [root]; const seen = new Set([root]);
+        while (queue.length) {
+            const n = queue.shift();
+            if (n && typeof n.text === "string" && n.text === label
+                && typeof n.clicked === "function") return n;
+            const buckets = [n.children || [], n.data || []];
+            for (const b of buckets) {
+                if (!b || typeof b.length === "undefined") continue;
+                for (let i = 0; i < b.length; i++) {
+                    const c = b[i]; if (c && !seen.has(c)) { seen.add(c); queue.push(c); }
+                }
+            }
+        }
+        return null;
+    }
+    function test_pickAnotherButton_emitsSignal() {
+        const btn = _findButtonByText(info, "Pick another wallpaper");
+        verify(btn !== null);
+        const spy = Qt.createQmlObject('import QtTest 1.0; SignalSpy {}', info);
+        spy.target = info;
+        spy.signalName = "pickAnotherRequested";
+        btn.clicked();
+        compare(spy.count, 1);
+        spy.destroy();
+    }
 }

@@ -69,12 +69,12 @@ TestCase {
         for (let i = 0; i < items.length; i++) m.append(items[i]);
     }
 
-    function _fakeItem(id) {
+    function _fakeItem(id, type) {
         return {
             workshopid: String(id),
             path: "file:///tmp/wp_" + id,
             file: "scene.pkg",
-            type: "scene",
+            type: type || "scene",
             title: "Wallpaper " + id,
             preview: "",
             contentrating: "Everyone",
@@ -155,5 +155,53 @@ TestCase {
         compare(grid.view.count, 2);
         grid.backtoBegin();
         compare(grid.view.count, 0);
+    }
+
+    // Walks a delegate subtree for a Label whose text identifies the
+    // unsupported-type badge. The badge has no objectName — its QML
+    // structure (Label child of a top-right Rectangle anchored inside
+    // the thumbnail) is the contract. We don't gate on .visible because
+    // the QtQuick scene-graph cascade leaves child Items at visible=false
+    // when the WallpaperPage host is not on a visible window in the
+    // qmltestrunner harness; the structural presence of the badge text
+    // is what we assert.
+    function _findBadgeText(delegate) {
+        const queue = [delegate];
+        const seen = new Set([delegate]);
+        while (queue.length) {
+            const n = queue.shift();
+            if (n && typeof n.text === "string" &&
+                (n.text.indexOf("Application") >= 0
+                 || n.text.indexOf("Preset") >= 0)) return n.text;
+            const buckets = [n.children || [], n.data || []];
+            for (const b of buckets) {
+                if (!b || typeof b.length === "undefined") continue;
+                for (let i = 0; i < b.length; i++) {
+                    const c = b[i];
+                    if (c && !seen.has(c)) { seen.add(c); queue.push(c); }
+                }
+            }
+        }
+        return null;
+    }
+
+    function test_delegate_unsupportedTypeBadgeVisible_appOnly() {
+        _injectFixtureModel([
+            _fakeItem(1, "scene"),
+            _fakeItem(2, "application"),
+            _fakeItem(3, "preset"),
+            _fakeItem(4, "web"),
+        ]);
+        tryVerify(() => grid.view.itemAtIndex(0) != null && grid.view.itemAtIndex(3) != null,
+                  2000, "grid delegates never materialised");
+
+        compare(_findBadgeText(grid.view.itemAtIndex(0)), null);  // scene → no badge
+        const appBadge = _findBadgeText(grid.view.itemAtIndex(1));
+        verify(appBadge !== null);
+        verify(appBadge.indexOf("Application") >= 0);
+        const presetBadge = _findBadgeText(grid.view.itemAtIndex(2));
+        verify(presetBadge !== null);
+        verify(presetBadge.indexOf("Preset") >= 0);
+        compare(_findBadgeText(grid.view.itemAtIndex(3)), null);  // web → no badge
     }
 }

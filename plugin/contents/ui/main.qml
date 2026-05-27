@@ -452,6 +452,20 @@ Rectangle {
                 type: background.wallpaperType,
                 info: info
             });
+            // The four-button recovery pane emits pickAnotherRequested when
+            // the user clicks "Pick another wallpaper". We don't have a
+            // direct opener for the Plasma wallpaper-config dialog from
+            // here (it's owned by Plasma's containment menu), so fall back
+            // to a clear log line — the dialog is one right-click away.
+            // The Item is destroyed on the next backend swap, which tears
+            // the connection down with it.
+            if (this.item && typeof this.item.pickAnotherRequested !== "undefined") {
+                this.item.pickAnotherRequested.connect(function() {
+                    console.log("[WEK] Pick another wallpaper requested — "
+                        + "right-click the desktop → Configure Desktop and "
+                        + "Wallpaper… → Wallpapers tab.");
+                });
+            }
         }
         function changeMouseTarget() {
            if(backendLoader.item && background.mouseHooker) {
@@ -508,8 +522,24 @@ Rectangle {
                 }
                 break;
             default:
-                backendLoader.loadInfoShow("Not supported wallpaper type");
-                return; 
+                if (background.wallpaperType === "application") {
+                    backendLoader.loadInfoShow(
+                        "Application wallpapers ship a native Windows .exe "
+                        + "host and cannot be rendered by this Linux plugin. "
+                        + "Pick a Scene, Web, or Video wallpaper instead.");
+                } else if (background.wallpaperType === "preset") {
+                    backendLoader.loadInfoShow(
+                        "Preset wallpapers are configuration overlays on "
+                        + "another workshop entry; they are not standalone. "
+                        + "Open the Workshop page (button below) for the "
+                        + "source wallpaper.");
+                } else {
+                    backendLoader.loadInfoShow(
+                        "Wallpaper type '" + background.wallpaperType
+                        + "' is not supported (recognized types: scene, "
+                        + "web, video).");
+                }
+                return;
         }
         // Don't pass source as a constructor property — set it after load.
         // This ensures QML bindings (e.g. userProperties) are evaluated first,

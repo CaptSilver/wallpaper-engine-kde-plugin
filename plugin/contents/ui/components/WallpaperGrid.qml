@@ -71,6 +71,40 @@ KCM.GridView {
                 sourceComponent: root.animatedPreviewActive ? animatedPre : staticPre
             }
 
+            // Unsupported-type badge. WallpaperListModel.loadItemFromJson
+            // lowercases project.type at load; we surface the two unrenderable
+            // types ('application' = native Windows .exe host, 'preset' =
+            // pointer at another wallpaper) so users can spot them in the
+            // grid instead of discovering on Apply. Theme-driven so it adapts
+            // to light/dark schemes. The Loader keeps the Rectangle+Label
+            // out of the scene-graph entirely for renderable types — cheaper
+            // than a `visible:` toggle on a per-delegate basis across a
+            // workshop folder of thousands of items.
+            Loader {
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: Kirigami.Units.smallSpacing
+                z: 2  // sit above imgPre (Loader fills the rectangle)
+                active: model.type === "application" || model.type === "preset"
+                sourceComponent: Rectangle {
+                    radius: 3
+                    color: Qt.rgba(0, 0, 0, 0.7)
+                    border.color: Kirigami.Theme.negativeTextColor
+                    border.width: 1
+                    implicitWidth: badgeText.implicitWidth + 8
+                    implicitHeight: badgeText.implicitHeight + 4
+                    Label {
+                        id: badgeText
+                        anchors.centerIn: parent
+                        text: model.type === "application"
+                            ? "Application (unsupported)"
+                            : "Preset (unsupported)"
+                        color: "white"
+                        font.pointSize: Kirigami.Theme.smallFont.pointSize
+                    }
+                }
+            }
+
             Component {
                 id: animatedPre
                 AnimatedImage {

@@ -527,6 +527,29 @@ RowLayout {
                     horizontalAlignment: Text.AlignHCenter
                 }
 
+                // Pre-apply warning for unrenderable wallpaper types. The
+                // grid badge surfaces these on the left; this surfaces them
+                // again in the right pane so a keyboard-arrow-selecting user
+                // gets the same hint before clicking Apply. Loader keeps the
+                // Label out of the scene-graph entirely for renderable types
+                // (consistent with WallpaperGrid.qml's badge Loader).
+                Loader {
+                    Layout.fillWidth: true
+                    active: right_content.wpmodel
+                         && (right_content.wpmodel.type === "application"
+                          || right_content.wpmodel.type === "preset")
+                    sourceComponent: Label {
+                        text: right_content.wpmodel
+                              && right_content.wpmodel.type === "application"
+                            ? "Application wallpapers ship a native Windows .exe host and cannot be rendered by this plugin. Apply will fail."
+                            : "Preset wallpapers reference another workshop entry; they are not standalone and cannot be rendered by this plugin. Apply will fail."
+                        color: Kirigami.Theme.negativeTextColor
+                        wrapMode: Text.WordWrap
+                        horizontalAlignment: Text.AlignHCenter
+                        width: parent ? parent.width : implicitWidth
+                    }
+                }
+
                 RowLayout {
                     Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
                     spacing: 8

@@ -58,6 +58,8 @@ QtObject {
         ListElement { text: "Scene";        type:"type";          key:"scene";         def: 1}
         ListElement { text: "Web";          type:"type";          key:"web";           def: 1}
         ListElement { text: "Video";        type:"type";          key:"video";         def: 1}
+        ListElement { text: "Application";  type:"type";          key:"application";   def: 0}
+        ListElement { text: "Preset";       type:"type";          key:"preset";        def: 0}
         ListElement { text: "AGE";          type:"_nocheck";      key:"";              def: 1}
         ListElement { text: "Everyone";     type:"contentrating"; key:"Everyone";      def: 1}
         ListElement { text: "Questionable"; type:"contentrating"; key:"Questionable";  def: 1}

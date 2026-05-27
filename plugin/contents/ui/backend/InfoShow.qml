@@ -19,6 +19,13 @@ Item {
     property string wid: "unknown"
     property string source
 
+    // Emitted by the recovery row's "Pick another wallpaper" button. The
+    // host (main.qml's loadInfoShow) connects this to a clear-recovery
+    // hint — opening Plasma's wallpaper-config dialog directly from QML
+    // requires Plasmoid.internalAction which this Item doesn't reach, so
+    // the parent decides how to handle the request.
+    signal pickAnotherRequested
+
     // Theme-backed surface — works in light/dark/HDR instead of hardcoded
     // "yellow" which clashes with the user's color scheme.
     Rectangle {
@@ -98,6 +105,13 @@ Item {
                 text: "Open Folder"
                 enabled: !!infoItem._folderUrl
                 onClicked: Qt.openUrlExternally(infoItem._folderUrl)
+            }
+            // Always enabled — the parent's recovery hint (opening the
+            // wallpaper config dialog) is meaningful regardless of wid /
+            // folder availability.
+            Button {
+                text: "Pick another wallpaper"
+                onClicked: infoItem.pickAnotherRequested()
             }
         }
     }

@@ -237,6 +237,30 @@ if(Qt6Gui_FOUND AND Qt6Quick_FOUND)
     add_test(NAME tst_ttyswitchmonitor COMMAND tst_ttyswitchmonitor -v2)
     set_tests_properties(tst_ttyswitchmonitor PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # ── ScreenSaverMonitor screen-lock dispatch tests ─────────────────────
+    # The D-Bus connect in the ctor only succeeds against a live session bus
+    # (gracefully degrades otherwise), but the slot logic + signal contract
+    # is plain Qt code: exercise it directly without standing up a fake bus.
+    add_executable(tst_screensavermonitor
+        tst_screensavermonitor.cpp
+        ${WEKDE_SRC_DIR}/ScreenSaverMonitor.cpp
+    )
+    target_include_directories(tst_screensavermonitor PRIVATE ${WEKDE_SRC_DIR})
+    target_link_libraries(tst_screensavermonitor PRIVATE
+        Qt6::Core Qt6::Test Qt6::Gui Qt6::Quick Qt6::DBus)
+    if(COVERAGE)
+        target_compile_options(tst_screensavermonitor PRIVATE ${_cov_compile_flags})
+        target_link_options(tst_screensavermonitor PRIVATE ${_cov_link_flags})
+    endif()
+    if(MUTATION_TESTING)
+        target_compile_options(tst_screensavermonitor PRIVATE
+            -fpass-plugin=${MULL_PLUGIN_PATH}
+            -g -grecord-command-line)
+    endif()
+    add_test(NAME tst_screensavermonitor COMMAND tst_screensavermonitor -v2)
+    set_tests_properties(tst_screensavermonitor PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
 
 # ── MpvBackend Q_PROPERTY round-trip tests ────────────────────────────────────
@@ -568,7 +592,7 @@ foreach(_wek_test_target
         tst_filehelper tst_plugininfo tst_mpriscolors tst_mousegrabber tst_mpvbackend
         tst_thumbnail_grabber tst_webaudio tst_migrationhelper
         tst_playlist_manager tst_main_integration tst_ttyswitchmonitor
-        tst_safewallpaperbridge tst_weburlinterceptor)
+        tst_safewallpaperbridge tst_weburlinterceptor tst_screensavermonitor)
     if(TARGET ${_wek_test_target})
         wek_apply_sanitizers(${_wek_test_target})
     endif()

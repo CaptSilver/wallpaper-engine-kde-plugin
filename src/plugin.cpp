@@ -5,6 +5,7 @@
 #include "SceneBackend.hpp"
 #include "MouseGrabber.hpp"
 #include "TTYSwitchMonitor.hpp"
+#include "ScreenSaverMonitor.hpp"
 #include "MprisMonitor.hpp"
 #include "PluginInfo.hpp"
 #include "FileHelper.hpp"
@@ -43,6 +44,8 @@ public:
         std::setlocale(LC_NUMERIC, "C");
         qmlRegisterType<mpv::MpvObject>(uri, WPVer[0], WPVer[1], "Mpv");
         qmlRegisterType<wekde::TTYSwitchMonitor>(uri, WPVer[0], WPVer[1], "TTYSwitchMonitor");
+        qmlRegisterType<wekde::ScreenSaverMonitor>(
+            uri, WPVer[0], WPVer[1], "ScreenSaverMonitor");
         qmlRegisterType<wekde::MprisMonitor>(uri, WPVer[0], WPVer[1], "MprisMonitor");
         qmlRegisterType<wekde::FileHelper>(uri, WPVer[0], WPVer[1], "FileHelper");
         qmlRegisterType<wekde::WebAudioBridge>(uri, WPVer[0], WPVer[1], "WebAudioBridge");

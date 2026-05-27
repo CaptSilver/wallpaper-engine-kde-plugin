@@ -32,6 +32,7 @@ Item {
         "PauseFilterByScreen": false,
         "PauseOnBatPower":     false,
         "PauseBatPercent":     0,
+        "ScreenSaverPolicy":   1,        // Pause (default)
         "SortMode":            0,
         "FilterMode":          0,
         "VideoBackend":        0,

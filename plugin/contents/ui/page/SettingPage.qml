@@ -32,6 +32,7 @@ Flickable {
 
     property alias cfg_PauseOnBatPower: chkbox_pauseOnBatPower.checked
     property alias cfg_PauseBatPercent: spin_pauseBatPercent.value
+    property alias cfg_ScreenSaverPolicy: cbScreenSaverPolicy.currentIndex
     property alias cfg_HdrOutput: ckbox_hdrOutput.checked
     property alias cfg_SystemAudioCapture: ckbox_systemAudioCapture.checked
     // Color drawn behind the wallpaper. Visible as letterbox/pillarbox
@@ -129,6 +130,30 @@ Flickable {
                         from: 0
                         to: 100
                         stepSize: 1
+                }
+            }
+            OptionItem {
+                text: 'When screen is locked'
+                text_color: Kirigami.Theme.textColor
+                icon: '../../images/pause.svg'
+                actor: ComboBox {
+                    id: cbScreenSaverPolicy
+                    model: [
+                        { text: "Keep running",                              value: 0 },
+                        { text: "Pause (recommended)",                       value: 1 },
+                        { text: "Load alternate wallpaper (coming soon)",    value: 2, enabled: false },
+                    ]
+                    textRole: "text"
+                    onActivated: cfg_ScreenSaverPolicy = Common.cbCurrentValue(this)
+                    Component.onCompleted: currentIndex = Common.cbIndexOfValue(this, cfg_ScreenSaverPolicy)
+                }
+                contentBottom: ColumnLayout {
+                    Text {
+                        Layout.fillWidth: true
+                        color: Kirigami.Theme.disabledTextColor
+                        text: "Lock-screen state is session-wide on Plasma; every screen pauses together. There is no per-screen lock policy."
+                        wrapMode: Text.Wrap
+                    }
                 }
             }
             OptionItem {

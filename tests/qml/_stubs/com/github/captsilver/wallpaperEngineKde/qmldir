@@ -4,6 +4,7 @@ PluginInfo 1.2 PluginInfo.qml
 MouseGrabber 1.2 MouseGrabber.qml
 MprisMonitor 1.2 MprisMonitor.qml
 TTYSwitchMonitor 1.2 TTYSwitchMonitor.qml
+ScreenSaverMonitor 1.2 ScreenSaverMonitor.qml
 SceneViewer 1.2 SceneViewer.qml
 Mpv 1.2 Mpv.qml
 WebAudioBridge 1.2 WebAudioBridge.qml

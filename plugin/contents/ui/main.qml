@@ -101,7 +101,13 @@ Rectangle {
     }
 
     // auto pause
+    // ScreenSaverPolicy: 0 = Keep running (renderer keeps drawing behind the
+    // lock surface), 1 = Pause (default; renderer drops GPU draw to ~zero
+    // until unlock). The lockMonitor.active gate only flips background.ok
+    // when Policy=1, so Policy=0 leaves the chain unaffected.
     property bool   ok: !windowModel.reqPause && !powerSource.reqPause
+                       && !(lockMonitor.active
+                            && wallpaper.configuration.ScreenSaverPolicy === 1)
 
     // detect TTY switch and pause wallpaper(s)
     TTYSwitchMonitor {
@@ -119,6 +125,16 @@ Rectangle {
                 if (backendLoader.item) backendLoader.item.play();
             }
         }
+    }
+
+    // Detect screen-lock / screensaver activation and pause renderer
+    // (joins TTY switch / battery / window-focus pauses via the
+    // background.ok boolean chain above). The monitor exposes
+    // Q_PROPERTY bool active; the chain consumes it directly without a
+    // parallel pause/play branch — the existing okChanged -> autoPause
+    // wiring (further down in this file) handles the dispatch.
+    ScreenSaverMonitor {
+        id: lockMonitor
     }
 
     property string nowBackend: ""

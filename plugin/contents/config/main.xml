@@ -42,6 +42,10 @@
       <label>Pause Battery Percent</label>
       <default>0</default>
     </entry>
+    <entry name="ScreenSaverPolicy" type="Int">
+      <label>Behaviour when screen is locked / screensaver active (0=Keep running, 1=Pause)</label>
+      <default>1</default>
+    </entry>
     <entry name="SortMode" type="Int">
       <label>Sort mode</label>
       <default>0</default>

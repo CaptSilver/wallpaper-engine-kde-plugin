@@ -17,6 +17,7 @@ add_library(${PROJECT_NAME}
 	plugin.cpp
 	MouseGrabber.cpp
 	TTYSwitchMonitor.cpp
+	ScreenSaverMonitor.cpp
 	MprisMonitor.cpp
 	PluginInfo.cpp
 	FileHelper.cpp

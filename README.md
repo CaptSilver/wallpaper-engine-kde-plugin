@@ -176,8 +176,16 @@ After installing via any method:
 1. Right-click the desktop → **Configure Desktop and Wallpaper...**
 2. Open the **Wallpaper Type** dropdown and select **Wallpaper Engine for KDE**
 3. Under **Steam Library**, point to the folder containing your `steamapps` directory
-   - Usually `~/.local/share/Steam`
-   - *Wallpaper Engine* must be installed in this library
+   - **Common locations:**
+     - Native Steam (most distros): `~/.local/share/Steam`
+     - Flatpak Steam (Bazzite / Silverblue / Fedora Atomic default): `~/.var/app/com.valvesoftware.Steam/.local/share/Steam`
+     - Steam Deck SD card: `/run/media/deck/<UUID>/steamapps` — find the actual UUID with `ls /run/media/deck/` (older SteamOS may use `/run/media/mmcblk0p1/`)
+     - Custom library (Steam → Settings → Storage → Add Drive): wherever you set it
+   - Tip — list every `steamapps` directory on disk:
+     ```sh
+     find $HOME /run/media -maxdepth 6 -name steamapps -type d 2>/dev/null
+     ```
+   - *Wallpaper Engine* must be installed in the library you pick (Steam → Library → Wallpaper Engine → Properties → Local Files → Browse — the path shown there contains the right `steamapps`).
 4. Your subscribed Workshop wallpapers will appear in the list — select one and click **Apply**
 
 > **Note:** After an rpm-ostree/Bazzite install you may need to reboot before the plugin starts working. For cmake installs, restarting plasmashell is enough: `systemctl --user restart plasma-plasmashell.service`
@@ -190,9 +198,14 @@ After installing via any method:
 1. *Wallpaper Engine* installed on Steam
 2. Subscribe to some wallpapers on the Workshop
 3. Select the *steamlibrary* folder on the Wallpapers tab of this plugin
-   - The *steamlibrary* which contains the *steamapps* folder
-   - This is usually `~/.local/share/Steam` by default
-   - *Wallpaper Engine* needs to be installed in this *steamlibrary*
+   - The *steamlibrary* contains the *steamapps* folder
+   - **Common locations:**
+     - Native Steam (most distros): `~/.local/share/Steam`
+     - Flatpak Steam (Bazzite / Silverblue / Fedora Atomic default): `~/.var/app/com.valvesoftware.Steam/.local/share/Steam`
+     - Steam Deck SD card: `/run/media/deck/<UUID>/steamapps`
+     - Custom library (Steam → Settings → Storage → Add Drive): wherever you set it
+   - Tip — `find $HOME /run/media -maxdepth 6 -name steamapps -type d 2>/dev/null` lists every `steamapps` on disk.
+   - *Wallpaper Engine* needs to be installed in the *steamlibrary* you pick.
 
 ### Multi-monitor
 
@@ -226,10 +239,28 @@ each containment independently.
 - [Vulkan driver](https://wiki.archlinux.org/title/Vulkan#Installation) installed (AMD users: use RADV)
 
 ## Known Issues
-- Some scene wallpapers may **crash** KDE
-  - Remove `WallpaperSource` line in `~/.config/plasma-org.kde.plasma.desktop-appletsrc` and restart KDE to fix
-- Mouse long press (to enter panel edit mode) is broken on desktop
-- Screen Locking is not supported
+
+- **Specific wallpapers crash the renderer.** Tracked in [GitHub
+  Issues](https://github.com/CaptSilver/wallpaper-engine-kde-plugin/issues)
+  — please open a new issue with the Workshop ID. As a recovery measure
+  if a wallpaper black-screens or destabilises Plasma:
+  - Remove the `WallpaperSource=` line under the offending containment in
+    `~/.config/plasma-org.kde.plasma.desktop-appletsrc`
+  - Restart plasmashell: `systemctl --user restart plasma-plasmashell.service`
+- **Multi-GPU laptops** — the Vulkan renderer picks the first
+  enumerated physical device; on hybrid NVIDIA + Intel/AMD systems this
+  may not be the discrete GPU. Workaround: launch plasmashell with
+  `DRI_PRIME=1` (Mesa) or the NVIDIA PRIME render-offload env vars set.
+  A configurable picker is on the roadmap.
+- **No audio on pure PipeWire** — the `wpAudio` capture path uses the
+  PulseAudio protocol via `pipewire-pulse`. If your distro ships
+  PipeWire without the Pulse shim, audio-reactive wallpapers see no
+  input. Fix: install your distro's `pipewire-pulse` package.
+
+> Screen-lock and screensaver are supported — the plugin pauses the
+> renderer on lock/screensaver and resumes on unlock (since v1.3). Open
+> an issue if you see the renderer continuing to consume GPU while the
+> screen is locked.
 
 ## Diagnostics
 

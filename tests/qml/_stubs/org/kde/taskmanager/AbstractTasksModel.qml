@@ -1,3 +1,7 @@
+// Test stub — see tests/qml/_stubs/README.md for contract.
+// Real source: libtaskmanager (Plasma framework)
+// Last contract review: 2026-05-27
+
 // AbstractTasksModel exposes role enum constants used as `data()` keys.
 // In real Qt code these come from a C++ enum; we mirror the same integer
 // IDs in our TasksModel stub. Wrapped as enum so QML's "no uppercase

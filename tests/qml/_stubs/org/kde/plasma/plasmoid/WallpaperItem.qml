@@ -1,3 +1,7 @@
+// Test stub — see tests/qml/_stubs/README.md for contract.
+// Real source: plasmoid (Plasma 6 framework)
+// Last contract review: 2026-05-27
+
 // Headless stand-in for the Plasma WallpaperItem root type. Production main.qml
 // is `WallpaperItem { Rectangle { id: background; anchors.fill: parent ... } }`.
 // The real type pulls in Plasma containment/applet runtime that doesn't init

@@ -1,3 +1,7 @@
+// Test stub — see tests/qml/_stubs/README.md for contract.
+// Real source: src/SafeWallpaperBridge.hpp + src/SafeWallpaperBridge.cpp
+// Last contract review: 2026-05-27
+
 import QtQuick
 // Test stub for the C++ SafeWallpaperBridge. Mirrors the production surface:
 //   * generalProperties / userProperties / loaded are exposed (writable here

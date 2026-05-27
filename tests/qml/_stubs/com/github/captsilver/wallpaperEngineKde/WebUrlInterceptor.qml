@@ -1,3 +1,7 @@
+// Test stub — see tests/qml/_stubs/README.md for contract.
+// Real source: src/WebUrlInterceptor.hpp + src/WebUrlInterceptor.cpp
+// Last contract review: 2026-05-27
+
 import QtQuick
 // Test stub for the C++ WebUrlInterceptor (per-wallpaper file:// gate).
 // Provides only the setWallpaperBaseDir method the production QtWebView

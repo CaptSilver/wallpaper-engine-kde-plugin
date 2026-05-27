@@ -1,3 +1,7 @@
+// Test stub — see tests/qml/_stubs/README.md for contract.
+// Real source: plasma5support (Plasma 6 framework)
+// Last contract review: 2026-05-27
+
 import QtQuick
 QtObject {
     property var sourceModel: null

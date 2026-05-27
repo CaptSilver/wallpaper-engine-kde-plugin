@@ -1,3 +1,7 @@
+// Test stub — see tests/qml/_stubs/README.md for contract.
+// Real source: src/PlaylistManager.hpp + src/PlaylistManager.cpp
+// Last contract review: 2026-05-27
+
 // Stub of wekde::PlaylistManager for QML tests. Doesn't persist anything;
 // just satisfies the import + the Q_INVOKABLE / Q_PROPERTY surface area
 // the production QML files expect.

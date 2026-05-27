@@ -1,3 +1,7 @@
+// Test stub — see tests/qml/_stubs/README.md for contract.
+// Real source: libtaskmanager (Plasma framework)
+// Last contract review: 2026-05-27
+
 // Stub for TaskManager.TasksModel — backs WindowModel.qml's window-aware
 // pause logic. Production code calls makeModelIndex(i) + data(idx, role)
 // in a loop; the stub returns a configurable canned dataset.

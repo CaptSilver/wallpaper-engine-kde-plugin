@@ -1,3 +1,7 @@
+// Test stub — see tests/qml/_stubs/README.md for contract.
+// Real source: src/plugin.cpp registers scenebackend::SceneObject (src/backend_scene/qml_helper/)
+// Last contract review: 2026-05-27
+
 // Stub for the Vulkan-backed SceneViewer plugin type. Quick3D / Vulkan can't
 // run in qmltestrunner offscreen; we just provide the QML API surface that
 // production wrappers (backend/Scene.qml) talk to.

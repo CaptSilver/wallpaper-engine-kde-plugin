@@ -1,3 +1,7 @@
+// Test stub — see tests/qml/_stubs/README.md for contract.
+// Real source: src/backend_mpv/
+// Last contract review: 2026-05-27
+
 // Stub for the C++ MpvObject (registered as `Mpv` from the wek-plugin module).
 // libmpv decoder isn't going to live in qmltestrunner; we just provide the
 // QML API surface that backend/Mpv.qml drives.

@@ -1,3 +1,7 @@
+// Test stub — see tests/qml/_stubs/README.md for contract.
+// Real source: src/FileHelper.hpp + src/FileHelper.cpp
+// Last contract review: 2026-05-27
+
 // Test stub for the C++ FileHelper QML type. Methods return canned values
 // or empty objects so production code can run through happy paths in tests.
 import QtQuick

@@ -1,3 +1,7 @@
+// Test stub — see tests/qml/_stubs/README.md for contract.
+// Real source: Qt 6 QtWebEngine docs (type-import placeholder)
+// Last contract review: 2026-05-27
+
 import QtQuick
 QtObject {
     enum InjectionPoint  { DocumentCreation, DocumentReady, Deferred }

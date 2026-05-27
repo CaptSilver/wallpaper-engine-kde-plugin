@@ -1,3 +1,7 @@
+// Test stub — see tests/qml/_stubs/README.md for contract.
+// Real source: Qt 6 QtWebEngine docs (type-import placeholder)
+// Last contract review: 2026-05-27
+
 // Stub — Chromium isn't going to live in qmltestrunner. Production code
 // (backend/QtWebView.qml) creates this and listens for loadingChanged etc.
 // We provide just enough surface to instantiate and call methods.

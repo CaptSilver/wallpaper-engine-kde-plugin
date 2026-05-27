@@ -41,9 +41,9 @@ class MpvObject : public QQuickFramebufferObject {
     Q_OBJECT
     Q_PROPERTY(QUrl source READ source WRITE setSource NOTIFY sourceChanged)
     Q_PROPERTY(Status status READ status NOTIFY statusChanged)
-    Q_PROPERTY(bool mute READ mute WRITE setMute)
-    Q_PROPERTY(QString logfile READ logfile WRITE setLogfile)
-    Q_PROPERTY(int volume READ volume WRITE setVolume)
+    Q_PROPERTY(bool mute READ mute WRITE setMute NOTIFY muteChanged)
+    Q_PROPERTY(QString logfile READ logfile WRITE setLogfile NOTIFY logfileChanged)
+    Q_PROPERTY(int volume READ volume WRITE setVolume NOTIFY volumeChanged)
     Q_PROPERTY(bool initialized READ initialized NOTIFY initializedChanged)
 
     friend class MpvRender;
@@ -119,6 +119,9 @@ signals:
     // path; a literal diagnostic for the sync path), suitable for direct
     // display in the loadInfoShow pane.
     void sourceLoadFailed(const QString& reason);
+    void muteChanged();
+    void volumeChanged();
+    void logfileChanged();
 
 private:
     // Render context ready: set by the queued initCallback() after MpvRender emits

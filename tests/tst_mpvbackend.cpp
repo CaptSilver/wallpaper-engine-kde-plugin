@@ -112,6 +112,14 @@ private slots:
     void status_reflectsRefreshStatusCache_noSyncReads();
     void status_returnsCachedValueAcrossManyCalls();
     void status_playPauseSequenceFinalStateCorrect();
+
+    // NOTIFY emission for the imperative-set Q_PROPERTYs: each setter must
+    // fire its corresponding *Changed() signal so QML bindings re-evaluate
+    // when the property is written via `mpv.mute = ...` / `mpv.volume = ...`
+    // / `mpv.logfile = ...`. Matches the SceneBackend::setVolume pattern.
+    void muteChanged_emitsOnSetMute();
+    void volumeChanged_emitsOnSetVolume();
+    void logfileChanged_emitsOnSetLogfile();
 };
 
 namespace
@@ -511,6 +519,37 @@ void TestMpvBackend::sourceChanged_notEmittedOnAsyncEndFileError() {
     // sourceChanged fired exactly once (at sync-accept time); the async
     // ERROR does not retroactively un-emit it.
     QCOMPARE(changed.count(), 1);
+}
+
+// Q_PROPERTY mute is declared NOTIFY muteChanged; setMute(true/false) must
+// emit it so QML bindings (e.g., a volume-indicator slider) re-evaluate
+// when the wallpaper toggles audio. Option B (unconditional emit) matches
+// SceneBackend::setVolume's pattern; QML's binding graph dedupes by value.
+void TestMpvBackend::muteChanged_emitsOnSetMute() {
+    auto       obj = makeObject();
+    QSignalSpy spy(obj.get(), &mpv::MpvObject::muteChanged);
+    obj->setMute(true);
+    QCOMPARE(spy.count(), 1);
+    obj->setMute(false);
+    QCOMPARE(spy.count(), 2);
+}
+
+void TestMpvBackend::volumeChanged_emitsOnSetVolume() {
+    auto       obj = makeObject();
+    QSignalSpy spy(obj.get(), &mpv::MpvObject::volumeChanged);
+    obj->setVolume(50);
+    QCOMPARE(spy.count(), 1);
+    obj->setVolume(80);
+    QCOMPARE(spy.count(), 2);
+}
+
+void TestMpvBackend::logfileChanged_emitsOnSetLogfile() {
+    auto       obj = makeObject();
+    QSignalSpy spy(obj.get(), &mpv::MpvObject::logfileChanged);
+    obj->setLogfile(QStringLiteral("/tmp/wekde-mpv-test.log"));
+    QCOMPARE(spy.count(), 1);
+    obj->setLogfile(QStringLiteral("/tmp/wekde-mpv-other.log"));
+    QCOMPARE(spy.count(), 2);
 }
 
 QTEST_MAIN(TestMpvBackend)

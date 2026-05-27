@@ -267,11 +267,18 @@ int MpvObject::volume() const { return getProperty("volume").toInt(); }
 void MpvObject::setMute(const bool& mute) {
     // aid is the audio track ID, "no" means no audio track
     setProperty("aid", mute ? "no" : "auto");
+    emit muteChanged();
 }
 
-void MpvObject::setVolume(const int& volume) { setProperty("volume", volume); }
+void MpvObject::setVolume(const int& volume) {
+    setProperty("volume", volume);
+    emit volumeChanged();
+}
 
-void MpvObject::setLogfile(const QString& logfile) { setProperty("log-file", logfile); }
+void MpvObject::setLogfile(const QString& logfile) {
+    setProperty("log-file", logfile);
+    emit logfileChanged();
+}
 
 void MpvObject::setSource(const QUrl& source) {
     if (source.isEmpty()) {

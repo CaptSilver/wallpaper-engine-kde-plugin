@@ -481,6 +481,7 @@ RowLayout {
                     Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
 
                     source: Common.getWpModelPreviewSource(right_content.wpmodel)
+                    sourceSize.width: right_content.image_size
                     fillMode: Image.PreserveAspectFit
                     cache: true
                     asynchronous: true

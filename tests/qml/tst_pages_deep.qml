@@ -1373,4 +1373,44 @@ TestCase {
         verify(aboutMaSpy.count >= 1,
                "AboutPage Github MouseArea.clicked must fire on direct invocation");
     }
+
+    // ── WallpaperPage detail pane: AnimatedImage sourceSize clamp ──────────
+    // The detail-pane AnimatedImage must clamp decode resolution to
+    // right_content.image_size; otherwise Qt decodes the workshop preview
+    // at native resolution (routinely 1920x1080) and bloats RAM by 20-30x.
+    // Mirrors WallpaperGrid.qml's already-shipping `sourceSize.width:
+    // parent.width` idiom (the static + animated previews there both
+    // clamp). PreserveAspectFit derives the decoded height from the width
+    // clamp + intrinsic aspect.
+    function test_detailPaneAnimatedImage_sourceSizeClampedToImageSize() {
+        // The detail-pane AnimatedImage is the only AnimatedImage that
+        // lives inside right_content (the Control with image_size +
+        // wpmodel). WallpaperGrid's AnimatedImages live inside delegate
+        // factories that the offscreen QPA may or may not materialise;
+        // restrict the search to right_content's subtree so we only
+        // assert on the detail-pane instance.
+        const rc = _firstByPredicate(c =>
+            c && typeof c.image_size !== "undefined" &&
+            typeof c.wpmodel !== "undefined");
+        verify(rc !== null, "right_content (image_size + wpmodel) not found");
+
+        // AnimatedImage is distinguished from plain Image by the playing
+        // + paused boolean pair. sourceSize is an attached size value.
+        const anims = [];
+        _walkChildren(rc, c =>
+            c && typeof c.playing === "boolean" &&
+            typeof c.paused === "boolean" &&
+            typeof c.sourceSize !== "undefined", anims);
+        verify(anims.length >= 1,
+               "detail-pane AnimatedImage not reachable from right_content");
+
+        // Every AnimatedImage in the detail-pane subtree must have its
+        // sourceSize.width bound to right_content.image_size so decode
+        // is clamped to the on-screen render size.
+        for (const img of anims) {
+            compare(img.sourceSize.width, rc.image_size,
+                    "detail-pane AnimatedImage sourceSize.width must equal " +
+                    "right_content.image_size (decode-clamp parity with WallpaperGrid)");
+        }
+    }
 }

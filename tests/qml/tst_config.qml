@@ -57,6 +57,55 @@ TestCase {
         verify(cfg.pyext.ok);
     }
 
+    function test_config_pyext_is_local_Pyext_type() {
+        verify(cfg.pyext !== null);
+        // Pyext exposes a readfile(path) function (Pyext.qml). The declarative
+        // `Pyext { id: pyext }` resolves to the local-qmldir-registered type;
+        // this assertion pins the type contract regardless of how the object
+        // is instantiated (createQmlObject template or declarative child).
+        compare(typeof cfg.pyext.readfile, "function");
+    }
+
+    function test_config_plugin_info_when_libcheck_wallpaper() {
+        // The declarative WEKde.PluginInfo { id: nativePluginInfo } resolves
+        // to the C++-registered PluginInfo from the captsilver namespace,
+        // which exposes a `version` string + `cache_path` url. Verify both.
+        verify(cfg.plugin_info !== null);
+        compare(typeof cfg.plugin_info.version, "string");
+        // cache_path is assignable through plugin_info post-fix (writes
+        // through to nativePluginInfo.cache_path on the C++ object).
+        cfg.plugin_info.cache_path = "file:///tmp/cache";
+        compare(String(cfg.plugin_info.cache_path), "file:///tmp/cache");
+    }
+
+    // ── Q9: pyext + plugin_info are declarative children, not Qt.createQmlObject ──
+    // When pyext / plugin_info are declared as `Pyext { id: pyext }` /
+    // `WEKde.PluginInfo { id: nativePluginInfo }` inside the root scope, they
+    // become entries in cfg.data (declarative child items live there in QML).
+    // The Qt.createQmlObject(`...`, this) form, by contrast, parents the new
+    // object to `this` (cfg) via QObject::setParent() but does NOT add it to
+    // the visual-item children/data list — it's only reachable via the JS
+    // property. This test fails against the createQmlObject form and passes
+    // only when the objects are instantiated declaratively.
+    function test_config_pyext_and_plugin_info_are_declarative_tree_children() {
+        verify(cfg.pyext !== null);
+        verify(cfg.plugin_info !== null);
+
+        let pyextInData = false;
+        let pluginInfoInData = false;
+        const data = cfg.data || [];
+        for (let i = 0; i < data.length; i++) {
+            if (data[i] === cfg.pyext)       pyextInData = true;
+            if (data[i] === cfg.plugin_info) pluginInfoInData = true;
+        }
+        verify(pyextInData,
+               "cfg.pyext must be a declarative tree child (in cfg.data), "
+               + "not a Qt.createQmlObject-parented JS-only reference");
+        verify(pluginInfoInData,
+               "cfg.plugin_info must point to a declarative tree child "
+               + "(in cfg.data), not a Qt.createQmlObject-parented JS-only reference");
+    }
+
     function test_customConf_loadedFromCfgString() {
         // cfg_CustomConf default is "" → loadCustomConf → empty conf with
         // .favor as empty Set.

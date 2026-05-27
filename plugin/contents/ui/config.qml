@@ -4,6 +4,7 @@ import QtQuick.Layouts 1.5
 import org.kde.plasma.core 2.0 as PlasmaCore
 import org.kde.plasma.components 3.0 as PlasmaComponents
 import org.kde.kirigami 2.4 as Kirigami
+import com.github.captsilver.wallpaperEngineKde 1.2 as WEKde
 
 import "page"
 
@@ -96,29 +97,37 @@ ColumnLayout {
     })
 
 
-                    
-    property var plugin_info: {
-        if(!libcheck.wallpaper) {
-            plugin_info = {
-                version: "-",
-                cache_path: null
-            }
-        } else {
-            plugin_info = Qt.createQmlObject(`
-                import QtQuick 2.0;
-                import com.github.captsilver.wallpaperEngineKde 1.2
-                PluginInfo {}
-            `, this);
-        }
+    // C++-backed PluginInfo. Eagerly created; the underlying object is a
+    // cheap C++ instance (just stores version + cache_path strings — see
+    // src/PluginInfo.cpp). plugin_info below routes consumers to this when
+    // libcheck.wallpaper is true, or to a stub dict otherwise.
+    WEKde.PluginInfo {
+        id: nativePluginInfo
     }
 
-    property var pyext: {
-        // FileHelper-based Pyext (no Python/WebSocket dependency)
-        pyext = Qt.createQmlObject(`
-            import QtQuick 2.0;
-            Pyext {}
-        `, this);
+    // Exposed as a property so external scopes (e.g. `root.plugin_info`
+    // inside child item bindings, or `cfg.plugin_info` from tests) can read
+    // it. Conditional routing keeps the original duck-typed shape: when the
+    // native lib is unavailable, fall back to a stub dict; otherwise return
+    // the C++ object (writes to `.cache_path` propagate to nativePluginInfo).
+    readonly property var plugin_info: libcheck.wallpaper
+        ? nativePluginInfo
+        : ({ version: "-", cache_path: null })
+
+    // FileHelper-based Pyext (no Python/WebSocket dependency). Declared
+    // declaratively now — Pyext is in the local qmldir, so no extra import
+    // is needed. Lifetime follows the parent Item tree, so the explicit
+    // Component.onDestruction destroy() that used to clean up the
+    // createQmlObject-created object is no longer required.
+    Pyext {
+        id: pyextItem
     }
+
+    // Alias exposes the Pyext item as `root.pyext` so external scopes (child
+    // item bindings like `VideoPage { pyext: root.pyext }`, plus tests doing
+    // `cfg.pyext`) can read it the same way the previous `property var pyext`
+    // form allowed. Sibling bindings inside this file can use either form.
+    readonly property alias pyext: pyextItem
 
     function saveConfig() {
         wallpaperPage.saveConfig();
@@ -199,10 +208,6 @@ ColumnLayout {
             const cur = root.wallpaperConfiguration["PlaylistsReloadSeq"] || 0;
             root.wallpaperConfiguration["PlaylistsReloadSeq"] = cur + 1;
         }
-    }
-
-    Component.onDestruction: {
-        if(this.pyext) this.pyext.destroy();
     }
 
     function saveCustomConf() {

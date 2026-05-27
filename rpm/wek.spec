@@ -60,8 +60,21 @@ DESTDIR=%{buildroot} cmake --install %{_builddir}/wek-build \
       --prefix %{_prefix}
 
 %files
-%{_libdir}/*
-%{_datadir}/*
+# QML plugin (single payload directory under /usr/lib64).
+%dir %{_libdir}/qt6
+%dir %{_libdir}/qt6/qml
+%dir %{_libdir}/qt6/qml/com
+%dir %{_libdir}/qt6/qml/com/github
+%dir %{_libdir}/qt6/qml/com/github/captsilver
+%{_libdir}/qt6/qml/com/github/captsilver/wallpaperEngineKde/
+# Plasma wallpaper packages (captsilver primary + catsout shim).
+%dir %{_datadir}/plasma
+%dir %{_datadir}/plasma/wallpapers
+%{_datadir}/plasma/wallpapers/com.github.captsilver.wallpaperEngineKde/
+%{_datadir}/plasma/wallpapers/com.github.catsout.wallpaperEngineKde/
+# Migration script + /usr/bin symlink.
+%dir %{_datadir}/wek
+%{_datadir}/wek/scripts/
 %{_bindir}/wek-migrate-from-catsout
 
 %changelog

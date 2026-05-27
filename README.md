@@ -38,14 +38,14 @@ Ubuntu / Debian:
 sudo apt install clang cmake ninja-build extra-cmake-modules pkg-config \
     libvulkan-dev libkf6package-dev libplasma-dev \
     plasma-workspace-dev qt6-base-dev qt6-base-private-dev \
-    qt6-declarative-dev qt6-websockets-dev qt6-webchannel-dev \
+    qt6-declarative-dev qt6-webchannel-dev \
     libmpv-dev liblz4-dev libfreetype-dev
 ```
 
 Arch:
 ```sh
 sudo pacman -S extra-cmake-modules plasma-framework gst-libav ninja \
-base-devel mpv qt6-declarative qt6-websockets qt6-webchannel vulkan-headers cmake lz4
+base-devel mpv qt6-declarative qt6-webchannel vulkan-headers cmake lz4
 ```
 
 Fedora:
@@ -62,9 +62,30 @@ sudo dnf install -y ffmpeg-devel --allowerasing
 sudo dnf install -y clang cmake extra-cmake-modules vulkan-headers \
     plasma-workspace-devel libplasma-devel kf6-plasma-devel \
     kf6-kcoreaddons-devel kf6-kpackage-devel \
-    lz4-devel mpv-libs-devel freetype-devel glfw-devel \
+    lz4-devel mpv-libs-devel freetype-devel \
     qt6-qtbase-private-devel qt6-qtwebchannel-devel
 ```
+
+##### Optional: standalone Vulkan viewer
+
+The `sceneviewer` binary under `src/backend_scene/standalone_view/` is a
+debug-only viewer that renders a single scene package in its own window
+(handy for triaging wallpaper bugs without restarting plasmashell). It
+needs an extra dep on top of the baseline list above:
+
+- Fedora:        `sudo dnf install -y glfw-devel`
+- Ubuntu/Debian: `sudo apt install libglfw3-dev`
+- Arch:          `sudo pacman -S glfw-x11` (or `glfw-wayland` / `glfw`)
+
+Then build it separately from the main plugin:
+
+~~~sh
+cmake -B build/sceneviewer -S src/backend_scene/standalone_view -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/sceneviewer
+~~~
+
+See [CLAUDE.md "Standalone viewer for debugging"](CLAUDE.md) for the
+Vulkan validation-layer flag and runtime usage.
 
 #### Build and Install
 ```sh
@@ -135,7 +156,7 @@ sudo apt install \
     clang cmake ninja-build extra-cmake-modules pkg-config debhelper fakeroot \
     libvulkan-dev libkf6package-dev libplasma-dev \
     plasma-workspace-dev qt6-base-dev qt6-base-private-dev \
-    qt6-declarative-dev qt6-websockets-dev qt6-webchannel-dev \
+    qt6-declarative-dev qt6-webchannel-dev \
     libmpv-dev liblz4-dev libfreetype-dev
 
 # Initialise submodules

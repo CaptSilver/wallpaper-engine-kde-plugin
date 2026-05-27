@@ -16,7 +16,6 @@ Build-Depends:
  qt6-base-dev,
  qt6-base-private-dev,
  qt6-declarative-dev,
- qt6-websockets-dev,
  qt6-webchannel-dev,
  libmpv-dev,
  liblz4-dev,

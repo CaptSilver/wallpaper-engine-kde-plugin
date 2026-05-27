@@ -39,7 +39,6 @@ jobs:
             libplasma \
             kconfig \
             qt6-declarative \
-            qt6-websockets \
             qt6-webchannel \
             vulkan-headers \
             mpv \
@@ -93,7 +92,6 @@ jobs:
             qt6-qtbase-private-devel \
             libplasma-devel \
             qt6-qtwebchannel-devel \
-            qt6-qtwebsockets-devel \
             qt6-qtdeclarative-devel
 
       - name: Configure
@@ -146,7 +144,6 @@ jobs:
             qt6-base-dev \
             qt6-base-private-dev \
             qt6-declarative-dev \
-            qt6-websockets-dev \
             qt6-webchannel-dev \
             libmpv-dev \
             liblz4-dev \
@@ -191,7 +188,6 @@ jobs:
             pkgconf-pkg-config \
             qt6-qtbase-devel \
             qt6-qtdeclarative-devel \
-            qt6-qtwebsockets-devel \
             qt6-qtwebchannel-devel \
             mpv-devel \
             kf6-kirigami-devel \

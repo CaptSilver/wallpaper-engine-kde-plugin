@@ -269,6 +269,17 @@ Rectangle {
 
     Pyext {
         id: pyext
+        // Seed every settings-driven readfile root. Re-binds whenever any
+        // input expression changes (steamlibrary derivation, video folder)
+        // — fileHelper.onSeedRootsChanged clears + re-adds.
+        seedRoots: {
+            var roots = [];
+            if (background.steamlibrary)
+                roots.push(Common.urlNative(background.steamlibrary));
+            if (wallpaper.configuration.VideoFolderPath)
+                roots.push(Common.urlNative(wallpaper.configuration.VideoFolderPath));
+            return roots;
+        }
     }
     // Runtime Videos-tab model.  Editor (config.qml) shares the dialog's
     // VideoListModel; the runtime side has no dialog so it owns its own.

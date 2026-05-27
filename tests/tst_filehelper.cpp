@@ -92,6 +92,189 @@ private slots:
         QCOMPARE(helper.readFile(f.fileName()), binary);
     }
 
+    // ── readFile allowlist + size cap ────────────────────────────────────────
+
+    void readFile_emptyAllowlist_isPermissiveByDefault() {
+        // Back-compat: a default-installed plugin with no settings configured
+        // has no roots seeded, so readFile keeps the pre-fix behaviour for
+        // arbitrary paths. (Settings-configured users always seed at least
+        // the cache root, so this branch only fires on first run.)
+        QTemporaryFile f(m_tmp.filePath("perm_XXXXXX"));
+        f.setAutoRemove(false);
+        QVERIFY(f.open());
+        f.write("ok");
+        f.close();
+        FileHelper helper;
+        QVERIFY(helper.readFile(f.fileName()).contains("ok"));
+    }
+
+    void readFile_pathInsideRoot_reads() {
+        QTemporaryFile f(m_tmp.filePath("inside_XXXXXX"));
+        f.setAutoRemove(false);
+        QVERIFY(f.open());
+        f.write("inside");
+        f.close();
+        FileHelper helper;
+        helper.addReadRoot(m_tmp.path());
+        QCOMPARE(helper.readFile(f.fileName()), QByteArray("inside"));
+    }
+
+    void readFile_pathOutsideRoot_returnsEmpty() {
+        // /etc/hostname is universally readable on Linux — a clean witness
+        // for "would have succeeded pre-fix; must be empty post-fix".
+        if (! QFileInfo::exists("/etc/hostname"))
+            QSKIP("no /etc/hostname witness on this system");
+        FileHelper helper;
+        helper.addReadRoot(m_tmp.path());
+        QVERIFY(helper.readFile("/etc/hostname").isEmpty());
+    }
+
+#ifndef Q_OS_WIN
+    void readFile_symlinkEscape_returnsEmpty() {
+        // Symlink INSIDE an allowed root pointing OUTSIDE it must be refused
+        // (canonical resolution defeats the trick). Reproduces the
+        // "malicious workshop project.json -> ~/.ssh/id_rsa" case.
+        if (! QFileInfo::exists("/etc/hostname"))
+            QSKIP("no /etc/hostname witness on this system");
+        const QString link = m_tmp.filePath("escape.link");
+        QVERIFY(QFile::link("/etc/hostname", link));
+        FileHelper helper;
+        helper.addReadRoot(m_tmp.path());
+        QVERIFY(helper.readFile(link).isEmpty());
+    }
+
+    void readFile_symlinkInsideRoot_reads() {
+        // Internal symlink (root -> same root) is fine.
+        QTemporaryFile target(m_tmp.filePath("tgt_XXXXXX"));
+        target.setAutoRemove(false);
+        QVERIFY(target.open());
+        target.write("hop");
+        target.close();
+        const QString link = m_tmp.filePath("internal.link");
+        QVERIFY(QFile::link(target.fileName(), link));
+        FileHelper helper;
+        helper.addReadRoot(m_tmp.path());
+        QCOMPARE(helper.readFile(link), QByteArray("hop"));
+    }
+#endif
+
+    void readFile_dotDotEscape_returnsEmpty() {
+        // .. traversal: addReadRoot points at a SUBDIR of m_tmp, then we
+        // attempt a path that lexically contains `..` and canonicalises out.
+        // The helper must check the canonical form, not the lexical one.
+        if (! QFileInfo::exists("/etc/hostname"))
+            QSKIP("no /etc/hostname witness on this system");
+        QDir(m_tmp.path()).mkdir("sub");
+        const QString rootSub = m_tmp.path() + "/sub";
+        FileHelper    helper;
+        helper.addReadRoot(rootSub);
+        const QString escape = rootSub + "/../../../etc/hostname";
+        QVERIFY(helper.readFile(escape).isEmpty());
+    }
+
+    void readFile_relativePath_normalizedAndChecked() {
+        // CWD-relative paths must be canonicalised to absolute before the
+        // allowlist check (QFileInfo::canonicalFilePath() resolves CWD too).
+        QTemporaryFile f(m_tmp.filePath("rel_XXXXXX"));
+        f.setAutoRemove(false);
+        QVERIFY(f.open());
+        f.write("rel");
+        f.close();
+        const QString abs  = f.fileName();
+        const QString base = QFileInfo(abs).fileName();
+        const QString oldCwd = QDir::currentPath();
+        QDir::setCurrent(m_tmp.path());
+        FileHelper helper;
+        helper.addReadRoot(m_tmp.path());
+        QCOMPARE(helper.readFile(base), QByteArray("rel"));
+        QDir::setCurrent(oldCwd);
+    }
+
+    void readFile_oversize_returnsEmpty() {
+        // 65 MiB > 64 MiB cap — even in permissive mode (no roots), the
+        // cap fires. No need to actually allocate: write a sparse file via
+        // QFile::resize.
+        const QString big = m_tmp.filePath("big.bin");
+        QFile         f(big);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        QVERIFY(f.resize(qint64(65) * 1024 * 1024));
+        f.close();
+        FileHelper helper;
+        // Permissive (no roots) — cap still fires.
+        QVERIFY(helper.readFile(big).isEmpty());
+        // With an allowed root — still capped.
+        helper.addReadRoot(m_tmp.path());
+        QVERIFY(helper.readFile(big).isEmpty());
+    }
+
+    void readFile_normalSize_returnsBytes() {
+        // 1 MiB < 64 MiB cap — must read.
+        const QString small = m_tmp.filePath("small.bin");
+        QVERIFY(writeBytes(small, 1 << 20));
+        FileHelper helper;
+        helper.addReadRoot(m_tmp.path());
+        QCOMPARE(helper.readFile(small).size(), qint64(1 << 20));
+    }
+
+    void addReadRoot_nonexistentPath_warnsAndNoOps() {
+        FileHelper helper;
+        helper.addReadRoot("/does/not/exist/zzz"); // canonical is empty -> reject
+        // Add one real root so we are no longer permissive — then the
+        // bogus path's absence is observable: a read of m_tmp succeeds, and
+        // a read of /etc/hostname fails because the bogus path's empty
+        // canonical didn't slip into the set.
+        QTemporaryFile f(m_tmp.filePath("ne_XXXXXX"));
+        f.setAutoRemove(false);
+        QVERIFY(f.open());
+        f.write("x");
+        f.close();
+        helper.addReadRoot(m_tmp.path());
+        QCOMPARE(helper.readFile(f.fileName()), QByteArray("x"));
+        if (QFileInfo::exists("/etc/hostname"))
+            QVERIFY(helper.readFile("/etc/hostname").isEmpty());
+    }
+
+    void clearReadRoots_resetsToPermissive() {
+        if (! QFileInfo::exists("/etc/hostname"))
+            QSKIP("no /etc/hostname witness");
+        FileHelper helper;
+        helper.addReadRoot(m_tmp.path());
+        QVERIFY(helper.readFile("/etc/hostname").isEmpty());     // gated
+        helper.clearReadRoots();
+        QVERIFY(! helper.readFile("/etc/hostname").isEmpty());   // permissive again
+    }
+
+    void readFile_rootExactMatch_reads() {
+        // The root path itself (not a descendant) should also be accepted —
+        // matches the `canon == root` branch of isUnderRoot. Verify by
+        // adding a root equal to a file's canonical path (degenerate but
+        // legal) and confirming readFile of that path returns the bytes.
+        QTemporaryFile f(m_tmp.filePath("exact_XXXXXX"));
+        f.setAutoRemove(false);
+        QVERIFY(f.open());
+        f.write("e");
+        f.close();
+        FileHelper helper;
+        helper.addReadRoot(QFileInfo(f.fileName()).canonicalFilePath());
+        QCOMPARE(helper.readFile(f.fileName()), QByteArray("e"));
+    }
+
+    void addReadRoot_stripsFileUriPrefix() {
+        // QML often passes paths through Common.urlNative which strips
+        // file://, but the addReadRoot API also accepts the file:// form
+        // directly (mirrors clearCacheDir's pre-canon strip). With the root
+        // installed via file://, a native-path readFile of a file under
+        // that root must still be accepted.
+        QTemporaryFile f(m_tmp.filePath("uri_XXXXXX"));
+        f.setAutoRemove(false);
+        QVERIFY(f.open());
+        f.write("uri");
+        f.close();
+        FileHelper helper;
+        helper.addReadRoot("file://" + m_tmp.path()); // file:// stripped pre-canon
+        QCOMPARE(helper.readFile(f.fileName()), QByteArray("uri"));
+    }
+
     // ── getDirSize ────────────────────────────────────────────────────────────
     void getDirSize_nonExistentDir() {
         FileHelper helper;

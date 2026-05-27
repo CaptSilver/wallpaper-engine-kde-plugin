@@ -15,6 +15,23 @@ Item {
         id: fileHelper
     }
 
+    // QML-supplied allowlist for fileHelper.readFile. Each entry is a
+    // native filesystem path (file:// stripped on the C++ side, but
+    // pre-stripped via Common.urlNative by all upstream callers anyway).
+    // Empty array => permissive back-compat (first-run, no settings).
+    // The instantiating QML (main.qml / config.qml) reassigns on every
+    // settings change that should widen or narrow the surface (e.g.
+    // SteamLibraryPath or VideoFolderPath edits).
+    property var seedRoots: []
+
+    onSeedRootsChanged: {
+        fileHelper.clearReadRoots();
+        for (var i = 0; i < seedRoots.length; i++) {
+            var r = seedRoots[i];
+            if (r && r.length > 0) fileHelper.addReadRoot(r);
+        }
+    }
+
     // Promise-like wrapper for synchronous calls
     function _makePromise(value) {
         return {

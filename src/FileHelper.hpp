@@ -22,6 +22,25 @@ public:
     Q_INVOKABLE QByteArray readFile(const QString& path);
     Q_INVOKABLE QString    qwebChannelSource();
     Q_INVOKABLE QString    patchedHtml(const QString& path);
+
+    // Caller-side allowlist for paths readFile() will accept. QML registers
+    // the configured Steam library + the cache + any extra roots (video
+    // folder, future plugin dirs) at startup and on each settings change.
+    // Roots are canonicalised on insert (rejected if non-existent). readFile
+    // canonicalises its argument and accepts iff the canonical form is the
+    // root itself or a descendant. Empty allowlist => permissive back-compat
+    // (default-installed plugin with no settings configured keeps today's
+    // behaviour). The 64 MiB size cap applies in BOTH modes — pathological
+    // inputs (a wallpaper symlink to /dev/zero via FUSE) are refused
+    // regardless.
+    Q_INVOKABLE void addReadRoot(const QString& path);
+    Q_INVOKABLE void clearReadRoots();
+
+    // Maximum bytes readFile will return. Larger files yield an empty
+    // QByteArray + qWarning. 64 MiB is a generous ceiling for project.json
+    // (~10 KB typical, a few MB for fat puppet definitions) while defeating
+    // GB-scale DoS reads of /dev/zero or a sparse file.
+    static constexpr qint64 kMaxReadSize = 64LL * 1024 * 1024;
     // Synchronous, recursive directory byte total. `depth` semantics:
     //   depth <= 0  => UNLIMITED recursion (historical sentinel — note this is the
     //                  OPPOSITE of "current dir only"; kept for the public contract);
@@ -84,6 +103,10 @@ private:
     // global pool offers no such handle. Worst-case dtor block is the
     // current libmpv thumbnail timeout (~3s).
     QThreadPool m_pool;
+
+    // Canonicalised allowlist; seeded from QML via addReadRoot. Empty
+    // => permissive (back-compat). See readFile body for the check.
+    QSet<QString> m_readRoots;
 };
 
 } // namespace wekde

@@ -28,6 +28,17 @@ static bool isUnderRoot(const QString& canon, const QString& root) {
     return canon == root || canon.startsWith(root + QLatin1Char('/'));
 }
 
+// True iff `canon` is under any root in `roots`. Empty canon never matches
+// (defeats the "non-existent path canonicalises to empty string and would
+// match the empty root if one ever slipped in" footgun).
+static bool isUnderAnyRoot(const QString& canon, const QSet<QString>& roots) {
+    if (canon.isEmpty()) return false;
+    for (const QString& root : roots) {
+        if (isUnderRoot(canon, root)) return true;
+    }
+    return false;
+}
+
 // Find the index just past the closing '>' of the first real <head start tag
 // that is NOT inside an HTML comment. Returns -1 when there is no usable head.
 // Attribute-tolerant (matches `<head lang="en">`), case-insensitive,
@@ -84,13 +95,58 @@ QString FileHelper::wallpaperConfigFile(const QString& id) const {
 }
 
 QByteArray FileHelper::readFile(const QString& path) {
+    // Allowlist check (fail-closed when seeded, permissive when empty for
+    // first-run back-compat). Canonicalisation resolves symlinks + ".." +
+    // CWD-relative — the canonical form is what we compare to the seeded
+    // roots, so a symlink INSIDE an allowed root pointing OUTSIDE it is
+    // refused. Strip file:// to match the addReadRoot canon strip.
+    if (! m_readRoots.isEmpty()) {
+        QString native = path;
+        if (native.startsWith("file://")) native = native.mid(7);
+        const QString canon = QFileInfo(native).canonicalFilePath();
+        if (! isUnderAnyRoot(canon, m_readRoots)) {
+            qWarning() << "FileHelper::readFile refused path outside allowed roots:"
+                       << path << "(canon:" << canon << ")";
+            return QByteArray();
+        }
+    }
+
     QFile file(path);
     if (! file.open(QIODevice::ReadOnly)) {
         qWarning() << "FileHelper: Cannot open file:" << path;
         return QByteArray();
     }
+
+    // Size cap fires regardless of allowlist state — pathological inputs
+    // (sparse files, /dev/zero via FUSE-mounted workshop dir) are refused
+    // even in the back-compat permissive path. QFile::size() on regular
+    // files returns the on-disk size up front (no read needed).
+    if (file.size() > kMaxReadSize) {
+        qWarning() << "FileHelper::readFile refused over-size file:" << path << "("
+                   << file.size() << "bytes >" << kMaxReadSize << ")";
+        return QByteArray();
+    }
+
     return file.readAll();
 }
+
+void FileHelper::addReadRoot(const QString& path) {
+    // Strip file:// so QML callers passing Common.urlNative()-style URLs
+    // OR raw QUrls both work — mirrors clearCacheDir's pre-canon strip.
+    QString native = path;
+    if (native.startsWith("file://")) native = native.mid(7);
+    const QString canon = QFileInfo(native).canonicalFilePath();
+    if (canon.isEmpty()) {
+        // Non-existent path: refuse loudly. Inserting an empty string here
+        // would silently poison the set (canon.startsWith("") is true for
+        // every string), turning the gate back into permissive mode.
+        qWarning() << "FileHelper::addReadRoot refused non-existent path:" << path;
+        return;
+    }
+    m_readRoots.insert(canon);
+}
+
+void FileHelper::clearReadRoots() { m_readRoots.clear(); }
 
 QString FileHelper::qwebChannelSource() {
     QFile file(":/qtwebchannel/qwebchannel.js");

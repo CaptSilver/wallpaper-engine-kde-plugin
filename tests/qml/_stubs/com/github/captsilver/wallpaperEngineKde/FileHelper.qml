@@ -32,6 +32,9 @@ QtObject {
     property var  lastGenerateThumbnailArgs:  ({ videoPath: "", outPath: "", atSeconds: 0 })
     property int  requestDirSizeCount:        0
     property var  lastRequestDirSizeArgs:     ({ path: "", depth: 0 })
+    property int  addReadRootCount:           0
+    property var  lastAddReadRootPath:        undefined
+    property int  clearReadRootsCount:        0
 
     function readFile(path)              { readFileCount += 1; lastReadFilePath = path; return _readReturns; }
     function patchedHtml(path)           { patchedHtmlCount += 1; lastPatchedHtmlPath = path; return _patchedHtmlReturns; }
@@ -74,5 +77,12 @@ QtObject {
         requestDirSizeCount += 1;
         lastRequestDirSizeArgs = { path: path, depth: depth };
         Qt.callLater(() => stub.dirSizeReady(path, 0));
+    }
+    function addReadRoot(path) {
+        addReadRootCount += 1;
+        lastAddReadRootPath = path;
+    }
+    function clearReadRoots() {
+        clearReadRootsCount += 1;
     }
 }

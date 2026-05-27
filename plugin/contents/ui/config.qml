@@ -126,6 +126,21 @@ ColumnLayout {
     // createQmlObject-created object is no longer required.
     Pyext {
         id: pyextItem
+        // Seed readfile roots from the configurator's settings expressions.
+        // cfg_SteamLibraryPath is a plain string (not a URL); cfg_VideoFolderPath
+        // likewise. plugin_info.cache_path is added when available — it's not
+        // load-bearing for any current readFile call site but seeded for
+        // symmetry with future plugin dirs.
+        seedRoots: {
+            var roots = [];
+            if (cfg_SteamLibraryPath)
+                roots.push(Common.urlNative(cfg_SteamLibraryPath));
+            if (typeof cfg_VideoFolderPath !== "undefined" && cfg_VideoFolderPath)
+                roots.push(Common.urlNative(cfg_VideoFolderPath));
+            if (plugin_info && plugin_info.cache_path)
+                roots.push(Common.urlNative(plugin_info.cache_path));
+            return roots;
+        }
     }
 
     // Alias exposes the Pyext item as `root.pyext` so external scopes (child

@@ -120,4 +120,45 @@ TestCase {
         pyext.clear_cache("/tmp/cache").then(v => { observed = v; });
         compare(observed, true);
     }
+
+    // Look up the inner FileHelper stub on the Pyext. Pyext is an Item; the
+    // stub is in its `data` (or `children`) bucket. Mirrors the _findInner
+    // idiom used in tst_backend_qtwebview.
+    function _findFileHelper() {
+        const buckets = [pyext.children || [], pyext.data || []];
+        for (const b of buckets) {
+            for (let i = 0; i < b.length; i++) {
+                if (b[i] && typeof b[i].addReadRoot === "function") return b[i];
+            }
+        }
+        return null;
+    }
+
+    // The seedRoots binding must propagate to the inner FileHelper: each
+    // assign clears the existing allowlist + re-adds every non-empty entry.
+    // This is the QML-side contract for SEC-READFILE1 — wallpapers can't
+    // change the C++ allowlist except via the explicit seedRoots reassign.
+    function test_seedRoots_propagatesToFileHelperOnAssign() {
+        const fh = _findFileHelper();
+        verify(fh !== null);
+        const c0 = fh.clearReadRootsCount;
+        const a0 = fh.addReadRootCount;
+        pyext.seedRoots = ["/tmp/root1", "/tmp/root2"];
+        compare(fh.clearReadRootsCount, c0 + 1);
+        compare(fh.addReadRootCount, a0 + 2);
+        compare(fh.lastAddReadRootPath, "/tmp/root2");
+    }
+
+    // Empty / null entries in seedRoots must be skipped (the binding in
+    // main.qml builds the array conditionally, so an unset SteamLibraryPath
+    // produces an empty string entry — the QML side filters it out before
+    // the C++ addReadRoot would warn about a non-existent path).
+    function test_seedRoots_emptyEntriesAreSkipped() {
+        const fh = _findFileHelper();
+        verify(fh !== null);
+        const a0 = fh.addReadRootCount;
+        pyext.seedRoots = ["/tmp/realA", "", "/tmp/realB"];
+        // 2 real entries + the skipped empty one; addReadRoot only fires twice.
+        compare(fh.addReadRootCount, a0 + 2);
+    }
 }

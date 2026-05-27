@@ -120,6 +120,67 @@ Item{
             function onUserShortcutRequested(name) {
                 mprisMonitor.invokeShortcut(name);
             }
+            // Transient overlay for video-decode failures. Deliberately NOT
+            // routed through loadInfoShow: the rest of the scene keeps
+            // rendering while one bad video texture surfaces a short toast.
+            // A video wallpaper has only the video, so the Mpv backend uses
+            // loadInfoShow there; here a scene has other content to preserve.
+            function onVideoDecodeFailed(summary) {
+                videoDecodeOverlay.show(summary);
+            }
+        }
+    }
+
+    // Transient overlay for video-decode failures. 5s fade after show().
+    // Lives outside the SceneViewer so anchors target the wrapper Item and
+    // the overlay stays visible even if the player resizes mid-display.
+    // `shown` drives visibility (Item.visible defaults true so a direct
+    // `visible: false` binding can win over later JS assignment in some
+    // qmltestrunner conditions; bind visible to the explicit flag instead).
+    Item {
+        id: videoDecodeOverlay
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 24
+        // Fixed-but-bounded width so the height binding can resolve without
+        // looping (Text.implicitHeight is read by the height binding, so the
+        // Text must be sized by width not anchors.fill).
+        width: Math.min(parent.width * 0.5, 600)
+        height: overlayLabel.implicitHeight + 24
+        visible: shown
+        opacity: shown ? 1.0 : 0
+        // Public surface read by tst_backend_scene; production reads the
+        // Text below which binds to lastSummary.  `shown` drives `visible`
+        // via a binding so JS-side `show()` mutates only this flag.
+        property bool   shown: false
+        property string lastSummary: ""
+
+        Rectangle {
+            anchors.fill: parent
+            color: Qt.rgba(0, 0, 0, 0.7)
+            radius: 6
+        }
+        Text {
+            id: overlayLabel
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.margins: 12
+            color: "white"
+            wrapMode: Text.WordWrap
+            text: videoDecodeOverlay.lastSummary
+        }
+        Behavior on opacity { NumberAnimation { duration: 250 } }
+        Timer {
+            id: overlayFadeTimer
+            interval: 5000
+            repeat: false
+            onTriggered: videoDecodeOverlay.shown = false
+        }
+        function show(summary) {
+            lastSummary = summary;
+            shown = true;
+            overlayFadeTimer.restart();
         }
     }
 

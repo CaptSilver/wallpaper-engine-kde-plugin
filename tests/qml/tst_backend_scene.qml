@@ -177,4 +177,39 @@ TestCase {
         background.displayMode = Plugin.Common.DisplayMode.Scale;
         compare(p.fillMode, 0 /* STRETCH */);
     }
+
+    // videoDecodeFailed surfaces a transient overlay (NOT InfoShow, because
+    // the wallpaper continues rendering without the broken texture).  The
+    // overlay shows the summary string + visibility flips on emit.
+    function _findVideoOverlay(parent) {
+        const buckets = [parent.children || [], parent.data || []];
+        for (const b of buckets) {
+            for (let i = 0; i < b.length; i++) {
+                const o = b[i];
+                if (o && typeof o.show === "function" &&
+                    typeof o.lastSummary !== "undefined") return o;
+            }
+        }
+        return null;
+    }
+
+    function test_videoDecodeFailed_showsTransientOverlay() {
+        const player = _findScenePlayer();
+        verify(player !== null);
+        const overlay = _findVideoOverlay(scene);
+        verify(overlay !== null);
+        // Baseline: hidden via the `shown` flag (Item.visible reports
+        // effective visibility, which under qmltestrunner may already be
+        // false from ancestor chain; the `shown` flag is the authoritative
+        // local toggle).
+        verify(!overlay.shown);
+
+        const summary = "Video texture missing.mp4: HW=err; SW=err";
+        player.videoDecodeFailed(summary);
+        // The Connections handler calls overlay.show(summary), which sets
+        // shown=true + lastSummary=summary.  tryCompare polls because the
+        // signal handler may not run synchronously under qmltestrunner.
+        tryCompare(overlay, "lastSummary", summary);
+        tryCompare(overlay, "shown", true);
+    }
 }

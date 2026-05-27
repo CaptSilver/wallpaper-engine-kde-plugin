@@ -30,6 +30,7 @@ Item {
     signal mediaThumbnailChanged(bool hasThumbnail, var colors)
     signal mediaTimelineChanged(var position, var duration, int state)
     signal mediaStatusChanged(bool enabled)
+    signal videoDecodeFailed(string summary)
 
     // ── test recorders (test-only stub) ──────────────────────────────────
     // Production wrappers call these imperatively; recording call-count and

@@ -26,10 +26,22 @@ PlaylistManager::PlaylistManager(QObject* parent)
     : QObject(parent), m_listModel(new PlaylistsModel(this)) {
     m_timer.setSingleShot(true);
     QObject::connect(&m_timer, &QTimer::timeout, this, &PlaylistManager::onTimerTick);
+    // UI4.1: 250ms debounce around persist(). Interval picked as the spec
+    // default — short enough that the post-drag write feels instantaneous to
+    // the user, long enough that a 50-step drag-reorder (30-100ms between
+    // moveItem calls) collapses to one write rather than 50. Profile-aware
+    // tuning remains an open question (see specs/UI4 Phase 3.1).
+    m_persistDebounceTimer.setSingleShot(true);
+    m_persistDebounceTimer.setInterval(250);
+    QObject::connect(&m_persistDebounceTimer, &QTimer::timeout, this,
+                     &PlaylistManager::flushPersist);
     load();
 }
 
-PlaylistManager::~PlaylistManager() = default;
+// UI4.1: dtor flushes any pending debounced write so a mutation made within
+// 250ms of destruction (e.g. a shutdown right after the user edits a playlist)
+// is not lost.
+PlaylistManager::~PlaylistManager() { flushPersist(); }
 
 QString PlaylistManager::configFilePath() const {
     const QString cfg = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
@@ -104,6 +116,22 @@ bool PlaylistManager::persist() {
     return true;
 }
 
+// UI4.1: mark a write pending and (re)start the 250ms debounce. Calls in
+// quick succession just slide the window — only the final flushPersist runs.
+void PlaylistManager::schedulePersist() {
+    m_persistPending = true;
+    m_persistDebounceTimer.start();
+}
+
+// UI4.1: synchronous flush. Drains the pending flag and writes once via
+// persist(). Safe to call when nothing is pending (no-op).
+void PlaylistManager::flushPersist() {
+    if (! m_persistPending) return;
+    m_persistPending = false;
+    m_persistDebounceTimer.stop();
+    persist();
+}
+
 void PlaylistManager::rebuildIndex() {
     m_indexById.clear();
     for (int i = 0; i < m_playlists.size(); ++i) m_indexById.insert(m_playlists[i].id, i);
@@ -136,7 +164,7 @@ QString PlaylistManager::createPlaylist(const QString& name) {
     m_playlists.append(pl);
     m_indexById.insert(pl.id, m_playlists.size() - 1);
     if (m_listModel) m_listModel->resetUnderlying();
-    persist();
+    schedulePersist();
     emit playlistsChanged();
     return pl.id;
 }
@@ -147,7 +175,7 @@ bool PlaylistManager::deletePlaylist(const QString& id) {
     if (m_activeId == id) deactivate();
     m_playlists.removeAt(*it);
     rebuildIndex();
-    persist();
+    schedulePersist();
     return true;
 }
 
@@ -157,7 +185,7 @@ bool PlaylistManager::renamePlaylist(const QString& id, const QString& name) {
     pl->name     = name;
     pl->modified = QDateTime::currentSecsSinceEpoch();
     if (m_listModel) m_listModel->notifyRowChanged(m_indexById.value(id));
-    persist();
+    schedulePersist();
     emit playlistsChanged();
     return true;
 }
@@ -168,7 +196,7 @@ bool PlaylistManager::setMode(const QString& id, PlaylistMode mode) {
     pl->mode     = mode;
     pl->modified = QDateTime::currentSecsSinceEpoch();
     if (m_listModel) m_listModel->notifyRowChanged(m_indexById.value(id));
-    persist();
+    schedulePersist();
     return true;
 }
 
@@ -182,7 +210,7 @@ bool PlaylistManager::setIntervalMin(const QString& id, int minutes) {
     pl->intervalMin = clampIntervalMin(minutes);
     pl->modified    = QDateTime::currentSecsSinceEpoch();
     if (m_listModel) m_listModel->notifyRowChanged(m_indexById.value(id));
-    persist();
+    schedulePersist();
     return true;
 }
 
@@ -195,7 +223,7 @@ bool PlaylistManager::addItem(const QString& playlistId, const QString& workshop
     pl->modified = QDateTime::currentSecsSinceEpoch();
     if (auto* m = m_itemsModels.value(playlistId)) m->resetUnderlying();
     if (m_listModel) m_listModel->notifyRowChanged(m_indexById.value(playlistId));
-    persist();
+    schedulePersist();
     return true;
 }
 
@@ -206,7 +234,7 @@ bool PlaylistManager::removeItem(const QString& playlistId, int index) {
     pl->modified = QDateTime::currentSecsSinceEpoch();
     if (auto* m = m_itemsModels.value(playlistId)) m->resetUnderlying();
     if (m_listModel) m_listModel->notifyRowChanged(m_indexById.value(playlistId));
-    persist();
+    schedulePersist();
     return true;
 }
 
@@ -219,7 +247,7 @@ bool PlaylistManager::moveItem(const QString& playlistId, int fromIdx, int toIdx
     pl->items.move(fromIdx, toIdx);
     pl->modified = QDateTime::currentSecsSinceEpoch();
     if (auto* m = m_itemsModels.value(playlistId)) m->resetUnderlying();
-    persist();
+    schedulePersist();
     return true;
 }
 

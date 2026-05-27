@@ -89,6 +89,11 @@ public:
     void onTimerTick();
     int  nextIntervalMsForTest() const;
 
+    // Test seam: synchronously flush any persist() write that the 250ms
+    // debounce timer hasn't fired yet. Older disk-state-after-mutate
+    // assertions call this instead of waiting on QTRY_VERIFY_WITH_TIMEOUT.
+    void flushPersistForTest() { flushPersist(); }
+
     // Pure shuffle picker: returns an index in [0, size) that is NOT equal
     // to `currentIdx`, with one re-pick fallback and a deterministic
     // force-different last-resort. Q_INVOKABLE so the QML controller
@@ -117,6 +122,14 @@ private:
     QString configFilePath() const;
     void    load();
     bool    persist();
+    // UI4.1: schedule a debounced persist() (250ms single-shot). Each CRUD
+    // mutator calls this instead of persist() so drag-burst reorders collapse
+    // to a single atomicWriteJson at the end of the burst.
+    void    schedulePersist();
+    // Synchronously flush any pending schedulePersist() — runs from the
+    // debounce timer, the dtor, and flushPersistForTest. Safe to call when
+    // nothing is pending (early-returns).
+    void    flushPersist();
     void    rebuildIndex();
     void    armTimerForCurrent();
     int     advanceSequential(int currentIdx, int size) const;
@@ -131,6 +144,13 @@ private:
     qint64              m_remainingMs    = -1; // -1 = no pause-state
     qint64              m_lastArmEpochMs = 0;
     bool                m_editorMode     = false;
+
+    // UI4.1: 250ms single-shot debounce around persist(). m_persistPending
+    // tracks whether a flush is scheduled; restart() on each schedulePersist
+    // call slides the window forward, so a drag-reorder burst (N moveItem
+    // calls in tight succession) collapses to exactly one disk write.
+    QTimer m_persistDebounceTimer;
+    bool   m_persistPending = false;
 
     PlaylistsModel*                     m_listModel = nullptr;
     QHash<QString, PlaylistItemsModel*> m_itemsModels;

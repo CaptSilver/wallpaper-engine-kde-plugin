@@ -80,6 +80,9 @@ private slots:
         QVERIFY(! id.isEmpty());
         QCOMPARE(mgr.playlists().size(), 1);
         QCOMPARE(mgr.playlists().first().name, QString("Morning rotation"));
+        // UI4.1: persist is debounced; flush so the on-disk assertion below
+        // sees the playlist we just created.
+        mgr.flushPersistForTest();
 
         QFile f(path);
         QVERIFY(f.open(QIODevice::ReadOnly));
@@ -159,6 +162,8 @@ private slots:
         const QString          id = mgr.createPlaylist("To delete");
         mgr.deletePlaylist(id);
         QVERIFY(mgr.playlists().isEmpty());
+        // UI4.1: flush so the on-disk assertion sees the delete.
+        mgr.flushPersistForTest();
 
         QFile f(path);
         QVERIFY(f.open(QIODevice::ReadOnly));
@@ -1024,6 +1029,107 @@ private slots:
         QVERIFY(! mgr.playlistContains("not-a-playlist", "wp-A"));
     }
 
+    // UI4.1: persist() now wraps in a 250ms QTimer debounce so CRUD bursts
+    // (drag-reorder calling moveItem N times) collapse to a single
+    // atomicWriteJson at the end of the burst. The mutators call
+    // schedulePersist(); flushPersist() fires on the timer + the dtor +
+    // an explicit flushPersistForTest() shim. Disk state is no longer
+    // observable synchronously after a mutator — tests that assert it
+    // must either flushPersistForTest() or QTRY-poll.
+
+    // A single addItem must NOT write to disk synchronously — the debounce
+    // window holds the write back so the burst case can coalesce.
+    void persistDebounce_addItemDoesNotWriteSync() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        const QString          path = setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        // ctor's load() runs persist() once for the fresh-file path (init
+        // sync path stays sync per spec). Attach spy AFTER ctor and create
+        // a fresh playlist — the persisted signal for the schedulePersist
+        // path must NOT fire synchronously.
+        QSignalSpy spy(&mgr, &wekde::PlaylistManager::persisted);
+
+        const QString id = mgr.createPlaylist("Debounce");
+        QCOMPARE(spy.count(), 0); // not yet — scheduled, not flushed
+        QVERIFY(! id.isEmpty());
+
+        // After the debounce window (≤ 1s), the persisted signal fires once.
+        QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 2000);
+        QVERIFY(QFile::exists(path));
+    }
+
+    // A burst of 20 moveItem calls must collapse to exactly ONE write after
+    // the debounce window — the canonical drag-reorder scenario.
+    void persistDebounce_20MoveItemBurstCollapsesToOneWrite() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString          id = mgr.createPlaylist("Burst");
+        for (int i = 0; i < 30; ++i) mgr.addItem(id, QString("W%1").arg(i));
+        // Flush any setup-debounced writes so the spy starts clean.
+        mgr.flushPersistForTest();
+        QSignalSpy spy(&mgr, &wekde::PlaylistManager::persisted);
+
+        // 20 sequential moveItem in a tight loop — sync calls, no event-loop
+        // spinning between them. Each one calls schedulePersist().
+        for (int i = 0; i < 20; ++i) mgr.moveItem(id, 0, (i + 1) % 30);
+        // No event-loop drain → no timer fire → persisted count stays 0.
+        QCOMPARE(spy.count(), 0);
+
+        // After the debounce window the timer fires exactly once.
+        QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 2000);
+    }
+
+    // Dtor flush: a mutator within the debounce window plus immediate
+    // destruction must NOT lose data — flushPersist runs in ~PlaylistManager.
+    void persistDebounce_dtorFlushesPending() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        const QString path = setupConfigHome(d);
+        QString       id;
+        {
+            wekde::PlaylistManager mgr;
+            id = mgr.createPlaylist("Survives");
+            mgr.addItem(id, "wp_dtor_flush");
+            // Both mutations are within the 250ms debounce window; do NOT
+            // advance the event loop so the timer can't fire. The dtor must
+            // flush them via flushPersist().
+        }
+        // Dtor ran flushPersist(); the data must be on disk.
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        const auto doc = QJsonDocument::fromJson(f.readAll());
+        QVERIFY(doc.isObject());
+        const auto arr = doc.object().value("playlists").toArray();
+        QCOMPARE(arr.size(), 1);
+        const auto items = arr.first().toObject().value("items").toArray();
+        QCOMPARE(items.size(), 1);
+    }
+
+    // flushPersistForTest sync-flushes any pending write — the test seam
+    // that lets older "disk-state-after-mutate" assertions keep working
+    // without a 250ms wait.
+    void persistDebounce_flushPersistForTestRunsSync() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        const QString          path = setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        QSignalSpy             spy(&mgr, &wekde::PlaylistManager::persisted);
+
+        const QString id = mgr.createPlaylist("Sync");
+        // Pending — not yet on disk.
+        QCOMPARE(spy.count(), 0);
+        mgr.flushPersistForTest();
+        // Synchronous: persisted() fired immediately, file reflects the new playlist.
+        QCOMPARE(spy.count(), 1);
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        const auto doc = QJsonDocument::fromJson(f.readAll());
+        QCOMPARE(doc.object().value("playlists").toArray().size(), 1);
+    }
+
     void pauseAndResumeKeepsStateConsistent() {
         QTemporaryDir d;
         QVERIFY(d.isValid());
@@ -1172,6 +1278,8 @@ private slots:
     // cfg_PlaylistsReloadSeq. Every CRUD path (create / rename / setMode
     // / setIntervalMin / addItem / removeItem / moveItem / delete) routes
     // through persist() → at least one persisted() emit per op.
+    // UI4.1: persist is now debounced; flush after each mutator so the
+    // signal fires synchronously for assertion.
     void persisted_emittedAfterEveryCrud() {
         QTemporaryDir d;
         QVERIFY(d.isValid());
@@ -1179,39 +1287,48 @@ private slots:
         wekde::PlaylistManager mgr;
         QSignalSpy             spy(&mgr, &wekde::PlaylistManager::persisted);
 
-        // create → persist
+        // create → schedulePersist → flush
         const QString id = mgr.createPlaylist("P");
+        mgr.flushPersistForTest();
         QVERIFY(spy.count() >= 1);
         spy.clear();
 
         mgr.renamePlaylist(id, "P2");
+        mgr.flushPersistForTest();
         QCOMPARE(spy.count(), 1);
         spy.clear();
 
         mgr.setMode(id, wekde::PlaylistMode::Shuffle);
+        mgr.flushPersistForTest();
         QCOMPARE(spy.count(), 1);
         spy.clear();
 
         mgr.setIntervalMin(id, 30);
+        mgr.flushPersistForTest();
         QCOMPARE(spy.count(), 1);
         spy.clear();
 
         mgr.addItem(id, "A");
+        mgr.flushPersistForTest();
         QCOMPARE(spy.count(), 1);
         spy.clear();
 
         mgr.addItem(id, "B");
+        mgr.flushPersistForTest();
         spy.clear();
 
         mgr.moveItem(id, 0, 1);
+        mgr.flushPersistForTest();
         QCOMPARE(spy.count(), 1);
         spy.clear();
 
         mgr.removeItem(id, 0);
+        mgr.flushPersistForTest();
         QCOMPARE(spy.count(), 1);
         spy.clear();
 
         mgr.deletePlaylist(id);
+        mgr.flushPersistForTest();
         QCOMPARE(spy.count(), 1);
     }
 

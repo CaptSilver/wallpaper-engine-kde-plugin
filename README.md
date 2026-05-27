@@ -194,6 +194,30 @@ After installing via any method:
    - This is usually `~/.local/share/Steam` by default
    - *Wallpaper Engine* needs to be installed in this *steamlibrary*
 
+### Multi-monitor
+
+Each screen has its own desktop (a Plasma "containment") and its own
+Wallpaper Engine settings. To set a different wallpaper per screen:
+
+1. Right-click the desktop you want to change → **Configure Desktop and Wallpaper…**
+2. Pick a wallpaper from the **Wallpapers** or **Videos** tab; click **Apply**.
+3. Repeat on each screen.
+
+> **Tip:** if both screens always change together, your screens are sharing
+> one desktop. Open **System Settings → Workspace → Workspace Behavior →
+> Virtual Desktops** (or right-click the panel → **Manage Panels and
+> Desktops**) and ensure each screen has its own desktop.
+
+Per-screen scope also applies to the **Background Color**, **Display
+Mode**, **Mute Audio**, **Volume**, and per-wallpaper user properties —
+every option in the right pane is stored under the containment that owns
+the screen.
+
+Playlists with **Active Playlist** set are intentionally **synchronized**
+across screens — every screen cycles to the same wallpaper on the same
+tick. To run different playlists per screen, activate one playlist on
+each containment independently.
+
 ## Requirements
 - KDE Plasma 6
 - Qt 6

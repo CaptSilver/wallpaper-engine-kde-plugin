@@ -81,6 +81,45 @@ Flickable {
             }
         }
         OptionItem {
+            text: 'Multi-monitor'
+            text_color: Kirigami.Theme.textColor
+            icon: '../../images/information-outline.svg'
+            contentBottom: ColumnLayout {
+                Text {
+                    Layout.fillWidth: true
+                    color: Kirigami.Theme.disabledTextColor
+                    text: `
+                        <p>Each screen has its own desktop (a Plasma
+                        <i>containment</i>) and its own Wallpaper Engine
+                        settings. To set a different wallpaper per
+                        screen:</p>
+                        <ol>
+                        <li>Right-click the desktop you want to change
+                            → <b>Configure Desktop and Wallpaper…</b></li>
+                        <li>Pick a wallpaper from the <b>Wallpapers</b>
+                            or <b>Videos</b> tab; click <b>Apply</b>.</li>
+                        <li>Repeat on each screen.</li>
+                        </ol>
+                        <p><b>Tip:</b> if both screens always change
+                        together, your screens are sharing one desktop.
+                        Open <i>System Settings → Workspace → Workspace
+                        Behavior → Virtual Desktops</i> (or right-click
+                        the panel → <i>Manage Panels and Desktops</i>)
+                        and ensure each screen has its own desktop.</p>
+                        <p>Per-screen scope also covers the background
+                        color, display mode, mute/volume, and
+                        per-wallpaper user properties.</p>
+                        <p>Playlists with an active <i>Active Playlist</i>
+                        are intentionally synchronized across screens —
+                        every screen cycles to the same wallpaper on the
+                        same tick.</p>
+                    `
+                    wrapMode: Text.Wrap
+                    textFormat: Text.RichText
+                }
+            }
+        }
+        OptionItem {
             id: githubRow
             icon: '../../images/github.svg'
             text: 'Github Repo'

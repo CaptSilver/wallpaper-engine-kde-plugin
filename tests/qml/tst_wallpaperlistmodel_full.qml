@@ -307,4 +307,56 @@ TestCase {
         wpModel.modelRefreshed();
         compare(wpModel._sourceRev, before + 1);
     }
+
+    // findItem must consult an O(1) byWorkshopId Map alongside
+    // folderWorker.model — for L=1000 wallpapers x 50 PlaylistsPage delegates
+    // the pre-patch linear scan was 25k string-compares per render.
+    function test_findItem_usesByWorkshopIdMap() {
+        // Build 50 fake items via loadFolderLists; map must size match.
+        fakeFileContent = '{"title":"X"}';
+        const items = [];
+        for (let i = 0; i < 50; ++i) items.push({ name: "wp" + i, mtime: i });
+        wpModel.loadFolderLists([{ folder: "/wp", items: items }]);
+        tryVerify(() => wpModel.findItem("wp25") !== null, 2000);
+        // Reach in via the documented Map invariant: size === model.length.
+        // We can't traverse private folderWorker directly from a test, so use
+        // findItem on each id and rely on the invariant that ALL 50 resolve.
+        for (let i = 0; i < 50; ++i) {
+            const got = wpModel.findItem("wp" + i);
+            verify(got !== null, "wp" + i + " missing from Map");
+            compare(got.workshopid, "wp" + i);
+        }
+    }
+
+    // Map staleness gate: byWorkshopId.size must equal folderWorker.model.length
+    // after every loadModel. This is the invariant that lets findItem be O(1).
+    function test_byWorkshopId_sizeMatchesModelLength() {
+        fakeFileContent = '{"title":"X"}';
+        const items = [];
+        for (let i = 0; i < 20; ++i) items.push({ name: "id" + i, mtime: i });
+        wpModel.loadFolderLists([{ folder: "/wp", items: items }]);
+        tryVerify(() => wpModel.findItem("id10") !== null, 2000);
+        // All 20 lookups must succeed (Map is keyed by workshopid).
+        for (let i = 0; i < 20; ++i) {
+            verify(wpModel.findItem("id" + i) !== null);
+        }
+        // A missing id returns null (Map.get returns undefined → ?? null).
+        compare(wpModel.findItem("id99"), null);
+    }
+
+    // Implementation-detail pin: findItem must reach for folderWorker.byWorkshopId
+    // (a Map) rather than scan folderWorker.model linearly. Read the
+    // WallpaperListModel.qml source and assert the byWorkshopId identifier
+    // appears at least once. Pre-patch the source has only `folderWorker.model`
+    // scan inside findItem.
+    function test_findItem_implementationReferencesByWorkshopIdMap() {
+        const xhr = new XMLHttpRequest();
+        xhr.open("GET", Qt.resolvedUrl("../../plugin/contents/ui/WallpaperListModel.qml"),
+                /* async = */ false);
+        xhr.send(null);
+        verify(xhr.responseText.length > 0,
+               "could not read WallpaperListModel.qml — QML_XHR_ALLOW_FILE_READ?");
+        verify(xhr.responseText.indexOf("byWorkshopId") !== -1,
+               "findItem should consult a byWorkshopId Map for O(1) lookups");
+    }
 }

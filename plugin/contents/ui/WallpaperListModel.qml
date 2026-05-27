@@ -60,13 +60,16 @@ Item {
     // (which is independent of the wallpaper-tab filter chips) must go
     // through this helper — otherwise a filtered-out wallpaper looks like a
     // missing one.
+    //
+    // Uses folderWorker.byWorkshopId (a JS Map) for O(1) lookup; the previous
+    // linear scan paid L (≈1000 wallpapers) × call-count per PlaylistsPage
+    // delegate render. Map is kept in sync inside loadModel — that is the
+    // ONLY mutation site; any future code that touches folderWorker.model
+    // directly must update byWorkshopId too or findItem will go stale.
     function findItem(workshopid) {
         // Touch _sourceRev so bindings re-evaluate when the source reloads.
         void root._sourceRev;
-        const arr = folderWorker.model;
-        for (let i = 0; i < arr.length; ++i)
-            if (arr[i].workshopid === workshopid) return arr[i];
-        return null;
+        return folderWorker.byWorkshopId.get(workshopid) ?? null;
     }
 
     function titleOf(workshopid) {
@@ -157,12 +160,20 @@ Item {
         // array
         property var folderMapModel: new Map()
         property var model: []
+        // workshopid -> item Map. Built/rebuilt inside loadModel alongside
+        // `model`; lookups via findItem are O(1) instead of linear. Invariant:
+        // byWorkshopId.size === model.length after every loadModel.
+        property var byWorkshopId: new Map()
 
         function loadModel(path, data) {
             this.folderMapModel.set(path, data);
             this.model = [];
+            this.byWorkshopId.clear();
             this.folderMapModel.forEach((value, key) => {
-                this.model.push(...value);
+                value.forEach(el => {
+                    this.model.push(el);
+                    this.byWorkshopId.set(el.workshopid, el);
+                });
             });
             return filterToList(root.model, root.filterStr, this.model);
         }

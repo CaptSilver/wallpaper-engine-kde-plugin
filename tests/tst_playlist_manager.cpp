@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-only
 // Unit tests for wekde::PlaylistManager
 //
-// Each test gets a fresh QTemporaryDir for XDG_CONFIG_HOME so PlaylistManager
-// reads/writes to an isolated tmp path. ~/.config/wekde/playlists.json is the
-// canonical location; tests verify the on-disk JSON and the in-memory model.
+// PlaylistManager reads/writes ~/.config/wekde/playlists.json via
+// QStandardPaths::writableLocation(GenericConfigLocation). Tests redirect
+// that location to a sandboxed test path via
+// QStandardPaths::setTestModeEnabled(true) in initTestCase() (same pattern
+// as tst_filehelper). Earlier revisions per-test qputenv'd XDG_CONFIG_HOME,
+// which wrote to environ[] (process-global) and leaked between cases under
+// reordering / parallel runs; setTestModeEnabled is process-global too but
+// scoped by initTestCase/cleanupTestCase and managed by Qt itself.
 
 #include <QtTest>
 #include <QTemporaryDir>
@@ -25,12 +30,38 @@
 class TstPlaylistManager : public QObject {
     Q_OBJECT
 private:
-    QString setupConfigHome(QTemporaryDir& d) {
-        qputenv("XDG_CONFIG_HOME", d.path().toLocal8Bit());
-        return d.path() + "/wekde/playlists.json";
+    // Compute the playlists.json path under the (test-mode-redirected)
+    // generic config location. The QTemporaryDir arg is retained for
+    // call-site compatibility but is no longer used to redirect config —
+    // setTestModeEnabled handles that process-wide in initTestCase().
+    QString setupConfigHome(QTemporaryDir&) {
+        return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+               + "/wekde/playlists.json";
     }
 
 private slots:
+    void initTestCase() {
+        // Redirect QStandardPaths::writableLocation(GenericConfigLocation)
+        // to a sandboxed test path so PlaylistManager never touches the real
+        // user config directory. Mirrors tst_filehelper's pattern.
+        QStandardPaths::setTestModeEnabled(true);
+    }
+
+    void cleanupTestCase() {
+        // Clean up the wekde subdir under the test-mode generic config
+        // location, then disable test mode.
+        QDir(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/wekde")
+            .removeRecursively();
+        QStandardPaths::setTestModeEnabled(false);
+    }
+
+    void cleanup() {
+        // Wipe the wekde subdir between cases so each test starts from a
+        // clean state (no playlists.json bleed-through).
+        QDir(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/wekde")
+            .removeRecursively();
+    }
+
     void emptyOnFreshConstruction() {
         QTemporaryDir d;
         QVERIFY(d.isValid());

@@ -132,7 +132,7 @@ private slots:
         FileHelper helper;
         QSignalSpy spy(&helper, &FileHelper::thumbnailReady);
         helper.generateThumbnail(in, out, 0.5);
-        QVERIFY(spy.wait(10000));
+        QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 10000);
         QCOMPARE(spy.count(), 1);
         const QList<QVariant> args = spy.takeFirst();
         QCOMPARE(args.at(0).toString(), in);
@@ -151,7 +151,7 @@ private slots:
         helper.generateThumbnail(in, out, 0.5);
         // Second call while first is in flight is dropped (coalesced).
         helper.generateThumbnail(in, out, 0.5);
-        QVERIFY(spy.wait(10000));
+        QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 10000);
         // Exactly one signal — second call returned without queueing work.
         QCOMPARE(spy.count(), 1);
     }
@@ -173,7 +173,7 @@ private slots:
         FileHelper helper;
         QSignalSpy spy(&helper, &FileHelper::thumbnailReady);
         helper.generateThumbnail(in, out, 0.5);
-        QVERIFY(spy.wait(2000));
+        QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 2000);
         QCOMPARE(spy.count(), 1);
         const auto args = spy.takeFirst();
         QCOMPARE(args.at(2).toBool(), true);
@@ -192,7 +192,7 @@ private slots:
         FileHelper helper;
         QSignalSpy spy(&helper, &FileHelper::thumbnailReady);
         helper.generateThumbnail(in, out, 0.5);
-        QVERIFY(spy.wait(10000));
+        QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 10000);
         QCOMPARE(spy.count(), 1);
         // Whether the grab succeeded or not, the parent dir must now exist.
         QVERIFY(QFileInfo::exists(QFileInfo(out).absolutePath()));

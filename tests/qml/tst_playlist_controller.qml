@@ -348,6 +348,95 @@ TestCase {
         ctrl.wpListModel = saved;
     }
 
+    // _serveFilteredPick must forward _lastFilteredPickIdx as the `cur`
+    // argument to mgr.pickShuffle. First pick: cur == -1; second pick:
+    // cur == previous safeIdx. The C++ pickShuffle no-repeat guard then
+    // protects the Filtered Library from immediate repeats just like the
+    // user-curated shuffle path.
+    function test_serveFilteredPick_callsMgrPickShuffleWithLastIdx() {
+        const saved = ctrl.wpListModel;
+        const m = Qt.createQmlObject(
+            'import QtQuick; QtObject { property var model: ListModel{} }', tc);
+        m.model.append({ workshopid: "A" });
+        m.model.append({ workshopid: "B" });
+        m.model.append({ workshopid: "C" });
+        ctrl.wpListModel = m;
+        ctrl._lastFilteredPickIdx = -1;
+        ctrl.manager.pickShuffleCount = 0;
+
+        // First pick: stub returns 0 for cur==-1.
+        ctrl._serveFilteredPick();
+        compare(ctrl.manager.pickShuffleCount, 1);
+        compare(ctrl.manager.lastPickShuffleArgs.cur, -1);
+        compare(ctrl.manager.lastPickShuffleArgs.size, 3);
+
+        // Second pick: cur is the previous safeIdx (0).
+        ctrl._serveFilteredPick();
+        compare(ctrl.manager.pickShuffleCount, 2);
+        compare(ctrl.manager.lastPickShuffleArgs.cur, 0);
+        compare(ctrl.manager.lastPickShuffleArgs.size, 3);
+
+        ctrl.wpListModel = saved;
+    }
+
+    // End-to-end: with a stub pickShuffle that honours the C++ contract
+    // (deterministic round-robin), 50 consecutive picks never repeat the
+    // same workshopid back-to-back.
+    function test_serveFilteredPick_neverPicksSameIndexTwiceInARow() {
+        const saved = ctrl.wpListModel;
+        const m = Qt.createQmlObject(
+            'import QtQuick; QtObject { property var model: ListModel{} }', tc);
+        m.model.append({ workshopid: "A" });
+        m.model.append({ workshopid: "B" });
+        m.model.append({ workshopid: "C" });
+        ctrl.wpListModel = m;
+        ctrl._lastFilteredPickIdx = -1;
+
+        let last = null;
+        for (let i = 0; i < 50; ++i) {
+            ctrl._serveFilteredPick();
+            const cur = ctrl.manager.lastAcceptPickArg;
+            if (last !== null)
+                verify(cur !== last,
+                    "immediate repeat at i=" + i + ": " + cur + " == " + last);
+            last = cur;
+        }
+        ctrl.wpListModel = saved;
+    }
+
+    // Reset on activate-different-playlist: re-entering the Filtered Library
+    // after a different playlist must NOT carry the stale index across
+    // activations of (possibly different) filter sets.
+    function test_serveFilteredPick_lastIdxResetsOnPlaylistChange() {
+        const saved = ctrl.wpListModel;
+        const m = Qt.createQmlObject(
+            'import QtQuick; QtObject { property var model: ListModel{} }', tc);
+        m.model.append({ workshopid: "A" });
+        m.model.append({ workshopid: "B" });
+        ctrl.wpListModel = m;
+        ctrl._lastFilteredPickIdx = -1;
+
+        // First pick sets _lastFilteredPickIdx to a non-(-1) value.
+        ctrl._serveFilteredPick();
+        verify(ctrl._lastFilteredPickIdx !== -1);
+
+        // Simulate deactivate via the activePlaylistIdRead binding — the
+        // onActivePlaylistIdReadChanged reset hook clears the index.
+        ctrl.manager.activePlaylistId = "prev-id";
+        ctrl.activePlaylistIdRead = "";
+        compare(ctrl._lastFilteredPickIdx, -1);
+
+        // Re-activate; next pick again uses cur == -1.
+        ctrl.manager.pickShuffleCount = 0;
+        ctrl.manager.activePlaylistId = "";
+        ctrl.activePlaylistIdRead = "__filtered_library__";
+        ctrl._serveFilteredPick();
+        compare(ctrl.manager.lastPickShuffleArgs.cur, -1);
+
+        ctrl.wpListModel = saved;
+        ctrl.activePlaylistIdRead = "";
+    }
+
     // ── Manager → parent: mgr.activePlaylistId / currentItemIndex changes ──
     // The PlaylistManager stub exposes these as plain QML properties, so
     // assigning to them from a test fires the change-signal that the

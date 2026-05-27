@@ -47,6 +47,19 @@ QtObject {
     property int  reloadCount:            0
     property int  playlistContainsCount:  0
 
+    // pickShuffle recorder + fake. Mirrors the C++ contract: never returns
+    // `cur` for size > 1; for size <= 1 returns 0. Default fake returns
+    // `(cur + 1) % size` so tests can drive a deterministic round-robin and
+    // assert no two consecutive calls share a return. Override
+    // `pickShuffleImpl` on the stub to drive a fixed sequence.
+    property int  pickShuffleCount:       0
+    property var  lastPickShuffleArgs:    ({ cur: 0, size: 0 })
+    property var  pickShuffleImpl:        function(cur, size) {
+        if (size <= 1) return 0;
+        if (cur < 0)   return 0;          // first pick: return index 0
+        return (cur + 1) % size;          // deterministic round-robin
+    }
+
     function createPlaylist(name) {
         createPlaylistCount += 1;
         lastCreatePlaylistName = name;
@@ -94,6 +107,11 @@ QtObject {
     // Stub: always returns false. Tests that exercise the "already
     // added" UI branch should mock this with a richer implementation.
     function playlistContains(id, workshopId) { playlistContainsCount += 1; return false; }
+    function pickShuffle(cur, size) {
+        pickShuffleCount += 1;
+        lastPickShuffleArgs = { cur: cur, size: size };
+        return pickShuffleImpl(cur, size);
+    }
     function activate(id) {
         activateCount += 1;
         lastActivateId = id;

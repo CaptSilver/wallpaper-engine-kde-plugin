@@ -179,6 +179,15 @@ Item {
         }
     }
 
+    // Last index served by _serveFilteredPick(), forwarded as `cur` to
+    // mgr.pickShuffle on the next pick. -1 sentinel = "no prior pick this
+    // session"; pickShuffle's `pick == cur` re-pick branch is trivially
+    // unreachable for cur == -1 and any non-negative pick. Reset whenever
+    // the active playlist deactivates or changes, so a re-enter of
+    // __filtered_library__ after a different playlist doesn't carry stale
+    // state across activations of (possibly different) filter sets.
+    property int _lastFilteredPickIdx: -1
+
     function _serveFilteredPick() {
         if (!root.wpListModel || !root.wpListModel.model) {
             mgr.acceptPick("");
@@ -186,8 +195,13 @@ Item {
         }
         const m = root.wpListModel.model;
         if (m.count === 0) { mgr.acceptPick(""); return; }
-        const idx = Math.floor(Math.random() * m.count);
-        const safeIdx = Math.min(idx, m.count - 1);
+
+        // Defer to C++ pickShuffle: implements the no-immediate-repeat guard
+        // used by user-curated shuffle playlists. -1 on first pick is treated
+        // as "any index in range" (size <= 1 short-circuits to 0).
+        const idx = mgr.pickShuffle(root._lastFilteredPickIdx, m.count);
+        const safeIdx = Math.max(0, Math.min(idx, m.count - 1));
+        root._lastFilteredPickIdx = safeIdx;
         mgr.acceptPick(m.get(safeIdx).workshopid);
     }
 
@@ -220,6 +234,11 @@ Item {
     // manager stays inactive — wallpapers don't cycle.
     onActivePlaylistIdReadChanged: {
         if (root.activePlaylistIdRead === mgr.activePlaylistId) return;
+        // Reset Filtered Library shuffle memory whenever the active playlist
+        // changes — a re-enter of __filtered_library__ after a different
+        // playlist must not carry a stale prior index against a possibly-
+        // different model.
+        root._lastFilteredPickIdx = -1;
         if (root.activePlaylistIdRead === "") {
             mgr.deactivate();
         } else {

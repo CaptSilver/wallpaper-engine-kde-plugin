@@ -89,6 +89,17 @@ public:
     void onTimerTick();
     int  nextIntervalMsForTest() const;
 
+    // Pure shuffle picker: returns an index in [0, size) that is NOT equal
+    // to `currentIdx`, with one re-pick fallback and a deterministic
+    // force-different last-resort. Q_INVOKABLE so the QML controller
+    // (PlaylistController._serveFilteredPick) shares the same
+    // no-immediate-repeat logic the C++ timer path uses for user-curated
+    // shuffle playlists. Pass currentIdx == -1 on the first pick of a
+    // freshly-activated playlist (no prior); the `pick == currentIdx`
+    // re-pick branch is trivially unreachable for negative `currentIdx`
+    // and any non-negative `pick`.
+    Q_INVOKABLE int pickShuffle(int currentIdx, int size) const;
+
 signals:
     void playlistsChanged();
     void activePlaylistIdChanged();
@@ -109,7 +120,6 @@ private:
     void    rebuildIndex();
     void    armTimerForCurrent();
     int     advanceSequential(int currentIdx, int size) const;
-    int     pickShuffle(int currentIdx, int size) const;
 
     QVector<Playlist>   m_playlists;
     QHash<QString, int> m_indexById;

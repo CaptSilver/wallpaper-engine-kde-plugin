@@ -725,6 +725,70 @@ private slots:
         }
     }
 
+    // pickShuffle was promoted from private to Q_INVOKABLE public so the QML
+    // Filtered Library cycler (PlaylistController._serveFilteredPick) can
+    // reuse the C++ no-immediate-repeat logic instead of bare Math.random().
+    // Verify the method is reachable via the metaobject — QMetaObject->
+    // indexOfMethod returns -1 if the method isn't Q_INVOKABLE/slot/signal.
+    void pickShuffle_isQInvokable_onMetaObject() {
+        wekde::PlaylistManager mgr;
+        const QMetaObject*     mo  = mgr.metaObject();
+        const int              idx = mo->indexOfMethod("pickShuffle(int,int)");
+        QVERIFY2(idx != -1,
+                 "pickShuffle(int,int) must be Q_INVOKABLE so QML can call it");
+    }
+
+    // Direct API contract: with size > 1 and a valid `cur` in range, the
+    // returned index must never equal `cur`. Mirrors the contract that
+    // shuffle_neverImmediatelyRepeats_evenAtSize2 verifies indirectly via
+    // onTimerTick; this is the seam the QML controller will call into.
+    void pickShuffle_directCall_neverReturnsCurForSizeGreaterThanOne() {
+        wekde::PlaylistManager mgr;
+        const QMetaObject*     mo = mgr.metaObject();
+        const int idx = mo->indexOfMethod("pickShuffle(int,int)");
+        QVERIFY(idx != -1);
+        const QMetaMethod method = mo->method(idx);
+        // Hammer multiple sizes; track immediate-repeat rate across 1000 calls
+        // per size. Anti-repeat is hard contract: rate must be 0%.
+        for (int size : { 2, 3, 5, 10 }) {
+            int curIdx     = 0;
+            int repeatRate = 0;
+            for (int i = 0; i < 1000; ++i) {
+                int returnedIdx = -1;
+                QVERIFY(method.invoke(&mgr, Qt::DirectConnection,
+                                      Q_RETURN_ARG(int, returnedIdx),
+                                      Q_ARG(int, curIdx),
+                                      Q_ARG(int, size)));
+                QVERIFY2(returnedIdx >= 0 && returnedIdx < size,
+                         qPrintable(QStringLiteral("size=%1 OOB idx=%2")
+                                        .arg(size).arg(returnedIdx)));
+                if (returnedIdx == curIdx) ++repeatRate;
+                curIdx = returnedIdx;
+            }
+            QCOMPARE(repeatRate, 0);
+        }
+    }
+
+    // Sentinel: -1 ("no prior pick this session") must produce a valid
+    // in-range index without crashing. QML controller passes -1 on the
+    // first pick of a freshly-activated Filtered Library.
+    void pickShuffle_negativeCurSentinel_returnsValidIndex() {
+        wekde::PlaylistManager mgr;
+        const QMetaObject*     mo = mgr.metaObject();
+        const int idx = mo->indexOfMethod("pickShuffle(int,int)");
+        QVERIFY(idx != -1);
+        const QMetaMethod method = mo->method(idx);
+        for (int i = 0; i < 100; ++i) {
+            int returnedIdx = -1;
+            QVERIFY(method.invoke(&mgr, Qt::DirectConnection,
+                                  Q_RETURN_ARG(int, returnedIdx),
+                                  Q_ARG(int, -1),
+                                  Q_ARG(int, 5)));
+            QVERIFY2(returnedIdx >= 0 && returnedIdx < 5,
+                     qPrintable(QStringLiteral("cur=-1 idx=%1").arg(returnedIdx)));
+        }
+    }
+
     // ── PlaylistsModel + PlaylistItemsModel direct tests ────────────────────
     // These QAbstractListModel subclasses are the QML data contract for
     // PlaylistsPage. A typo in a role name silently breaks every

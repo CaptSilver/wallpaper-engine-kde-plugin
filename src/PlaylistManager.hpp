@@ -131,6 +131,10 @@ private:
     // nothing is pending (early-returns).
     void    flushPersist();
     void    rebuildIndex();
+    // UI4.2: like rebuildIndex but skips the view-model reset + playlistsChanged
+    // emit. Used by deletePlaylist after the granular beginRemoveRow signal so
+    // the internal id->row map stays consistent without forcing a view rebuild.
+    void    rebuildIdIndexOnly();
     void    armTimerForCurrent();
     int     advanceSequential(int currentIdx, int size) const;
 

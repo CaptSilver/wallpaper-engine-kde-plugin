@@ -1108,6 +1108,146 @@ private slots:
         QCOMPARE(items.size(), 1);
     }
 
+    // UI4.2: single-row mutators must emit granular row signals
+    // (rowsInserted, rowsRemoved, rowsMoved) instead of beginResetModel /
+    // endResetModel. The reset-model signal forces the QML view to discard
+    // and rebuild every delegate — losing scroll position, selection, and
+    // animation state. begin{Insert,Remove,Move}Rows preserves view state.
+
+    void granular_createPlaylist_emitsRowsInsertedNotModelReset() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        auto*                  model = mgr.playlistsModel();
+        QVERIFY(model != nullptr);
+        QSignalSpy inserted(model, &QAbstractItemModel::rowsInserted);
+        QSignalSpy reset(model, &QAbstractItemModel::modelReset);
+        mgr.createPlaylist("New");
+        QCOMPARE(inserted.count(), 1);
+        QCOMPARE(reset.count(), 0);
+        const auto args = inserted.takeFirst();
+        // rowsInserted(parent, first, last) — for the first playlist row 0.
+        QCOMPARE(args.at(1).toInt(), 0);
+        QCOMPARE(args.at(2).toInt(), 0);
+    }
+
+    void granular_deletePlaylist_emitsRowsRemovedNotModelReset() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString          id1 = mgr.createPlaylist("Keep");
+        const QString          id2 = mgr.createPlaylist("Drop");
+        auto*                  model = mgr.playlistsModel();
+        QSignalSpy             removed(model, &QAbstractItemModel::rowsRemoved);
+        QSignalSpy             reset(model, &QAbstractItemModel::modelReset);
+        mgr.deletePlaylist(id2);
+        QCOMPARE(removed.count(), 1);
+        QCOMPARE(reset.count(), 0);
+        const auto args = removed.takeFirst();
+        QCOMPARE(args.at(1).toInt(), 1); // row 1 was "Drop"
+        QCOMPARE(args.at(2).toInt(), 1);
+    }
+
+    void granular_addItem_emitsRowsInsertedOnItemsModelNotModelReset() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString          id    = mgr.createPlaylist("X");
+        auto*                  items = mgr.itemsModel(id);
+        QVERIFY(items != nullptr);
+        QSignalSpy inserted(items, &QAbstractItemModel::rowsInserted);
+        QSignalSpy reset(items, &QAbstractItemModel::modelReset);
+        mgr.addItem(id, "wp1");
+        QCOMPARE(inserted.count(), 1);
+        QCOMPARE(reset.count(), 0);
+        const auto args = inserted.takeFirst();
+        QCOMPARE(args.at(1).toInt(), 0);
+        QCOMPARE(args.at(2).toInt(), 0);
+    }
+
+    void granular_removeItem_emitsRowsRemovedOnItemsModelNotModelReset() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString          id    = mgr.createPlaylist("X");
+        mgr.addItem(id, "A");
+        mgr.addItem(id, "B");
+        mgr.addItem(id, "C");
+        auto*      items = mgr.itemsModel(id);
+        QSignalSpy removed(items, &QAbstractItemModel::rowsRemoved);
+        QSignalSpy reset(items, &QAbstractItemModel::modelReset);
+        mgr.removeItem(id, 1); // remove middle ("B")
+        QCOMPARE(removed.count(), 1);
+        QCOMPARE(reset.count(), 0);
+        const auto args = removed.takeFirst();
+        QCOMPARE(args.at(1).toInt(), 1);
+        QCOMPARE(args.at(2).toInt(), 1);
+    }
+
+    // beginMoveRows takes a destinationRow that is the row AFTER the move
+    // target on FORWARD moves (the QAbstractItemModel docs require this);
+    // for backward moves the dest equals toRow.
+    void granular_moveItem_forward_emitsRowsMovedWithDestPlusOne() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString          id = mgr.createPlaylist("X");
+        for (int i = 0; i < 10; ++i) mgr.addItem(id, QString("W%1").arg(i));
+        auto*      items = mgr.itemsModel(id);
+        QSignalSpy moved(items, &QAbstractItemModel::rowsMoved);
+        QSignalSpy reset(items, &QAbstractItemModel::modelReset);
+        // Forward move 0 -> 5: Qt expects dest = 6 (one past target).
+        mgr.moveItem(id, 0, 5);
+        QCOMPARE(moved.count(), 1);
+        QCOMPARE(reset.count(), 0);
+        // rowsMoved(parent, start, end, destParent, dest)
+        const auto args = moved.takeFirst();
+        QCOMPARE(args.at(1).toInt(), 0); // start
+        QCOMPARE(args.at(2).toInt(), 0); // end
+        QCOMPARE(args.at(4).toInt(), 6); // dest = toRow + 1 for forward move
+    }
+
+    void granular_moveItem_backward_emitsRowsMovedWithDestEqualToRow() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString          id = mgr.createPlaylist("X");
+        for (int i = 0; i < 10; ++i) mgr.addItem(id, QString("W%1").arg(i));
+        auto*      items = mgr.itemsModel(id);
+        QSignalSpy moved(items, &QAbstractItemModel::rowsMoved);
+        // Backward move 5 -> 1: dest = 1 (no off-by-one for backward).
+        mgr.moveItem(id, 5, 1);
+        QCOMPARE(moved.count(), 1);
+        const auto args = moved.takeFirst();
+        QCOMPARE(args.at(1).toInt(), 5);
+        QCOMPARE(args.at(2).toInt(), 5);
+        QCOMPARE(args.at(4).toInt(), 1); // dest = toRow for backward move
+    }
+
+    // The Qt contract for beginInsertRows/beginRemoveRows/beginMoveRows is
+    // begin-before-mutate, end-after-mutate. The QSignalSpy on rowsInserted
+    // captures the signal AFTER begin/end completes, so we can verify the
+    // model now sees the new row count.
+    void granular_addItem_modelRowCountReflectsNewItem() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString          id    = mgr.createPlaylist("X");
+        auto*                  items = mgr.itemsModel(id);
+        QCOMPARE(items->rowCount(), 0);
+        mgr.addItem(id, "wp1");
+        QCOMPARE(items->rowCount(), 1);
+        mgr.addItem(id, "wp2");
+        QCOMPARE(items->rowCount(), 2);
+    }
+
     // flushPersistForTest sync-flushes any pending write — the test seam
     // that lets older "disk-state-after-mutate" assertions keep working
     // without a 250ms wait.

@@ -141,6 +141,16 @@ void PlaylistManager::rebuildIndex() {
     emit playlistsChanged();
 }
 
+// UI4.2: like rebuildIndex but DOES NOT touch the view models. Callers that
+// have already emitted granular row signals (begin/end) around the mutation
+// only need the internal id->row map refreshed. Mirrors rebuildIndex except
+// it omits the model reset + playlistsChanged emit (callers emit their own
+// after the granular end* signal completes).
+void PlaylistManager::rebuildIdIndexOnly() {
+    m_indexById.clear();
+    for (int i = 0; i < m_playlists.size(); ++i) m_indexById.insert(m_playlists[i].id, i);
+}
+
 const Playlist* PlaylistManager::findPlaylist(const QString& id) const {
     auto it = m_indexById.constFind(id);
     if (it == m_indexById.constEnd()) return nullptr;
@@ -161,9 +171,14 @@ QString PlaylistManager::createPlaylist(const QString& name) {
     pl.intervalMin = 15;
     pl.created     = QDateTime::currentSecsSinceEpoch();
     pl.modified    = pl.created;
+    // UI4.2: begin-mutate-end sequence so the QML view inserts the new row
+    // delegate in place instead of rebuilding every delegate (resetUnderlying
+    // path lost scroll position + selection state).
+    const int newRow = m_playlists.size();
+    if (m_listModel) m_listModel->beginInsertRow(newRow);
     m_playlists.append(pl);
-    m_indexById.insert(pl.id, m_playlists.size() - 1);
-    if (m_listModel) m_listModel->resetUnderlying();
+    m_indexById.insert(pl.id, newRow);
+    if (m_listModel) m_listModel->endInsertRow();
     schedulePersist();
     emit playlistsChanged();
     return pl.id;
@@ -173,8 +188,16 @@ bool PlaylistManager::deletePlaylist(const QString& id) {
     auto it = m_indexById.constFind(id);
     if (it == m_indexById.constEnd()) return false;
     if (m_activeId == id) deactivate();
-    m_playlists.removeAt(*it);
-    rebuildIndex();
+    // UI4.2: begin-mutate-end so the view animates the single row out instead
+    // of discarding every delegate. The internal id->row map is rebuilt by
+    // rebuildIdIndexOnly (no view reset). emit playlistsChanged after end so
+    // the listeners see the deletion via the granular signal first.
+    const int row = *it;
+    if (m_listModel) m_listModel->beginRemoveRow(row);
+    m_playlists.removeAt(row);
+    rebuildIdIndexOnly();
+    if (m_listModel) m_listModel->endRemoveRow();
+    emit playlistsChanged();
     schedulePersist();
     return true;
 }
@@ -219,9 +242,15 @@ bool PlaylistManager::addItem(const QString& playlistId, const QString& workshop
     if (! pl) return false;
     PlaylistItem it;
     it.workshopId = workshopId;
+    // UI4.2: begin-mutate-end on the items model so the new row is appended
+    // in place. The playlist row in m_listModel is dataChanged (itemCount
+    // role bumped) — no row reset there either.
+    const int newRow = static_cast<int>(pl->items.size());
+    auto*     items  = m_itemsModels.value(playlistId);
+    if (items) items->beginInsertRow(newRow);
     pl->items.append(it);
     pl->modified = QDateTime::currentSecsSinceEpoch();
-    if (auto* m = m_itemsModels.value(playlistId)) m->resetUnderlying();
+    if (items) items->endInsertRow();
     if (m_listModel) m_listModel->notifyRowChanged(m_indexById.value(playlistId));
     schedulePersist();
     return true;
@@ -230,9 +259,12 @@ bool PlaylistManager::addItem(const QString& playlistId, const QString& workshop
 bool PlaylistManager::removeItem(const QString& playlistId, int index) {
     auto* pl = findPlaylist(playlistId);
     if (! pl || index < 0 || index >= pl->items.size()) return false;
+    // UI4.2: begin-mutate-end so the view animates the row out.
+    auto* items = m_itemsModels.value(playlistId);
+    if (items) items->beginRemoveRow(index);
     pl->items.removeAt(index);
     pl->modified = QDateTime::currentSecsSinceEpoch();
-    if (auto* m = m_itemsModels.value(playlistId)) m->resetUnderlying();
+    if (items) items->endRemoveRow();
     if (m_listModel) m_listModel->notifyRowChanged(m_indexById.value(playlistId));
     schedulePersist();
     return true;
@@ -244,9 +276,14 @@ bool PlaylistManager::moveItem(const QString& playlistId, int fromIdx, int toIdx
     if (fromIdx < 0 || fromIdx >= pl->items.size()) return false;
     if (toIdx < 0 || toIdx >= pl->items.size()) return false;
     if (fromIdx == toIdx) return true;
+    // UI4.2: begin-mutate-end so the view animates the row move (preserving
+    // selection + scroll) instead of discarding every delegate. The wrapper
+    // handles the Qt destinationRow off-by-one (toRow+1 for forward moves).
+    auto* items = m_itemsModels.value(playlistId);
+    if (items) items->beginMoveRow(fromIdx, toIdx);
     pl->items.move(fromIdx, toIdx);
     pl->modified = QDateTime::currentSecsSinceEpoch();
-    if (auto* m = m_itemsModels.value(playlistId)) m->resetUnderlying();
+    if (items) items->endMoveRow();
     schedulePersist();
     return true;
 }

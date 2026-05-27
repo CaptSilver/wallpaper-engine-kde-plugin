@@ -42,6 +42,29 @@ void PlaylistsModel::resetUnderlying() {
     endResetModel();
 }
 
+void PlaylistsModel::beginInsertRow(int row) {
+    beginInsertRows(QModelIndex(), row, row);
+}
+
+void PlaylistsModel::endInsertRow() { endInsertRows(); }
+
+void PlaylistsModel::beginRemoveRow(int row) {
+    beginRemoveRows(QModelIndex(), row, row);
+}
+
+void PlaylistsModel::endRemoveRow() { endRemoveRows(); }
+
+void PlaylistsModel::beginMoveRow(int fromRow, int toRow) {
+    // QAbstractItemModel::beginMoveRows requires the destinationRow to be the
+    // row AFTER the move target for forward moves (fromRow < toRow). For
+    // backward moves, dest = toRow. Wrapping this in beginMoveRow keeps the
+    // off-by-one inside the model so callers pass the natural (from, to).
+    const int dest = (fromRow < toRow) ? toRow + 1 : toRow;
+    beginMoveRows(QModelIndex(), fromRow, fromRow, QModelIndex(), dest);
+}
+
+void PlaylistsModel::endMoveRow() { endMoveRows(); }
+
 void PlaylistsModel::notifyRowChanged(int row) {
     // Bounds-check both ends. Past-end is a real failure mode: callers
     // (PlaylistManager after a delete that races with a rename) could

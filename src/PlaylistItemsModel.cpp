@@ -38,4 +38,25 @@ void PlaylistItemsModel::resetUnderlying() {
     endResetModel();
 }
 
+void PlaylistItemsModel::beginInsertRow(int row) {
+    beginInsertRows(QModelIndex(), row, row);
+}
+
+void PlaylistItemsModel::endInsertRow() { endInsertRows(); }
+
+void PlaylistItemsModel::beginRemoveRow(int row) {
+    beginRemoveRows(QModelIndex(), row, row);
+}
+
+void PlaylistItemsModel::endRemoveRow() { endRemoveRows(); }
+
+void PlaylistItemsModel::beginMoveRow(int fromRow, int toRow) {
+    // beginMoveRows: destinationRow = toRow + 1 for forward moves; = toRow
+    // for backward moves. See PlaylistsModel::beginMoveRow for details.
+    const int dest = (fromRow < toRow) ? toRow + 1 : toRow;
+    beginMoveRows(QModelIndex(), fromRow, fromRow, QModelIndex(), dest);
+}
+
+void PlaylistItemsModel::endMoveRow() { endMoveRows(); }
+
 } // namespace wekde

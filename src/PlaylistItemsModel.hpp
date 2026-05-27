@@ -23,6 +23,19 @@ public:
 
     void resetUnderlying();
 
+    // UI4.2: granular wrappers around QAbstractItemModel's protected begin/end
+    // signal API. PlaylistManager calls these around in-memory item mutations
+    // so QML views preserve scroll + currentIndex + animations across
+    // single-row CRUD instead of forcing a full delegate rebuild.
+    void beginInsertRow(int row);
+    void endInsertRow();
+    void beginRemoveRow(int row);
+    void endRemoveRow();
+    // beginMoveRow handles the Qt off-by-one: destinationRow = toRow + 1 for
+    // forward moves (fromRow < toRow), otherwise destinationRow = toRow.
+    void beginMoveRow(int fromRow, int toRow);
+    void endMoveRow();
+
 private:
     PlaylistManager* m_mgr;
     QString          m_playlistId;

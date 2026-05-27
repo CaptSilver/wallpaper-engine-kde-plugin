@@ -1,0 +1,127 @@
+name: Bug report
+description: Report a crash, render glitch, or wrong behaviour
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please fill in **all** fields below — Vulkan,
+        GPU/driver and `WallpaperType` are the three biggest triage levers.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Describe the bug
+      description: What did you expect, and what happened?
+    validations:
+      required: true
+  - type: input
+    id: workshop_id
+    attributes:
+      label: Workshop ID (numeric)
+      placeholder: "e.g. 1139304621"
+      description: |
+        From the wallpaper's Steam Workshop URL
+        (`https://steamcommunity.com/sharedfiles/filedetails/?id=<ID>`).
+    validations:
+      required: true
+  - type: dropdown
+    id: wallpaper_type
+    attributes:
+      label: Wallpaper type
+      options:
+        - "Scene (2D/3D Vulkan)"
+        - "Web (HTML/JS via QtWebEngine)"
+        - "Video (MP4/WebM via Mpv or QtMultimedia)"
+        - "Not sure / matches the wallpaper's `type` field in `project.json`"
+    validations:
+      required: true
+  - type: dropdown
+    id: video_backend
+    attributes:
+      label: Video backend (only if Wallpaper type = Video)
+      options:
+        - "Mpv (default)"
+        - "QtMultimedia (fallback)"
+        - "N/A"
+  - type: input
+    id: plugin_version
+    attributes:
+      label: Plugin version
+      placeholder: "e.g. 1.3"
+      description: "From System Settings → Wallpaper picker dropdown, or `cat /usr/share/plasma/wallpapers/com.github.captsilver.wallpaperEngineKde/metadata.json | grep Version`."
+    validations:
+      required: true
+  - type: dropdown
+    id: install_source
+    attributes:
+      label: How did you install the plugin?
+      options:
+        - ".rpm (Fedora / Bazzite)"
+        - ".deb (Ubuntu / Debian)"
+        - "Source build (cmake --install)"
+        - "AUR / third-party package"
+        - "Other (describe)"
+    validations:
+      required: true
+  - type: input
+    id: plasma_version
+    attributes:
+      label: Plasma version
+      placeholder: "e.g. 6.2.4"
+      description: "Run `plasmashell --version`."
+    validations:
+      required: true
+  - type: input
+    id: qt_version
+    attributes:
+      label: Qt version
+      placeholder: "e.g. 6.7.2"
+      description: "Run `qmake6 -v` or `pacman -Q qt6-base` / `apt list --installed qt6-base-dev`."
+    validations:
+      required: true
+  - type: input
+    id: distro
+    attributes:
+      label: Distribution + version
+      placeholder: "e.g. Fedora 41 / Ubuntu 24.10 / Bazzite 41 / Arch (rolling)"
+      description: "Run `cat /etc/os-release` or `lsb_release -a`."
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU + driver
+      placeholder: "e.g. AMD RX 7900 XTX, RADV 24.3.4 (Mesa) — or NVIDIA RTX 4080, 565.77 (proprietary)"
+      description: "Run `lspci -nn -k | grep -EA3 'VGA|3D'` or `glxinfo -B | grep -i 'OpenGL renderer\\|version'`."
+    validations:
+      required: true
+  - type: textarea
+    id: vulkaninfo
+    attributes:
+      label: vulkaninfo summary
+      description: "Paste the output of `vulkaninfo --summary`."
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: we_version
+    attributes:
+      label: Wallpaper Engine version (Steam)
+      placeholder: "e.g. 2.6 build 1747"
+      description: "From Steam → Wallpaper Engine → Properties → Updates."
+  - type: textarea
+    id: plasmashell_log
+    attributes:
+      label: plasmashell log (last 200 lines)
+      description: "Run `journalctl /usr/bin/plasmashell -b --no-pager | tail -200` and paste here. Surround with three backticks."
+      render: shell
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context (screenshots, recordings, project.json)
+      description: |
+        - If the wallpaper looks different from the Workshop preview.gif, attach a screenshot.
+        - If it black-screens, also try the standalone viewer:
+          `cd src/backend_scene/standalone_view && cmake --build build && ./sceneviewer-script <assets> <scene.pkg>`
+          and paste any output (see CLAUDE.md "Standalone viewer for debugging").

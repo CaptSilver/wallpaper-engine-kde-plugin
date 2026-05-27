@@ -1292,6 +1292,71 @@ private slots:
         QCOMPARE(items->rowCount(), 2);
     }
 
+    // m_itemsModels cache must be invalidated when the underlying playlist
+    // is removed. Before the fix the cache survived deletePlaylist and the
+    // model's findPlaylist(m_playlistId) returned nullptr, leaving a
+    // dangling row-signal target for any in-flight add/remove dispatch.
+    void itemsModelCache_evictedOnDeletePlaylist() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString          id    = mgr.createPlaylist("to-evict");
+        auto*                  model = mgr.itemsModel(id);
+        QVERIFY(model != nullptr);
+
+        QSignalSpy destroyed(model, &QObject::destroyed);
+        QVERIFY(mgr.deletePlaylist(id));
+        // resetUnderlying() ran inline → rowCount drops to 0 immediately,
+        // before the deferred delete drains.
+        QCOMPARE(model->rowCount(), 0);
+
+        // The cache key was dropped synchronously by deletePlaylist; a
+        // fresh itemsModel(id) call (lazy-create path) yields a NEW
+        // pointer rather than the stale one. The old model is still alive
+        // at this point — deleteLater() has posted but DeferredDelete has
+        // not drained — so the new allocation cannot accidentally reuse
+        // the same heap slot.
+        auto* fresh = mgr.itemsModel(id);
+        QVERIFY(fresh != nullptr);
+        QVERIFY2(fresh != model,
+                 "evicted model pointer must not be reused — cache must drop the key");
+
+        // Drain DeferredDelete posted by deleteLater(); the original
+        // cache entry's model is now destroyed. The fresh model survives
+        // (still owned by the manager).
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QCOMPARE(destroyed.count(), 1);
+    }
+
+    // reload() that drops a playlist out of the freshly-loaded set
+    // (external edit / corruption-recovery wrote an empty playlists.json)
+    // must also evict its cached items model. Without the prune, the
+    // dangling cache entry could later receive row signals for a playlist
+    // id that no longer exists.
+    void itemsModelCache_prunedOnReloadWhenPlaylistDisappears() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        const QString          cfg = setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString          id    = mgr.createPlaylist("ephemeral");
+        auto*                  model = mgr.itemsModel(id);
+        QVERIFY(model != nullptr);
+        mgr.flushPersistForTest();
+
+        QSignalSpy destroyed(model, &QObject::destroyed);
+        // Simulate external edit: rewrite playlists.json with no playlists.
+        QFile f(cfg);
+        QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(R"({"version":1,"playlists":[]})");
+        f.close();
+
+        mgr.reload();
+        QCOMPARE(model->rowCount(), 0);
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        QCOMPARE(destroyed.count(), 1);
+    }
+
     // flushPersistForTest sync-flushes any pending write — the test seam
     // that lets older "disk-state-after-mutate" assertions keep working
     // without a 250ms wait.

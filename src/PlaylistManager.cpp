@@ -151,6 +151,24 @@ void PlaylistManager::rebuildIdIndexOnly() {
     for (int i = 0; i < m_playlists.size(); ++i) m_indexById.insert(m_playlists[i].id, i);
 }
 
+void PlaylistManager::pruneStaleItemsModels() {
+    // Walk a snapshot of cache keys — we mutate the map below. Any id no
+    // longer in m_indexById means the underlying playlist was removed by
+    // load() (external edit, corruption-recovery rewrite). The cached
+    // model survives in the deferred-delete queue so still-bound QML
+    // views see rowCount==0 and drop their delegates cleanly.
+    QList<QString> staleKeys;
+    for (auto it = m_itemsModels.constBegin(); it != m_itemsModels.constEnd(); ++it) {
+        if (! m_indexById.contains(it.key())) staleKeys.append(it.key());
+    }
+    for (const auto& id : staleKeys) {
+        if (auto* model = m_itemsModels.take(id)) {
+            model->resetUnderlying();
+            model->deleteLater();
+        }
+    }
+}
+
 const Playlist* PlaylistManager::findPlaylist(const QString& id) const {
     auto it = m_indexById.constFind(id);
     if (it == m_indexById.constEnd()) return nullptr;
@@ -197,6 +215,17 @@ bool PlaylistManager::deletePlaylist(const QString& id) {
     m_playlists.removeAt(row);
     rebuildIdIndexOnly();
     if (m_listModel) m_listModel->endRemoveRow();
+    // Evict the cached items-model for the deleted playlist. The model
+    // object itself, if any QML view still holds it, survives until the
+    // deferred delete drains, but it is removed from our cache so future
+    // addItem/removeItem/moveItem dispatches do not deliver row signals
+    // to a playlist that no longer exists. resetUnderlying() runs before
+    // deleteLater() so any current view sees rowCount==0 immediately
+    // rather than the prior rows.
+    if (auto* model = m_itemsModels.take(id)) {
+        model->resetUnderlying();
+        model->deleteLater();
+    }
     emit playlistsChanged();
     schedulePersist();
     return true;
@@ -526,6 +555,7 @@ void PlaylistManager::reload() {
         // Editor just needs the fresh data; no activation state to preserve.
         m_timer.stop();
         load();
+        pruneStaleItemsModels();
         return;
     }
     // Runtime: preserve active state across the reload so the user's
@@ -537,6 +567,7 @@ void PlaylistManager::reload() {
 
     m_timer.stop();
     load();
+    pruneStaleItemsModels();
 
     if (savedActiveId.isEmpty()) return;
     if (savedActiveId == kFilteredLibraryId) {

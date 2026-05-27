@@ -152,6 +152,11 @@ private:
     // emit. Used by deletePlaylist after the granular beginRemoveRow signal so
     // the internal id->row map stays consistent without forcing a view rebuild.
     void rebuildIdIndexOnly();
+    // Walk m_itemsModels and evict every entry whose id is no longer in
+    // m_indexById (a playlist removed by an external reload-side edit).
+    // Each evicted model is reset (rowCount→0 for any still-bound view)
+    // then queued for deferred delete. Called by reload() after load().
+    void pruneStaleItemsModels();
     void armTimerForCurrent();
     int  advanceSequential(int currentIdx, int size) const;
 

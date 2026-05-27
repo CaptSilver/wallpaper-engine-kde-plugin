@@ -21,6 +21,7 @@
 #include <QDir>
 #include <QSignalSpy>
 #include <QSet>
+#include <QRandomGenerator>
 
 #include "Playlist.hpp"
 #include "PlaylistManager.hpp"
@@ -824,6 +825,48 @@ private slots:
             QVERIFY2(returnedIdx >= 0 && returnedIdx < 5,
                      qPrintable(QStringLiteral("cur=-1 idx=%1").arg(returnedIdx)));
         }
+    }
+
+    // The new C++-only overload pickShuffle(cur, size, rng&) takes the RNG by
+    // reference; two seed=42 instances produce the same first three picks.
+    // Verifies (a) the overload is reachable, (b) the no-immediate-repeat
+    // guard fires across consecutive calls, (c) determinism is real (same
+    // seed -> same sequence).
+    void pickShuffle_seededRng_isDeterministic() {
+        wekde::PlaylistManager mgr;
+        QRandomGenerator       rng1(42);
+        const int              cur = 0;
+        const int              p1  = mgr.pickShuffle(cur, 5, rng1);
+        const int              p2  = mgr.pickShuffle(p1, 5, rng1);
+        const int              p3  = mgr.pickShuffle(p2, 5, rng1);
+        QVERIFY(p1 != cur);
+        QVERIFY(p2 != p1);
+        QVERIFY(p3 != p2);
+        for (int p : { p1, p2, p3 }) {
+            QVERIFY(p >= 0 && p < 5);
+        }
+
+        // Same seed -> same first pick.
+        QRandomGenerator rng2(42);
+        QCOMPARE(mgr.pickShuffle(0, 5, rng2), p1);
+    }
+
+    // Find a seed where the first two bounded(2) calls both return 0 — that
+    // exercises the (cur+1)%size fallback. Iterate a bounded range of seeds.
+    void pickShuffle_forceDifferent_exercisesFallbackBranch() {
+        wekde::PlaylistManager mgr;
+        for (quint32 seed = 1; seed < 10000; ++seed) {
+            QRandomGenerator probe(seed);
+            const quint32    first  = probe.bounded(2);
+            const quint32    second = probe.bounded(2);
+            if (first == 0 && second == 0) {
+                QRandomGenerator rng(seed);
+                const int        pick = mgr.pickShuffle(/*cur=*/0, /*size=*/2, rng);
+                QCOMPARE(pick, 1); // force-different fallback: (0+1)%2 == 1
+                return;
+            }
+        }
+        QFAIL("Could not find a seed exercising the force-different branch within 10000 attempts");
     }
 
     // ── PlaylistsModel + PlaylistItemsModel direct tests ────────────────────

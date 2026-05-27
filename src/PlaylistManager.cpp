@@ -316,12 +316,18 @@ int PlaylistManager::advanceSequential(int cur, int size) const {
     return (cur + 1) % size;
 }
 
-int PlaylistManager::pickShuffle(int cur, int size) const {
+int PlaylistManager::pickShuffle(int cur, int size) {
+    // Production default: route through the global thread-local RNG.
+    // Behaviour is identical to the pre-refactor body.
+    return pickShuffle(cur, size, *QRandomGenerator::global());
+}
+
+int PlaylistManager::pickShuffle(int cur, int size, QRandomGenerator& rng) {
     if (size <= 1) return 0;
-    int pick = QRandomGenerator::global()->bounded(size);
+    int pick = rng.bounded(size);
     if (pick == cur) {
         // Re-pick once to avoid trivial back-to-back repeat.
-        const int second = QRandomGenerator::global()->bounded(size);
+        const int second = rng.bounded(size);
         if (second != cur)
             pick = second;
         else {

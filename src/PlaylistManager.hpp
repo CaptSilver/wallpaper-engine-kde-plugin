@@ -6,6 +6,8 @@
 #include <QHash>
 #include <QTimer>
 
+class QRandomGenerator;
+
 #include "Playlist.hpp"
 #include "PlaylistsModel.hpp"
 #include "PlaylistItemsModel.hpp"
@@ -103,7 +105,22 @@ public:
     // freshly-activated playlist (no prior); the `pick == currentIdx`
     // re-pick branch is trivially unreachable for negative `currentIdx`
     // and any non-negative `pick`.
-    Q_INVOKABLE int pickShuffle(int currentIdx, int size) const;
+    //
+    // The Q_INVOKABLE arity-2 wrapper is what QML calls; it delegates to
+    // the explicit-RNG overload below using *QRandomGenerator::global() —
+    // production behaviour is unchanged. The const qualifier was dropped
+    // (vs the previous declaration) because the call DOES have a side
+    // effect: the global thread-local RNG's state advances on every
+    // bounded() invocation. const was honest about this->state but
+    // misleading about pure-function reasoning.
+    Q_INVOKABLE int pickShuffle(int currentIdx, int size);
+    // C++-only overload: tests pass a seeded QRandomGenerator for
+    // deterministic sequences. Not Q_INVOKABLE — moc resolves overloads
+    // by arity only and QML has no clean way to construct/pass a
+    // QRandomGenerator&. Same dual-pattern as setMode(QString,
+    // PlaylistMode) which uses a non-Q_INVOKABLE typed variant + a
+    // Q_INVOKABLE int wrapper to avoid moc ambiguity.
+    int pickShuffle(int currentIdx, int size, QRandomGenerator& rng);
 
 signals:
     void playlistsChanged();

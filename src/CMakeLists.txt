@@ -58,7 +58,11 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 # crash here takes down the desktop).  wek_warn_opts comes from
 # src/backend_scene/cmake/WekWarnings.cmake (included at the root before
 # add_subdirectory(src)); -Wall -Wextra, plus -Werror under WEK_WERROR.
-target_compile_options(${PROJECT_NAME} PRIVATE ${wek_warn_opts})
+# wek_harden_opts is empty unless -DWEK_HARDEN=ON; on, it adds
+# stack-protector-strong + _FORTIFY_SOURCE=2 + cf-protection=full at compile
+# time, and RELRO+now+noexecstack at link.
+target_compile_options(${PROJECT_NAME} PRIVATE ${wek_warn_opts} ${wek_harden_opts})
+target_link_options(${PROJECT_NAME} PRIVATE ${wek_harden_link_opts})
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_VISIBILITY_PRESET hidden)
 set_target_properties(${PROJECT_NAME}
                        PROPERTIES LINK_FLAGS "-Wl,--exclude-libs,ALL")

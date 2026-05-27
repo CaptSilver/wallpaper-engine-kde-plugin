@@ -153,6 +153,13 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/src/backend_scene/cmake/WekSanitize.cmake)
 # so wek_warn_opts is in scope for the plugin .so and backend_mpv targets.
 include(${CMAKE_CURRENT_SOURCE_DIR}/src/backend_scene/cmake/WekWarnings.cmake)
 
+# Release-time hardening plumbing (WEK_HARDEN + WEK_LTO + WEK_USE_LLD).  Same
+# canonical-file pattern; off by default so the developer flow is unchanged.
+# Packagers / source-built users opt in via -DWEK_HARDEN=ON (and optionally
+# -DWEK_LTO=ON for ThinLTO).  Declared before add_subdirectory(src) so
+# wek_harden_opts is in scope for the plugin .so / backend_mpv targets.
+include(${CMAKE_CURRENT_SOURCE_DIR}/src/backend_scene/cmake/WekHardening.cmake)
+
 add_subdirectory(src)
 
 option(BUILD_TESTS "Build unit tests (requires only Qt6 Core+Test)" OFF)

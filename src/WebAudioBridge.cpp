@@ -61,21 +61,22 @@ void WebAudioBridge::stop() {
 void WebAudioBridge::onTimerTick() {
     if (! m_analyzer) return;
     m_analyzer->Process();
-    QVariantList buf = encodeBuffer(*m_analyzer);
+    QList<double> buf = encodeBuffer(*m_analyzer);
     if (! buf.isEmpty()) emit audioBuffer(buf);
 }
 
-QVariantList WebAudioBridge::encodeBuffer(wallpaper::audio::AudioAnalyzer& analyzer) {
+QList<double> WebAudioBridge::encodeBuffer(wallpaper::audio::AudioAnalyzer& analyzer) {
     if (! analyzer.HasData()) return {};
 
     auto leftSpan  = analyzer.GetRawSpectrum(64, 0);
     auto rightSpan = analyzer.GetRawSpectrum(64, 1);
     if (leftSpan.size() != 64 || rightSpan.size() != 64) return {};
 
-    QVariantList out;
+    QList<double> out;
     out.reserve(128);
-    for (float v : leftSpan) out.append(QVariant(static_cast<double>(v)));
-    for (float v : rightSpan) out.append(QVariant(static_cast<double>(v)));
+    // Contiguous primitive storage — zero per-element QVariant boxing.
+    for (float v : leftSpan) out.append(static_cast<double>(v));
+    for (float v : rightSpan) out.append(static_cast<double>(v));
     return out;
 }
 

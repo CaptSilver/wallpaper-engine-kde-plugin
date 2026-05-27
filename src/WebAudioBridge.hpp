@@ -1,7 +1,7 @@
 #pragma once
+#include <QList>
 #include <QObject>
 #include <QTimer>
-#include <QVariantList>
 #include <memory>
 
 namespace wallpaper::audio
@@ -17,8 +17,10 @@ namespace wekde
 // into web wallpapers.  Web backends use QtWebEngine + QWebChannel and can't
 // reach the scene-side AudioAnalyzer that scene wallpapers tap; this bridge
 // runs an independent capture + analyzer pair while a web wallpaper is
-// active, emitting a 128-element QVariantList (64 left bands followed by 64
-// right bands, values 0..1) at ~30Hz.
+// active, emitting a 128-element QList<double> (64 left bands followed by 64
+// right bands, values 0..1) at ~30Hz. Qt6 auto-converts QList<numeric> to a
+// JS Array at the QML signal-handler boundary (contiguous primitive storage,
+// no per-element QVariant boxing).
 //
 // QtWebView.qml relays the signal through `webobj.sigAudio`, which the
 // injected `wallpaperRegisterAudioListener` shim hands to the wallpaper.
@@ -37,11 +39,13 @@ public:
     int  intervalMs() const { return m_intervalMs; }
     void setIntervalMs(int ms);
 
-    // Pure helper: convert an analyzer's spectrum into a flat QVariantList of
-    // 128 doubles (64 left, 64 right). Returns empty list when !HasData()
-    // or when the resolution cap doesn't match (defensive — analyzer
-    // currently always emits 64).
-    static QVariantList encodeBuffer(wallpaper::audio::AudioAnalyzer& analyzer);
+    // Pure helper: convert an analyzer's spectrum into a flat QList of 128
+    // doubles (64 left, 64 right). Returns an empty list when !HasData() or
+    // when the resolution cap doesn't match (defensive — analyzer currently
+    // always emits 64). QList<double> (contiguous primitive storage, no
+    // per-element QVariant boxing) → QML auto-converts to a JS Array at the
+    // onAudioBuffer signal-handler boundary.
+    static QList<double> encodeBuffer(wallpaper::audio::AudioAnalyzer& analyzer);
 
     // Test hook: feed PCM samples into the underlying analyzer and run one
     // FFT pass.  Lazy-creates the analyzer if `enabled` is false so tests
@@ -56,7 +60,7 @@ public:
 signals:
     void enabledChanged();
     void intervalMsChanged();
-    void audioBuffer(const QVariantList& samples);
+    void audioBuffer(const QList<double>& samples);
 
 private:
     void start();

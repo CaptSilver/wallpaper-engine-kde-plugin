@@ -8,10 +8,10 @@
 #include "Audio/AudioCapture.h"
 
 #include <QCoreApplication>
+#include <QList>
 #include <QObject>
 #include <QSignalSpy>
 #include <QTest>
-#include <QVariantList>
 #include <cmath>
 #include <memory>
 #include <vector>
@@ -74,18 +74,62 @@ private slots:
         a.Process();
         QVERIFY(a.HasData());
 
-        QVariantList buf = wekde::WebAudioBridge::encodeBuffer(a);
+        QList<double> buf = wekde::WebAudioBridge::encodeBuffer(a);
         QCOMPARE(buf.size(), 128);
         // Values should be in [0, ~1] after softSat normalization.  At least
         // one bin near 440Hz must register non-zero magnitude.
         bool sawNonZero = false;
-        for (const QVariant& v : buf) {
-            double d = v.toDouble();
+        for (double d : buf) {
             QVERIFY(d >= 0.0);
             QVERIFY(d <= 1.5); // soft-sat asymptote, not a hard clamp
             if (d > 0.0001) sawNonZero = true;
         }
         QVERIFY(sawNonZero);
+    }
+
+    // Pin the signal payload type against accidental reversion to
+    // QVariantList. The 30Hz signal must use contiguous-primitive storage;
+    // a regression to QVariantList silently re-introduces 128 per-tick
+    // heap boxes.
+    void encodeBuffer_returnsQListOfDoubles_notQVariantList() {
+        wallpaper::audio::AudioAnalyzer a;
+        auto                            pcm = makeSineStereo(FFT_SIZE * 2, 440.0, 48000.0);
+        std::vector<float>              floats;
+        floats.reserve(pcm.size());
+        for (qreal v : pcm) floats.push_back(float(v));
+        a.FeedPcm(floats.data(), uint32_t(floats.size() / 2), 2);
+        a.Process();
+        QVERIFY(a.HasData());
+
+        auto buf = wekde::WebAudioBridge::encodeBuffer(a);
+        // Compile-time enforcement: encodeBuffer must return QList<double>.
+        static_assert(std::is_same_v<decltype(buf), QList<double>>,
+                      "encodeBuffer must return QList<double> (not QVariantList)");
+        // Runtime cross-check via Qt metatype id.
+        QCOMPARE(QMetaType::fromType<decltype(buf)>().id(),
+                 QMetaType::fromType<QList<double>>().id());
+        QVERIFY(QMetaType::fromType<decltype(buf)>().id() != QMetaType::QVariantList);
+    }
+
+    // Pin the receiver-side contract: a slot taking const QList<double>&
+    // resolves correctly when audioBuffer fires. If a future refactor
+    // re-types the signal (e.g. to QList<float> or QVector<double>),
+    // this slot's signature fails to compile.
+    void audioBuffer_signalDeliversQListDoubleToReceiver() {
+        wekde::WebAudioBridge bridge;
+        QList<double>         received;
+        QObject::connect(
+            &bridge, &wekde::WebAudioBridge::audioBuffer, [&received](const QList<double>& s) {
+                received = s;
+            });
+
+        QVERIFY(bridge.feedTestPcm(makeSineStereo(FFT_SIZE * 2, 440.0, 48000.0), 2));
+        bridge.runOneTick();
+        QCOMPARE(received.size(), 128);
+        // Each element is a double (compile-time enforced by the lambda's
+        // signature; runtime spot-check: in [0, ~1.5] range per the FFT
+        // soft-sat contract).
+        QVERIFY(received.first() >= 0.0 && received.first() <= 1.5);
     }
 
     // ── feedTestPcm + runOneTick (signal contract) ───────────────────────
@@ -101,7 +145,10 @@ private slots:
         bridge.runOneTick();
         QCOMPARE(spy.count(), 1);
 
-        const QVariantList samples = spy.first().first().toList();
+        // QSignalSpy delivers each arg as a QVariant; for QList<double>
+        // signals unpack via .value<QList<double>>() (Qt6 auto-registers
+        // QList<double> for QVariant conversion).
+        const QList<double> samples = spy.first().first().value<QList<double>>();
         QCOMPARE(samples.size(), 128);
     }
 

@@ -20,6 +20,7 @@ private slots:
     void handlePrepareForSleep_sameStateIsIdempotent();
     void handlePrepareForSleep_emitsCarryNewValue();
     void sleepingProperty_reflectsLastDispatchedState();
+    void pmfConnect_signatureCompilesWithMatchingSlot();
 };
 
 void TestTTYSwitchMonitor::initialState_isAwake() {
@@ -87,6 +88,26 @@ void TestTTYSwitchMonitor::sleepingProperty_reflectsLastDispatchedState() {
     mon.handlePrepareForSleep(false);
     QCOMPARE(mon.property("sleeping").toBool(), false);
     QCOMPARE(spy.count(), 2);
+}
+
+void TestTTYSwitchMonitor::pmfConnect_signatureCompilesWithMatchingSlot() {
+    // Compile-time pin on handlePrepareForSleep's signature. The production
+    // QDBusConnection::connect in TTYSwitchMonitor.cpp uses the legacy
+    // SLOT(handlePrepareForSleep(bool)) string macro — Qt6's QDBusConnection
+    // does not (as of 6.10.3) expose a pointer-to-member-function overload,
+    // so the connect-site itself can't be made compile-checked. This test
+    // case takes the next-best step: it forms a member pointer with the
+    // exact `void (bool)` shape the SLOT macro string baked in. If a future
+    // refactor renames the slot, changes its parameter type/arity, or drops
+    // it entirely, this assignment fails to COMPILE in the test build —
+    // surfacing the drift at gate time rather than at runtime via a silently-
+    // returning-false connect() and a journal qWarning.
+    using SlotPtr = void (TTYSwitchMonitor::*)(bool);
+    SlotPtr p     = &TTYSwitchMonitor::handlePrepareForSleep;
+    // QVERIFY keeps the compiler from optimising the pointer assignment
+    // away. The *compile-time* check is the contract; this runtime
+    // assertion is just liveness so the case shows up in QtTest output.
+    QVERIFY(p != nullptr);
 }
 
 QTEST_MAIN(TestTTYSwitchMonitor)

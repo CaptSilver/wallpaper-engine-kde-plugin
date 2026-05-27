@@ -60,6 +60,20 @@ private slots:
         QMetaProperty prop = mo->property(idx);
         QCOMPARE(QString(prop.typeName()), QStringLiteral("QUrl"));
     }
+
+    // PluginInfo::cache_path is synthesised from XDG env + build-time submodule
+    // name — both fixed at process start. The Q_PROPERTY must be marked CONSTANT
+    // so QML doesn't subscribe to a NOTIFY signal that never fires. Mirrors the
+    // sibling 'version' contract pinned in version_typeIsString().
+    void cachePath_isMarkedConstant() {
+        const QMetaObject* mo  = &PluginInfo::staticMetaObject;
+        const int          idx = mo->indexOfProperty("cache_path");
+        QVERIFY2(idx >= 0, "Q_PROPERTY 'cache_path' not found");
+        QMetaProperty prop = mo->property(idx);
+        QVERIFY2(prop.isConstant(),
+                 "'cache_path' must be declared CONSTANT (process-lifetime invariant)");
+        QCOMPARE(prop.notifySignalIndex(), -1);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstPluginInfo)

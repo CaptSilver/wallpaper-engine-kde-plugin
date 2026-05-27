@@ -52,8 +52,8 @@ mull-runner-<ver> build/tests/tst_filehelper
 # Submodule tests (backend_scene — requires doctest, Qt6 for SceneScript tests)
 cmake -B build/sub -S src/backend_scene -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/sub
-./build/sub/src/Test/backend_scene_tests      # 427 tests
-./build/sub/src/Test/scenescript_tests         # 162 tests
+./build/sub/src/Test/backend_scene_tests      # ~2800 doctest cases (excludes SceneScript)
+./build/sub/src/Test/scenescript_tests         # ~730 doctest cases (SceneScript JS APIs)
 ```
 
 ### Local CI / preflight (the comprehensive gate)
@@ -64,7 +64,7 @@ is the single source of truth. The default run is the comprehensive gate:
 1. **clang-format lint** — parent-repo C/C++ (excludes `build|tests/build|tests/fixtures`).
 2. **Submodule build + tests** — `backend_scene_tests` + `scenescript_tests`.
 3. **Main project ctest** — the `tests/` binaries.
-4. **Fuzz smoke** — 7 libFuzzer harnesses, cold-start (`FUZZ_SECS=N` to tune, default 20s each).
+4. **Fuzz smoke** — 8 libFuzzer harnesses, cold-start (`FUZZ_SECS=N` to tune, default 20s each).
 
 Coverage and mutation testing are **separate opt-ins** (`-DCOVERAGE=ON` / `-DMUTATION_TESTING=ON`),
 not part of the default preflight path — run them on demand (see the topic memory files).
@@ -124,11 +124,21 @@ to make the leg fail (and then wire it into the default flow / pre-push hook).
 ### Main plugin (this repo)
 
 - **src/** — C++ code for the QML plugin
-  - `plugin.cpp` — QML plugin entry point, registers types under `com.github.catsout.wallpaperEngineKde`
-  - `FileHelper.cpp` — native C++ helper for file operations, wallpaper config CRUD, HTML patching for web wallpapers
-  - `MouseGrabber` — mouse event capture and forwarding to target QML items
-  - `TTYSwitchMonitor` — D-Bus listener for `PrepareForSleep` (TTY switch / suspend)
-  - `PluginInfo` — exposes cache path and version to QML
+  - `plugin.cpp` — QML plugin entry point. Registers 12 types under `com.github.captsilver.wallpaperEngineKde`:
+    - Creatable: `PluginInfo` (cache path + version), `MouseGrabber`, `SceneViewer`, `Mpv`,
+      `TTYSwitchMonitor`, `MprisMonitor`, `FileHelper`, `WebAudioBridge`, `PlaylistManager`.
+    - Uncreatable (owned by `PlaylistManager`): `PlaylistsModel`, `PlaylistItemsModel`.
+    - Singleton: `MigrationHelper`.
+    A `com.github.catsout.…` shim package installs in parallel as a v1.3 migration aid
+    (see `WEK_INSTALL_CATSOUT_SHIM` in the root `CMakeLists.txt`).
+  - `FileHelper.cpp` — native C++ helper for file ops, wallpaper config CRUD, HTML patching for web wallpapers, thumbnail generation.
+  - `MouseGrabber` — mouse event capture and forwarding to target QML items.
+  - `TTYSwitchMonitor` — D-Bus listener for `PrepareForSleep` (TTY switch / suspend).
+  - `MprisMonitor` — MPRIS2 player state + colour extraction for media-aware wallpapers.
+  - `PluginInfo` — exposes cache path and version to QML.
+  - `WebAudioBridge` — Web-Audio API bridge between QtWebEngine wallpapers and host audio.
+  - `MigrationHelper` — runs the v1.2→1.3 catsout-id migration in-process via KConfig.
+  - `PlaylistManager` / `PlaylistsModel` / `PlaylistItemsModel` — wallpaper playlist editor + runtime.
 
 - **src/backend_mpv/** — MPV backend for video wallpapers
   - Uses libmpv for playback
@@ -141,8 +151,12 @@ to make the leg fail (and then wire it into the default flow / pre-push hook).
   - `backend/Scene.qml` — SceneViewer QML integration
   - `backend/Mpv.qml` — MPV QML integration
 
-- **tests/** — Main project unit tests (QtTest)
-  - `tst_filehelper.cpp` — 37 tests for FileHelper (readFile, getDirSize, getFolderList, config CRUD, patchedHtml, readActiveBindings)
+- **tests/** — Main project unit tests (Qt6Test + QuickTest + node).
+  - C++ binaries: `tst_filehelper`, `tst_plugininfo`, `tst_mpriscolors`,
+    `tst_mousegrabber`, `tst_mpvbackend`, `tst_thumbnail_grabber`, `tst_webaudio`,
+    `tst_migrationhelper`, `tst_playlist_manager`, `tst_ttyswitchmonitor`.
+  - QML tests: ~27 `tst_*.qml` files under `tests/qml/` (driven via qmltestrunner).
+  - JS tests: `node --test` over `tests/js/*.test.mjs`.
 
 - **rpm/wek.spec** — RPM packaging spec
 - **debian/** — Debian packaging
@@ -166,7 +180,7 @@ Git submodule: [CaptSilver/wallpaper-scene-renderer](https://github.com/CaptSilv
   - `SceneMaterial.h` — material with shader, constValues, constValuesDirty flag
 - **src/Particle/** — particle system (emitters, initializers, operators, renderers)
 - **src/Audio/** — audio via miniaudio, FFT spectrum analysis (KissFFT)
-- **src/WPSceneParser.cpp** — main scene JSON parser (~2800 lines), builds Scene from wallpaper files
+- **src/WPSceneParser.cpp** — main scene JSON parser (~5500 lines), builds Scene from wallpaper files. `ParseImageObj` / `ParseTextObj` are orchestrators over ~30 extracted helpers (2026-05-26 decompose passes); `setupTextScripts` in the `qml_helper` bridge follows the same pattern.
 - **src/WPShaderParser.cpp** — HLSL-to-GLSL shader translation
 - **src/WPShaderValueUpdater.cpp** — per-frame shader uniform updates (time, mouse, lights, audio, ambient/skylight)
 - **src/SceneWallpaper.cpp** — thread-safe bridge: MainHandler (load/parse), RenderHandler (draw), pending update queues with mutexes
@@ -183,7 +197,7 @@ Git submodule: [CaptSilver/wallpaper-scene-renderer](https://github.com/CaptSilv
 #### Tests
 
 - **src/Test/** — doctest-based unit tests
-  - `test_SceneScript.cpp` — 162 tests for all JS APIs (Vec3, WEMath, WEColor, layer/sound/scene proxies, dirty tracking, IIFE compilation, timers, device detection)
+  - `test_SceneScript.cpp` — ~730 tests for all JS APIs (Vec3, WEMath, WEColor, layer/sound/scene proxies, dirty tracking, IIFE compilation, timers, device detection).
   - Other test files: WPTexImageParser, SpecTexs, SpriteAnimation, WPShaderTransforms, StringUtils, Algorism, WPUserProperties, WPPuppet, ParticleModify, WPTextLayer
 
 #### Third-party libraries (third_party/)

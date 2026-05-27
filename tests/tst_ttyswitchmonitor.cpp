@@ -21,6 +21,14 @@ private slots:
     void handlePrepareForSleep_emitsCarryNewValue();
     void sleepingProperty_reflectsLastDispatchedState();
     void pmfConnect_signatureCompilesWithMatchingSlot();
+    // Ctor-injection seam mirrors the F-7 ScreenSaverMonitor pattern. The
+    // distrobox harness lacks dbus-launch/dbus-run-session, so the wireUp
+    // code path is otherwise unreachable under ctest. These two cases
+    // pin the overload signature and prove the ctor doesn't crash on
+    // either bus state — the slot-direct path remains exercised by the
+    // existing handlePrepareForSleep_* cases.
+    void ctor_injectable_disconnectedBus_doesNotCrash();
+    void ctor_injectable_systemBus_doesNotCrash();
 };
 
 void TestTTYSwitchMonitor::initialState_isAwake() {
@@ -108,6 +116,30 @@ void TestTTYSwitchMonitor::pmfConnect_signatureCompilesWithMatchingSlot() {
     // away. The *compile-time* check is the contract; this runtime
     // assertion is just liveness so the case shows up in QtTest output.
     QVERIFY(p != nullptr);
+}
+
+void TestTTYSwitchMonitor::ctor_injectable_disconnectedBus_doesNotCrash() {
+    // Pass a default-constructed QDBusConnection (isConnected()==false).
+    // The wireUp branch must early-out; the slot-direct path is still
+    // exercised. Mirrors the F-7 ScreenSaverMonitor injection seam.
+    QDBusConnection bus("wek-test-not-a-real-bus");
+    QVERIFY(! bus.isConnected());
+    TTYSwitchMonitor mon(bus, /*parent=*/nullptr);
+    QSignalSpy       spy(&mon, &TTYSwitchMonitor::ttySwitch);
+    mon.handlePrepareForSleep(true);
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(mon.isSleeping(), true);
+}
+
+void TestTTYSwitchMonitor::ctor_injectable_systemBus_doesNotCrash() {
+    // Probe the real system bus once. On distrobox it's unavailable; on a
+    // host with login1 it's reachable. Either way, the ctor must succeed;
+    // the wireUp branch is taken only on the connected path. This case
+    // pins "the overload exists" + "ctor doesn't crash regardless of
+    // bus availability".
+    QDBusConnection  bus = QDBusConnection::systemBus();
+    TTYSwitchMonitor mon(bus, /*parent=*/nullptr);
+    QVERIFY(true); // ctor returned without crashing
 }
 
 QTEST_MAIN(TestTTYSwitchMonitor)

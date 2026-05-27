@@ -13,14 +13,21 @@ TTYSwitchMonitor::TTYSwitchMonitor(QQuickItem* parent): QQuickItem(parent), m_sl
                  "pause-on-suspend disabled");
         return;
     }
+    wireUp(systemBus);
+}
 
-    bool connected = systemBus.connect("org.freedesktop.login1",
-                                       "/org/freedesktop/login1",
-                                       "org.freedesktop.login1.Manager",
-                                       "PrepareForSleep",
-                                       this,
-                                       SLOT(handlePrepareForSleep(bool)));
+TTYSwitchMonitor::TTYSwitchMonitor(QDBusConnection bus, QQuickItem* parent)
+    : QQuickItem(parent), m_sleeping(false) {
+    if (bus.isConnected()) wireUp(bus);
+}
 
+void TTYSwitchMonitor::wireUp(QDBusConnection bus) {
+    bool connected = bus.connect("org.freedesktop.login1",
+                                 "/org/freedesktop/login1",
+                                 "org.freedesktop.login1.Manager",
+                                 "PrepareForSleep",
+                                 this,
+                                 SLOT(handlePrepareForSleep(bool)));
     if (! connected) {
         qWarning("wekde::TTYSwitchMonitor: failed to connect to "
                  "PrepareForSleep signal; pause-on-suspend disabled");

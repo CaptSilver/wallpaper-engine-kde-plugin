@@ -14,6 +14,17 @@ Item {
     property var readfile
     property var patchedHtml
     property string qwebChannelJs: ""
+    // Injected by main.qml at load time; tests may override directly on
+    // the QtWebView. permissionHandler.handle() reads webItem.pyext.
+    property var pyext: null
+    // Test seams: production is null. The permission flow exposes the
+    // active dialog and a hook that bypasses pyext.write_wallpaper_config
+    // so QML harnesses can drive Allow / Deny without a Pyext promise stub.
+    // _lastConsoleForward captures the most recent JS console message the
+    // onJavaScriptConsoleMessage handler forwarded (for E6 assertions).
+    property var _lastPermissionDialog: null
+    property var _persistDecisionForTest: null
+    property var _lastConsoleForward: null
 
     // Load patched HTML when source changes (after scripts are ready)
     onSourceChanged: {
@@ -27,6 +38,12 @@ Item {
 
         var filePath = Common.urlNative(fileUrl);
         var baseUrl = fileUrl.substring(0, fileUrl.lastIndexOf('/') + 1);
+        var baseDir = Common.urlNative(baseUrl); // strip file:// once
+
+        // Scope subsequent file:// requests from the page to this wallpaper's
+        // directory; without this, malicious wallpapers can fetch arbitrary
+        // local files (e.g. /etc/passwd, ~/.ssh/id_rsa).
+        wallpaperInterceptor.setWallpaperBaseDir(baseDir);
 
         // Read HTML and inject History API patch before Angular/etc scripts
         var html = webItem.patchedHtml(filePath);
@@ -136,10 +153,83 @@ Item {
         registeredObjects: [webobj]
     }
 
+    // Per-wallpaper file:// gate (SEC-WEB1 sandbox).  setWallpaperBaseDir
+    // is called from loadWallpaper() before loadHtml; until then the gate
+    // blocks all file:// requests (defensive default).
+    WebUrlInterceptor {
+        id: wallpaperInterceptor
+    }
+
+    // Dedicated profile so the interceptor is scoped per-wallpaper-view and
+    // doesn't share storage with any other QtWebEngine consumer.
+    // offTheRecord=false + a stable storageName lets clock/weather wallpapers
+    // persist their localStorage across reloads.
+    WebEngineProfile {
+        id: wallpaperProfile
+        urlRequestInterceptor: wallpaperInterceptor
+        offTheRecord: false
+        storageName: "wek-wallpaper"
+    }
+
+    // Consents are persisted under the wallpaper config's `permissions` key
+    // as { "<featureNum>": "allow" | "deny" }.  No prior decision → ask.
+    QtObject {
+        id: permissionHandler
+
+        // Test seam (production: null) — see web._persistDecisionForTest.
+        property var _persistDecisionForTest: null
+
+        function handle(view, origin, feature) {
+            const px = webItem.pyext;
+            const wid = background.workshopid;
+            const key = String(feature);
+            if (! px || ! px.read_wallpaper_config) {
+                // Pyext not ready — safe default: deny.
+                view.grantFeaturePermission(origin, feature, false);
+                return;
+            }
+            px.read_wallpaper_config(wid).then(function(cfg) {
+                const saved = (cfg && cfg.permissions) || {};
+                if (saved[key] === "allow") {
+                    view.grantFeaturePermission(origin, feature, true);
+                    return;
+                }
+                if (saved[key] === "deny") {
+                    view.grantFeaturePermission(origin, feature, false);
+                    return;
+                }
+                // No prior decision — surface the dialog.
+                permissionDialog.askFor(view, origin, feature,
+                        function(allow, remember) {
+                    view.grantFeaturePermission(origin, feature, allow);
+                    console.log("[WEK] permission " + (allow ? "GRANTED" : "DENIED")
+                        + " feature=" + feature + " origin=" + origin
+                        + " wid=" + wid + " remember=" + remember);
+                    if (remember) {
+                        saved[key] = allow ? "allow" : "deny";
+                        if (webItem._persistDecisionForTest) {
+                            webItem._persistDecisionForTest(
+                                wid, key, saved[key]);
+                        } else {
+                            px.write_wallpaper_config(wid,
+                                { permissions: saved });
+                        }
+                    }
+                });
+                webItem._lastPermissionDialog = permissionDialog;
+            });
+        }
+    }
+
+    PermissionDialog {
+        id: permissionDialog
+    }
+
     WebEngineView {
     //WebView {
         id: web
         anchors.fill: parent
+        profile: wallpaperProfile
         enabled: true
         audioMuted: background.mute
         activeFocusOnPress: false
@@ -156,7 +246,8 @@ Item {
             settings.showScrollBars = false;
 
             settings.localContentCanAccessRemoteUrls = true;
-            settings.allowGeolocationOnInsecureOrigins = true;
+            // Geolocation + other dangerous features are NOT auto-granted;
+            // see onFeaturePermissionRequested + permissionHandler below.
             _init = true;
         }
 
@@ -194,6 +285,36 @@ Item {
                 }
                 background.sig_backendFirstFrame('QtWebEngine');
             }
+        }
+
+        // Dangerous-feature consent (geolocation, microphone, camera, mouse
+        // lock, desktop capture, notifications).  Per-(workshop-id, feature)
+        // decisions are persisted via pyext.write_wallpaper_config; first
+        // encounter opens permissionDialog. Test seams (_lastPermissionDialog,
+        // _persistDecisionForTest, pyext) live on the outer webItem.
+        onFeaturePermissionRequested: function(securityOrigin, feature) {
+            permissionHandler.handle(web, securityOrigin, feature);
+        }
+
+        // JS console + parse-error bridge so silent black-screen wallpapers
+        // can be diagnosed via:
+        //   journalctl /usr/bin/plasmashell -f | grep "WEK-page"
+        // Qt levels: 0=Info, 1=Warning, 2=Error.  The FileHelper-injected
+        // window.addEventListener('error') shim emits via console.error so
+        // uncaught throws land at level 2.
+        onJavaScriptConsoleMessage: (level, message, lineNumber, sourceID) => {
+            const levelTag = level === 2 ? "ERROR" : (level === 1 ? "WARN" : "INFO");
+            const src      = sourceID && sourceID.length > 0 ? sourceID : "<inline>";
+            const msg      = "[WEK-page " + levelTag + "] " + src + ":" + lineNumber
+                           + " " + message;
+            const qmlLevel = level === 2 ? "error" : (level === 1 ? "warn" : "log");
+            if (level === 2)      console.error(msg);
+            else if (level === 1) console.warn(msg);
+            else                  console.log(msg);
+            webItem._lastConsoleForward = {
+                level: level, message: msg, lineNumber: lineNumber,
+                sourceID: src, qmlLevel: qmlLevel,
+            };
         }
 
         onPausedChanged: {
@@ -247,8 +368,12 @@ Item {
                                 if(propertyListener.applyUserProperties)
                                     wpeQml.sigUserProperties.connect(propertyListener.applyUserProperties);
                             }
-                            wpeQml.loaded = true;
-                            console.log('[WEK] wpeQml.loaded set to true');
+                            // No more wpeQml.loaded = true — the QML side now drives
+                            // init via setLoaded(true) on LoadSucceededStatus, fired
+                            // from QtWebView.qml's onLoadingChanged handler. Wallpapers
+                            // needing an "I'm ready" hook can connect to the bridge's
+                            // sigInit signal.
+                            console.log('[WEK] QWebChannel handshake complete');
                         });
                         document.getElementsByTagName('body')[0].ondragstart = function() { return false; }
                     `

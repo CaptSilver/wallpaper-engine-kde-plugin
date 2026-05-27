@@ -171,14 +171,19 @@ QString FileHelper::patchedHtml(const QString& path) {
     static const QString patch = QStringLiteral(
         "<script>"
         "(function(){"
-        // Global error handlers for diagnostics
+        // Page-side error handlers — routed through console.error so the
+        // QML onJavaScriptConsoleMessage handler picks them up at level 2,
+        // and prefixed [WEK-page UNCAUGHT/UNHANDLED-PROMISE/STACK] so the
+        // `journalctl /usr/bin/plasmashell -f | grep WEK-page` workflow
+        // catches them in one filter.
         "window.addEventListener('error',function(e){"
-        "console.warn('[WEK] ERROR:',e.message,'at',e.filename+':'+e.lineno+':'+e.colno);"
-        "if(e.error&&e.error.stack)console.warn('[WEK] STACK:',e.error.stack);"
+        "var src=(e.filename||'<inline>')+':'+(e.lineno||0)+':'+(e.colno||0);"
+        "console.error('[WEK-page UNCAUGHT] '+src+' '+(e.message||e.error));"
+        "if(e.error&&e.error.stack)console.error('[WEK-page STACK] '+e.error.stack);"
         "});"
         "window.addEventListener('unhandledrejection',function(e){"
-        "console.warn('[WEK] REJECTION:',e.reason);"
-        "if(e.reason&&e.reason.stack)console.warn('[WEK] STACK:',e.reason.stack);"
+        "var r=e.reason&&(e.reason.stack||e.reason.message||e.reason);"
+        "console.error('[WEK-page UNHANDLED-PROMISE] '+r);"
         "});"
         // Patch History API to suppress SecurityError on file:// URLs
         "var oR=history.replaceState,oP=history.pushState;"

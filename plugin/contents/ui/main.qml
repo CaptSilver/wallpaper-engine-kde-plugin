@@ -521,7 +521,7 @@ Rectangle {
                 break;
             case 'web':
                 qmlsource = "backend/QtWebView.qml";
-                properties = {readfile: pyext.readfile, qwebChannelJs: pyext.qwebChannelSource(), patchedHtml: pyext.patchedHtml};
+                properties = {readfile: pyext.readfile, qwebChannelJs: pyext.qwebChannelSource(), patchedHtml: pyext.patchedHtml, pyext: pyext};
                 break;
             case 'scene':
                 if(background.hasLib) {

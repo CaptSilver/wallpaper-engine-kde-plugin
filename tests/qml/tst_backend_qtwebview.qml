@@ -256,6 +256,205 @@ TestCase {
         compare(generalPropsSpy.count, 1);
     }
 
+    // ── WebUrlInterceptor (file:// sandbox) wiring ─────────────────────────
+    // loadWallpaper() must call wallpaperInterceptor.setWallpaperBaseDir(baseDir)
+    // BEFORE invoking patchedHtml / loadHtml, with the wallpaper's DIRECTORY
+    // (not the file URL).  The QML stub for WebUrlInterceptor is a recorder.
+    function test_loadWallpaper_callsSetWallpaperBaseDir_withDirPath() {
+        function findInterceptor() {
+            const buckets = [web.children || [], web.data || []];
+            for (const b of buckets) {
+                for (let i = 0; i < b.length; i++) {
+                    const c = b[i];
+                    if (c && typeof c.setWallpaperBaseDir === "function") return c;
+                }
+            }
+            return null;
+        }
+        const it = findInterceptor();
+        verify(it !== null, "WebUrlInterceptor sibling must exist");
+
+        const n = it.setBaseDirCount;
+        web.source = "file:///tmp/sec-web1-suite/index.html";
+        // onSourceChanged → loadWallpaper() under _scriptsReady; advances.
+        compare(it.setBaseDirCount, n + 1);
+        verify(it.lastBaseDir.indexOf("/tmp/sec-web1-suite") !== -1,
+            "interceptor base must be the wallpaper directory, not the file URL");
+        verify(it.lastBaseDir.indexOf("index.html") === -1,
+            "base must strip the filename");
+    }
+
+    // ── Feature-permission consent (geolocation, mic, camera, …) ──────────
+    // Helper to build a fake Pyext whose read_wallpaper_config returns the
+    // supplied object via a synchronous .then() (matches the QtWebView code
+    // path which expects a promise-like).
+    function _makeFakePyext(cfgReturn) {
+        return {
+            _writes: [],
+            read_wallpaper_config: function(_id) {
+                return { then: function(cb) { cb(cfgReturn); return this; } };
+            },
+            write_wallpaper_config: function(id, cfg) {
+                this._writes.push({ id: id, cfg: cfg });
+            },
+        };
+    }
+
+    function test_featurePermissionRequested_noPriorDecision_promptsAndPersistsAllow() {
+        const wev = _findWebEngineView();
+        verify(wev !== null);
+        verify(typeof wev.grantFeaturePermission === "function",
+            "stub must expose grantFeaturePermission recorder");
+        // Test-only persist hook bypasses pyext.write_wallpaper_config so
+        // we don't need to stub a full FileHelper round-trip here.
+        let persisted = null;
+        web._persistDecisionForTest = function(wid, key, value) {
+            persisted = { wid: wid, key: key, value: value };
+        };
+        background.workshopid = "sec-web2-allow";
+        web.pyext = _makeFakePyext({});
+        web._lastPermissionDialog = null;
+        const before = wev.grantPermissionCount;
+        wev.featurePermissionRequested("file:///tmp/fake_wallpaper.html", 1);
+        verify(typeof web._lastPermissionDialog === "object" &&
+               web._lastPermissionDialog !== null,
+            "permissionDialog ref must be exposed to tests");
+        web._lastPermissionDialog.allow();
+        compare(wev.grantPermissionCount, before + 1);
+        compare(wev.lastGrantArgs.allow, true);
+        compare(wev.lastGrantArgs.feature, 1);
+        verify(persisted !== null, "remembered allow must persist");
+        compare(persisted.key, "1");
+        compare(persisted.value, "allow");
+    }
+
+    function test_featurePermissionRequested_priorAllow_grantsSync_noDialog() {
+        const wev = _findWebEngineView();
+        verify(wev !== null);
+        background.workshopid = "sec-web2-cached-allow";
+        web.pyext = _makeFakePyext({ permissions: { "1": "allow" } });
+        web._lastPermissionDialog = null;
+        web._persistDecisionForTest = null;
+        const before = wev.grantPermissionCount;
+        wev.featurePermissionRequested("file:///tmp/fake_wallpaper.html", 1);
+        compare(wev.grantPermissionCount, before + 1);
+        compare(wev.lastGrantArgs.allow, true);
+        verify(web._lastPermissionDialog === null,
+            "cached allow must not open the dialog");
+    }
+
+    function test_featurePermissionRequested_priorDeny_grantsFalse_noDialog() {
+        const wev = _findWebEngineView();
+        verify(wev !== null);
+        background.workshopid = "sec-web2-cached-deny";
+        web.pyext = _makeFakePyext({ permissions: { "1": "deny" } });
+        web._lastPermissionDialog = null;
+        const before = wev.grantPermissionCount;
+        wev.featurePermissionRequested("file:///tmp/fake_wallpaper.html", 1);
+        compare(wev.grantPermissionCount, before + 1);
+        compare(wev.lastGrantArgs.allow, false);
+        verify(web._lastPermissionDialog === null,
+            "cached deny must not open the dialog");
+    }
+
+    function test_micRequest_geolocationAllowedDoesNotShortCircuit() {
+        // Per-feature decisions: geolocation cached as allow should NOT skip
+        // the dialog for a mic request (MediaAudioCapture = 2).
+        const wev = _findWebEngineView();
+        verify(wev !== null);
+        background.workshopid = "sec-web2-multi-feature";
+        web.pyext = _makeFakePyext({ permissions: { "1": "allow" } });
+        web._lastPermissionDialog = null;
+        wev.featurePermissionRequested("file:///tmp/fake_wallpaper.html", 2);
+        verify(web._lastPermissionDialog !== null,
+            "feature without prior decision must open the dialog");
+        // Resolve to avoid leaking the open dialog into the next test.
+        web._lastPermissionDialog.deny();
+    }
+
+    function test_featurePermission_resetPath_reOpensDialog() {
+        // After cached config is cleared, the next request must prompt again.
+        const wev = _findWebEngineView();
+        verify(wev !== null);
+        background.workshopid = "sec-web2-reset";
+        web.pyext = _makeFakePyext({ permissions: { "1": "allow" } });
+        web._lastPermissionDialog = null;
+        wev.featurePermissionRequested("file:///tmp/fake_wallpaper.html", 1);
+        verify(web._lastPermissionDialog === null);
+        // Swap to empty config (simulating resetWallpaperConfig).
+        web.pyext = _makeFakePyext({});
+        web._lastPermissionDialog = null;
+        wev.featurePermissionRequested("file:///tmp/fake_wallpaper.html", 1);
+        verify(web._lastPermissionDialog !== null,
+            "reset path must re-prompt the user");
+        web._lastPermissionDialog.deny();
+    }
+
+    function test_featurePermission_noPyext_deniesSafely() {
+        const wev = _findWebEngineView();
+        verify(wev !== null);
+        background.workshopid = "sec-web2-no-pyext";
+        web.pyext = null;
+        web._lastPermissionDialog = null;
+        const before = wev.grantPermissionCount;
+        wev.featurePermissionRequested("file:///tmp/fake_wallpaper.html", 1);
+        compare(wev.grantPermissionCount, before + 1);
+        compare(wev.lastGrantArgs.allow, false,
+            "no pyext must deny safely");
+    }
+
+    // ── JS console + onerror bridge ─────────────────────────────────────────
+    // The production handler forwards (level, msg, line, src) to QML console
+    // with a [WEK-page LEVELTAG] prefix.  We assert against the
+    // _lastConsoleForward seam on the outer webItem (production: null).
+    function test_javaScriptConsoleMessage_routesToQmlConsoleByLevel() {
+        const wev = _findWebEngineView();
+        verify(wev !== null);
+        web._lastConsoleForward = null;
+        wev.javaScriptConsoleMessage(0, "info hello", 12, "wp.js");
+        verify(web._lastConsoleForward !== null);
+        compare(web._lastConsoleForward.qmlLevel, "log");
+        verify(web._lastConsoleForward.message.indexOf("[WEK-page INFO]") !== -1);
+        verify(web._lastConsoleForward.message.indexOf("wp.js:12") !== -1);
+
+        web._lastConsoleForward = null;
+        wev.javaScriptConsoleMessage(1, "warn there", 45, "wp.js");
+        compare(web._lastConsoleForward.qmlLevel, "warn");
+        verify(web._lastConsoleForward.message.indexOf("[WEK-page WARN]") !== -1);
+
+        web._lastConsoleForward = null;
+        wev.javaScriptConsoleMessage(2, "boom", 78, "wp.js");
+        compare(web._lastConsoleForward.qmlLevel, "error");
+        verify(web._lastConsoleForward.message.indexOf("[WEK-page ERROR]") !== -1);
+    }
+
+    function test_javaScriptConsoleMessage_emptySourceID_usesInlineLabel() {
+        const wev = _findWebEngineView();
+        verify(wev !== null);
+        web._lastConsoleForward = null;
+        wev.javaScriptConsoleMessage(0, "from inline", 3, "");
+        verify(web._lastConsoleForward !== null);
+        verify(web._lastConsoleForward.message.indexOf("<inline>:3") !== -1,
+            "empty sourceID must surface as <inline>");
+    }
+
+    function test_pageError_routesThroughOnJavaScriptConsoleMessage_atLevelError() {
+        // End-to-end: a level-2 console message (which the page-side
+        // [WEK-page UNCAUGHT] shim emits) maps to the qml console.error path.
+        // The handler wraps with its own [WEK-page ERROR] prefix; double
+        // tagging is expected and harmless (the grep workflow still matches).
+        const wev = _findWebEngineView();
+        verify(wev !== null);
+        web._lastConsoleForward = null;
+        wev.javaScriptConsoleMessage(2,
+            "[WEK-page UNCAUGHT] wp.js:42:7 ReferenceError: foo is not defined",
+            42, "wp.js");
+        verify(web._lastConsoleForward !== null);
+        compare(web._lastConsoleForward.qmlLevel, "error");
+        verify(web._lastConsoleForward.message.indexOf("[WEK-page ERROR]") !== -1);
+        verify(web._lastConsoleForward.message.indexOf("UNCAUGHT") !== -1);
+    }
+
     // ── pauseTimer onTriggered@242: grabToImage + lifecycle freeze ──────────
     function test_pauseTimerTriggered_freezesWebViewWhenPaused_constructs() {
         // Genuine "constructs / runs without throw" case.  The timer's

@@ -1,7 +1,7 @@
 # Qt 6.6 floor: the plugin targets Plasma 6 (Qt 6 era); pin a realistic minimum
 # so a too-old Qt6 fails at configure with a clear message instead of late and
 # cryptically.  6.6 matches the lowest Qt the supported distros ship.
-find_package(Qt6 6.6 REQUIRED COMPONENTS Quick Qml Core DBus Network)
+find_package(Qt6 6.6 REQUIRED COMPONENTS Quick Qml Core DBus Network WebEngineCore)
 
 add_subdirectory(backend_mpv)
 
@@ -21,6 +21,7 @@ add_library(${PROJECT_NAME}
 	PluginInfo.cpp
 	FileHelper.cpp
 	WebAudioBridge.cpp
+	WebUrlInterceptor.cpp
 	MigrationHelper.cpp
 	Playlist.cpp
 	PlaylistManager.cpp
@@ -40,6 +41,7 @@ target_link_libraries(${PROJECT_NAME}
 	Qt::Core
 	Qt::DBus
 	Qt::Network
+	Qt::WebEngineCore
 	KF6::ConfigCore
 )
 target_compile_definitions(${PROJECT_NAME} PRIVATE WEKDE_HAS_MPV)

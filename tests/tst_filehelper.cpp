@@ -694,6 +694,29 @@ private slots:
         QVERIFY(helper.readWallpaperConfig("__never_existed__").isEmpty());
     }
 
+    void permissionsNamespace_roundTripsThroughWallpaperConfig() {
+        // The consent layer persists per-(workshop-id, feature) decisions as
+        //   cfg.permissions = { "1": "allow", "2": "deny", ... }
+        // Lock the nested map round-trip in so a future serialisation refactor
+        // can't silently flatten and break consent.
+        FileHelper    helper;
+        const QString id = "424242";
+        QVariantMap   cfg;
+        QVariantMap   perms;
+        perms["1"] = "allow";
+        perms["2"] = "deny";
+        cfg["permissions"] = perms;
+        helper.writeWallpaperConfig(id, cfg);
+
+        const QVariantMap got = helper.readWallpaperConfig(id);
+        QVERIFY(got.contains("permissions"));
+        const QVariantMap roundtrip = got["permissions"].toMap();
+        QCOMPARE(roundtrip.value("1").toString(), QStringLiteral("allow"));
+        QCOMPARE(roundtrip.value("2").toString(), QStringLiteral("deny"));
+
+        helper.resetWallpaperConfig(id);
+    }
+
     void config_stringValues_preserved() {
         FileHelper    helper;
         const QString id = "test_strings";
@@ -806,6 +829,31 @@ private slots:
         QVERIFY(result.contains("window.addEventListener('error'"));
         QVERIFY(result.contains("unhandledrejection"));
         QVERIFY(result.contains("SecurityError"));
+    }
+
+    void patchedHtml_uncaughtErrorPrefixUsesPagePrefix() {
+        // The page-side error / unhandledrejection shim must route through
+        // console.error (level 2) with the [WEK-page UNCAUGHT] / [WEK-page
+        // UNHANDLED-PROMISE] prefixes so the journal `grep WEK-page` flow
+        // works and the QML onJavaScriptConsoleMessage handler fires at
+        // level 2.  Locks the contract against a silent revert of the
+        // narrowing pass.
+        QString path = m_tmp.filePath("uncaught.html");
+        QFile   f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("<html><head></head><body></body></html>");
+        f.close();
+
+        FileHelper helper;
+        QString    result = helper.patchedHtml(path);
+
+        QVERIFY(result.contains("[WEK-page UNCAUGHT]"));
+        QVERIFY(result.contains("[WEK-page UNHANDLED-PROMISE]"));
+        QVERIFY(result.contains("[WEK-page STACK]"));
+        QVERIFY(result.contains("console.error"));
+        // Legacy '[WEK] ERROR:' / '[WEK] REJECTION:' tags are gone.
+        QVERIFY(! result.contains("'[WEK] ERROR:'"));
+        QVERIFY(! result.contains("'[WEK] REJECTION:'"));
     }
 
     // ── Item 16: adversarial patchedHtml head injection ───────────────────────

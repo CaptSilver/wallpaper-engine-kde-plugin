@@ -9,6 +9,7 @@
 #include "PluginInfo.hpp"
 #include "FileHelper.hpp"
 #include "WebAudioBridge.hpp"
+#include "WebUrlInterceptor.hpp"
 #include "MigrationHelper.h"
 #include "PlaylistManager.hpp"
 #include "PlaylistsModel.hpp"
@@ -44,6 +45,7 @@ public:
         qmlRegisterType<wekde::MprisMonitor>(uri, WPVer[0], WPVer[1], "MprisMonitor");
         qmlRegisterType<wekde::FileHelper>(uri, WPVer[0], WPVer[1], "FileHelper");
         qmlRegisterType<wekde::WebAudioBridge>(uri, WPVer[0], WPVer[1], "WebAudioBridge");
+        qmlRegisterType<wekde::WebUrlInterceptor>(uri, WPVer[0], WPVer[1], "WebUrlInterceptor");
         qmlRegisterType<wekde::PlaylistManager>(uri, WPVer[0], WPVer[1], "PlaylistManager");
         qmlRegisterUncreatableType<wekde::PlaylistsModel>(
             uri,

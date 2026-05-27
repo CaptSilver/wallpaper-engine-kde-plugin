@@ -17,10 +17,35 @@ namespace wekde
 
 namespace
 {
-constexpr auto kOldUri    = "com.github.catsout.wallpaperEngineKde";
-constexpr auto kNewUri    = "com.github.captsilver.wallpaperEngineKde";
-constexpr auto kMarkerRel = "wekde/migrated-from-catsout";
-constexpr auto kAppletsrc = "plasma-org.kde.plasma.desktop-appletsrc";
+constexpr auto kOldUri         = "com.github.catsout.wallpaperEngineKde";
+constexpr auto kNewUri         = "com.github.captsilver.wallpaperEngineKde";
+constexpr auto kMarkerRel      = "wekde/migrated-from-catsout";
+constexpr auto kAppletsrc      = "plasma-org.kde.plasma.desktop-appletsrc";
+constexpr auto kScreenLockerRc = "kscreenlockerrc";
+
+// Merge a single `[Wallpaper]` subtree's catsout-named subgroup into the
+// captsilver-named subgroup, key by key. Returns the number of keys merged
+// (zero is normal when the catsout subgroup is absent — that's the no-op case
+// the caller skips). The per-key `hasKey` guard preserves any user edit made
+// against the captsilver subgroup post-rename, mirroring the appletsrc
+// behaviour codified by runIfNeeded_idempotent_secondRunCopiesNothingNew.
+int mergeWallpaperSubtree(KConfigGroup wpRoot) {
+    KConfigGroup catsoutRoot = wpRoot.group(QString::fromUtf8(kOldUri));
+    if (! catsoutRoot.exists()) return 0;
+    KConfigGroup catsoutG = catsoutRoot.group(QStringLiteral("General"));
+    if (! catsoutG.exists()) return 0;
+    KConfigGroup captsilverG =
+        wpRoot.group(QString::fromUtf8(kNewUri)).group(QStringLiteral("General"));
+    int               merged = 0;
+    const QStringList keys   = catsoutG.keyList();
+    for (const QString& key : keys) {
+        if (captsilverG.hasKey(key)) continue; // don't overwrite user's post-rename edits
+        const QString val = catsoutG.readEntry(key, QString());
+        captsilverG.writeEntry(key, val);
+        ++merged;
+    }
+    return merged;
+}
 } // namespace
 
 MigrationHelper::MigrationHelper(QObject* parent): QObject(parent) {}
@@ -30,13 +55,19 @@ bool MigrationHelper::shouldRun() const {
     if (cfg.isEmpty()) return false;
     if (QFileInfo::exists(cfg + "/" + kMarkerRel)) return false;
 
-    QFile a(cfg + "/" + kAppletsrc);
-    if (! a.open(QIODevice::ReadOnly | QIODevice::Text)) return false;
-    while (! a.atEnd()) {
-        const QByteArray line = a.readLine();
-        if (line.contains(kOldUri)) return true;
-    }
-    return false;
+    // Either file can be the trigger — a user whose ONLY catsout reference is
+    // in kscreenlockerrc must still kick off the migration. The shell shim's
+    // backup/rewrite loops (scripts/migrate-from-catsout.sh:137,161) iterate
+    // both files for the same reason.
+    auto fileMentionsOldUri = [&](const QString& rel) {
+        QFile f(cfg + "/" + rel);
+        if (! f.open(QIODevice::ReadOnly | QIODevice::Text)) return false;
+        while (! f.atEnd()) {
+            if (f.readLine().contains(kOldUri)) return true;
+        }
+        return false;
+    };
+    return fileMentionsOldUri(kAppletsrc) || fileMentionsOldUri(kScreenLockerRc);
 }
 
 void MigrationHelper::runIfNeeded() {
@@ -68,25 +99,28 @@ void MigrationHelper::runIfNeeded() {
         KConfigGroup      containments = config.group(QStringLiteral("Containments"));
         const QStringList cids         = containments.groupList();
         for (const QString& cid : cids) {
-            KConfigGroup c           = containments.group(cid);
-            KConfigGroup wpRoot      = c.group(QStringLiteral("Wallpaper"));
-            KConfigGroup catsoutRoot = wpRoot.group(QString::fromUtf8(kOldUri));
-            if (! catsoutRoot.exists()) continue;
-            KConfigGroup catsoutG = catsoutRoot.group(QStringLiteral("General"));
-            KConfigGroup captsilverG =
-                wpRoot.group(QString::fromUtf8(kNewUri)).group(QStringLiteral("General"));
-            if (! catsoutG.exists()) continue;
-            const QStringList keys = catsoutG.keyList();
-            for (const QString& key : keys) {
-                if (captsilverG.hasKey(key)) continue; // don't overwrite user's post-rename edits
-                const QString val = catsoutG.readEntry(key, QString());
-                captsilverG.writeEntry(key, val);
-                ++merged;
-            }
+            KConfigGroup c      = containments.group(cid);
+            KConfigGroup wpRoot = c.group(QStringLiteral("Wallpaper"));
+            merged += mergeWallpaperSubtree(wpRoot);
         }
         config.sync();
     }
     qCInfo(lcWek) << "merged" << merged << "key(s) from catsout into captsilver section(s)";
+
+    // Lockscreen wallpaper config: parallel path, anchored at [Greeter] rather
+    // than iterating [Containments][<id>]. KConfig CREATES the file on write,
+    // so guard with QFileInfo::exists() to avoid manufacturing a stub
+    // kscreenlockerrc on machines that never set a lockscreen wallpaper.
+    const QString lockerPath = cfg + "/" + kScreenLockerRc;
+    if (QFileInfo::exists(lockerPath)) {
+        KConfig   locker(lockerPath, KConfig::SimpleConfig);
+        const int lockerMerged = mergeWallpaperSubtree(
+            locker.group(QStringLiteral("Greeter")).group(QStringLiteral("Wallpaper")));
+        locker.sync();
+        qCInfo(lcWek) << "merged" << lockerMerged
+                      << "key(s) from catsout into captsilver in kscreenlockerrc";
+        merged += lockerMerged;
+    }
 
     // Mark migration as done. Even if we merged 0 keys (e.g. there was a
     // catsout-named section with no [General] subgroup), we still consider

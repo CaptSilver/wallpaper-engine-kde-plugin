@@ -293,6 +293,138 @@ private slots:
         helper.runIfNeeded(); // no-op
         QCOMPARE(QFileInfo(a.fileName()).size(), sizeBefore);
     }
+
+    // ── kscreenlockerrc (lockscreen wallpaper config) coverage ────────────────
+    // The shell shim's two-file iteration (scripts/migrate-from-catsout.sh:137,161)
+    // includes "$CONFIG_HOME/kscreenlockerrc" alongside the appletsrc glob; the
+    // in-process port previously only walked appletsrc, leaving users whose
+    // lockscreen wallpaper was set to the catsout build with a permanently
+    // broken lockscreen wallpaper after the rename.
+
+    // The headline scenario: catsout appears ONLY in kscreenlockerrc; appletsrc
+    // is absent (or has no catsout reference). shouldRun() must return true so
+    // the helper picks up the lockscreen migration.
+    void shouldRun_kscreenlockerrcMentionsCatsout_returnsTrue() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        qputenv("XDG_CONFIG_HOME", d.path().toLocal8Bit());
+
+        // No appletsrc; only kscreenlockerrc with catsout.
+        QFile k(d.path() + "/kscreenlockerrc");
+        QVERIFY(k.open(QIODevice::WriteOnly | QIODevice::Text));
+        k.write("[Greeter][Wallpaper][com.github.catsout.wallpaperEngineKde][General]\n"
+                "WallpaperSource=/tmp/lockscreen.mp4\n");
+        k.close();
+
+        wekde::MigrationHelper helper;
+        QCOMPARE(helper.shouldRun(), true);
+    }
+
+    // The full migration: both files have catsout subtrees; helper must rewrite
+    // the kscreenlockerrc captsilver subtree with the merged keys.
+    void runIfNeeded_kscreenlockerrcRewrittenInPlace() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        qputenv("XDG_CONFIG_HOME", d.path().toLocal8Bit());
+
+        QFile a(d.path() + "/plasma-org.kde.plasma.desktop-appletsrc");
+        QVERIFY(a.open(QIODevice::WriteOnly | QIODevice::Text));
+        a.write("[Containments][1][Wallpaper][com.github.catsout.wallpaperEngineKde][General]\n"
+                "WallpaperSource=/tmp/desktop.mp4\n");
+        a.close();
+        QFile k(d.path() + "/kscreenlockerrc");
+        QVERIFY(k.open(QIODevice::WriteOnly | QIODevice::Text));
+        k.write("[Greeter][Wallpaper][com.github.catsout.wallpaperEngineKde][General]\n"
+                "WallpaperSource=/tmp/lockscreen.mp4\n");
+        k.close();
+
+        wekde::MigrationHelper helper;
+        helper.runIfNeeded();
+
+        // Re-open kscreenlockerrc, verify the captsilver subtree exists with
+        // the merged key.
+        KConfig      locker(d.path() + "/kscreenlockerrc", KConfig::SimpleConfig);
+        KConfigGroup captsilverG =
+            locker.group(QStringLiteral("Greeter"))
+                .group(QStringLiteral("Wallpaper"))
+                .group(QStringLiteral("com.github.captsilver.wallpaperEngineKde"))
+                .group(QStringLiteral("General"));
+        QVERIFY(captsilverG.exists());
+        QCOMPARE(captsilverG.readEntry("WallpaperSource", QString()),
+                 QStringLiteral("/tmp/lockscreen.mp4"));
+    }
+
+    // Pre-rename user edit (captsilver subtree already has WallpaperSource) is
+    // preserved — mirror of the existing appletsrc test at the [Greeter] root.
+    void runIfNeeded_kscreenlockerrcDoesNotOverwriteExistingCaptsilverKeys() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        qputenv("XDG_CONFIG_HOME", d.path().toLocal8Bit());
+
+        QFile k(d.path() + "/kscreenlockerrc");
+        QVERIFY(k.open(QIODevice::WriteOnly | QIODevice::Text));
+        k.write("[Greeter][Wallpaper][com.github.catsout.wallpaperEngineKde][General]\n"
+                "WallpaperSource=/tmp/old.mp4\n"
+                "\n"
+                "[Greeter][Wallpaper][com.github.captsilver.wallpaperEngineKde][General]\n"
+                "WallpaperSource=/tmp/new.mp4\n");
+        k.close();
+
+        wekde::MigrationHelper helper;
+        helper.runIfNeeded();
+
+        KConfig      locker(d.path() + "/kscreenlockerrc", KConfig::SimpleConfig);
+        KConfigGroup captsilverG =
+            locker.group(QStringLiteral("Greeter"))
+                .group(QStringLiteral("Wallpaper"))
+                .group(QStringLiteral("com.github.captsilver.wallpaperEngineKde"))
+                .group(QStringLiteral("General"));
+        // User's post-rename value (/tmp/new.mp4) survives the merge.
+        QCOMPARE(captsilverG.readEntry("WallpaperSource", QString()),
+                 QStringLiteral("/tmp/new.mp4"));
+    }
+
+    // No kscreenlockerrc on disk → no crash, no stub file created. (Users who
+    // never set a lockscreen wallpaper don't get an empty config file
+    // manufactured by the migration.)
+    void runIfNeeded_kscreenlockerrcAbsent_noCrashNoStubCreated() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        qputenv("XDG_CONFIG_HOME", d.path().toLocal8Bit());
+
+        // Only appletsrc with catsout; no kscreenlockerrc.
+        QFile a(d.path() + "/plasma-org.kde.plasma.desktop-appletsrc");
+        QVERIFY(a.open(QIODevice::WriteOnly | QIODevice::Text));
+        a.write("[Containments][1][Wallpaper][com.github.catsout.wallpaperEngineKde][General]\n"
+                "WallpaperSource=/tmp/desktop.mp4\n");
+        a.close();
+
+        wekde::MigrationHelper helper;
+        helper.runIfNeeded();
+
+        QVERIFY(! QFileInfo::exists(d.path() + "/kscreenlockerrc"));
+    }
+
+    // Marker is written even when ONLY kscreenlockerrc contributed work (i.e.
+    // appletsrc was absent / had no catsout). The marker prevents re-fire on
+    // the next plasma start.
+    void runIfNeeded_writesMarkerEvenIfOnlyKscreenlockerrcHadWork() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        qputenv("XDG_CONFIG_HOME", d.path().toLocal8Bit());
+
+        // No appletsrc, only kscreenlockerrc with catsout.
+        QFile k(d.path() + "/kscreenlockerrc");
+        QVERIFY(k.open(QIODevice::WriteOnly | QIODevice::Text));
+        k.write("[Greeter][Wallpaper][com.github.catsout.wallpaperEngineKde][General]\n"
+                "WallpaperSource=/tmp/lockscreen.mp4\n");
+        k.close();
+
+        wekde::MigrationHelper helper;
+        helper.runIfNeeded();
+
+        QVERIFY(QFileInfo::exists(d.path() + "/wekde/migrated-from-catsout"));
+    }
 };
 
 QTEST_GUILESS_MAIN(TstMigrationHelper)

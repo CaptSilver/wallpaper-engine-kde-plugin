@@ -96,7 +96,7 @@ TestCase {
         // — e.g. test_audioBuffer / test_webobjLoaded — flipped it.)
         const webobj = _findWebobj();
         verify(webobj !== null);
-        webobj.loaded = false;
+        webobj.setLoaded(false);
         userPropsSpy.target = webobj;
         userPropsSpy.clear();
         background.userPropsJson = '{"sliderProp": 75}';
@@ -109,7 +109,7 @@ TestCase {
         // Reset loaded to false (prior tests may have flipped it).
         const webobj = _findWebobj();
         verify(webobj !== null);
-        webobj.loaded = false;
+        webobj.setLoaded(false);
         generalPropsSpy.target = webobj;
         generalPropsSpy.clear();
         background.fps = 60;
@@ -214,13 +214,13 @@ TestCase {
         webobj.sigAudio.connect(conn);
 
         // Default state: loaded === false → handler must NOT relay.
-        webobj.loaded = false;
+        webobj.setLoaded(false);
         try { bridge.audioBuffer([0, 1, 2, 3]); } catch (e) {}
         compare(relayed, 0,
                 "audio relay must be gated on webobj.loaded");
 
         // Flip loaded → relay should now fire.
-        webobj.loaded = true;
+        webobj.setLoaded(true);
         try { bridge.audioBuffer([4, 5, 6, 7]); } catch (e) {}
         compare(relayed, 1,
                 "loaded webobj must receive audio samples");
@@ -232,10 +232,14 @@ TestCase {
     //    The 26 LOC body reads project.json via readfile() and emits
     //    sigUserProperties + sigGeneralProperties on the webobj. ──────────
     function test_webobjLoaded_triggersUserPropertyLoad() {
-        // webobj is a QtObject sibling of WebEngineView with a `loaded`
-        // property and signals `sigUserProperties` + `sigGeneralProperties`.
+        // webobj is a SafeWallpaperBridge sibling of WebEngineView with a
+        // `loaded` property and signals `sigUserProperties` +
+        // `sigGeneralProperties`.  Reset loaded to false first — prior tests
+        // (alphabetically: test_webEngineOnLoadingChanged...) may have
+        // flipped it via setLoaded(true).
         const webobj = _findWebobj();
         verify(webobj !== null);
+        webobj.setLoaded(false);
         userPropsSpy.target    = webobj;
         generalPropsSpy.target = webobj;
         userPropsSpy.clear();
@@ -244,7 +248,7 @@ TestCase {
 
         // Set webItem.userPropsJson so the inner overrides loop runs too.
         web.userPropsJson = '{"sliderProp":42}';
-        webobj.loaded = true;
+        webobj.setLoaded(true);
 
         // Production reads project.json then emits BOTH signals on the
         // webobj (QtWebView.qml:114-131). The test's readfile() invokes
@@ -490,5 +494,28 @@ TestCase {
         web.pause();             // sets web.paused = true
         compare(wev.paused, true);
         timer.triggered();       // exercises the freeze path
+    }
+
+    // Pin the SafeWallpaperBridge contract: a direct JS-side write to
+    // webobj.loaded (the failure mode pre-fix) MUST NOT change the bridge's
+    // state. Demonstrates via QML — the truly end-to-end JS-over-QWebChannel
+    // case would need a live QtWebEngine page; this asserts the read-only
+    // Q_PROPERTY surface through QML which has the same write-rejection
+    // semantics (the C++ Q_PROPERTY has no WRITE clause; the QML stub
+    // mirrors that via `readonly property` aliased to a backing field).
+    function test_webobjLoaded_jsWriteIsSilentlyDropped() {
+        const webobj = _findWebobj();
+        verify(webobj !== null);
+        webobj.setLoaded(false);
+        compare(webobj.loaded, false);
+        // Try to assign directly — QML on a readonly property throws a
+        // TypeError at runtime; the getter still returns false. Swallow
+        // the exception so the test asserts state, not throw shape.
+        try { webobj.loaded = true; } catch (e) {}
+        compare(webobj.loaded, false,
+                "JS-side write to read-only Q_PROPERTY must not change state");
+        // Verify the official path still works.
+        webobj.setLoaded(true);
+        compare(webobj.loaded, true);
     }
 }

@@ -64,19 +64,27 @@ Item {
         if (!userPropsJson) return;
         try {
             var saved = JSON.parse(userPropsJson);
-            // Build a delta object with only changed properties
+            // Build a delta object with only changed properties AND a fresh
+            // userProperties snapshot to push back into the bridge (its
+            // userProperties is READ-only from QML now — writes are silent).
             var delta = {};
+            var fresh = JSON.parse(JSON.stringify(webobj.userProperties));
             for (var key in saved) {
-                if (webobj.userProperties.hasOwnProperty(key)) {
+                if (fresh.hasOwnProperty(key)) {
                     // Clone the property definition, update value
-                    delta[key] = Object.assign({}, webobj.userProperties[key]);
+                    delta[key] = Object.assign({}, fresh[key]);
                     delta[key].value = saved[key];
-                    // Also update the stored base properties
-                    webobj.userProperties[key].value = saved[key];
+                    fresh[key].value = saved[key];
                 }
             }
             if (Object.keys(delta).length > 0) {
                 console.log("[WEK] Sending updated user properties:", JSON.stringify(Object.keys(delta)));
+                webobj.pushUserProperties(fresh);
+                // pushUserProperties fires sigUserProperties(fresh) — but the
+                // existing contract was to fire sigUserProperties(delta), not the
+                // full map. Preserve that by firing the delta-flavoured signal
+                // explicitly so wallpapers iterating the payload still see only
+                // the changed keys.
                 webobj.sigUserProperties(delta);
             }
         } catch(e) {
@@ -85,9 +93,11 @@ Item {
     }
 
     onFpsChanged: {
-        if(webobj.loaded) {
-            webobj.generalProperties.fps = webItem.fps;
-            webobj.sigGeneralProperties(webobj.generalProperties);
+        if (webobj.loaded) {
+            var g = JSON.parse(JSON.stringify(webobj.generalProperties || {}));
+            g.fps = webItem.fps;
+            webobj.pushGeneralProperties(g);
+            // pushGeneralProperties auto-fires sigGeneralProperties(g).
         }
     }
 
@@ -112,39 +122,35 @@ Item {
         }
     }
 
-    QtObject {
+    SafeWallpaperBridge {
         id: webobj
         WebChannel.id: "wpeQml"
-        signal sigGeneralProperties(var properties)
-        signal sigUserProperties(var properties)
-        signal sigAudio(var audioArray)
-        property bool loaded: false
-        property var userProperties
-        property var generalProperties
         onLoadedChanged: {
-            if(!webobj.generalProperties)
-                webobj.generalProperties = {fps: 24};
+            if (!loaded) return;  // only react to false->true (lifecycle thaws are silent)
+            if (!webobj.generalProperties || Object.keys(webobj.generalProperties).length === 0)
+                webobj.pushGeneralProperties({fps: 24});
             var wpDir = Common.urlNative(webItem.source.toString());
             wpDir = wpDir.substring(0, wpDir.lastIndexOf('/'));
             // Load user properties from project.json BEFORE signaling,
             // so the wallpaper has zone/property data when it initializes.
             readfile(wpDir + "/project.json").then(function(text) {
                 const json = Utils.parseJson(text);
-                webobj.userProperties = json.general.properties;
+                var userProps = (json && json.general && json.general.properties) || {};
                 // Apply any saved user property overrides
                 if (webItem.userPropsJson) {
                     try {
                         var saved = JSON.parse(webItem.userPropsJson);
                         for (var key in saved) {
-                            if (webobj.userProperties.hasOwnProperty(key))
-                                webobj.userProperties[key].value = saved[key];
+                            if (userProps.hasOwnProperty(key))
+                                userProps[key].value = saved[key];
                         }
                     } catch(e) {}
                 }
-                console.log("[WEK] project.json loaded, properties:", JSON.stringify(Object.keys(json.general.properties || {})));
-                // Now signal both — properties first, then general
-                webobj.sigUserProperties(webobj.userProperties);
-                webobj.sigGeneralProperties(webobj.generalProperties);
+                console.log("[WEK] project.json loaded, properties:", JSON.stringify(Object.keys(userProps)));
+                // pushUserProperties + pushGeneralProperties each fire their
+                // matching sig* signal automatically — no explicit emit needed.
+                webobj.pushUserProperties(userProps);
+                webobj.pushGeneralProperties(webobj.generalProperties || {fps: 24});
             });
         }
     }
@@ -278,6 +284,14 @@ Item {
             }
             if(loadingInfo.status == WebEngineView.LoadSucceededStatus) {
                 web._firstLoadOk = true;
+                // Fire the bridge's setLoaded(true) here — replaces the legacy
+                // page-injected wpeQml.loaded = true writeback (which a malicious
+                // wallpaper could re-trigger to re-fire the project.json load).
+                // The bridge dedupes redundant true->true transitions and only
+                // fires sigInit on the first one this lifetime, so in-page navs
+                // that re-fire LoadSucceededStatus are harmless.
+                if (webobj && typeof webobj.setLoaded === "function")
+                    webobj.setLoaded(true);
                 // check pause after load
                 if(paused) {
                     webItem.play();

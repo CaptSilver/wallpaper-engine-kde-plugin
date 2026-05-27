@@ -20,6 +20,7 @@ add_library(${PROJECT_NAME}
 	MprisMonitor.cpp
 	PluginInfo.cpp
 	FileHelper.cpp
+	SafeWallpaperBridge.cpp
 	WebAudioBridge.cpp
 	WebUrlInterceptor.cpp
 	MigrationHelper.cpp

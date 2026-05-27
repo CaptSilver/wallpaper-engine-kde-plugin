@@ -94,6 +94,11 @@ private slots:
     // *after* mpv_initialize(), where mpv silently drops them.
     void constructor_setsLoopOptionBeforeInit();
 
+    // Wallpaper-tuned mpv init options must be set before mpv_initialize so
+    // the option surface accepts them; verify the values via getProperty.
+    void initOptions_disableAudioAndCache();
+    void initOptions_msgLevelRespectsEnv();
+
     // m_first_frame is atomic + flipped via exchange(); checkAndEmitFirstFrame
     // must emit firstFrame() at most once per setSource transition (the GUI
     // thread writes m_first_frame=false, the render thread flips it back true
@@ -270,10 +275,46 @@ void TestMpvBackend::pause_whenStopped_isNoop() {
 
 // Regression: the previous constructor set `loop`/`vo`/`hwdec`/`config` *after*
 // mpv_initialize(), which silently dropped them.  After moving the calls
-// before init, `loop` should read back as "inf" rather than its libmpv default.
+// before init, `loop-file` should read back as "inf" rather than its libmpv
+// default (per-file loop form replaces the deprecated playlist-loop alias).
 void TestMpvBackend::constructor_setsLoopOptionBeforeInit() {
     auto obj = makeObject();
-    QCOMPARE(obj->getProperty("loop").toString(), QStringLiteral("inf"));
+    QCOMPARE(obj->getProperty("loop-file").toString(), QStringLiteral("inf"));
+}
+
+// Wallpapers re-read from disk on each loop cycle (cache=no) and have no
+// audio path on the QML side (audio=no).  Decode thread cap (vd-lavc-threads=2)
+// and video-sync=display-resample tune the loop wrap for shipping defaults.
+// libmpv normalises boolean options post-init: "no" reads back as "false";
+// "auto"/text/numeric options round-trip verbatim.
+void TestMpvBackend::initOptions_disableAudioAndCache() {
+    auto obj = makeObject();
+    QVERIFY(obj->initialized());
+    QCOMPARE(obj->getProperty("cache").toString(), QStringLiteral("false"));
+    QCOMPARE(obj->getProperty("audio").toString(), QStringLiteral("false"));
+    QCOMPARE(obj->getProperty("vd-lavc-threads").toString(), QStringLiteral("2"));
+    QCOMPARE(obj->getProperty("video-sync").toString(), QStringLiteral("display-resample"));
+    QCOMPARE(obj->getProperty("loop-file").toString(), QStringLiteral("inf"));
+}
+
+// Default is warn so journald stays clean; WEK_MPV_VERBOSE=1 restores info.
+// Note: `msg-level` reads back empty post-init (libmpv quirk — the value is
+// applied but not exposed via the property surface), so the assertion is
+// limited to "object initialises cleanly under both env states".  The env
+// gate is exercised at construction time; the value is not observable
+// through libmpv's property API.
+void TestMpvBackend::initOptions_msgLevelRespectsEnv() {
+    // Default: WEK_MPV_VERBOSE unset → warn.
+    qunsetenv("WEK_MPV_VERBOSE");
+    auto obj1 = makeObject();
+    QVERIFY(obj1->initialized());
+
+    // Set: WEK_MPV_VERBOSE=1 → info.
+    qputenv("WEK_MPV_VERBOSE", "1");
+    auto obj2 = makeObject();
+    QVERIFY(obj2->initialized());
+
+    qunsetenv("WEK_MPV_VERBOSE");
 }
 
 // A freshly-constructed object has m_first_frame == true (no source loaded

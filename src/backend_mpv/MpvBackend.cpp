@@ -26,6 +26,7 @@
 
 #include <clocale>
 #include <array>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <qobjectdefs.h>
@@ -433,11 +434,38 @@ MpvObject::MpvObject(QQuickItem* parent)
     // All options must be set BEFORE mpv_initialize: post-init the option
     // surface becomes read-only and these calls would silently no-op.
     mpv_set_option_string(m_mpv, "terminal", "no");
-    mpv_set_option_string(m_mpv, "msg-level", "all=info");
     mpv_set_option_string(m_mpv, "config", "no");
-    mpv_set_option_string(m_mpv, "hwdec", "auto");
     mpv_set_option_string(m_mpv, "vo", "libmpv");
-    mpv_set_option_string(m_mpv, "loop", "inf");
+    mpv_set_option_string(m_mpv, "hwdec", "auto"); // depends on vo being set
+
+    // Wallpaper loops re-read from disk each cycle; the ~10MB demuxer cache
+    // is pointless overhead vs. the OS page cache that handles sequential
+    // re-reads better.
+    mpv_set_option_string(m_mpv, "cache", "no");
+
+    // Wallpapers have no audio path on the QML side — skip the decode
+    // entirely.  Saves a few %CPU on AAC-tracked files.
+    mpv_set_option_string(m_mpv, "audio", "no");
+
+    // 1080p30 wallpapers need ~2 decode threads; mpv default (= CPU core
+    // count) is wasteful and spawns idle threads on modern desktops.
+    mpv_set_option_string(m_mpv, "vd-lavc-threads", "2");
+
+    // Retime the video clock to the display refresh — smooths the loop
+    // wrap and avoids judder on long-running wallpaper sessions.  The
+    // default `audio` sync mode is wrong here (we have no audio path).
+    mpv_set_option_string(m_mpv, "video-sync", "display-resample");
+
+    // Modern per-file loop form.  `loop=inf` is the deprecated
+    // playlist-loop alias that only worked because we never have a
+    // playlist of more than one.
+    mpv_set_option_string(m_mpv, "loop-file", "inf");
+
+    // Default to warn so journald isn't flooded with mpv lifecycle prints
+    // on shipping builds.  Env override `WEK_MPV_VERBOSE=1` restores info.
+    const char* verbose = std::getenv("WEK_MPV_VERBOSE");
+    mpv_set_option_string(
+        m_mpv, "msg-level", (verbose && verbose[0] && verbose[0] != '0') ? "all=info" : "all=warn");
 
     if (mpv_initialize(m_mpv) < 0) {
         qWarning() << "MpvObject: mpv_initialize() failed — video backend unavailable";

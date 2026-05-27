@@ -598,6 +598,30 @@ foreach(_wek_test_target
     endif()
 endforeach()
 
+# ── Test labels for package-build-time filtering ──────────────────────────────
+# Tests labelled DISPLAY_NEEDED require a Qt platform plugin / display stack
+# beyond the offscreen platform (qmltestrunner loads the full Quick stack with
+# the plugin's runtime imports).  Tests labelled DBUS_NEEDED talk to a session
+# D-Bus during their useful round-trip cases (they degrade gracefully without
+# a bus, but the meaningful coverage hangs off it).  Downstream package
+# builders running ctest in a clean chroot exclude both labels via
+# `ctest --label-exclude 'DISPLAY_NEEDED|DBUS_NEEDED'`.  Unlabelled tests
+# always run; they must be display-free and bus-free.  Each setter is guarded
+# by if(TEST ...) so the block stays harmless when an optional dep skips a
+# test.
+if(TEST tst_qml)
+    set_tests_properties(tst_qml PROPERTIES LABELS "DISPLAY_NEEDED")
+endif()
+if(TEST tst_mpriscolors)
+    set_tests_properties(tst_mpriscolors PROPERTIES LABELS "DBUS_NEEDED")
+endif()
+if(TEST tst_ttyswitchmonitor)
+    set_tests_properties(tst_ttyswitchmonitor PROPERTIES LABELS "DBUS_NEEDED")
+endif()
+if(TEST tst_screensavermonitor)
+    set_tests_properties(tst_screensavermonitor PROPERTIES LABELS "DBUS_NEEDED")
+endif()
+
 # ── Coverage report target ────────────────────────────────────────────────────
 if(COVERAGE)
     find_program(LLVM_PROFDATA llvm-profdata REQUIRED)

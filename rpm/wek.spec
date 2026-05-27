@@ -8,6 +8,10 @@ URL:     https://github.com/captsilver/wallpaper-engine-kde-plugin
 
 # Built from a live git checkout.
 
+# Optional %check section (display-free + bus-free unit tests).  Opt in with
+# `rpmbuild --with check`; the fast-path build is unchanged.
+%bcond_with check
+
 BuildRequires: cmake extra-cmake-modules clang
 BuildRequires: vulkan-headers
 BuildRequires: plasma-workspace-devel libplasma-devel
@@ -21,6 +25,12 @@ BuildRequires: qt6-qtbase-private-devel
 BuildRequires: qt6-qtwebchannel-devel
 BuildRequires: freetype-devel
 BuildRequires: pulseaudio-libs-devel
+
+%if %{with check}
+BuildRequires: qt6-qtbase-devel
+BuildRequires: qt6-qtdeclarative-devel
+BuildRequires: nodejs
+%endif
 
 Requires: plasma-workspace
 Requires: gstreamer1-libav
@@ -52,12 +62,25 @@ export CC=clang
 export CXX=clang++
 cmake -B %{_builddir}/wek-build \
       -S %{reporoot} \
-      -DCMAKE_BUILD_TYPE=Release
+      -DCMAKE_BUILD_TYPE=Release \
+      %{?with_check:-DBUILD_TESTS=ON}
 cmake --build %{_builddir}/wek-build -- %{?_smp_mflags}
 
 %install
 DESTDIR=%{buildroot} cmake --install %{_builddir}/wek-build \
       --prefix %{_prefix}
+
+%check
+%if %{with check}
+# Run only the bus-free, display-free C++ tests in the RPM build chroot.
+# Display-dependent suites (qmltestrunner) are labelled DISPLAY_NEEDED in
+# tests/CMakeLists.txt; D-Bus-needing suites are labelled DBUS_NEEDED.  Both
+# excluded here; the full-environment suite is covered by the local preflight
+# gate on the developer side.
+ctest --test-dir %{_builddir}/wek-build/tests \
+      --output-on-failure \
+      --label-exclude 'DISPLAY_NEEDED|DBUS_NEEDED'
+%endif
 
 %files
 # QML plugin (single payload directory under /usr/lib64).

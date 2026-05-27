@@ -19,8 +19,14 @@ snapshot-changelog:
 override_dh_auto_configure:
 	dh_auto_configure -- \
 		-DCMAKE_BUILD_TYPE=Release \
+		-DBUILD_TESTS=ON \
 		-G Ninja
 
 override_dh_auto_test:
+	# Run only the display-free + bus-free C++ tests at package-build time.
+	# QML / D-Bus tests are labelled DISPLAY_NEEDED / DBUS_NEEDED in
+	# tests/CMakeLists.txt and run under the local preflight gate, not here.
+	# DEB_BUILD_OPTIONS=nocheck still skips the entire step per debhelper.
+	dh_auto_test -- ARGS+="--label-exclude DISPLAY_NEEDED|DBUS_NEEDED"
 
 override_dh_dwz:

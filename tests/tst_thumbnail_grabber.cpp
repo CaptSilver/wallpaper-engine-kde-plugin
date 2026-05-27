@@ -4,17 +4,48 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <clocale>
+#include <vector>
 #include "ThumbnailGrabber.hpp"
 #include "FileHelper.hpp"
 
 using wekde::FileHelper;
 using wekde::ThumbnailGrabber;
 
+// Process-global message sink used by the install-during-test QtMessageHandler.
+// Guarded by g_sinkMutex because libmpv emits warnings from internal worker
+// threads (mpv runs its own dispatcher), and FileHelper::generateThumbnail
+// invokes the grabber from a QThreadPool worker.
+static QMutex                          g_sinkMutex;
+static std::vector<QString>            g_sink;
+static QtMessageHandler                g_prevHandler = nullptr;
+static void sinkHandler(QtMsgType type, const QMessageLogContext& ctx, const QString& msg) {
+    {
+        QMutexLocker lock(&g_sinkMutex);
+        g_sink.push_back(msg);
+    }
+    if (g_prevHandler) g_prevHandler(type, ctx, msg);
+}
+
 class TestThumbnailGrabber : public QObject {
     Q_OBJECT
+
+    // Returns true if the global sink contains any message containing `substr`.
+    static bool sinkContains(const QString& substr) {
+        QMutexLocker lock(&g_sinkMutex);
+        for (const QString& m : g_sink) {
+            if (m.contains(substr)) return true;
+        }
+        return false;
+    }
+    static void sinkReset() {
+        QMutexLocker lock(&g_sinkMutex);
+        g_sink.clear();
+    }
 
 private slots:
     void initTestCase() {
@@ -25,7 +56,13 @@ private slots:
         // from a pool worker (which is what ThumbnailGrabber::Impl used to do
         // unsafely).
         std::setlocale(LC_NUMERIC, "C");
+        // Install the qWarning/qCritical sink for the lifetime of the suite.
+        g_prevHandler = qInstallMessageHandler(sinkHandler);
     }
+
+    void cleanupTestCase() { qInstallMessageHandler(g_prevHandler); }
+
+    void init() { sinkReset(); }
 
     void grab_writesValidJpeg() {
         QTemporaryDir d;
@@ -50,6 +87,9 @@ private slots:
         ThumbnailGrabber grabber;
         QCOMPARE(grabber.grab("/tmp/wekde_no_such_video.webm", out, 0.5), false);
         QVERIFY(! QFile::exists(out));
+        // Site #4: the missing-input branch must emit a journal breadcrumb so
+        // a user with a blank thumbnail tile can grep for the cause.
+        QVERIFY(sinkContains("source file does not exist"));
     }
 
     // When the input file exists but isn't a valid video, libmpv emits
@@ -69,6 +109,8 @@ private slots:
         ThumbnailGrabber grabber;
         QCOMPARE(grabber.grab(in, out, 0.5), false);
         QVERIFY(! QFile::exists(out));
+        // Site #6: END_FILE during the load wait — assert the journal line.
+        QVERIFY(sinkContains("END_FILE during load"));
     }
 
     // Seek absolute past the end of the clip → libmpv may emit END_FILE
@@ -93,9 +135,16 @@ private slots:
         if (ok) {
             QVERIFY(QFile::exists(out));
             QVERIFY(QFileInfo(out).size() > 0);
+        } else {
+            // Site #9 OR #10 fired — accept either "END_FILE during seek"
+            // (libmpv refuses the past-end seek) or "seek timeout"
+            // (PLAYBACK_RESTART never arrives within budget). Some libmpv
+            // builds also fall through the file-existence check, so accept
+            // the screenshot-missing variant too.
+            QVERIFY(sinkContains("END_FILE during seek")
+                    || sinkContains("seek timeout")
+                    || sinkContains("screenshot file missing"));
         }
-        // ok==false: file may or may not have been written depending on the
-        // libmpv version; no further assertion.
     }
 
     // F16: on a seek timeout (no MPV_EVENT_PLAYBACK_RESTART within budget),
@@ -196,6 +245,69 @@ private slots:
         QCOMPARE(spy.count(), 1);
         // Whether the grab succeeded or not, the parent dir must now exist.
         QVERIFY(QFileInfo::exists(QFileInfo(out).absolutePath()));
+        // Regression: the success path of mkpath must NOT emit the failure
+        // warning — only the qWarning when mkpath returns false.
+        QVERIFY(! sinkContains("mkpath failed"));
+    }
+
+    // Site #11: when screenshot-to-file cannot write the output (parent dir
+    // missing AND not creatable), libmpv's command returns < 0 OR the file
+    // never materialises. Either path now logs a journal breadcrumb. We try
+    // first to drive site #11 via an unwriteable outPath; if libmpv writes
+    // to a temp file first and renames (different version), site #12 fires
+    // instead — both substrings are accepted.
+    void grab_unwriteableOutPath_logsScreenshotFailure() {
+        const QString in = QFINDTESTDATA("fixtures/tiny.webm");
+        if (! QFileInfo::exists(in)) QSKIP("fixtures/tiny.webm missing in this environment");
+        // /proc is read-only on Linux; libmpv cannot create a JPEG under it.
+        const QString    out = "/proc/wek_e2_no_write/thumb.jpg";
+        ThumbnailGrabber grabber;
+        const bool       ok = grabber.grab(in, out, /*atSeconds=*/0.5);
+        if (ok) QSKIP("libmpv unexpectedly wrote under /proc — env doesn't reach site #11");
+        // Either site #11 (mpv_command failure) or site #12 (file missing
+        // post-screenshot) fired; both are acceptable evidence the new
+        // breadcrumb landed.
+        QVERIFY(sinkContains("screenshot-to-file mpv_command failed")
+                || sinkContains("screenshot file missing"));
+    }
+
+    // FileHelper::generateThumbnail mkpath no-op: if the parent dir cannot
+    // be created (read-only ancestor), the worker now emits a qWarning so
+    // the screenshot-to-file failure that follows isn't mis-blamed on
+    // libmpv. Worker still completes — the thumbnailReady(ok=false) signal
+    // fires and the caller knows the grab failed.
+    void generateThumbnail_logsMkpathFailureOnUnwriteableParent() {
+        const QString in = QFINDTESTDATA("fixtures/tiny.webm");
+        // /proc is read-only on Linux → mkpath cannot create the subtree.
+        const QString out = "/proc/wek_e2_mkpath_fail/sub/thumb.jpg";
+        FileHelper    helper;
+        QSignalSpy    spy(&helper, &FileHelper::thumbnailReady);
+        helper.generateThumbnail(in, out, 0.5);
+        QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 10000);
+        QCOMPARE(spy.count(), 1);
+        const QList<QVariant> args = spy.takeFirst();
+        // The grab MUST report failure when mkpath fails AND libmpv cannot
+        // write the screenshot. Some libmpv builds may silently succeed if a
+        // temp staging path exists; treat that as a SKIP rather than a fail
+        // since the journal-breadcrumb assertion below is the load-bearing
+        // contract.
+        if (args.at(2).toBool()) QSKIP("libmpv unexpectedly wrote under /proc — skip mkpath assertion");
+        QVERIFY(sinkContains("mkpath failed"));
+    }
+
+    // Regression: the happy-path grab must NOT emit ANY of the new qWarning
+    // lines. If libmpv refuses to init in CI (no codec), QSKIP; otherwise
+    // the sink stays clean after a successful grab.
+    void grab_happyPath_emitsNoWarnings() {
+        QTemporaryDir d;
+        const QString out = d.filePath("ok.jpg");
+        const QString in  = QFINDTESTDATA("fixtures/tiny.webm");
+        if (! QFileInfo::exists(in)) QSKIP("fixtures/tiny.webm missing in this environment");
+        ThumbnailGrabber grabber;
+        const bool       ok = grabber.grab(in, out, 0.5);
+        if (! ok) QSKIP("libmpv could not init or seek in this environment");
+        // The 12 sites all emit substrings starting with "ThumbnailGrabber:".
+        QVERIFY(! sinkContains("ThumbnailGrabber:"));
     }
 };
 

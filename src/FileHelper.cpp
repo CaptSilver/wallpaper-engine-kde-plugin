@@ -425,8 +425,18 @@ void FileHelper::generateThumbnail(const QString& videoPath, const QString& outP
         m_inflight.insert(videoPath);
     }
     m_pool.start([this, videoPath, outPath, atSeconds]() {
-        // Ensure cache dir exists before libmpv writes the JPEG.
-        QDir().mkpath(QFileInfo(outPath).absolutePath());
+        // Ensure cache dir exists before libmpv writes the JPEG. If mkpath
+        // fails (read-only parent, full disk), log the real cause-and-effect
+        // chain so the downstream "screenshot-to-file failed" line isn't
+        // mis-blamed on libmpv. Worker continues regardless: if the dir
+        // somehow exists by the time the screenshot runs we still want the
+        // grab to succeed, and otherwise libmpv's own failure logs (now
+        // correctly attributed) tell the rest of the story.
+        const QString parentDir = QFileInfo(outPath).absolutePath();
+        if (! QDir().mkpath(parentDir)) {
+            qWarning() << "FileHelper::generateThumbnail: mkpath failed for" << parentDir
+                       << "— libmpv screenshot will likely fail too";
+        }
         wekde::ThumbnailGrabber grabber;
         const bool              ok = grabber.grab(videoPath, outPath, atSeconds);
         {

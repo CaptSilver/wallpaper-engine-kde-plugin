@@ -206,6 +206,113 @@ TestCase {
         compare(fh.lastReadWallpaperConfigId, "q6_test_init");
     }
 
+    // The dir-size Control's content text used to use a ghost binding
+    // (readonly property bool _set_text) to fire pyext.get_dir_size and
+    // mutate parent visibility as a side-effect of binding evaluation.
+    // Post-fix it's an explicit refreshDirSize() function driven by a
+    // Connections{onWpmodelChanged} block + Component.onCompleted. The
+    // dir-size pipeline must still engage on a regex-matching wpmodel.path.
+    function test_dirSize_refreshOnWpmodelChange() {
+        const fh = _findFileHelper();
+        verify(fh !== null, "FileHelper stub unreachable");
+        const rc = _firstByPredicate(c => typeof c.wpmodel !== "undefined" &&
+                                           typeof c.image_size === "number");
+        verify(rc !== null, "right_content not found in tree");
+
+        const before = fh.requestDirSizeCount;
+        rc.wpmodel = { workshopid: "q7_dirsize",
+                       path: "file:///steam/431960/12345",
+                       title: "", type: "", tags: [], playlists: [],
+                       favor: false, contentrating: "" };
+        wait(0);
+        verify(fh.requestDirSizeCount >= before + 1,
+               "wpmodel change should trigger requestDirSize on a regex-matching path");
+    }
+
+    // The tags ListView used a ghost binding (readonly property bool
+    // _set_model) to clear/rebuild the inline ListModel. Post-fix the
+    // logic is a named rebuildTags() function on the ListView, driven by
+    // Connections{onWpmodelChanged} + Component.onCompleted. Locate by
+    // method shape (the post-fix object has a rebuildTags function).
+    function test_tagsList_rebuildsOnWpmodelChange() {
+        const tagsLV = _firstByPredicate(c => typeof c.rebuildTags === "function");
+        verify(tagsLV !== null, "tags ListView (with rebuildTags method) not found");
+        const rc = _firstByPredicate(c => typeof c.wpmodel !== "undefined" &&
+                                           typeof c.image_size === "number");
+        verify(rc !== null);
+
+        rc.wpmodel = { workshopid: "q7_tags", path: "/x",
+                       title: "", type: "",
+                       tags: [{ key: "anime" }, { key: "fantasy" }],
+                       playlists: [],
+                       favor: false,
+                       contentrating: "Everyone" };
+        wait(0);
+        // 2 tags + 1 contentrating row.
+        compare(tagsLV.model.count, 3);
+    }
+
+    // set_config / save_changes used to emit five unguarded console.log
+    // lines (two in save_changes including JSON.stringify(config_changes),
+    // three in set_config) that flooded plasmashell's journal on every
+    // per-wallpaper option flip. The fix routes those through a single
+    // debugLog() helper gated on a debugLogs flag (default OFF), then
+    // observes the call via a counter so the test can prove the gate
+    // works without needing to intercept QML's native console.log binding
+    // (qmltestrunner suppresses console output by default; the JS-side
+    // console object is not patchable from inside the test).
+    function test_setConfig_savesChangesQuietly_noDebugLogs() {
+        const ro = _findRightOpts();
+        if (!ro) return;
+        const fh = _findFileHelper();
+        verify(fh !== null);
+
+        // Post-fix invariant: the gate property exists, is a bool, and is
+        // OFF by default — release builds emit no journal traffic.
+        verify(typeof ro.debugLogs === "boolean",
+               "right_opts must expose a debugLogs bool gate property");
+        compare(ro.debugLogs, false,
+                "debugLogs gate must default to false (release-quiet)");
+        verify(typeof ro.debugLogCount === "number",
+               "right_opts must expose a debugLogCount observable counter");
+
+        // Pin wpmodel so workshopid is non-empty — set_config's hot
+        // path (write + cfg_PerOptChanged bump + the gated debugLog calls)
+        // only runs on the non-empty-workshopid branch.
+        const rc = _firstByPredicate(c => typeof c.wpmodel !== "undefined" &&
+                                           typeof c.image_size === "number");
+        verify(rc !== null);
+        rc.wpmodel = { workshopid: "q7_logs", path: "/x",
+                       title: "", type: "", tags: [], playlists: [],
+                       favor: false, contentrating: "" };
+        wait(0);
+
+        // KEYSTONE: with the gate OFF (release default), set_config +
+        // save_changes must not increment debugLogCount. Pre-fix the
+        // unguarded console.log lines would have produced 5 emissions; the
+        // gated post-fix path is silent.
+        const beforeQuiet = ro.debugLogCount;
+        ro.set_config("display_mode", 2);
+        ro.save_changes();
+        compare(ro.debugLogCount, beforeQuiet,
+                "debugLogs OFF must yield zero debug emissions across the " +
+                "full save_changes + set_config hot path");
+
+        // Inverse check: enabling the gate routes through the same helper
+        // and bumps the counter. Confirms the gate is functional, not just
+        // structurally present.
+        ro.debugLogs = true;
+        try {
+            const beforeLoud = ro.debugLogCount;
+            ro.set_config("display_mode", 3);
+            ro.save_changes();
+            verify(ro.debugLogCount > beforeLoud,
+                   "debugLogs ON must produce at least one debug emission");
+        } finally {
+            ro.debugLogs = false;
+        }
+    }
+
     // ── WallpaperPage: user_props_group ──────────────────────────────────────
     function test_userPropsGroup_savePropChange_branchesOnEmpty() {
         const upg = _findUserPropsGroup();

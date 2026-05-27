@@ -563,21 +563,26 @@ RowLayout {
                             radius: 8
                         }
                         contentItem: Text {
+                            id: dirSizeText
                             color: Kirigami.Theme.textColor
                             font.capitalization: Font.Capitalize
-                            readonly property bool _set_text: {
-                                const dir = right_content.wpmodel.path;
-                                if(!dir.match(Common.regex_path_check)) {
-                                    control_dir_size.visible = false;
-                                    return false;
-                                }
-                                pyext.get_dir_size(Common.urlNative(dir)).then(res => {
-                                    this.text = Utils.prettyBytes(res);
-                                    control_dir_size.visible = true;
-                                }).catch(reason => console.error(reason));
-                                return true;
-                            }
                         }
+                        function refreshDirSize() {
+                            const dir = right_content.wpmodel ? right_content.wpmodel.path : "";
+                            if (!dir || !dir.match(Common.regex_path_check)) {
+                                control_dir_size.visible = false;
+                                return;
+                            }
+                            pyext.get_dir_size(Common.urlNative(dir)).then(res => {
+                                dirSizeText.text = Utils.prettyBytes(res);
+                                control_dir_size.visible = true;
+                            }).catch(reason => console.error(reason));
+                        }
+                        Connections {
+                            target: right_content
+                            function onWpmodelChanged() { control_dir_size.refreshDirSize(); }
+                        }
+                        Component.onCompleted: refreshDirSize()
                     }
 
                     Kirigami.ActionToolBar {
@@ -623,15 +628,16 @@ RowLayout {
                 }
 
                 ListView {
+                    id: tagsListView
                     Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
                     implicitWidth: contentItem.childrenRect.width
                     implicitHeight: contentItem.childrenRect.height
 
                     orientation: ListView.Horizontal
                     model: ListModel {}
-                    readonly property bool _set_model: {
+                    function rebuildTags() {
                         const wpmodel = right_content.wpmodel;
-                        const _model = this.model;
+                        const _model = tagsListView.model;
                         _model.clear();
                         // tags/playlists are ListModels (.count + .get) at runtime
                         // but can be arrays or empty/undefined in transient states.
@@ -652,8 +658,12 @@ RowLayout {
                         _appendAll(wpmodel ? wpmodel.playlists : null);
                         if (wpmodel && wpmodel.contentrating !== undefined)
                             _model.append({key: wpmodel.contentrating});
-                        return true;
                     }
+                    Connections {
+                        target: right_content
+                        function onWpmodelChanged() { tagsListView.rebuildTags(); }
+                    }
+                    Component.onCompleted: rebuildTags()
                     clip: false
                     spacing: 8
 
@@ -744,13 +754,29 @@ RowLayout {
                     // onConfigChanged Repeater notify (line ~919) still fires
                     // because reassigning activeConfig emits a notify here.
                     property var config: wallpaperPageRoot.activeConfig
+
+                    // Opt-in debug traces for the per-wallpaper save flow.
+                    // Default OFF — release builds stay quiet (the journal
+                    // used to flood with five lines per per-wallpaper option
+                    // flip including JSON.stringify(config_changes) dumps).
+                    // Enable by toggling this property at runtime from a dev
+                    // overlay; debugLogCount is bumped on each emit so tests
+                    // can verify the gate without intercepting console.log
+                    // (qmltestrunner suppresses it; the binding is native).
+                    property bool debugLogs: false
+                    property int debugLogCount: 0
+                    function _debugLog(...args) {
+                        if (!debugLogs) return;
+                        debugLogCount++;
+                        console.log(...args);
+                    }
                     function save_changes() {
-                        console.log("save_changes called, config_changes:", JSON.stringify(config_changes));
+                        _debugLog("save_changes called, config_changes:", JSON.stringify(config_changes));
                         config_resets.forEach((wid) => {
                             pyext.reset_wallpaper_config(wid).then(res => {});
                         });
                         Object.entries(config_changes).forEach(([wid, cfg]) => {
-                            console.log("saving config for wid:", wid, "cfg:", JSON.stringify(cfg));
+                            _debugLog("saving config for wid:", wid, "cfg:", JSON.stringify(cfg));
                             pyext.write_wallpaper_config(wid, cfg);
                         });
                         // Clear after saving
@@ -758,7 +784,7 @@ RowLayout {
                         config_resets.clear();
                     }
                     function set_config(key, val) {
-                        console.log("set_config called, key:", key, "val:", val, "workshopid:", workshopid);
+                        _debugLog("set_config called, key:", key, "val:", val, "workshopid:", workshopid);
                         if(!key || !workshopid) return;
 
                         if (!config_changes[workshopid])
@@ -772,9 +798,9 @@ RowLayout {
                         cfg[key] = val;
                         pyext.write_wallpaper_config(workshopid, cfg);
 
-                        console.log("set_config: cfg_PerOptChanged before:", cfg_PerOptChanged);
+                        _debugLog("set_config: cfg_PerOptChanged before:", cfg_PerOptChanged);
                         cfg_PerOptChanged++;
-                        console.log("set_config: cfg_PerOptChanged after:", cfg_PerOptChanged);
+                        _debugLog("set_config: cfg_PerOptChanged after:", cfg_PerOptChanged);
                     }
                     function reset_config() {
                         config_resets.add(workshopid);

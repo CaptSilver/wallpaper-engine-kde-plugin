@@ -67,10 +67,25 @@ Item{
         }
     }
 
-    // MpvBackend doesn't emit an explicit error signal — if libmpv can't
-    // load the source (missing file, codec failure, etc.) firstFrame
-    // never fires. A 15s watchdog catches this and falls back to InfoShow
-    // so the user sees a real message instead of a permanent black screen.
+    // MpvBackend now emits sourceLoadFailed for both sync (loadfile reject)
+    // and async (MPV_EVENT_END_FILE reason=ERROR) failures — handled by
+    // the Connections block below, which routes the reason to InfoShow
+    // immediately and stops the watchdog. The watchdog stays in place
+    // as a true-silent-hang backstop: it only fires when mpv accepts
+    // the load, never emits END_FILE, and never produces a frame — a
+    // shape we still see for sources that mpv opens but stalls on.
+    Connections {
+        target: player
+        ignoreUnknownSignals: true
+        function onSourceLoadFailed(reason) {
+            loadWatchdog.stop();
+            if (videoItem.parent
+                && typeof videoItem.parent.loadInfoShow === "function") {
+                videoItem.parent.loadInfoShow(
+                    "MPV could not load this video: " + reason);
+            }
+        }
+    }
     Timer {
         id: loadWatchdog
         interval: 15000
@@ -80,7 +95,7 @@ Item{
             if (videoItem.parent
                 && typeof videoItem.parent.loadInfoShow === "function") {
                 videoItem.parent.loadInfoShow(
-                    "MPV failed to produce a frame within 15s — file may be unsupported or missing.");
+                    "MPV produced no frame within 15s.");
             }
         }
     }

@@ -219,6 +219,20 @@ void MpvObject::onMpvEvents() {
         if (ev->event_id == MPV_EVENT_NONE) break;
         if (ev->event_id == MPV_EVENT_PROPERTY_CHANGE) {
             refreshStatus(getProperty("idle-active").toBool(), getProperty("pause").toBool());
+        } else if (ev->event_id == MPV_EVENT_END_FILE) {
+            // mpv signals demuxer/decoder failures via END_FILE with
+            // reason=ERROR; other reasons (EOF on a non-looping source,
+            // STOP, REDIRECT, QUIT) are informational, not failures.
+            // loop=inf is set in the ctor so EOF should never reach here
+            // in practice, but the filter keeps the signal honest if a
+            // future option-set unsets loop.
+            auto* d = static_cast<mpv_event_end_file*>(ev->data);
+            if (d && d->reason == MPV_END_FILE_REASON_ERROR) {
+                const char* msg = mpv_error_string(d->error);
+                _Q_DEBUG() << "END_FILE reason=ERROR error=" << d->error
+                           << "msg=" << (msg ? msg : "<null>");
+                Q_EMIT sourceLoadFailed(QString::fromUtf8(msg ? msg : "unknown mpv error"));
+            }
         }
     }
 }
@@ -279,6 +293,13 @@ void MpvObject::setSource(const QUrl& source) {
         Q_EMIT sourceChanged();
 
         m_first_frame.store(false);
+    } else {
+        // Diagnostic kept per debug-logging policy: the sync-reject path
+        // is rare (mpv accepts almost any QUrl-derived path syntactically)
+        // so the LOG is load-bearing for future investigation.
+        _Q_DEBUG() << "loadfile rejected for" << source;
+        Q_EMIT sourceLoadFailed(
+            QStringLiteral("libmpv rejected loadfile for %1").arg(source.toString()));
     }
 }
 

@@ -23,4 +23,5 @@ Item {
     function setProperty(name, val) { setPropertyCount += 1; lastSetProperty = { name: name, val: val } }
 
     signal firstFrame()
+    signal sourceLoadFailed(string reason)
 }

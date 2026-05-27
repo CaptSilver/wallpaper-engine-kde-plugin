@@ -151,10 +151,11 @@ TestCase {
         const n = loadInfoShowCount;
         wd.triggered();
         compare(loadInfoShowCount, n + 1);
-        // Production assembles a "MPV failed to produce a frame within 15s …"
-        // message (Mpv.qml:82-83); assert the load-failure substring is
-        // routed verbatim so a future i18n/format slip is caught.
-        verify(lastLoadInfoMsg.indexOf("MPV failed") !== -1);
+        // Production now assembles a trimmed "MPV produced no frame within
+        // 15s." message — the immediate-failure path (sourceLoadFailed)
+        // owns the "may be unsupported or missing" diagnostic, so the
+        // watchdog only reports the silent-hang case it actually catches.
+        verify(lastLoadInfoMsg.indexOf("no frame") !== -1);
     }
 
     function test_pauseTimerTriggeredEventuallyPausesPlayer() {
@@ -180,5 +181,60 @@ TestCase {
         const n = p.pauseCount;
         timer.triggered();
         compare(p.pauseCount, n + 1);
+    }
+
+    // sourceLoadFailed routes to loadInfoShow AND stops the 15s watchdog
+    // so the user sees a real diagnostic immediately. Mirrors
+    // test_loadWatchdog_triggerRunsBody: emit the signal on the player
+    // stub, observe loadInfoShowCount + lastLoadInfoMsg, and confirm the
+    // watchdog Timer is no longer running.
+    function test_sourceLoadFailed_routesReasonToInfoShow() {
+        const p = _findMpvPlayer();
+        verify(p !== null);
+        // Locate the 15s watchdog (same helper-shape used by the
+        // existing watchdog-trigger test).
+        function findWatchdog(parent) {
+            const buckets = [parent.children || [], parent.data || []];
+            for (const b of buckets) {
+                for (let i = 0; i < b.length; i++) {
+                    const t = b[i];
+                    if (t && typeof t.start === "function" &&
+                        typeof t.interval !== "undefined" &&
+                        t.interval === 15000) return t;
+                }
+            }
+            return null;
+        }
+        const wd = findWatchdog(mpv);
+        verify(wd !== null);
+        // Force a known starting state — other tests in this TestCase may
+        // have already triggered the watchdog (or qmltestrunner ordering
+        // may differ). What this test actually exercises is the contract
+        // "emitting sourceLoadFailed calls loadWatchdog.stop()."
+        wd.restart();
+        verify(wd.running);
+
+        const n = loadInfoShowCount;
+        // Emit on the stub player as the real C++ signal would.
+        p.sourceLoadFailed("decode failed: no demuxer for this format");
+        compare(loadInfoShowCount, n + 1);
+        verify(lastLoadInfoMsg.indexOf("decode failed") !== -1);
+        // The Connections handler must stop the watchdog so the 15s
+        // generic message can't fire on top of the real one.
+        verify(! wd.running);
+    }
+
+    // Regression: a sourceLoadFailed with an empty reason still routes;
+    // the QML message format does not require a non-empty reason (the
+    // C++ contract does — see the unit test — but the QML layer must
+    // not crash on a malformed signal in case a future refactor
+    // forwards an unbound QString).
+    function test_sourceLoadFailed_handlesEmptyReasonGracefully() {
+        const p = _findMpvPlayer();
+        const n = loadInfoShowCount;
+        p.sourceLoadFailed("");
+        compare(loadInfoShowCount, n + 1);
+        // The message text is whatever the Connections handler composed —
+        // we only assert that the routing happened.
     }
 }

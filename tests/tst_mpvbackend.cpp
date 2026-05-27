@@ -77,6 +77,18 @@ private slots:
     void refreshStatus_unchanged_doesNotEmit();
     void onMpvEvents_idlePlayer_doesNotEmit();
 
+    // setSource failure paths emit sourceLoadFailed instead of falling
+    // through silently (which today costs the user 15s of black before the
+    // QML watchdog fires a generic message).  Two failure shapes:
+    //   - sync: mpv's command parser rejects the loadfile (rare in practice
+    //     for QUrl-derived paths; covered by command() returning false).
+    //   - async: mpv accepts loadfile, then fires MPV_EVENT_END_FILE with
+    //     reason=ERROR when open(2)/demux fails.
+    void setSource_invalidLocalPath_emitsSourceLoadFailed_async();
+    void setSource_validFixture_doesNotEmitSourceLoadFailed();
+    void sourceLoadFailed_carriesNonEmptyReason();
+    void sourceChanged_notEmittedOnAsyncEndFileError();
+
     // Regression: constructor used to set `loop`, `vo`, `hwdec`, `config`
     // *after* mpv_initialize(), where mpv silently drops them.
     void constructor_setsLoopOptionBeforeInit();
@@ -423,6 +435,84 @@ void TestMpvBackend::status_playPauseSequenceFinalStateCorrect() {
     QCOMPARE(obj->status(), MpvObject::Paused);
     QVERIFY(obj->refreshStatus(false, false));
     QCOMPARE(obj->status(), MpvObject::Playing);
+}
+
+// Async path: mpv accepts loadfile syntactically (so the sync command()
+// returns true and sourceChanged DOES fire), then fires MPV_EVENT_END_FILE
+// with reason=ERROR when the file open or demux fails.  onMpvEvents() must
+// observe that and emit sourceLoadFailed with a non-empty mpv_error_string.
+void TestMpvBackend::setSource_invalidLocalPath_emitsSourceLoadFailed_async() {
+    auto obj = makeObject();
+    obj->initCallback();
+
+    QSignalSpy spy(obj.get(), &MpvObject::sourceLoadFailed);
+    const QUrl missing =
+        QUrl::fromLocalFile(QStringLiteral("/var/empty/wekde-does-not-exist.mp4"));
+    obj->setSource(missing);
+    // mpv accepts the load syntactically; m_source is set.  The END_FILE
+    // event fires once mpv tries to open the file (async on the player
+    // thread, marshalled through wakeup() onto the GUI thread).
+    QTRY_VERIFY_WITH_TIMEOUT(spy.count() >= 1, 5000);
+    QVERIFY(! spy.at(0).at(0).toString().isEmpty());
+}
+
+// Happy-path regression: a successful loadfile path must NOT emit
+// sourceLoadFailed.  Uses the same tiny stub-mp4 trick as
+// firstFrame_afterSourceFlip_emitsExactlyOnce — mpv's loadfile is
+// fire-and-forget so the bytes don't have to be a real frame; we only
+// assert "no spurious failure during a brief settle".
+void TestMpvBackend::setSource_validFixture_doesNotEmitSourceLoadFailed() {
+    auto obj = makeObject();
+    obj->initCallback();
+
+    QTemporaryFile file(QStringLiteral("/tmp/wekde-mpv-okXXXXXX.mp4"));
+    QVERIFY(file.open());
+    file.write(QByteArrayLiteral("\x00\x00\x00\x18"
+                                 "ftypmp42"));
+    file.flush();
+
+    QSignalSpy spy(obj.get(), &MpvObject::sourceLoadFailed);
+    obj->setSource(QUrl::fromLocalFile(file.fileName()));
+    QVERIFY2(! obj->source().isEmpty(),
+             "loadfile path not exercised; file may be unwritable");
+    // The contract this test asserts is "no SYNC-path emit on a loadfile
+    // mpv accepts" — i.e. the new else branch in setSource() must not
+    // fire when command() returned true.  The async demuxer may legitimately
+    // END_FILE on this stub mp4 a few ms later (it's not a real frame); we
+    // explicitly do NOT spin the event loop, so any spy hit here would
+    // have to come from a direct sync emit out of setSource.
+    QCOMPARE(spy.count(), 0);
+}
+
+// Documents the signal contract: the reason string is always non-empty
+// (either mpv_error_string output or the literal sync-reject diagnostic).
+// Used by the QML Connections block to populate the InfoShow message.
+void TestMpvBackend::sourceLoadFailed_carriesNonEmptyReason() {
+    auto obj = makeObject();
+    obj->initCallback();
+    QSignalSpy spy(obj.get(), &MpvObject::sourceLoadFailed);
+    obj->setSource(QUrl::fromLocalFile(QStringLiteral("/var/empty/missing.mp4")));
+    QTRY_VERIFY_WITH_TIMEOUT(spy.count() >= 1, 5000);
+    const QString reason = spy.at(0).at(0).toString();
+    QVERIFY(! reason.isEmpty());
+    QVERIFY(reason.size() > 3); // catches accidentally emitting "" or "ok"
+}
+
+// Property-contract regression: the existing rule "sourceChanged fires
+// iff loadfile was accepted" must not regress.  On the async ERROR path
+// mpv DID accept the command (m_source updated, sourceChanged fired
+// once), then later reported END_FILE with reason=ERROR — those events
+// are not coupled.  Assert sourceChanged fires once and exactly once.
+void TestMpvBackend::sourceChanged_notEmittedOnAsyncEndFileError() {
+    auto obj = makeObject();
+    obj->initCallback();
+    QSignalSpy changed(obj.get(), &MpvObject::sourceChanged);
+    QSignalSpy failed(obj.get(), &MpvObject::sourceLoadFailed);
+    obj->setSource(QUrl::fromLocalFile(QStringLiteral("/var/empty/missing.mp4")));
+    QTRY_VERIFY_WITH_TIMEOUT(failed.count() >= 1, 5000);
+    // sourceChanged fired exactly once (at sync-accept time); the async
+    // ERROR does not retroactively un-emit it.
+    QCOMPARE(changed.count(), 1);
 }
 
 QTEST_MAIN(TestMpvBackend)

@@ -109,6 +109,16 @@ signals:
     void initializedChanged();
     void sourceChanged();
     void firstFrame();
+    // Surface mpv load failures so QML can react immediately instead of
+    // waiting for the 15s watchdog. Two emit sites:
+    //   - setSource(): when this->command(loadfile, ...) returns false
+    //     (sync rejection by mpv's command parser).
+    //   - onMpvEvents(): when mpv posts MPV_EVENT_END_FILE with
+    //     reason == MPV_END_FILE_REASON_ERROR (async demux/decode failure).
+    // The reason string is short English (mpv_error_string for the async
+    // path; a literal diagnostic for the sync path), suitable for direct
+    // display in the loadInfoShow pane.
+    void sourceLoadFailed(const QString& reason);
 
 private:
     // Render context ready: set by the queued initCallback() after MpvRender emits

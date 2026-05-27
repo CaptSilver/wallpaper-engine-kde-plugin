@@ -11,6 +11,12 @@
 #include <QVariantMap>
 #include <QNetworkAccessManager>
 
+// Forward declaration in the global namespace so the friend declaration
+// inside wekde::MprisMonitor (below) refers to the global ::TestMprisColors
+// rather than wekde::TestMprisColors. The test fixture lives outside
+// the wekde namespace.
+class TestMprisColors;
+
 namespace wekde
 {
 
@@ -65,6 +71,12 @@ bool decodeArtReplyBytes(const QByteArray& data, bool networkError, QVariantList
 
 class MprisMonitor : public QQuickItem {
     Q_OBJECT
+    // Test seam: lets tst_mpriscolors invoke the private disconnectFromPlayer
+    // and applyPlaybackStatus without promoting them to public/Q_INVOKABLE
+    // (production has no external caller for either; the slots are only
+    // reached through D-Bus signal dispatch). ::TestMprisColors lives in the
+    // global namespace (see forward decl above).
+    friend class ::TestMprisColors;
 
 public:
     MprisMonitor(QQuickItem* parent = nullptr);

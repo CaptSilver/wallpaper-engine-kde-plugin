@@ -227,6 +227,16 @@ void MprisMonitor::disconnectFromPlayer() {
                             SLOT(handlePropertiesChanged(QString, QVariantMap, QStringList)));
     m_activeService.clear();
     m_positionTimer.stop();
+    // Reset state-edge dedup. Mirrors the art-URL reset below: the dedup
+    // fields are bound to the previous connection's lifetime, not the
+    // wallpaper's, and an initial reply from a new player whose Playing
+    // state happens to match the previous player's would otherwise be
+    // swallowed by the `state != m_playbackState` guard in
+    // applyPlaybackStatus(). Use sentinel -1 (not 0=Stopped) so the
+    // first reply always emits, regardless of value.
+    m_playbackState = -1;
+    m_lastPosition  = 0;
+    m_duration      = 0;
     // Reset the art-URL dedup tracker. Without this, reconnecting to a
     // different MPRIS player whose first art URL happens to match the
     // previous player's m_lastArtUrl silently dedups and the thumbnail

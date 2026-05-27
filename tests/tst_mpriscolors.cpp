@@ -142,6 +142,10 @@ private slots:
     // Reconnect with same art URL must NOT dedup (regression test for
     // the m_artUrlEverProcessed reset-on-disconnect fix)
     void reconnect_sameArtUrl_doesNotDedup();
+    // disconnectFromPlayer must reset m_playbackState (sentinel -1),
+    // m_lastPosition, and m_duration so a matching-state first reply
+    // from a reconnected player is not swallowed by the dedup guard.
+    void disconnectFromPlayer_resetsDedupState_so_matchingFirstReplyEmits();
 };
 
 // Helper: create a solid-color image
@@ -1451,6 +1455,35 @@ void TestMprisColors::processArtUrl_supersededLocalDecode_dropsStaleResult() {
     // when the emit landed in 5ms.
     QTRY_VERIFY_WITH_TIMEOUT(spy.count() >= 1 && spy.last().at(0).toBool(), 5000);
     QCOMPARE(spy.last().at(1).toList().size(), 15);
+}
+
+// Reconnecting to a different MPRIS player whose first reply happens to
+// match the previous player's playback state must NOT be deduped by the
+// applyPlaybackStatus `state != m_playbackState` guard. The disconnect
+// path resets m_playbackState to -1 (a sentinel outside the 0/1/2 value
+// space) so the first reply always emits — same shape as the art-URL
+// dedup reset that landed earlier.
+void TestMprisColors::disconnectFromPlayer_resetsDedupState_so_matchingFirstReplyEmits() {
+    wekde::MprisMonitor mon;
+    QSignalSpy          spy(&mon, &wekde::MprisMonitor::playbackStateChanged);
+
+    // First connection: Playing.
+    mon.applyPlaybackStatus(QStringLiteral("Playing"));
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.last().at(0).toInt(), 1);
+
+    // Player vanishes; disconnect path runs. Set a stub service so the
+    // early-return guard at the top of disconnectFromPlayer passes (the
+    // guard is only relevant for production where it avoids a redundant
+    // D-Bus disconnect when there's nothing to disconnect from).
+    mon.m_activeService = QStringLiteral("org.mpris.MediaPlayer2.test");
+    mon.disconnectFromPlayer();
+
+    // New player connects; first reply is also Playing — before the fix
+    // this was swallowed by the `state != m_playbackState` guard.
+    mon.applyPlaybackStatus(QStringLiteral("Playing"));
+    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.last().at(0).toInt(), 1);
 }
 
 QTEST_GUILESS_MAIN(TestMprisColors)

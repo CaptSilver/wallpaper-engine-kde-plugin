@@ -7,6 +7,7 @@
 import QtQuick
 import QtTest
 
+import Helpers 1.0
 import "../../plugin/contents/ui" as Plugin
 
 TestCase {
@@ -16,6 +17,7 @@ TestCase {
     when: windowShown
 
     Item { id: configHost; anchors.fill: parent }
+    AsyncUtil { id: asyncUtil }
 
     property var cfg: null
     property var _allNodes: []   // flat index built once
@@ -198,7 +200,7 @@ TestCase {
         rc.wpmodel = { workshopid: "q6_test_init", path: "/x",
                        title: "", type: "", tags: [], playlists: [],
                        favor: false, contentrating: "" };
-        wait(0);  // let bindings settle
+        asyncUtil.awaitBinding(this, fh, "readWallpaperConfigCount", before + 1);
         compare(fh.readWallpaperConfigCount, before + 1,
                 "Selection-change must produce exactly one read — both " +
                 "right_opts.config and user_props_group.propConfig source " +
@@ -224,7 +226,7 @@ TestCase {
                        path: "file:///steam/431960/12345",
                        title: "", type: "", tags: [], playlists: [],
                        favor: false, contentrating: "" };
-        wait(0);
+        asyncUtil.pumpMicrotasks(this);
         verify(fh.requestDirSizeCount >= before + 1,
                "wpmodel change should trigger requestDirSize on a regex-matching path");
     }
@@ -247,7 +249,7 @@ TestCase {
                        playlists: [],
                        favor: false,
                        contentrating: "Everyone" };
-        wait(0);
+        asyncUtil.pumpMicrotasks(this);
         // 2 tags + 1 contentrating row.
         compare(tagsLV.model.count, 3);
     }
@@ -285,7 +287,7 @@ TestCase {
         rc.wpmodel = { workshopid: "q7_logs", path: "/x",
                        title: "", type: "", tags: [], playlists: [],
                        favor: false, contentrating: "" };
-        wait(0);
+        asyncUtil.pumpMicrotasks(this);
 
         // KEYSTONE: with the gate OFF (release default), set_config +
         // save_changes must not increment debugLogCount. Pre-fix the

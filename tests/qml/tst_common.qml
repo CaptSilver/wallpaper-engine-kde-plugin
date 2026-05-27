@@ -1,10 +1,13 @@
 import QtQuick
 import QtTest
 
+import Helpers 1.0
 import "../../plugin/contents/ui" as Plugin
 
 TestCase {
     name: "Common"
+
+    AsyncUtil { id: asyncUtil }
 
     // ── Steam path builders ───────────────────────────────────────────────────
     function test_getWorkshopDir() {
@@ -312,7 +315,7 @@ TestCase {
         const lock = Plugin.Common.filterModel.lock;
         let resolved = false;
         lock.lock().then(() => { resolved = true; });
-        wait(0); // pump the microtask queue
+        asyncUtil.pumpMicrotasks(this);
         verify(resolved);
         lock.release();
     }
@@ -323,11 +326,11 @@ TestCase {
         let secondHeld = false;
         lock.lock().then(() => { firstHeld = true; });
         lock.lock().then(() => { secondHeld = true; });
-        wait(0);
+        asyncUtil.pumpMicrotasks(this);
         verify(firstHeld);
         verify(! secondHeld);
         lock.release();
-        wait(0);
+        asyncUtil.pumpMicrotasks(this);
         verify(secondHeld);
         lock.release();
     }

@@ -1,4 +1,5 @@
 module Helpers
+AsyncUtil 1.0 AsyncUtil.qml
 BackgroundFake 1.0 BackgroundFake.qml
 BackgroundStageFake 1.0 BackgroundStageFake.qml
 WallpaperFake 1.0 WallpaperFake.qml

@@ -21,7 +21,7 @@
 #
 # All paths are configurable; defaults match the project's standard Bazzite layout.
 
-set -uo pipefail
+set -euo pipefail
 
 # ─── Defaults ─────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -112,7 +112,7 @@ resolve_scene_path() {
     # then scene.pkg. The packaged fallback covers gifscene/scene/etc. variants.
     local dir="$1" pj="$2"
     local sfile
-    sfile=$(jq -r '.file // "scene.json"' "$pj" 2>/dev/null)
+    sfile=$(jq -r '.file // "scene.json"' "$pj" 2>/dev/null || echo "scene.json")
     [[ -z $sfile ]] && sfile="scene.json"
     if [[ -f "$dir/$sfile" ]]; then printf '%s\n' "$dir/$sfile"; return 0; fi
     local alt="$dir/${sfile%.json}.pkg"
@@ -187,11 +187,13 @@ cmd_list() {
             [[ -f $pj ]] || continue
         fi
         if [[ -n $type_filter ]]; then
-            type=$(jq -r '.type // "unknown"' "$pj" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+            type=$(jq -r '.type // "unknown"' "$pj" 2>/dev/null | tr '[:upper:]' '[:lower:]' \
+                   || echo unknown)
             [[ $type == "$type_filter" ]] || continue
         fi
         if [[ -n $tag_filter ]]; then
-            title=$(jq -r '[(.title // ""), ((.tags // []) | join(" "))] | join(" ")' "$pj" 2>/dev/null)
+            title=$(jq -r '[(.title // ""), ((.tags // []) | join(" "))] | join(" ")' "$pj" 2>/dev/null \
+                    || echo "")
             shopt -s nocasematch
             [[ $title == *"$tag_filter"* ]] || { shopt -u nocasematch; continue; }
             shopt -u nocasematch
@@ -211,13 +213,14 @@ classify() {
     # Real-crash signatures, ignoring INFO lines (which may legitimately contain
     # an object named e.g. 'ERROR FATAL' from the wallpaper author).
     fatal=$(grep -vE "^INFO " "$log" 2>/dev/null \
-              | grep -cE "Segmentation fault|SIGSEGV|SIGABRT|terminate called|AddressSanitizer|core dumped|^Aborted|panic")
+              | grep -cE "Segmentation fault|SIGSEGV|SIGABRT|terminate called|AddressSanitizer|core dumped|^Aborted|panic" \
+              || true)
     # Engine LOG_ERROR (excluding JS console.log forwarding to avoid double-count).
-    error=$(grep -vE "JS console\\.log:" "$log" 2>/dev/null | grep -cE "^ERROR ")
-    warn=$(grep -vE "JS console\\.log:" "$log" 2>/dev/null | grep -cE "^WARNING ")
-    js_err=$(grep -cE "JS console\\.log:.*([Ee]rror|[Uu]ndefined|null|NaN)" "$log" 2>/dev/null)
-    shader_err=$(grep -cE "compilation errors|shader compilation failed|glslang\\(parse\\)|boolean expression expected" "$log" 2>/dev/null)
-    parse_err=$(grep -cE "parse error at line|json.exception.parse_error" "$log" 2>/dev/null)
+    error=$(grep -vE "JS console\\.log:" "$log" 2>/dev/null | grep -cE "^ERROR " || true)
+    warn=$(grep -vE "JS console\\.log:" "$log" 2>/dev/null | grep -cE "^WARNING " || true)
+    js_err=$(grep -cE "JS console\\.log:.*([Ee]rror|[Uu]ndefined|null|NaN)" "$log" 2>/dev/null || true)
+    shader_err=$(grep -cE "compilation errors|shader compilation failed|glslang\\(parse\\)|boolean expression expected" "$log" 2>/dev/null || true)
+    parse_err=$(grep -cE "parse error at line|json.exception.parse_error" "$log" 2>/dev/null || true)
 
     local status
     if (( ${fatal:-0} > 0 )); then
@@ -253,7 +256,7 @@ audit_one() {
         return
     fi
     local title sfile scenepath
-    title=$(jq -r '.title // ""' "$pj" 2>/dev/null | tr ',\n' '  ' | head -c 80)
+    title=$(jq -r '.title // ""' "$pj" 2>/dev/null | tr ',\n' '  ' | head -c 80 || echo "")
 
     if ! scenepath=$(resolve_scene_path "$workshop/$id" "$pj"); then
         printf '%s,NO_SCENE,,,,,,,,"%s"\n' "$id" "$title"
@@ -261,7 +264,7 @@ audit_one() {
     fi
 
     if (( wipe_cache )); then
-        rm -rf "$cache_dir/$id" 2>/dev/null
+        rm -rf "$cache_dir/$id" 2>/dev/null || true
     fi
 
     local rawlog
@@ -271,9 +274,11 @@ audit_one() {
         "$assets" "$scenepath" > /dev/null 2> "$rawlog" &
     local pid=$!
     sleep "$runtime"
+    set +e
     kill -TERM "$pid" 2>/dev/null
     wait "$pid" 2>/dev/null
     local exit_code=$?
+    set -e
 
     local class status counters
     class=$(classify "$rawlog" "$exit_code")
@@ -333,7 +338,7 @@ cmd_run() {
     # the trap, the parent dies before `wait` and the child becomes an
     # orphan still painting frames + writing to its rawlog tmpfile.
     # Cleanup also removes any rawlog files that weren't reaped.
-    trap 'kill $(jobs -p) 2>/dev/null; rm -f /tmp/tmp.* 2>/dev/null; exit 130' INT TERM
+    trap 'kill $(jobs -p) 2>/dev/null || true; rm -f /tmp/tmp.* 2>/dev/null || true; exit 130' INT TERM
 
     while (( $# )); do
         case $1 in

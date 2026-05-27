@@ -498,7 +498,7 @@ if [[ "$NO_FUZZ" == "0" ]]; then
     FUZZ_SECS="${FUZZ_SECS:-20}"
     FUZZ_TARGETS=(WPMdlParser WPTexImageParser WPPkgFs
                   WPShaderParser WPShaderCompile WPSceneParser
-                  WPParticleParser WPSoundParser)
+                  WPParticleParser WPSoundParser WPJsonParse)
     step "Fuzz smoke (libFuzzer cold-start, ${FUZZ_SECS}s × ${#FUZZ_TARGETS[@]} targets)"
 
     if [[ "$MODE" != "test-only" ]]; then

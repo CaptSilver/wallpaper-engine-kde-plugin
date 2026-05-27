@@ -105,8 +105,8 @@ QByteArray FileHelper::readFile(const QString& path) {
         if (native.startsWith("file://")) native = native.mid(7);
         const QString canon = QFileInfo(native).canonicalFilePath();
         if (! isUnderAnyRoot(canon, m_readRoots)) {
-            qWarning() << "FileHelper::readFile refused path outside allowed roots:"
-                       << path << "(canon:" << canon << ")";
+            qWarning() << "FileHelper::readFile refused path outside allowed roots:" << path
+                       << "(canon:" << canon << ")";
             return QByteArray();
         }
     }
@@ -122,8 +122,8 @@ QByteArray FileHelper::readFile(const QString& path) {
     // even in the back-compat permissive path. QFile::size() on regular
     // files returns the on-disk size up front (no read needed).
     if (file.size() > kMaxReadSize) {
-        qWarning() << "FileHelper::readFile refused over-size file:" << path << "("
-                   << file.size() << "bytes >" << kMaxReadSize << ")";
+        qWarning() << "FileHelper::readFile refused over-size file:" << path << "(" << file.size()
+                   << "bytes >" << kMaxReadSize << ")";
         return QByteArray();
     }
 
@@ -168,35 +168,35 @@ QString FileHelper::patchedHtml(const QString& path) {
 
     // Inject a script that patches History API to suppress SecurityError
     // on file:// URLs.  Must run before any other scripts (e.g. Angular).
-    static const QString patch = QStringLiteral(
-        "<script>"
-        "(function(){"
-        // Page-side error handlers — routed through console.error so the
-        // QML onJavaScriptConsoleMessage handler picks them up at level 2,
-        // and prefixed [WEK-page UNCAUGHT/UNHANDLED-PROMISE/STACK] so the
-        // `journalctl /usr/bin/plasmashell -f | grep WEK-page` workflow
-        // catches them in one filter.
-        "window.addEventListener('error',function(e){"
-        "var src=(e.filename||'<inline>')+':'+(e.lineno||0)+':'+(e.colno||0);"
-        "console.error('[WEK-page UNCAUGHT] '+src+' '+(e.message||e.error));"
-        "if(e.error&&e.error.stack)console.error('[WEK-page STACK] '+e.error.stack);"
-        "});"
-        "window.addEventListener('unhandledrejection',function(e){"
-        "var r=e.reason&&(e.reason.stack||e.reason.message||e.reason);"
-        "console.error('[WEK-page UNHANDLED-PROMISE] '+r);"
-        "});"
-        // Patch History API to suppress SecurityError on file:// URLs
-        "var oR=history.replaceState,oP=history.pushState;"
-        "history.replaceState=function(){"
-        "try{return oR.apply(this,arguments)}"
-        "catch(e){if(e.name!=='SecurityError')throw e}"
-        "};"
-        "history.pushState=function(){"
-        "try{return oP.apply(this,arguments)}"
-        "catch(e){if(e.name!=='SecurityError')throw e}"
-        "}"
-        "})();"
-        "</script>");
+    static const QString patch =
+        QStringLiteral("<script>"
+                       "(function(){"
+                       // Page-side error handlers — routed through console.error so the
+                       // QML onJavaScriptConsoleMessage handler picks them up at level 2,
+                       // and prefixed [WEK-page UNCAUGHT/UNHANDLED-PROMISE/STACK] so the
+                       // `journalctl /usr/bin/plasmashell -f | grep WEK-page` workflow
+                       // catches them in one filter.
+                       "window.addEventListener('error',function(e){"
+                       "var src=(e.filename||'<inline>')+':'+(e.lineno||0)+':'+(e.colno||0);"
+                       "console.error('[WEK-page UNCAUGHT] '+src+' '+(e.message||e.error));"
+                       "if(e.error&&e.error.stack)console.error('[WEK-page STACK] '+e.error.stack);"
+                       "});"
+                       "window.addEventListener('unhandledrejection',function(e){"
+                       "var r=e.reason&&(e.reason.stack||e.reason.message||e.reason);"
+                       "console.error('[WEK-page UNHANDLED-PROMISE] '+r);"
+                       "});"
+                       // Patch History API to suppress SecurityError on file:// URLs
+                       "var oR=history.replaceState,oP=history.pushState;"
+                       "history.replaceState=function(){"
+                       "try{return oR.apply(this,arguments)}"
+                       "catch(e){if(e.name!=='SecurityError')throw e}"
+                       "};"
+                       "history.pushState=function(){"
+                       "try{return oP.apply(this,arguments)}"
+                       "catch(e){if(e.name!=='SecurityError')throw e}"
+                       "}"
+                       "})();"
+                       "</script>");
 
     // Insert after the real <head ...> tag so the shim runs before any other
     // scripts. Attribute-tolerant + comment-aware (untrusted third-party web

@@ -20,9 +20,9 @@ using wekde::ThumbnailGrabber;
 // Guarded by g_sinkMutex because libmpv emits warnings from internal worker
 // threads (mpv runs its own dispatcher), and FileHelper::generateThumbnail
 // invokes the grabber from a QThreadPool worker.
-static QMutex                          g_sinkMutex;
-static std::vector<QString>            g_sink;
-static QtMessageHandler                g_prevHandler = nullptr;
+static QMutex               g_sinkMutex;
+static std::vector<QString> g_sink;
+static QtMessageHandler     g_prevHandler = nullptr;
 static void sinkHandler(QtMsgType type, const QMessageLogContext& ctx, const QString& msg) {
     {
         QMutexLocker lock(&g_sinkMutex);
@@ -141,9 +141,8 @@ private slots:
             // (PLAYBACK_RESTART never arrives within budget). Some libmpv
             // builds also fall through the file-existence check, so accept
             // the screenshot-missing variant too.
-            QVERIFY(sinkContains("END_FILE during seek")
-                    || sinkContains("seek timeout")
-                    || sinkContains("screenshot file missing"));
+            QVERIFY(sinkContains("END_FILE during seek") || sinkContains("seek timeout") ||
+                    sinkContains("screenshot file missing"));
         }
     }
 
@@ -267,8 +266,8 @@ private slots:
         // Either site #11 (mpv_command failure) or site #12 (file missing
         // post-screenshot) fired; both are acceptable evidence the new
         // breadcrumb landed.
-        QVERIFY(sinkContains("screenshot-to-file mpv_command failed")
-                || sinkContains("screenshot file missing"));
+        QVERIFY(sinkContains("screenshot-to-file mpv_command failed") ||
+                sinkContains("screenshot file missing"));
     }
 
     // FileHelper::generateThumbnail mkpath no-op: if the parent dir cannot
@@ -291,7 +290,8 @@ private slots:
         // temp staging path exists; treat that as a SKIP rather than a fail
         // since the journal-breadcrumb assertion below is the load-bearing
         // contract.
-        if (args.at(2).toBool()) QSKIP("libmpv unexpectedly wrote under /proc — skip mkpath assertion");
+        if (args.at(2).toBool())
+            QSKIP("libmpv unexpectedly wrote under /proc — skip mkpath assertion");
         QVERIFY(sinkContains("mkpath failed"));
     }
 

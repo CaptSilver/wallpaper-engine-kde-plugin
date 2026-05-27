@@ -446,8 +446,7 @@ void TestMpvBackend::setSource_invalidLocalPath_emitsSourceLoadFailed_async() {
     obj->initCallback();
 
     QSignalSpy spy(obj.get(), &MpvObject::sourceLoadFailed);
-    const QUrl missing =
-        QUrl::fromLocalFile(QStringLiteral("/var/empty/wekde-does-not-exist.mp4"));
+    const QUrl missing = QUrl::fromLocalFile(QStringLiteral("/var/empty/wekde-does-not-exist.mp4"));
     obj->setSource(missing);
     // mpv accepts the load syntactically; m_source is set.  The END_FILE
     // event fires once mpv tries to open the file (async on the player
@@ -473,8 +472,7 @@ void TestMpvBackend::setSource_validFixture_doesNotEmitSourceLoadFailed() {
 
     QSignalSpy spy(obj.get(), &MpvObject::sourceLoadFailed);
     obj->setSource(QUrl::fromLocalFile(file.fileName()));
-    QVERIFY2(! obj->source().isEmpty(),
-             "loadfile path not exercised; file may be unwritable");
+    QVERIFY2(! obj->source().isEmpty(), "loadfile path not exercised; file may be unwritable");
     // The contract this test asserts is "no SYNC-path emit on a loadfile
     // mpv accepts" — i.e. the new else branch in setSource() must not
     // fire when command() returned true.  The async demuxer may legitimately

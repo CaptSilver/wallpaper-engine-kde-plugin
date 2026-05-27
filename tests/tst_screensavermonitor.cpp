@@ -123,8 +123,8 @@ void TestScreenSaverMonitor::crossInterfaceDedup_secondFireAbsorbed() {
     // absorbs the second emit.
     ScreenSaverMonitor mon;
     QSignalSpy         spy(&mon, &ScreenSaverMonitor::screenSaverActiveChanged);
-    mon.handleActiveChanged(true);   // first interface fires
-    mon.handleActiveChanged(true);   // second interface fires the same value
+    mon.handleActiveChanged(true); // first interface fires
+    mon.handleActiveChanged(true); // second interface fires the same value
     QCOMPARE(spy.count(), 1);
     QCOMPARE(mon.isActive(), true);
 }

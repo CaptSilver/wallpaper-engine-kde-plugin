@@ -3,8 +3,7 @@
 
 using namespace wekde;
 
-ScreenSaverMonitor::ScreenSaverMonitor(QQuickItem* parent)
-    : QQuickItem(parent), m_active(false) {
+ScreenSaverMonitor::ScreenSaverMonitor(QQuickItem* parent): QQuickItem(parent), m_active(false) {
     // Pause-on-lock is a polish feature — degrading to "no lock pause" is
     // fine in toolbox / sandbox / minimal environments. Don't qFatal; that
     // would take plasmashell down with us.

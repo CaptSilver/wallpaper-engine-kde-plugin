@@ -11,7 +11,7 @@ struct ThumbnailGrabber::Impl {
     // Once-per-instance latch for ctor-failure qCritical lines so a repeated
     // construct/destruct loop (test harnesses, future per-grab Impls) doesn't
     // muzzle the next instance's log. Intentionally NOT process-global.
-    bool        m_ctorLogged { false };
+    bool m_ctorLogged { false };
 
     Impl() {
         // libmpv requires LC_NUMERIC=C — pinned process-wide at plugin
@@ -110,22 +110,21 @@ bool ThumbnailGrabber::grab(const QString& videoPath, const QString& outPath, do
     // Seek timed out without a PLAYBACK_RESTART — bail rather than screenshot a
     // wrong-position (typically t=0) frame and falsely report success.
     if (! seeked) {
-        qWarning() << "ThumbnailGrabber: seek timeout (>5s, no PLAYBACK_RESTART) for"
-                   << videoPath;
+        qWarning() << "ThumbnailGrabber: seek timeout (>5s, no PLAYBACK_RESTART) for" << videoPath;
         return false;
     }
 
     const char* shotcmd[] = { "screenshot-to-file", op.constData(), "video", nullptr };
     if (mpv_command(d->mpv, shotcmd) < 0) {
-        qWarning() << "ThumbnailGrabber: screenshot-to-file mpv_command failed for"
-                   << videoPath << "->" << outPath;
+        qWarning() << "ThumbnailGrabber: screenshot-to-file mpv_command failed for" << videoPath
+                   << "->" << outPath;
         return false;
     }
 
     const bool ok = QFileInfo::exists(outPath) && QFileInfo(outPath).size() > 0;
     if (! ok) {
-        qWarning() << "ThumbnailGrabber: screenshot file missing or zero-size for"
-                   << videoPath << "->" << outPath;
+        qWarning() << "ThumbnailGrabber: screenshot file missing or zero-size for" << videoPath
+                   << "->" << outPath;
     }
     return ok;
 }

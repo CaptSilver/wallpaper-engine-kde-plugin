@@ -3,8 +3,7 @@
 namespace wekde
 {
 
-SafeWallpaperBridge::SafeWallpaperBridge(QObject* parent)
-    : QObject(parent) {}
+SafeWallpaperBridge::SafeWallpaperBridge(QObject* parent): QObject(parent) {}
 
 void SafeWallpaperBridge::pushGeneralProperties(const QVariantMap& m) {
     m_general = m;

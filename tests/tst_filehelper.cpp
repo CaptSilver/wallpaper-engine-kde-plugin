@@ -122,8 +122,7 @@ private slots:
     void readFile_pathOutsideRoot_returnsEmpty() {
         // /etc/hostname is universally readable on Linux — a clean witness
         // for "would have succeeded pre-fix; must be empty post-fix".
-        if (! QFileInfo::exists("/etc/hostname"))
-            QSKIP("no /etc/hostname witness on this system");
+        if (! QFileInfo::exists("/etc/hostname")) QSKIP("no /etc/hostname witness on this system");
         FileHelper helper;
         helper.addReadRoot(m_tmp.path());
         QVERIFY(helper.readFile("/etc/hostname").isEmpty());
@@ -134,8 +133,7 @@ private slots:
         // Symlink INSIDE an allowed root pointing OUTSIDE it must be refused
         // (canonical resolution defeats the trick). Reproduces the
         // "malicious workshop project.json -> ~/.ssh/id_rsa" case.
-        if (! QFileInfo::exists("/etc/hostname"))
-            QSKIP("no /etc/hostname witness on this system");
+        if (! QFileInfo::exists("/etc/hostname")) QSKIP("no /etc/hostname witness on this system");
         const QString link = m_tmp.filePath("escape.link");
         QVERIFY(QFile::link("/etc/hostname", link));
         FileHelper helper;
@@ -162,8 +160,7 @@ private slots:
         // .. traversal: addReadRoot points at a SUBDIR of m_tmp, then we
         // attempt a path that lexically contains `..` and canonicalises out.
         // The helper must check the canonical form, not the lexical one.
-        if (! QFileInfo::exists("/etc/hostname"))
-            QSKIP("no /etc/hostname witness on this system");
+        if (! QFileInfo::exists("/etc/hostname")) QSKIP("no /etc/hostname witness on this system");
         QDir(m_tmp.path()).mkdir("sub");
         const QString rootSub = m_tmp.path() + "/sub";
         FileHelper    helper;
@@ -180,8 +177,8 @@ private slots:
         QVERIFY(f.open());
         f.write("rel");
         f.close();
-        const QString abs  = f.fileName();
-        const QString base = QFileInfo(abs).fileName();
+        const QString abs    = f.fileName();
+        const QString base   = QFileInfo(abs).fileName();
         const QString oldCwd = QDir::currentPath();
         QDir::setCurrent(m_tmp.path());
         FileHelper helper;
@@ -230,18 +227,16 @@ private slots:
         f.close();
         helper.addReadRoot(m_tmp.path());
         QCOMPARE(helper.readFile(f.fileName()), QByteArray("x"));
-        if (QFileInfo::exists("/etc/hostname"))
-            QVERIFY(helper.readFile("/etc/hostname").isEmpty());
+        if (QFileInfo::exists("/etc/hostname")) QVERIFY(helper.readFile("/etc/hostname").isEmpty());
     }
 
     void clearReadRoots_resetsToPermissive() {
-        if (! QFileInfo::exists("/etc/hostname"))
-            QSKIP("no /etc/hostname witness");
+        if (! QFileInfo::exists("/etc/hostname")) QSKIP("no /etc/hostname witness");
         FileHelper helper;
         helper.addReadRoot(m_tmp.path());
-        QVERIFY(helper.readFile("/etc/hostname").isEmpty());     // gated
+        QVERIFY(helper.readFile("/etc/hostname").isEmpty()); // gated
         helper.clearReadRoots();
-        QVERIFY(! helper.readFile("/etc/hostname").isEmpty());   // permissive again
+        QVERIFY(! helper.readFile("/etc/hostname").isEmpty()); // permissive again
     }
 
     void readFile_rootExactMatch_reads() {
@@ -703,8 +698,8 @@ private slots:
         const QString id = "424242";
         QVariantMap   cfg;
         QVariantMap   perms;
-        perms["1"] = "allow";
-        perms["2"] = "deny";
+        perms["1"]         = "allow";
+        perms["2"]         = "deny";
         cfg["permissions"] = perms;
         helper.writeWallpaperConfig(id, cfg);
 

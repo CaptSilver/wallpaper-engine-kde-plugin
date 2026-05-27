@@ -7,8 +7,7 @@
 namespace wekde
 {
 
-WebUrlInterceptor::WebUrlInterceptor(QObject* parent)
-    : QWebEngineUrlRequestInterceptor(parent) {}
+WebUrlInterceptor::WebUrlInterceptor(QObject* parent): QWebEngineUrlRequestInterceptor(parent) {}
 
 void WebUrlInterceptor::setWallpaperBaseDir(const QString& baseDirPath) {
     if (baseDirPath.isEmpty()) {
@@ -36,17 +35,16 @@ bool WebUrlInterceptor::isAllowed(const QUrl& url) const {
     // The trailing-slash check defeats sibling-prefix bypass
     // (/tmp/wp vs /tmp/wp-evil).
     if (requested == m_canonicalBaseDir) return true;
-    const QString prefix = m_canonicalBaseDir.endsWith('/')
-        ? m_canonicalBaseDir
-        : m_canonicalBaseDir + QLatin1Char('/');
+    const QString prefix = m_canonicalBaseDir.endsWith('/') ? m_canonicalBaseDir
+                                                            : m_canonicalBaseDir + QLatin1Char('/');
     return requested.startsWith(prefix);
 }
 
 void WebUrlInterceptor::interceptRequest(QWebEngineUrlRequestInfo& info) {
     const QUrl url = info.requestUrl();
     if (! isAllowed(url)) {
-        qWarning() << "[WEK] interceptor: blocked out-of-scope" << url.scheme()
-                   << url.toString() << "(base" << m_canonicalBaseDir << ")";
+        qWarning() << "[WEK] interceptor: blocked out-of-scope" << url.scheme() << url.toString()
+                   << "(base" << m_canonicalBaseDir << ")";
         info.block(true);
     }
 }

@@ -36,8 +36,8 @@ private slots:
 
     void pushGeneralProperties_updatesMirrorAndFiresNotify() {
         SafeWallpaperBridge b;
-        QSignalSpy notifySpy(&b, &SafeWallpaperBridge::generalPropertiesChanged);
-        QSignalSpy sigSpy(&b, &SafeWallpaperBridge::sigGeneralProperties);
+        QSignalSpy          notifySpy(&b, &SafeWallpaperBridge::generalPropertiesChanged);
+        QSignalSpy          sigSpy(&b, &SafeWallpaperBridge::sigGeneralProperties);
 
         QVariantMap m;
         m["fps"] = 30;
@@ -55,11 +55,13 @@ private slots:
 
     void pushUserProperties_updatesMirrorAndFiresNotify() {
         SafeWallpaperBridge b;
-        QSignalSpy notifySpy(&b, &SafeWallpaperBridge::userPropertiesChanged);
-        QSignalSpy sigSpy(&b, &SafeWallpaperBridge::sigUserProperties);
+        QSignalSpy          notifySpy(&b, &SafeWallpaperBridge::userPropertiesChanged);
+        QSignalSpy          sigSpy(&b, &SafeWallpaperBridge::sigUserProperties);
 
         QVariantMap m;
-        QVariantMap slider; slider["value"] = 75; slider["type"] = "slider";
+        QVariantMap slider;
+        slider["value"] = 75;
+        slider["type"]  = "slider";
         m["sliderProp"] = slider;
         b.pushUserProperties(m);
 
@@ -70,8 +72,8 @@ private slots:
 
     void setLoaded_firesLoadedChangedAndSigInit_onlyOnFalseToTrue() {
         SafeWallpaperBridge b;
-        QSignalSpy notifySpy(&b, &SafeWallpaperBridge::loadedChanged);
-        QSignalSpy initSpy(&b, &SafeWallpaperBridge::sigInit);
+        QSignalSpy          notifySpy(&b, &SafeWallpaperBridge::loadedChanged);
+        QSignalSpy          initSpy(&b, &SafeWallpaperBridge::sigInit);
 
         // First true: fires both.
         b.setLoaded(true);
@@ -105,7 +107,7 @@ private slots:
         // type so a future refactor can't silently re-introduce per-tick
         // QVariantList heap boxes.
         SafeWallpaperBridge b;
-        QSignalSpy spy(&b, &SafeWallpaperBridge::sigAudio);
+        QSignalSpy          spy(&b, &SafeWallpaperBridge::sigAudio);
 
         QList<double> samples;
         for (int i = 0; i < 128; ++i) samples.append(double(i) / 128.0);
@@ -113,8 +115,8 @@ private slots:
 
         QCOMPARE(spy.count(), 1);
         // Compile-time pin: signal arg must round-trip via QList<double>.
-        static_assert(std::is_same_v<
-            decltype(std::declval<SafeWallpaperBridge>().sigAudio(samples)), void>);
+        static_assert(
+            std::is_same_v<decltype(std::declval<SafeWallpaperBridge>().sigAudio(samples)), void>);
     }
 
     // Defensive: confirm the meta-object has NO Q_INVOKABLE methods. A
@@ -122,8 +124,8 @@ private slots:
     // catch that at test-time, not in a security review.
     void metaObject_hasNoInvokableMethods() {
         SafeWallpaperBridge b;
-        const QMetaObject* mo = b.metaObject();
-        int invokableCount = 0;
+        const QMetaObject*  mo             = b.metaObject();
+        int                 invokableCount = 0;
         // Walk only the SafeWallpaperBridge slice (skip QObject base).
         for (int i = mo->methodOffset(); i < mo->methodCount(); ++i) {
             const QMetaMethod m = mo->method(i);
@@ -131,8 +133,7 @@ private slots:
                 // Q_INVOKABLE shows up as MethodType::Method; signals show
                 // as MethodType::Signal; slots as MethodType::Slot.
                 ++invokableCount;
-                qWarning() << "SafeWallpaperBridge has Q_INVOKABLE method:"
-                           << m.methodSignature();
+                qWarning() << "SafeWallpaperBridge has Q_INVOKABLE method:" << m.methodSignature();
             }
         }
         QCOMPARE(invokableCount, 0);

@@ -41,8 +41,8 @@ namespace wekde
 class SafeWallpaperBridge : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantMap generalProperties READ generalProperties NOTIFY generalPropertiesChanged)
-    Q_PROPERTY(QVariantMap userProperties    READ userProperties    NOTIFY userPropertiesChanged)
-    Q_PROPERTY(bool        loaded            READ loaded            NOTIFY loadedChanged)
+    Q_PROPERTY(QVariantMap userProperties READ userProperties NOTIFY userPropertiesChanged)
+    Q_PROPERTY(bool loaded READ loaded NOTIFY loadedChanged)
 
 public:
     explicit SafeWallpaperBridge(QObject* parent = nullptr);
@@ -85,7 +85,7 @@ private:
     bool        m_loaded { false };
     // Track whether sigInit has fired this lifetime so subsequent
     // loaded toggles (Frozen <-> Active lifecycle) don't re-fire init.
-    bool        m_initFired { false };
+    bool m_initFired { false };
 };
 
 } // namespace wekde

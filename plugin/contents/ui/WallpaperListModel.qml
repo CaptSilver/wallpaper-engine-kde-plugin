@@ -179,12 +179,25 @@ Item {
             return new Promise((resolve, reject) => {
                 const filter = Common.filterModel.genFilter(filterstr);
                 const model = listModel;
-                data.sort(genSortCmp(sortMode));
+
+                // Build filtered+sorted JS array first, then issue ONE bulk
+                // model.append(array).  ListModel.append accepts both a single
+                // object and an array; the array form does one allocation and
+                // emits a single rowsInserted(0, n-1) instead of N per-row
+                // emissions — view invalidation cost drops from O(N) to O(1)
+                // signal-dispatches per filter/sort.
+                //
+                // Filtering first (then sorting the smaller subset) is also
+                // cheaper than the old sort-then-filter, and as a side-effect
+                // leaves the source `data` array (folderWorker.model)
+                // un-mutated — findItem/titleOf scan it in load order.
+                const filtered = data.filter(filter);
+                filtered.sort(genSortCmp(sortMode));
+
                 model.clear();
-                data.forEach(function(el) {
-                    if(filter(el))
-                        model.append(el);
-                });
+                if (filtered.length > 0) {
+                    model.append(filtered);
+                }
                 resolve();
             }).then(() => {
                 root.countNoFilter = this.model.length;

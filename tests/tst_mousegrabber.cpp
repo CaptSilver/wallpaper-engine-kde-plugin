@@ -74,6 +74,10 @@ private slots:
     void setTarget_sameValueNoSignal();
     void setTarget_nullClears();
     void setTarget_updatesAcceptedMouseButtons();
+    void setTarget_restoresPrevTargetMask_onChange();
+    void setTarget_restoresPrevTargetMask_onClear();
+    void setTarget_preservesCustomPriorMask();
+    void setTarget_destroyedPrevTarget_noCrash();
     void setForceCapture_emitsSignalOnChange();
     void setForceCapture_sameValueNoSignal();
     void setForceCapture_togglesBackToFalse();
@@ -160,6 +164,61 @@ void TestMouseGrabber::setTarget_updatesAcceptedMouseButtons() {
     // setTarget configures the target item for LeftButton reception so
     // forwarded press events aren't silently discarded by Quick.
     QCOMPARE(item.acceptedMouseButtons(), Qt::LeftButton);
+}
+
+// After re-targeting, the PREVIOUS target's mask must be restored to
+// whatever it was before the grabber attached (default NoButton for QML
+// items the author didn't customise). The leak this guards against: a
+// backend swap (Scene -> Mpv -> Web) progressively flips every former
+// target to LeftButton, which mis-routes clicks for sibling overlapping
+// MouseAreas.
+void TestMouseGrabber::setTarget_restoresPrevTargetMask_onChange() {
+    wekde::MouseGrabber g;
+    QQuickItem          a;
+    QQuickItem          b;
+    QCOMPARE(a.acceptedMouseButtons(), Qt::NoButton);
+    QCOMPARE(b.acceptedMouseButtons(), Qt::NoButton);
+    g.setTarget(&a);
+    QCOMPARE(a.acceptedMouseButtons(), Qt::LeftButton);
+    g.setTarget(&b);
+    QCOMPARE(a.acceptedMouseButtons(), Qt::NoButton);   // restored
+    QCOMPARE(b.acceptedMouseButtons(), Qt::LeftButton); // newly attached
+}
+
+// Clearing the target (setTarget(nullptr)) must also restore the prev mask.
+void TestMouseGrabber::setTarget_restoresPrevTargetMask_onClear() {
+    wekde::MouseGrabber g;
+    QQuickItem          a;
+    g.setTarget(&a);
+    QCOMPARE(a.acceptedMouseButtons(), Qt::LeftButton);
+    g.setTarget(nullptr);
+    QCOMPARE(a.acceptedMouseButtons(), Qt::NoButton);
+}
+
+// Author-customised mask (Right+Middle) survives an attach/detach cycle.
+// The grabber owns the mask while attached but must not corrupt a value
+// the QML author deliberately set.
+void TestMouseGrabber::setTarget_preservesCustomPriorMask() {
+    wekde::MouseGrabber g;
+    QQuickItem          a;
+    a.setAcceptedMouseButtons(Qt::RightButton | Qt::MiddleButton);
+    g.setTarget(&a);
+    QCOMPARE(a.acceptedMouseButtons(), Qt::LeftButton); // grabber owns while attached
+    g.setTarget(nullptr);
+    QCOMPARE(a.acceptedMouseButtons(), Qt::RightButton | Qt::MiddleButton);
+}
+
+// QPointer auto-null: if the prev target is destroyed before the next
+// setTarget call, the restore branch must short-circuit without
+// dereferencing a stale pointer. (Heap-allocate to control destruction.)
+void TestMouseGrabber::setTarget_destroyedPrevTarget_noCrash() {
+    wekde::MouseGrabber g;
+    QQuickItem*         a = new QQuickItem;
+    QQuickItem          b;
+    g.setTarget(a);
+    delete a;        // m_target auto-nulls (QPointer)
+    g.setTarget(&b); // must NOT crash; restore branch skipped
+    QCOMPARE(b.acceptedMouseButtons(), Qt::LeftButton);
 }
 
 void TestMouseGrabber::setForceCapture_emitsSignalOnChange() {

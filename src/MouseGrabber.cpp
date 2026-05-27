@@ -30,8 +30,20 @@ void MouseGrabber::setForceCapture(bool value) {
 
 void MouseGrabber::setTarget(QQuickItem* item) {
     if (item == m_target) return;
+    // Restore the OLD target's accepted-button mask to whatever the QML
+    // author set it to before the grabber attached. QPointer auto-nulls if
+    // the underlying QQuickItem was destroyed, so the if-check is also a
+    // dead-pointer guard.
+    if (m_target) m_target->setAcceptedMouseButtons(m_prevTargetButtons);
     m_target = item;
-    if (m_target) m_target->setAcceptedMouseButtons(Qt::LeftButton);
+    if (m_target) {
+        // Snapshot BEFORE overwrite so a chain setTarget(A)->setTarget(B)->
+        // setTarget(A) returns A and B to their original masks.
+        m_prevTargetButtons = m_target->acceptedMouseButtons();
+        m_target->setAcceptedMouseButtons(Qt::LeftButton);
+    } else {
+        m_prevTargetButtons = Qt::NoButton;
+    }
     Q_EMIT targetChanged();
 }
 

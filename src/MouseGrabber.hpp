@@ -42,5 +42,10 @@ private:
     void                 sendHoverEvent(QHoverEvent*);
     bool                 m_forceCapture { false };
     QPointer<QQuickItem> m_target { nullptr };
+    // Snapshot of m_target->acceptedMouseButtons() captured BEFORE the grabber
+    // overwrites it with Qt::LeftButton. Restored on detach (target change or
+    // null clear). NoButton matches the QQuickItem default, so a never-attached
+    // grabber's cache is harmless.
+    Qt::MouseButtons m_prevTargetButtons { Qt::NoButton };
 };
 } // namespace wekde

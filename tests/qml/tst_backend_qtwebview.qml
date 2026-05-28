@@ -1,5 +1,6 @@
 import QtQuick
 import QtTest
+import QtWebEngine 1.10
 
 import "../../plugin/contents/ui" as Plugin
 import "../../plugin/contents/ui/backend" as Backend
@@ -494,6 +495,126 @@ TestCase {
         web.pause();             // sets web.paused = true
         compare(wev.paused, true);
         timer.triggered();       // exercises the freeze path
+    }
+
+    // ── longPauseTimer Frozen→Discarded escalation ──────────────────────────
+    // Production stops at WebEngineView.LifecycleState.Frozen after 300 ms of
+    // pause; the long-pause timer fires after 5 min and escalates to
+    // Discarded, terminating the Chromium renderer and freeing the cached
+    // pauseImage snapshot.  Tests reach the timer by id alias and trigger it
+    // synchronously to avoid wall-clock waits.
+    function _findLongPauseTimer() {
+        // The long-pause Timer is a sibling of the existing pauseTimer (300ms);
+        // distinguish by the much larger interval (the production default is
+        // 5*60*1000 ms but tests may override it via longPauseMs).  Any Timer
+        // with an interval > pauseTimer.interval and start/triggered methods
+        // is the long-pause timer.
+        const buckets = [web.children || [], web.data || []];
+        for (const b of buckets) {
+            for (let i = 0; i < b.length; i++) {
+                const t = b[i];
+                if (t && typeof t.start === "function" &&
+                    typeof t.triggered === "function" &&
+                    typeof t.interval !== "undefined" &&
+                    t.interval > 300) return t;
+            }
+        }
+        return null;
+    }
+
+    function test_longPause_escalatesToDiscarded() {
+        const wev = _findWebEngineView();
+        verify(wev !== null);
+        const longTimer = _findLongPauseTimer();
+        verify(longTimer !== null,
+            "longPauseTimer must be declared adjacent to pauseTimer");
+        // Reset state from any prior test.
+        web._isDiscarded = false;
+        wev.paused = true;        // longPauseTimer.onTriggered checks paused
+        wev.lifecycleState = WebEngineView.Frozen;
+        // Simulate the snapshot path having already populated pauseImage —
+        // the long-pause escalation must clear it so the bytes get freed.
+        const pauseImg = _findPauseImage();
+        verify(pauseImg !== null);
+        pauseImg.source = "file:///tmp/fake_snapshot.png";
+
+        longTimer.triggered();
+
+        compare(wev.lifecycleState, WebEngineView.Discarded,
+            "long pause must escalate Frozen → Discarded");
+        compare(pauseImg.source.toString(), "",
+            "long pause must drop the snapshot to free its bytes");
+        compare(web._isDiscarded, true,
+            "long pause must flag _isDiscarded so resume reloads");
+    }
+
+    function test_resumeFromDiscarded_reloads() {
+        const wev = _findWebEngineView();
+        verify(wev !== null);
+        const longTimer = _findLongPauseTimer();
+        verify(longTimer !== null);
+
+        // First, escalate to Discarded via the timer.
+        web._isDiscarded = false;
+        wev.paused = true;
+        longTimer.triggered();
+        compare(web._isDiscarded, true);
+
+        // Snapshot how many times loadWallpaper has fired so far, then resume.
+        const before = web._testReloadCallCount;
+        wev.paused = false;
+
+        verify(web._testReloadCallCount > before,
+            "resume from Discarded must trigger loadWallpaper()");
+        compare(web._isDiscarded, false,
+            "resume from Discarded must clear the flag");
+    }
+
+    // Rapid pause/resume must NOT escalate — the long-pause timer is stopped
+    // before it fires, and _isDiscarded remains false so the resume path does
+    // NOT trigger an unnecessary reload.
+    function test_rapidPauseResume_doesNotEscalate() {
+        const wev = _findWebEngineView();
+        verify(wev !== null);
+        const longTimer = _findLongPauseTimer();
+        verify(longTimer !== null);
+
+        web._isDiscarded = false;
+        const reloadsBefore = web._testReloadCallCount;
+
+        wev.paused = true;
+        // No triggered() call — simulating the long-pause timer being stopped
+        // before its interval elapses.  The resume path should take the
+        // normal "thaw to Active" branch, not the discarded-reload branch.
+        wev.paused = false;
+
+        compare(web._isDiscarded, false,
+            "rapid pause/resume must not flip _isDiscarded");
+        compare(web._testReloadCallCount, reloadsBefore,
+            "rapid pause/resume must not trigger a reload");
+        compare(wev.lifecycleState, WebEngineView.Active,
+            "rapid resume must restore Active lifecycle state");
+        // Resumed-from-non-discarded path also flips pauseImage.visible = false.
+        const pauseImg = _findPauseImage();
+        verify(pauseImg !== null);
+        compare(pauseImg.visible, false,
+            "rapid resume must hide the pause snapshot");
+    }
+
+    // ── WebEngineProfile cache cap ──────────────────────────────────────────
+    // The wallpaper profile must declare an explicit DiskHttpCache type and a
+    // 50 MB max size so animated web wallpapers can't grow ~/.cache/wek-wallpaper/
+    // toward Chromium's implicit "1% of disk free" cap over long sessions.
+    // localStorage persistence (offTheRecord=false + storageName) is unaffected.
+    function test_profileHasCacheCap() {
+        verify(typeof web.wallpaperProfile !== "undefined",
+            "QtWebView root must expose wallpaperProfile via property alias");
+        compare(web.wallpaperProfile.httpCacheType,
+                WebEngineProfile.DiskHttpCache,
+                "wallpaperProfile must declare DiskHttpCache explicitly");
+        compare(web.wallpaperProfile.httpCacheMaxSize,
+                50 * 1024 * 1024,
+                "wallpaperProfile must cap the on-disk HTTP cache at 50 MB");
     }
 
     // Pin the SafeWallpaperBridge contract: a direct JS-side write to

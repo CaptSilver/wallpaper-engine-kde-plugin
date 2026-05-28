@@ -25,6 +25,25 @@ Item {
     property var _lastPermissionDialog: null
     property var _persistDecisionForTest: null
     property var _lastConsoleForward: null
+    // Expose the dedicated WebEngineProfile so QML tests can introspect the
+    // cache configuration without walking the child object tree.
+    property alias wallpaperProfile: wallpaperProfile
+
+    // Long-pause escalation: after this many ms of sustained pause, the
+    // WebEngineView is escalated from Frozen → Discarded.  Discarded
+    // terminates the Chromium renderer process (~50 MB RSS reclaim) and we
+    // drop the cached snapshot bytes (~32 MB at 4K) too.  On resume the
+    // wallpaper is reloaded from URL; localStorage survives.  Tuneable so
+    // tests can drive the path without wall-clock waits.
+    property int longPauseMs: 5 * 60 * 1000
+    // Flag flipped true by longPauseTimer.onTriggered and cleared by
+    // onPausedChanged on resume; tells the resume path to reload rather than
+    // simply thaw lifecycleState back to Active.
+    property bool _isDiscarded: false
+    // Test instrumentation — counts loadWallpaper() invocations so the
+    // discarded-resume path can be observed without mocking the entire
+    // function.  Read-only u32 in production; zero overhead.
+    property int _testReloadCallCount: 0
 
     // Load patched HTML when source changes (after scripts are ready)
     onSourceChanged: {
@@ -33,6 +52,7 @@ Item {
     }
 
     function loadWallpaper() {
+        webItem._testReloadCallCount += 1;
         var fileUrl = webItem.source.toString();
         if (!fileUrl) return;
 
@@ -175,6 +195,17 @@ Item {
         urlRequestInterceptor: wallpaperInterceptor
         offTheRecord: false
         storageName: "wek-wallpaper"
+
+        // Cap the HTTP cache so animated web wallpapers can't grow
+        // ~/.cache/wek-wallpaper/Cache/ unboundedly across long-running
+        // sessions.  50 MB is well above the working set of any single
+        // wallpaper and lets Chromium's LRU evict stale assets cleanly.
+        // localStorage (the load-bearing persistence requirement for
+        // clock/weather wallpapers) is unaffected by this cap.  Setting
+        // httpCacheType explicitly guards against a Qt default flip in
+        // a future LTS.
+        httpCacheType:    WebEngineProfile.DiskHttpCache
+        httpCacheMaxSize: 50 * 1024 * 1024
     }
 
     // Consents are persisted under the wallpaper config's `permissions` key
@@ -333,12 +364,25 @@ Item {
 
         onPausedChanged: {
             if(paused) {
-                pauseTimer.start();
+                pauseTimer.start();         // Frozen after 300 ms.
+                longPauseTimer.start();     // Discarded after longPauseMs.
             }
             else {
-                web.visible = true;
-                web.lifecycleState = WebEngineView.LifecycleState.Active;
-                pauseImage.visible = false;
+                longPauseTimer.stop();
+                if(webItem._isDiscarded) {
+                    webItem._isDiscarded = false;
+                    // Discarded discards page state; reload from URL.
+                    // localStorage backing survives (the HTTP cache cap on
+                    // the wallpaperProfile is independent).
+                    web.visible = true;
+                    pauseImage.visible = false;
+                    webItem.loadWallpaper();
+                }
+                else {
+                    web.visible = true;
+                    web.lifecycleState = WebEngineView.LifecycleState.Active;
+                    pauseImage.visible = false;
+                }
             }
         }
 
@@ -419,6 +463,24 @@ Item {
                 web.visible = false;
                 web.lifecycleState = WebEngineView.LifecycleState.Frozen;
             });
+        }
+    }
+    // Long-pause escalation: when the wallpaper has been paused for
+    // webItem.longPauseMs ms (default 5 min), terminate the Chromium
+    // renderer (Discarded) and drop the cached snapshot.  Memory reclaim is
+    // ~50 MB renderer RSS + ~32 MB snapshot bytes per wallpaper; on resume
+    // we reload from URL and localStorage survives.
+    Timer{
+        id: longPauseTimer
+        running: false
+        repeat: false
+        interval: webItem.longPauseMs
+        onTriggered: {
+            if(! web.paused) return;
+            pauseImage.source = "";
+            web.lifecycleState = WebEngineView.LifecycleState.Discarded;
+            webItem._isDiscarded = true;
+            console.log("[WEK] WebEngineView escalated to Discarded after long pause");
         }
     }
     Component.onCompleted: {

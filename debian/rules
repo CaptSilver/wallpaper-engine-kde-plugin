@@ -16,17 +16,34 @@ snapshot-changelog:
 %:
 	dh $@
 
+# Tests are opt-in at .deb build time: DEB_BUILD_OPTIONS=check enables the
+# parent test suite (-DBUILD_TESTS=ON in the parent project).  The submodule's
+# own doctest binaries are intentionally NOT triggered by this — they pull
+# fixture-search paths that don't resolve when configured via the parent CMake
+# graph in a dpkg-buildpackage context, and they're covered by the local
+# preflight gate anyway.  RPM uses the equivalent `--with check` pattern.
+ifeq (,$(filter check,$(DEB_BUILD_OPTIONS)))
+DEB_TESTS_FLAG :=
+else
+DEB_TESTS_FLAG := -DBUILD_TESTS=ON
+endif
+
 override_dh_auto_configure:
 	dh_auto_configure -- \
 		-DCMAKE_BUILD_TYPE=Release \
-		-DBUILD_TESTS=ON \
+		$(DEB_TESTS_FLAG) \
 		-G Ninja
 
 override_dh_auto_test:
-	# Run only the display-free + bus-free C++ tests at package-build time.
-	# QML / D-Bus tests are labelled DISPLAY_NEEDED / DBUS_NEEDED in
-	# tests/CMakeLists.txt and run under the local preflight gate, not here.
-	# DEB_BUILD_OPTIONS=nocheck still skips the entire step per debhelper.
+	# Run only the display-free + bus-free C++ tests at package-build time
+	# when DEB_BUILD_OPTIONS=check is set.  QML / D-Bus tests are labelled
+	# DISPLAY_NEEDED / DBUS_NEEDED in tests/CMakeLists.txt and run under
+	# the local preflight gate, not here.  DEB_BUILD_OPTIONS=nocheck still
+	# skips the entire step per debhelper.
+ifeq (,$(filter check,$(DEB_BUILD_OPTIONS)))
+	@echo "DEB_BUILD_OPTIONS does not include 'check' — skipping ctest"
+else
 	dh_auto_test -- ARGS+="--label-exclude DISPLAY_NEEDED|DBUS_NEEDED"
+endif
 
 override_dh_dwz:

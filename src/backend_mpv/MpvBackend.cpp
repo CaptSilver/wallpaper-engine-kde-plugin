@@ -405,7 +405,11 @@ public slots:
 private:
     mpv_render_context* m_mpv_context { nullptr };
     mpv_handle*         m_mpv { nullptr };
-    QQuickWindow*       m_window { nullptr };
+    // Only referenced by the Qt5 fallback codepath in render() / synchronize().
+    // The project targets Qt6 / Plasma 6, so the field is unused under -Wall,
+    // and -Werror would gate package builds.  Keep the field + the Qt5 branch
+    // intact for upstream forks that still need them.
+    [[maybe_unused]] QQuickWindow* m_window { nullptr };
 
     std::shared_ptr<MpvHandle> m_shared_mpv { nullptr };
 

@@ -105,8 +105,13 @@ DEPS_UBUNTU=(
     llvm
     libvulkan-dev vulkan-validationlayers vulkan-tools
     libkf6package-dev libkf6config-dev libplasma-dev plasma-workspace-dev
+    # KF6 integrations referenced by src/CMakeLists.txt (KNotification taxonomy,
+    # DrKonqi KCrash, KI18n catalogs, KGlobalAccel shortcuts, KXmlGui for
+    # KActionCollection).
+    libkf6notifications-dev libkf6crash-dev libkf6i18n-dev
+    libkf6globalaccel-dev libkf6xmlgui-dev
     qt6-base-dev qt6-base-private-dev qt6-declarative-dev
-    qt6-websockets-dev qt6-webchannel-dev
+    qt6-websockets-dev qt6-webchannel-dev qt6-webengine-dev
     libmpv-dev liblz4-dev libfreetype-dev
     # Sanitizer runtimes — clang ships its own ASAN at /usr/lib/clang/<v>/lib,
     # but libasan8/libubsan1 are needed when invoking sanitizer-instrumented

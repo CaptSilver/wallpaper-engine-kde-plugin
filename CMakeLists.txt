@@ -198,12 +198,13 @@ install(FILES
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
         DESTINATION "${KDE_INSTALL_DATADIR}/wek/licenses")
 
-# KNotification event taxonomy.  ${KDE_INSTALL_KNOTIFY5RCDIR} resolves to
-# share/knotifications6/ on KF6 (ECM keeps the 5RCDIR name for source
-# compatibility).  Each [Event/...] group in wek.notifyrc matches a
-# KNotification("<id>") in WekNotifier.cpp; users see the events in System
-# Settings -> Notifications -> Wallpaper Engine.
-install(FILES wek.notifyrc DESTINATION ${KDE_INSTALL_KNOTIFY5RCDIR})
+# KNotification event taxonomy.  ECM 6's KDEInstallDirs6 dropped the
+# KNOTIFY5RCDIR shim that existed in ECM 5 — the install path under KF6 is
+# share/knotifications6/, addressed via ${KDE_INSTALL_DATADIR}/knotifications6.
+# Each [Event/...] group in wek.notifyrc matches a KNotification("<id>") in
+# WekNotifier.cpp; users see the events in System Settings -> Notifications ->
+# Wallpaper Engine.
+install(FILES wek.notifyrc DESTINATION "${KDE_INSTALL_DATADIR}/knotifications6")
 
 # Top-level summary; configure_file substitutes @PROJECT_NAME@ + @KDE_INSTALL_DATADIR@.
 configure_file(
@@ -238,6 +239,15 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/src/backend_scene/cmake/WekWarnings.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/src/backend_scene/cmake/WekHardening.cmake)
 
 add_subdirectory(src)
+
+# Scoped -Werror gate for the audited-clean shippable targets (plugin .so,
+# backend_mpv, wescene-renderer-qml, wpParticle).  Applied AFTER
+# add_subdirectory(src) so every target already exists when the helper runs.
+# The helper is a no-op when -DWEK_WERROR=ON is set (full-project audit path
+# in WekWarnings.cmake already covers these targets) so the two never
+# double-apply -Werror.  The wider renderer libs are not yet -Werror clean —
+# their audit gate stays opt-in via WEK_WERROR.
+include(${CMAKE_CURRENT_SOURCE_DIR}/src/backend_scene/cmake/WekWerrorScoped.cmake)
 
 # Install translation catalogs once the po/ skeleton exists.  Gated on
 # EXISTS so the build is green during the period between the i18n wire-up

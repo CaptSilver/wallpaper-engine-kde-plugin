@@ -569,7 +569,8 @@ endif()
 # WekShortcuts class itself behind WEKDE_HAS_GLOBALACCEL (src/CMakeLists.txt).
 find_package(KF6GlobalAccel QUIET)
 find_package(KF6CoreAddons QUIET)
-if(KF6GlobalAccel_FOUND AND KF6CoreAddons_FOUND AND Qt6DBus_FOUND)
+find_package(KF6XmlGui QUIET)        # KActionCollection lives in kxmlgui
+if(KF6GlobalAccel_FOUND AND KF6CoreAddons_FOUND AND KF6XmlGui_FOUND AND Qt6DBus_FOUND)
     add_executable(tst_wekshortcuts
         tst_wekshortcuts.cpp
         ${WEKDE_SRC_DIR}/WekShortcuts.cpp
@@ -578,7 +579,8 @@ if(KF6GlobalAccel_FOUND AND KF6CoreAddons_FOUND AND Qt6DBus_FOUND)
     target_link_libraries(tst_wekshortcuts PRIVATE
         Qt6::Core Qt6::Test Qt6::DBus
         KF6::GlobalAccel
-        KF6::CoreAddons)
+        KF6::CoreAddons
+        KF6::XmlGui)
     if(COVERAGE)
         target_compile_options(tst_wekshortcuts PRIVATE ${_cov_compile_flags})
         target_link_options(tst_wekshortcuts PRIVATE ${_cov_link_flags})
@@ -592,7 +594,7 @@ if(KF6GlobalAccel_FOUND AND KF6CoreAddons_FOUND AND Qt6DBus_FOUND)
     set_tests_properties(tst_wekshortcuts PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 else()
-    message(STATUS "KF6GlobalAccel / KF6CoreAddons not found — skipping tst_wekshortcuts")
+    message(STATUS "KF6GlobalAccel / KF6CoreAddons / KF6XmlGui not found — skipping tst_wekshortcuts")
 endif()
 
 # ── QML tests (qmltestrunner) ─────────────────────────────────────────────────

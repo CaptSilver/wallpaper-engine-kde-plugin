@@ -1,23 +1,32 @@
 #!/usr/bin/env bash
-# Pre-push verification: lint -> submodule build/tests -> main tests -> fuzz smoke.
+# Pre-push verification: lint -> submodule build/tests -> main tests ->
+# scoped -Werror gate -> ASAN+UBSAN gate -> fuzz smoke.
 #
 # Usage:
-#   scripts/preflight.sh              # lint + build + tests + fuzz smoke
-#   scripts/preflight.sh --fix        # auto-format then build + tests + fuzz
+#   scripts/preflight.sh              # default gate (lint + build + tests +
+#                                      #   scoped -Werror + ASAN+UBSAN + fuzz)
+#   scripts/preflight.sh --fix        # auto-format then run the default gate
 #   scripts/preflight.sh --lint-only  # just clang-format check (fast)
 #   scripts/preflight.sh --no-build   # skip cmake builds, run existing tests only
-#   scripts/preflight.sh --no-fuzz    # skip fuzz smoke (lint + tests still run)
+#   scripts/preflight.sh --no-fuzz    # skip fuzz smoke (lint + tests + Werror +
+#                                      #   ASAN still run)
 #   scripts/preflight.sh --bootstrap  # (re-)provision fedora distrobox + deps and exit
 #   scripts/preflight.sh --tsan       # opt-in TSAN leg: WEK_SANITIZE=thread, runs
 #                                      #   scenescript_tests + backend_scene_thread_tests
 #   scripts/preflight.sh --sanitize=address,undefined  # opt-in ASAN+UBSAN leg over the
-#                                      #   parent + submodule suites (currently NON-FATAL —
-#                                      #   surfaces findings, does not fail the run)
+#                                      #   parent + submodule suites (FATAL on any
+#                                      #   finding).  The default gate already runs
+#                                      #   the audited-clean submodule subset; this
+#                                      #   standalone leg adds the parent tests/
+#                                      #   project (mpv / QML / file-helper).
 #   scripts/preflight.sh --werror     # opt-in -Werror leg: configures the full project
-#                                      #   with -DWEK_WERROR=ON and builds the shippable
-#                                      #   targets. NON-FATAL today (surfaces residual
-#                                      #   warnings); flip WERROR_FATAL=1 once the tree is
-#                                      #   warning-clean to make it a gate.
+#                                      #   with -DWEK_WERROR=ON and builds the WHOLE
+#                                      #   tree (incl. the renderer libs).  NON-FATAL
+#                                      #   today — surfaces residual renderer-lib
+#                                      #   warnings; the four shippable targets are
+#                                      #   already gated FATAL in the default flow.
+#                                      #   Flip WERROR_FATAL=1 once the renderer libs
+#                                      #   are warning-clean too.
 #   scripts/preflight.sh --coverage   # opt-in coverage leg: builds parent tests with
 #                                      #   -DCOVERAGE=ON, runs llvm-cov + qmlcov, diffs
 #                                      #   totals vs tests/.coverage-baseline.json.
@@ -84,7 +93,7 @@ for arg in "$@"; do
         --render-smoke) MODE=render-smoke ;;
         --render-oracle) MODE=render-oracle ;;
         -h|--help)
-            sed -n '2,55p' "$0"
+            sed -n '2,63p' "$0"
             exit 0
             ;;
         *) echo "unknown flag: $arg" >&2; exit 2 ;;
@@ -120,6 +129,13 @@ DEPS_FEDORA=(
     # KDE Plasma 6 / KF6
     plasma-workspace plasma-workspace-devel libplasma-devel
     kf6-kcoreaddons-devel kf6-kpackage-devel kf6-kirigami-devel kf6-kcmutils
+    # KF6 runtime integrations referenced by src/CMakeLists.txt: Notifications
+    # (KNotification taxonomy), Crash (drkonqi integration), I18n (KI18n
+    # catalogs).  Without their -devel siblings the parent plugin .so cannot
+    # configure, which breaks the scoped -Werror gate below.
+    kf6-knotifications-devel kf6-kcrash-devel kf6-ki18n-devel
+    # Optional but used by src/CMakeLists.txt when present (WekShortcuts):
+    kf6-kglobalaccel-devel
 
     # Qt 6
     qt6-qtbase-devel qt6-qtbase-private-devel
@@ -262,12 +278,12 @@ if [[ "$MODE" == "sanitize" ]]; then
             exit 0
             ;;
         *)
-            # ASAN/UBSAN (and any address/undefined combo).  NON-FATAL: this leg
-            # surfaces findings to the log but does not fail preflight yet (the
-            # suites have not been audited clean under sanitizers).  Build with
-            # BUILD_FUZZERS=OFF so the fuzzers' own -fsanitize=fuzzer,... flags
-            # don't double-instrument.
-            step "Sanitizer leg (WEK_SANITIZE=${SAN_SPEC}) — NON-FATAL (surfaces findings)"
+            # ASAN/UBSAN (and any address/undefined combo).  FATAL: the submodule
+            # suites + parent tests are audited clean under address+undefined,
+            # so a finding here is a real regression and blocks the push.
+            # Build with BUILD_FUZZERS=OFF so the fuzzers' own
+            # -fsanitize=fuzzer,... flags don't double-instrument.
+            step "Sanitizer leg (WEK_SANITIZE=${SAN_SPEC}) — FATAL on any finding"
 
             # Submodule suites.
             dbox "CC=/usr/bin/clang CXX=/usr/bin/clang++ \
@@ -277,41 +293,41 @@ if [[ "$MODE" == "sanitize" ]]; then
                         -DCMAKE_BUILD_TYPE=Debug \
                   && cmake --build build/impl-asan \
                         --target backend_scene_tests scenescript_tests" \
-                || warn "submodule sanitizer build had errors (see log)"
+                || fail "submodule sanitizer build failed"
 
             # detect_leaks=0: the parsers intentionally retain some long-lived
             # state in these short-lived test runs; LSAN noise would drown the
-            # heap/UB findings we care about.  halt_on_error=0 + recover so the
-            # full suite runs and ALL findings print (leg is non-fatal anyway).
-            asan_opts="detect_leaks=0:halt_on_error=0:print_stacktrace=1"
-            ubsan_opts="halt_on_error=0:print_stacktrace=1"
+            # heap/UB findings we care about.  halt_on_error=1 + exit on the
+            # first finding so the gate fails loudly.
+            asan_opts="detect_leaks=0:halt_on_error=1:print_stacktrace=1"
+            ubsan_opts="halt_on_error=1:print_stacktrace=1"
 
-            step "Run backend_scene_tests under ${SAN_SPEC} (non-fatal)"
+            step "Run backend_scene_tests under ${SAN_SPEC} (fatal on finding)"
             # WEKDE_HAS_AUDIO_DEVICE intentionally unset (avoids the device-enum hang).
             dbox "ASAN_OPTIONS='${asan_opts}' UBSAN_OPTIONS='${ubsan_opts}' \
                   ./build/impl-asan/src/Test/backend_scene_tests" \
-                || warn "backend_scene_tests surfaced sanitizer findings (non-fatal — see log)"
+                || fail "backend_scene_tests: sanitizer finding (${SAN_SPEC}) — see log"
 
-            step "Run scenescript_tests under ${SAN_SPEC} (non-fatal)"
+            step "Run scenescript_tests under ${SAN_SPEC} (fatal on finding)"
             dbox "ASAN_OPTIONS='${asan_opts}' UBSAN_OPTIONS='${ubsan_opts}' \
                   QT_QPA_PLATFORM=offscreen \
                   ./build/impl-asan/src/Test/scenescript_tests" \
-                || warn "scenescript_tests surfaced sanitizer findings (non-fatal — see log)"
+                || fail "scenescript_tests: sanitizer finding (${SAN_SPEC}) — see log"
 
             # Parent project suites (FileHelper, mpvbackend, etc.).
-            step "Build + run parent tests under ${SAN_SPEC} (non-fatal)"
+            step "Build + run parent tests under ${SAN_SPEC} (fatal on finding)"
             dbox "CC=/usr/bin/clang CXX=/usr/bin/clang++ \
                   cmake -B build/impl-asan-main -S tests -G Ninja \
                         -DWEK_SANITIZE=${SAN_SPEC} \
                         -DCMAKE_BUILD_TYPE=Debug \
                   && cmake --build build/impl-asan-main" \
-                || warn "parent-tests sanitizer build had errors (see log)"
+                || fail "parent-tests sanitizer build failed"
             dbox "ASAN_OPTIONS='${asan_opts}' UBSAN_OPTIONS='${ubsan_opts}' \
                   QT_QPA_PLATFORM=offscreen \
                   ctest --test-dir build/impl-asan-main --output-on-failure" \
-                || warn "parent ctest surfaced sanitizer findings (non-fatal — see log)"
+                || fail "parent ctest: sanitizer finding (${SAN_SPEC}) — see log"
 
-            printf '\n%sSanitizer leg complete (NON-FATAL) — review the log above for findings.%s\n' "$YELLOW" "$RESET"
+            printf '\n%sSanitizer leg passed — no findings.%s\n' "$GREEN" "$RESET"
             exit 0
             ;;
     esac
@@ -645,6 +661,73 @@ fi
 step "Main project tests (ctest)"
 dbox "ctest --test-dir build/tests --output-on-failure" || fail "ctest failed"
 ok "ctest passed"
+
+# ── 5a. Scoped -Werror gate (4 shippable targets, default-gate FATAL) ─────────
+# CLAUDE.md lists the four shippable / dlopen'd targets that are -Wall -Wextra
+# clean: the plugin .so (WallpaperEngineKde), backend_mpv (mpvbackend), the
+# wescene-renderer-qml bridge, and wpParticle.  cmake/WekWerrorScoped.cmake
+# applies -Werror (with the conversion family no-error-gated) to just those
+# four, AS LONG AS -DWEK_WERROR=ON is not set (the full-project audit path
+# already covers them when explicit).  Build the four targets here so a -Wall
+# / -Wextra regression in shippable code is a push-blocker.  Fresh build dir
+# (build/werror-shippable) so the cache stays separate from build/sub /
+# build/tests; reuse persistent dir on repeat runs.  The wider renderer libs
+# are NOT in this gate — their audit stays opt-in via --werror (whole-tree).
+if [[ "$MODE" != "test-only" ]]; then
+    step "Scoped -Werror gate (4 shippable targets)"
+    WERR_SCOPED_GEN=""
+    [[ ! -f build/werror-shippable/CMakeCache.txt ]] && WERR_SCOPED_GEN="-G Ninja"
+    if dbox "CC=/usr/bin/clang CXX=/usr/bin/clang++ \
+             cmake -B build/werror-shippable -S . $WERR_SCOPED_GEN \
+                   -DCMAKE_BUILD_TYPE=Debug \
+             && cmake --build build/werror-shippable \
+                   --target WallpaperEngineKde mpvbackend \
+                           wescene-renderer-qml wpParticle"; then
+        ok "scoped -Werror clean (4 shippable targets)"
+    else
+        fail "scoped -Werror gate failed — a -Wall/-Wextra regression in the plugin .so / backend_mpv / wescene-renderer-qml / wpParticle is now an error"
+    fi
+fi
+
+# ── 5b. Sanitizer gate (ASAN+UBSAN over submodule doctest suites, FATAL) ─────
+# The parsers + scene runtime are the highest-risk untrusted-input surface and
+# are audited clean under address+undefined sanitizers.  Gate every push on
+# them so an ASAN heap/UAF or UBSAN find blocks the push instead of slipping
+# in unobserved.  Detect_leaks=0 (parsers keep some long-lived state during
+# short test runs — LSAN noise would mask the bugs we care about);
+# halt_on_error=1 so the first finding fails the leg.  Fresh build dir
+# (build/asan-gate) reused on repeat runs; BUILD_FUZZERS=OFF so the fuzzers'
+# own -fsanitize=fuzzer flags don't double-instrument.  The wider parent-tests
+# + full-suite sanitizer run is still advisory via --sanitize=address,undefined
+# (parent QML / mpv tests not yet audited clean).
+if [[ "$MODE" != "test-only" ]]; then
+    step "Sanitizer gate (ASAN+UBSAN over submodule doctest suites)"
+    ASAN_GATE_GEN=""
+    [[ ! -f build/asan-gate/CMakeCache.txt ]] && ASAN_GATE_GEN="-G Ninja"
+    dbox "CC=/usr/bin/clang CXX=/usr/bin/clang++ \
+          cmake -B build/asan-gate -S src/backend_scene $ASAN_GATE_GEN \
+                -DBUILD_TESTS=ON -DBUILD_FUZZERS=OFF \
+                -DWEK_SANITIZE=address,undefined \
+                -DCMAKE_BUILD_TYPE=Debug \
+          && cmake --build build/asan-gate \
+                --target backend_scene_tests scenescript_tests" \
+        || fail "ASAN gate build failed"
+fi
+
+step "Run backend_scene_tests under ASAN+UBSAN (gate)"
+gate_asan_opts="detect_leaks=0:halt_on_error=1:print_stacktrace=1"
+gate_ubsan_opts="halt_on_error=1:print_stacktrace=1"
+dbox "ASAN_OPTIONS='${gate_asan_opts}' UBSAN_OPTIONS='${gate_ubsan_opts}' \
+      ./build/asan-gate/src/Test/backend_scene_tests" \
+    || fail "backend_scene_tests: sanitizer finding (ASAN/UBSAN) — investigate then re-run"
+ok "backend_scene_tests: ASAN+UBSAN clean"
+
+step "Run scenescript_tests under ASAN+UBSAN (gate)"
+dbox "ASAN_OPTIONS='${gate_asan_opts}' UBSAN_OPTIONS='${gate_ubsan_opts}' \
+      QT_QPA_PLATFORM=offscreen \
+      ./build/asan-gate/src/Test/scenescript_tests" \
+    || fail "scenescript_tests: sanitizer finding (ASAN/UBSAN) — investigate then re-run"
+ok "scenescript_tests: ASAN+UBSAN clean"
 
 # ── 6. Fuzz smoke (libFuzzer seeded regression gate) ─────────────────────────
 # Catches the unbounded-resize / unterminated-buffer bug class on parser entry

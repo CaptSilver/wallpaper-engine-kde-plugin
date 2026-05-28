@@ -64,11 +64,13 @@ target_link_libraries(${PROJECT_NAME}
 # excluded from the plugin .so.  System Settings -> Shortcuts will then not
 # show "Wallpaper Engine"; the D-Bus surface (WekControl) still works
 # unchanged, so users can drive the plugin from KRunner / kdotool / qdbus.
-if(TARGET KF6::GlobalAccel AND TARGET KF6::CoreAddons)
+find_package(KF6XmlGui QUIET)   # KActionCollection (used by WekShortcuts)
+if(TARGET KF6::GlobalAccel AND TARGET KF6::CoreAddons AND TARGET KF6::XmlGui)
     target_sources(${PROJECT_NAME} PRIVATE WekShortcuts.cpp)
     target_link_libraries(${PROJECT_NAME} PRIVATE
         KF6::GlobalAccel
-        KF6::CoreAddons)
+        KF6::CoreAddons
+        KF6::XmlGui)
     target_compile_definitions(${PROJECT_NAME} PRIVATE WEKDE_HAS_GLOBALACCEL)
 endif()
 target_compile_definitions(${PROJECT_NAME} PRIVATE WEKDE_HAS_MPV)

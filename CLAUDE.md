@@ -64,7 +64,17 @@ is the single source of truth. The default run is the comprehensive gate:
 1. **clang-format lint** — parent-repo C/C++ (excludes `build|tests/build|tests/fixtures`).
 2. **Submodule build + tests** — `backend_scene_tests` + `scenescript_tests`.
 3. **Main project ctest** — the `tests/` binaries.
-4. **Fuzz smoke** — 9 libFuzzer harnesses, **seeded from `tests/fuzz_corpus/<target>/seed/`** (cold-start fallback when missing). `FUZZ_SECS=N` to tune (default 20s each). After long fuzz sessions, refresh the committed seeds with `scripts/fuzz/minimize.sh <target>`. Size budget: 200 KB per target. Fuzz crash regressions are pinned under `tests/fixtures/fuzz_regressions/<target>/*.bin` and replayed by the parser doctests; pin a new artifact with `scripts/fuzz/pin-regression.sh`.
+4. **Scoped `-Werror` gate** — builds the four shippable / dlopen'd targets
+   (`WallpaperEngineKde`, `mpvbackend`, `wescene-renderer-qml`, `wpParticle`)
+   with `-Werror` (conversion family stays warning-only). FATAL on any
+   `-Wall`/`-Wextra` regression in shippable code. Plumbing lives in
+   `src/backend_scene/cmake/WekWerrorScoped.cmake`; build dir `build/werror-shippable`.
+5. **Sanitizer gate (ASAN+UBSAN, submodule doctest suites)** — builds + runs
+   `backend_scene_tests` and `scenescript_tests` under
+   `-DWEK_SANITIZE=address,undefined` with `halt_on_error=1`. FATAL on any
+   sanitizer finding. Build dir `build/asan-gate`. The wider parent-tests +
+   full-suite ASAN run is still advisory via `--sanitize=address,undefined`.
+6. **Fuzz smoke** — 9 libFuzzer harnesses, **seeded from `tests/fuzz_corpus/<target>/seed/`** (cold-start fallback when missing). `FUZZ_SECS=N` to tune (default 20s each). After long fuzz sessions, refresh the committed seeds with `scripts/fuzz/minimize.sh <target>`. Size budget: 200 KB per target. Fuzz crash regressions are pinned under `tests/fixtures/fuzz_regressions/<target>/*.bin` and replayed by the parser doctests; pin a new artifact with `scripts/fuzz/pin-regression.sh`.
 
 Coverage and mutation testing are **separate opt-ins** (`-DCOVERAGE=ON` / `-DMUTATION_TESTING=ON`),
 not part of the default preflight path — run them on demand (see the topic memory files).
@@ -96,9 +106,13 @@ scripts/preflight.sh --tsan       # WEK_SANITIZE=thread over the SceneScript + t
 scripts/preflight.sh --sanitize=address,undefined   # ASAN+UBSAN over parent + submodule suites
 ```
 
-`--werror`, `--coverage`, and `--sanitize=...` are **non-fatal** today (they surface findings without
-failing the run); `--tsan` is a gate (FATAL on a race). Coverage flips to FATAL with
-`COVERAGE_FATAL=1`; refresh the baseline with `WEK_COVERAGE_REFRESH=1`. See `scripts/preflight.sh --help`.
+`--werror` (whole-tree) is **non-fatal** today (renderer libs not yet audited
+clean). `--coverage` is non-fatal until `COVERAGE_FATAL=1`; refresh the
+baseline with `WEK_COVERAGE_REFRESH=1`. `--sanitize=...` is **FATAL** on
+findings (audited-clean submodule suites + parent tests). `--tsan` is a gate
+(FATAL on a race). The default flow already covers the scoped `-Werror` over
+the 4 shippable targets + ASAN+UBSAN over the submodule doctest suites — the
+opt-in legs are the wider audit runs. See `scripts/preflight.sh --help`.
 
 `scripts/mutation.sh` runs Mull (auto-fetched via the submodule's `FetchMull.cmake`) over the
 instrumented parent test targets and diffs the surviving-mutant set against `tests/.mull-baseline.json`.
@@ -111,21 +125,30 @@ rewrites the committed survivor set.
 The renderer libs build with the full `warn_opts`
 (`-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion`, in
 `src/backend_scene/src/CMakeLists.txt`). The shippable / dlopen'd targets — the plugin `.so`,
-`backend_mpv`, the `wescene-renderer-qml` bridge, and `wpParticle` — carry the conservative
+`backend_mpv`, and the `wescene-renderer-qml` bridge — carry the conservative
 `wek_warn_opts` (`-Wall -Wextra`), defined in `src/backend_scene/cmake/WekWarnings.cmake` (one
 canonical file, included from the root and submodule CMake so the parent and standalone-submodule
-builds agree, mirroring `WekSanitize.cmake`).
+builds agree, mirroring `WekSanitize.cmake`). `wpParticle` is built with the renderer-libs
+`warn_opts` (it is part of the particle system family that links into the renderer libs); both
+warn lists honour the same `-Werror` rules, so the scoped gate treats it identically to the
+other three shippable targets.
 
 `-DWEK_WERROR=ON` (OFF by default) appends `-Werror` to the **first-party** warn lists only.
 third_party is excluded **by construction** (it never receives these flags — no global
 `add_compile_options`), and the signed/unsigned diagnostic family stays **warning-only** under
 `-Werror` (`-Wno-error=conversion` / `-Wno-error=sign-conversion` / `-Wno-error=sign-compare`)
-since it is noisy across the renderer. Verify with `scripts/preflight.sh --werror`. The leg is
-**non-fatal** today: the four shippable targets are `-Wall -Wextra` clean, but the wider renderer
+since it is noisy across the renderer. Verify with `scripts/preflight.sh --werror`. The
+whole-tree leg is **non-fatal** today: the four shippable targets are `-Wall -Wextra` clean
+(and gated FATAL by the default flow via `cmake/WekWerrorScoped.cmake`), but the wider renderer
 libs (Vulkan/RenderGraph/VulkanRender/Scene/Audio) still trip `-Wall/-Wextra` errors
 (`-Wmismatched-tags`, `-Wunused-parameter/-function/-lambda-capture/-private-field`,
-`-Wmissing-braces`) and need a separate audit pass before `-Werror` can gate. Set `WERROR_FATAL=1`
-to make the leg fail (and then wire it into the default flow / pre-push hook).
+`-Wmissing-braces`) and need a separate audit pass before `-Werror` can gate the whole tree.
+Set `WERROR_FATAL=1` to flip the whole-tree leg fatal once the renderer libs are clean.
+
+The **scoped `-Werror`** plumbing (`cmake/WekWerrorScoped.cmake`) is what makes step 4 of
+the default flow fatal: it applies `-Werror` (with the conversion family no-error-gated) to
+just the four shippable targets, and is a no-op when `-DWEK_WERROR=ON` is set explicitly so
+the two paths never double-apply.
 
 ### Supported distros (Qt6 + CMake floor matrix)
 

@@ -24,6 +24,12 @@ public:
     Q_INVOKABLE void assetsMissing(const QString& workshopId, const QString& path);
     Q_INVOKABLE void backendUnavailable(const QString& backendName, const QString& reason);
 
+    // Exposed so the .cpp's anon-ns helper can wrap the C-string in a
+    // QString — KNotification::setComponentName takes QString, and
+    // QStringLiteral is a preprocessor macro that cannot consume a named
+    // constant.
+    static constexpr const char* componentNameLiteral() { return kComponentName; }
+
 private:
     // Component name for KNotification — matches wek.notifyrc filename
     // (without extension).

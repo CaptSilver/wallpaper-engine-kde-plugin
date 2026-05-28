@@ -35,17 +35,19 @@ public:
     void registerTypes(const char* uri) override {
         if (strcmp(uri, "com.github.captsilver.wallpaperEngineKde") != 0) return;
 
-        // Register with KCrash so DrKonqi enriches the crash dialog with
-        // our plugin .so's symbols and product-name.  plasmashell itself
-        // already registers (KCrash::initialize() is idempotent), but our
-        // addition lets DrKonqi attribute crashes inside the wallpaper
-        // plugin to "Wallpaper Engine Plugin" rather than generic
-        // "Plasma Shell" — gets the bug report to the right maintainer
-        // faster.
+        // Register with KCrash so DrKonqi catches crashes in this plugin
+        // .so.  plasmashell already registers (KCrash::initialize() is
+        // idempotent), so this is just defensive in case the plugin is
+        // dlopen'd before plasmashell has run init.
+        //
+        // KF6 6.x removed setApplicationProductName / setApplicationVersion /
+        // setBugAddress from the KCrash namespace; the equivalent metadata
+        // is now sourced from KAboutData::applicationData().  Plasmashell
+        // already sets that for the running shell, so DrKonqi still has
+        // enough to surface a useful crash report.  If we ever ship a
+        // standalone wallpaper-host process this is where we'd set up a
+        // KAboutData for it.
         KCrash::initialize();
-        KCrash::setApplicationProductName(QStringLiteral("Wallpaper Engine Plugin"));
-        KCrash::setApplicationVersion(QStringLiteral(WEK_VERSION));
-        KCrash::setBugAddress("https://github.com/CaptSilver/wallpaper-engine-kde-plugin/issues");
 
         qputenv("QML_XHR_ALLOW_FILE_READ", "1");
         // Allow web wallpapers to make cross-origin requests (XHR/fetch).

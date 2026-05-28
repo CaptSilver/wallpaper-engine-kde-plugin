@@ -893,7 +893,12 @@ void TestMprisColors::decodeArt_emptyBytes_returnsFalse() {
 
 void TestMprisColors::decodeArt_garbageBytes_returnsFalse() {
     QVariantList out;
-    QByteArray   junk("\x00\xFF not-an-image \x42\x42", 24);
+    // Explicit length must match the literal's byte count (incl. the embedded
+    // \x00) — over-stating it reads past the .rodata string into the next
+    // global (ASAN: global-buffer-overflow at QByteArray::QByteArray(const
+    // char*, long long)).  The literal here is exactly 18 bytes:
+    //   \x00 \xFF ' ' n o t - a n - i m a g e ' ' \x42 \x42
+    QByteArray junk("\x00\xFF not-an-image \x42\x42", 18);
     QVERIFY(! wekde::decodeArtReplyBytes(junk, false, out));
     QVERIFY(out.isEmpty());
 }

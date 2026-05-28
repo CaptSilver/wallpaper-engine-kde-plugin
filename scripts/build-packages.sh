@@ -1,24 +1,29 @@
 #!/usr/bin/env bash
-# Build RPM (Fedora) and/or DEB (Ubuntu) packages inside their respective
-# distroboxes. Idempotent dependency installation: queries the package db and
-# only installs what's missing so re-runs don't redownload anything (notably
-# rpmfusion-free, which costs metadata on every fresh install).
+# Build RPM (Fedora), DEB (Ubuntu), and/or Arch package inside their
+# respective distroboxes. Idempotent dependency installation: queries the
+# package db and only installs what's missing so re-runs don't redownload
+# anything (notably rpmfusion-free, which costs metadata on every fresh
+# install).
 #
 # Usage:
-#   scripts/build-packages.sh                  # build both rpm + deb
+#   scripts/build-packages.sh                  # build all: rpm + deb + arch
 #   scripts/build-packages.sh rpm              # build rpm only
 #   scripts/build-packages.sh deb              # build deb only
-#   scripts/build-packages.sh --check          # provision deps; no build
-#   scripts/build-packages.sh rpm --check      # provision fedora deps only
+#   scripts/build-packages.sh arch             # build arch only
+#   scripts/build-packages.sh --check          # provision deps for selected
+#                                              # targets; no build
+#   scripts/build-packages.sh arch --check     # provision arch deps only
 #
 # Containers (auto-created if missing):
 #   fedora -> registry.fedoraproject.org/fedora-toolbox:latest
-#   ubuntu -> quay.io/toolbx/ubuntu-toolbox:24.04
+#   ubuntu -> quay.io/toolbx/ubuntu-toolbox:25.04
+#   arch   -> quay.io/toolbx-images/archlinux-toolbox:latest
 #
 # Outputs (copied to $HOME for easy upload):
 #   ~/wallpaper-engine-kde-plugin-qt6-<ver>.fc<n>.x86_64.rpm
 #   ~/wallpaper-engine-kde-plugin_<ver>_amd64.deb
 #   ~/wallpaper-engine-kde-plugin-dbgsym_<ver>_amd64.ddeb (if produced)
+#   ~/wallpaper-engine-kde-plugin-<ver>-<rel>-x86_64.pkg.tar.zst
 
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -27,15 +32,18 @@ REPO_ROOT="$PWD"
 # ── Args ──────────────────────────────────────────────────────────────────────
 WANT_RPM=1
 WANT_DEB=1
+WANT_ARCH=1
 CHECK_ONLY=0
 TARGET_GIVEN=0
 for arg in "$@"; do
     case "$arg" in
-        rpm)  if [[ $TARGET_GIVEN == 0 ]]; then WANT_RPM=1; WANT_DEB=0; TARGET_GIVEN=1; fi ;;
-        deb)  if [[ $TARGET_GIVEN == 0 ]]; then WANT_RPM=0; WANT_DEB=1; TARGET_GIVEN=1; fi ;;
-        both) WANT_RPM=1; WANT_DEB=1; TARGET_GIVEN=1 ;;
+        rpm)  if [[ $TARGET_GIVEN == 0 ]]; then WANT_RPM=1; WANT_DEB=0; WANT_ARCH=0; TARGET_GIVEN=1; fi ;;
+        deb)  if [[ $TARGET_GIVEN == 0 ]]; then WANT_RPM=0; WANT_DEB=1; WANT_ARCH=0; TARGET_GIVEN=1; fi ;;
+        arch) if [[ $TARGET_GIVEN == 0 ]]; then WANT_RPM=0; WANT_DEB=0; WANT_ARCH=1; TARGET_GIVEN=1; fi ;;
+        all)  WANT_RPM=1; WANT_DEB=1; WANT_ARCH=1; TARGET_GIVEN=1 ;;
+        both) WANT_RPM=1; WANT_DEB=1; WANT_ARCH=0; TARGET_GIVEN=1 ;;
         --check|--check-only) CHECK_ONLY=1 ;;
-        -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
         *) echo "unknown argument: $arg" >&2; exit 2 ;;
     esac
 done
@@ -59,6 +67,12 @@ UBUNTU_BOX="ubuntu"
 # libplasma-dev) are NOT in 24.04 (noble); the project's CI workflow targets
 # 25.04 for the same reason.
 UBUNTU_IMAGE="quay.io/toolbx/ubuntu-toolbox:25.04"
+ARCH_BOX="arch"
+# Official upstream Arch image on Docker Hub.  The quay.io/toolbx-images/
+# archlinux-toolbox tag is currently gated (401 on anonymous pulls); the
+# library/archlinux image works fine — distrobox layers on the toolbox
+# niceties (passwd entries, sudoers) at first enter, so no functional gap.
+ARCH_IMAGE="docker.io/library/archlinux:latest"
 
 # ── Dependency manifests ──────────────────────────────────────────────────────
 # Fedora: rpmbuild + spec BuildRequires. Mirrors rpm/wek.spec; rpm-build/
@@ -94,6 +108,44 @@ DEPS_FEDORA_RPMFUSION=(
     mpv-libs-devel
 )
 RPMFUSION_FREE_PKG="rpmfusion-free-release"
+
+# Arch: makepkg + arch/PKGBUILD makedepends/depends.  Mirrors the GitHub CI
+# Arch job + the PKGBUILD entries.  Arch ships unversioned KF6 framework
+# package names (knotifications, kcrash, …) rather than Fedora-style
+# kf6-knotifications-devel / Ubuntu libkf6notifications-dev.
+DEPS_ARCH=(
+    base-devel
+    clang
+    llvm
+    cmake
+    ninja
+    extra-cmake-modules
+    vulkan-headers
+    vulkan-icd-loader
+    libplasma
+    plasma-workspace
+    kconfig
+    kcoreaddons
+    kpackage
+    knotifications
+    kcrash
+    kglobalaccel
+    ki18n
+    kxmlgui
+    qt6-base
+    qt6-declarative
+    qt6-webchannel
+    qt6-webengine
+    mpv
+    lz4
+    freetype2
+    libpulse
+    # git + sudo are usually in the toolbox image; list them explicitly so a
+    # minimal arch base also works (distrobox enter + makepkg need them).
+    git
+    sudo
+    pkgconf
+)
 
 # Ubuntu: dpkg-buildpackage + debian/control Build-Depends.
 DEPS_UBUNTU=(
@@ -234,6 +286,84 @@ build_fedora() {
     ok "RPMs in \$HOME, /tmp/rpmbuild cleared"
 }
 
+# ── Arch ──────────────────────────────────────────────────────────────────────
+arch_missing() {
+    local list="$*"
+    distrobox enter "$ARCH_BOX" -- bash -lc "
+        missing=()
+        for p in $list; do
+            pacman -Q \"\$p\" >/dev/null 2>&1 || missing+=(\"\$p\")
+        done
+        echo \"\${missing[*]}\"
+    "
+}
+
+bootstrap_arch() {
+    step "Provision arch distrobox"
+    ensure_container "$ARCH_BOX" "$ARCH_IMAGE"
+
+    # The Arch toolbox image ships with the keyring + mirror list pre-baked,
+    # but on a long-lived box `pacman -Sy` can desync against the upstream
+    # mirror snapshot.  Run -Syu unconditionally so the package db is fresh
+    # before we query for missing pieces (makepkg's deps are versioned and an
+    # out-of-date db produces 404s on the install pass).
+    distrobox enter "$ARCH_BOX" -- bash -lc "
+        sudo pacman -Syu --noconfirm
+    " || fail "pacman -Syu failed"
+
+    local missing
+    missing="$(arch_missing "${DEPS_ARCH[@]}")"
+    if [[ -z "${missing// /}" ]]; then
+        ok "all arch deps already present"
+    else
+        warn "installing: $missing"
+        # --needed: belt-and-braces; we already filtered via arch_missing,
+        # but this is the canonical idempotent install flag.
+        distrobox enter "$ARCH_BOX" -- bash -lc "
+            sudo pacman -S --noconfirm --needed $missing
+        " || fail "pacman -S failed"
+        ok "arch deps installed"
+    fi
+}
+
+build_arch() {
+    step "Build pkg.tar.zst in arch distrobox"
+    [[ -f src/backend_scene/CMakeLists.txt ]] \
+        || fail "src/backend_scene missing — run 'git submodule update --init --recursive' first"
+    [[ -f arch/PKGBUILD ]] \
+        || fail "arch/PKGBUILD missing"
+
+    # makepkg refuses to run as root; the distrobox user is unprivileged so
+    # we're already in the right shape.  --noconfirm = unattended; -f =
+    # overwrite existing artifacts in the cwd; --skipchecksums because the
+    # PKGBUILD's source=() is empty (live-tree build, nothing to verify).
+    # Default dep handling is "check, don't install" — bootstrap_arch already
+    # ran `pacman -S` against DEPS_ARCH, so the check passes without -s.
+    #
+    # WEK_REPO_ROOT is the live working tree.  The PKGBUILD reads it via
+    # `: \"\${WEK_REPO_ROOT:=\${startdir}/..}\"` so a standalone makepkg
+    # invocation (Arch user running it themselves) still works without
+    # WEK_REPO_ROOT in env.
+    distrobox enter "$ARCH_BOX" -- bash -lc "
+        set -euo pipefail
+        cd '$REPO_ROOT/arch'
+        rm -f wallpaper-engine-kde-plugin-*-x86_64.pkg.tar.zst
+        WEK_REPO_ROOT='$REPO_ROOT' \\
+            makepkg -f --noconfirm --skipchecksums
+    " || fail "makepkg failed"
+
+    step "Copy pkg.tar.zst to \$HOME"
+    distrobox enter "$ARCH_BOX" -- bash -lc "
+        set -euo pipefail
+        rm -f \$HOME/wallpaper-engine-kde-plugin-*-x86_64.pkg.tar.zst
+        cp -v '$REPO_ROOT/arch'/wallpaper-engine-kde-plugin-*-x86_64.pkg.tar.zst \$HOME/
+        # Drop the PKGBUILD-side artifacts so the next run starts clean.
+        rm -f '$REPO_ROOT/arch'/wallpaper-engine-kde-plugin-*-x86_64.pkg.tar.zst
+        rm -rf '$REPO_ROOT/arch/src' '$REPO_ROOT/arch/pkg'
+    " || fail "pkg.tar.zst copy failed"
+    ok "pkg.tar.zst in \$HOME, arch/ work tree cleaned"
+}
+
 # ── Ubuntu ────────────────────────────────────────────────────────────────────
 ubuntu_missing() {
     local list="$*"
@@ -309,8 +439,9 @@ build_ubuntu() {
 # Per-target bootstrap+build so a deb provisioning failure can't block an
 # otherwise-working rpm build (and vice-versa).
 if [[ $CHECK_ONLY == 1 ]]; then
-    [[ $WANT_RPM == 1 ]] && bootstrap_fedora
-    [[ $WANT_DEB == 1 ]] && bootstrap_ubuntu
+    [[ $WANT_RPM  == 1 ]] && bootstrap_fedora
+    [[ $WANT_DEB  == 1 ]] && bootstrap_ubuntu
+    [[ $WANT_ARCH == 1 ]] && bootstrap_arch
     printf '\n%sBootstrap complete — re-run without --check to build.%s\n' "$GREEN" "$RESET"
     exit 0
 fi
@@ -323,7 +454,12 @@ if [[ $WANT_DEB == 1 ]]; then
     bootstrap_ubuntu
     build_ubuntu
 fi
+if [[ $WANT_ARCH == 1 ]]; then
+    bootstrap_arch
+    build_arch
+fi
 
 step "Done"
-[[ $WANT_RPM == 1 ]] && ok "RPM:  $HOME/wallpaper-engine-kde-plugin-qt6-*.rpm"
-[[ $WANT_DEB == 1 ]] && ok "DEB:  $HOME/wallpaper-engine-kde-plugin_*.deb"
+[[ $WANT_RPM  == 1 ]] && ok "RPM:  $HOME/wallpaper-engine-kde-plugin-qt6-*.rpm"
+[[ $WANT_DEB  == 1 ]] && ok "DEB:  $HOME/wallpaper-engine-kde-plugin_*.deb"
+[[ $WANT_ARCH == 1 ]] && ok "ARCH: $HOME/wallpaper-engine-kde-plugin-*-x86_64.pkg.tar.zst"

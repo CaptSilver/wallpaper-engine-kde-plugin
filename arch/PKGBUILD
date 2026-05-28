@@ -1,0 +1,104 @@
+# Maintainer: CaptSilver <https://github.com/CaptSilver>
+#
+# PKGBUILD for the Wallpaper Engine KDE Plugin (Plasma 6 / Qt6 / KF6 6.x).
+#
+# This recipe builds from a live git checkout — there is no source= tarball
+# or VCS pull.  The script scripts/build-packages.sh sets WEK_REPO_ROOT to
+# the absolute path of the parent repo before invoking makepkg; if that env
+# isn't set (e.g. an Arch user running `makepkg` directly in arch/), the
+# build() function falls back to $startdir/.. which is also the repo root.
+#
+# Mirror of rpm/wek.spec.  Keep the depends / makedepends lists in sync
+# with rpm BuildRequires + debian/control Build-Depends + the GitHub CI
+# workflow's Arch install step.
+
+pkgname=wallpaper-engine-kde-plugin
+pkgver=1.3
+pkgrel=1
+pkgdesc="Wallpaper Engine integration for KDE Plasma 6 (Scene / Web / Video)"
+arch=('x86_64')
+url="https://github.com/CaptSilver/wallpaper-engine-kde-plugin"
+license=('GPL-2.0-only')
+
+# Runtime dependencies — what the .so + the QML plugin actually link against
+# at load time, plus the wallpaper-runtime stack (plasma-workspace for the
+# wallpaper UI, mpv for video, freetype2 / libpulse for the scene renderer).
+depends=(
+    'plasma-workspace'
+    'libplasma'
+    'kconfig'
+    'kcoreaddons'
+    'kpackage'
+    'knotifications'
+    'kcrash'
+    'kglobalaccel'
+    'ki18n'
+    'kxmlgui'
+    'qt6-base'
+    'qt6-declarative'
+    'qt6-webchannel'
+    'qt6-webengine'
+    'mpv'
+    'lz4'
+    'freetype2'
+    'libpulse'
+    'vulkan-icd-loader'
+)
+
+makedepends=(
+    'base-devel'
+    'clang'
+    'llvm'
+    'cmake'
+    'ninja'
+    'extra-cmake-modules'
+    'vulkan-headers'
+)
+
+optdepends=(
+    'gst-libav: extra GStreamer codecs for video wallpapers'
+    'pipewire-pulse: PipeWire-backed PulseAudio (system audio capture)'
+    'vulkan-tools: vulkaninfo / Vulkan diagnostics'
+)
+
+# Built from a live working tree.  No source array, no tarball, no VCS pull.
+source=()
+sha256sums=()
+options=(!debug)
+
+prepare() {
+    : "${WEK_REPO_ROOT:=${startdir}/..}"
+    if [[ ! -f "${WEK_REPO_ROOT}/CMakeLists.txt" ]]; then
+        printf 'error: WEK_REPO_ROOT (%s) does not point at the repo root\n' \
+            "${WEK_REPO_ROOT}" >&2
+        return 1
+    fi
+    if [[ ! -f "${WEK_REPO_ROOT}/src/backend_scene/CMakeLists.txt" ]]; then
+        printf 'error: submodule src/backend_scene missing — run\n' >&2
+        printf '       git submodule update --init --force --recursive\n' >&2
+        printf '       in %s\n' "${WEK_REPO_ROOT}" >&2
+        return 1
+    fi
+}
+
+build() {
+    : "${WEK_REPO_ROOT:=${startdir}/..}"
+    export CC=clang CXX=clang++
+    cmake -B "${srcdir}/build" -S "${WEK_REPO_ROOT}" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -G Ninja
+    cmake --build "${srcdir}/build"
+}
+
+package() {
+    DESTDIR="${pkgdir}" cmake --install "${srcdir}/build"
+
+    # The cmake install rules stage the project LICENSE + every vendored
+    # third-party license under share/wek/licenses/.  Add the distro-standard
+    # share/licenses/<pkg>/ symlink tree so `pacman -Qpl` and license-audit
+    # tooling find them at the conventional path.
+    install -d "${pkgdir}/usr/share/licenses/${pkgname}"
+    ln -sf /usr/share/wek/licenses \
+        "${pkgdir}/usr/share/licenses/${pkgname}/wek-licenses"
+}

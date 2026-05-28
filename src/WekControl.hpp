@@ -39,8 +39,7 @@ public:
     // bring up a private peer-to-peer connection without dbus-launch.  Per
     // feedback_distrobox_dbus_launch_missing — neither dbus-launch nor
     // dbus-run-session ship in the Bazzite Fedora toolbox.
-    static WekControl* registerOnConnection(QDBusConnection bus,
-                                            QObject*        parent = nullptr);
+    static WekControl* registerOnConnection(QDBusConnection bus, QObject* parent = nullptr);
 
     // True if the bus registration succeeded.  False on multi-monitor
     // secondaries, or when no session bus is available.
@@ -53,8 +52,7 @@ public:
     // Bridge for QML-side WallpaperChanged emission — when the QML
     // PlaylistController detects a workshop-id transition, it calls this to
     // fire the D-Bus signal.
-    Q_INVOKABLE void emitWallpaperChanged(const QString& workshopId,
-                                          const QString& playlistId);
+    Q_INVOKABLE void emitWallpaperChanged(const QString& workshopId, const QString& playlistId);
 
 public slots:
     // Playlist navigation

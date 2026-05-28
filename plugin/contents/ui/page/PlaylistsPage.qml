@@ -6,6 +6,7 @@ import QtQuick
 import QtQuick.Controls 2.3
 import QtQuick.Layouts 1.5
 
+import org.kde.plasma.core 2.0 as PlasmaCore
 import org.kde.kirigami 2.6 as Kirigami
 import com.github.captsilver.wallpaperEngineKde
 
@@ -63,16 +64,16 @@ Item {
                 Layout.fillWidth: true
                 Button {
                     objectName: "btnNewPlaylist"
-                    text: "+"
-                    ToolTip.text: "New playlist"
+                    text: i18nc("@action:button plus sign new-playlist button", "+")
+                    ToolTip.text: i18nc("@info:tooltip new playlist", "New playlist")
                     ToolTip.visible: hovered
                     ToolTip.delay: 500
                     onClicked: namePromptCreate.open()
                 }
                 Button {
                     objectName: "btnDeletePlaylist"
-                    text: "Delete"
-                    ToolTip.text: "Delete the selected playlist"
+                    text: i18nc("@action:button delete playlist", "Delete")
+                    ToolTip.text: i18nc("@info:tooltip delete selected playlist", "Delete the selected playlist")
                     ToolTip.visible: hovered
                     ToolTip.delay: 500
                     enabled: root._selectedId !== "" && root._selectedId !== "__filtered_library__"
@@ -117,7 +118,7 @@ Item {
                         }
                         Label {
                             Layout.fillWidth: true
-                            text: "Filtered Library"
+                            text: i18nc("@item:inlistbox built-in filtered-library playlist row", "Filtered Library")
                             font.italic: true
                             font.bold: root.cfg_ActivePlaylistId === "__filtered_library__"
                             verticalAlignment: Text.AlignVCenter
@@ -156,7 +157,7 @@ Item {
                             id: plNameLabel
                             visible: ! plRow._editing
                             Layout.fillWidth: true
-                            text: name + "  (" + itemCount + ")"
+                            text: i18nc("@item:inlistbox playlist row with item count, %1=name, %2=count", "%1  (%2)", name, itemCount)
                             font.bold: root.cfg_ActivePlaylistId === id
                             elide: Text.ElideRight
                             verticalAlignment: Text.AlignVCenter
@@ -216,7 +217,7 @@ Item {
                 font.italic: true
                 wrapMode: Text.WordWrap
                 horizontalAlignment: Text.AlignHCenter
-                text: "No custom playlists — click + to add one"
+                text: i18nc("@info empty state for custom playlists", "No custom playlists — click + to add one")
             }
         }
 
@@ -229,7 +230,7 @@ Item {
             // Empty state
             Label {
                 visible: root._selectedId === ""
-                text: "Select a playlist on the left, or create a new one."
+                text: i18nc("@info playlists page right-pane empty state", "Select a playlist on the left, or create a new one.")
                 Layout.alignment: Qt.AlignCenter
             }
 
@@ -239,19 +240,18 @@ Item {
                 Layout.fillWidth: true
                 spacing: 8
                 Label {
-                    text: "Filtered Library"
+                    text: i18nc("@title filtered library section heading", "Filtered Library")
                     font.bold: true
                     font.pixelSize: 18
                 }
                 Label {
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
-                    text: "Cycles through wallpapers passing the filter chips on the Wallpapers tab. "
-                        + "Mode is shuffle. Interval is set by 'Randomize Timer' on the Settings tab."
+                    text: i18nc("@info filtered library description", "Cycles through wallpapers passing the filter chips on the Wallpapers tab. Mode is shuffle. Interval is set by 'Randomize Timer' on the Settings tab.")
                 }
                 Button {
                     text: root.cfg_ActivePlaylistId === "__filtered_library__"
-                          ? "Deactivate" : "Activate"
+                          ? i18nc("@action:button deactivate playlist", "Deactivate") : i18nc("@action:button activate playlist", "Activate")
                     onClicked: {
                         if (!root.manager) return;
                         if (root.cfg_ActivePlaylistId === "__filtered_library__")
@@ -291,9 +291,12 @@ Item {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    Label { text: "Mode:" }
+                    Label { text: i18nc("@label playlist playback mode", "Mode:") }
                     ComboBox {
-                        model: ["sequential", "shuffle"]
+                        model: [
+                            i18nc("@item:inlistbox playlist mode sequential", "sequential"),
+                            i18nc("@item:inlistbox playlist mode shuffle", "shuffle"),
+                        ]
                         currentIndex: editor._selectedPlaylist
                                     && editor._selectedPlaylist.mode === "shuffle" ? 1 : 0
                         onActivated: function(idx) {
@@ -301,7 +304,7 @@ Item {
                             if (root.manager) root.manager.setMode(root._selectedId, idx);
                         }
                     }
-                    Label { text: "Interval (min):" }
+                    Label { text: i18nc("@label playlist advance interval in minutes", "Interval (min):") }
                     SpinBox {
                         from: 1; to: 1440
                         value: editor._selectedPlaylist
@@ -323,7 +326,7 @@ Item {
                     }
                     Label {
                         Layout.fillWidth: true
-                        text: "Wallpaper"
+                        text: i18nc("@title:column playlist queue wallpaper column", "Wallpaper")
                         font.bold: true
                         color: Kirigami.Theme.disabledTextColor
                     }
@@ -462,8 +465,8 @@ Item {
                                 Button {
                                     Layout.preferredHeight: 36
                                     Layout.preferredWidth: 36
-                                    text: "↑"
-                                    ToolTip.text: "Move up"
+                                    text: i18nc("@action:button arrow move up", "↑")
+                                    ToolTip.text: i18nc("@info:tooltip move playlist item up", "Move up")
                                     ToolTip.visible: hovered
                                     ToolTip.delay: 500
                                     enabled: index > 0
@@ -475,8 +478,8 @@ Item {
                                 Button {
                                     Layout.preferredHeight: 36
                                     Layout.preferredWidth: 36
-                                    text: "↓"
-                                    ToolTip.text: "Move down"
+                                    text: i18nc("@action:button arrow move down", "↓")
+                                    ToolTip.text: i18nc("@info:tooltip move playlist item down", "Move down")
                                     ToolTip.visible: hovered
                                     ToolTip.delay: 500
                                     enabled: lvItems.count > 0 && index < lvItems.count - 1
@@ -488,8 +491,8 @@ Item {
                                 Button {
                                     Layout.preferredHeight: 36
                                     Layout.preferredWidth: 36
-                                    text: "×"
-                                    ToolTip.text: "Remove from playlist"
+                                    text: i18nc("@action:button cross remove", "×")
+                                    ToolTip.text: i18nc("@info:tooltip remove item from playlist", "Remove from playlist")
                                     ToolTip.visible: hovered
                                     ToolTip.delay: 500
                                     onClicked: {
@@ -521,12 +524,12 @@ Item {
                 Label {
                     visible: lvItems.count === 0
                     Layout.alignment: Qt.AlignHCenter
-                    text: "No items. Right-click wallpapers in the Wallpapers/Videos tabs to add."
+                    text: i18nc("@info playlist editor empty state", "No items. Right-click wallpapers in the Wallpapers/Videos tabs to add.")
                 }
 
                 Button {
                     Layout.alignment: Qt.AlignHCenter
-                    text: root.cfg_ActivePlaylistId === root._selectedId ? "Deactivate" : "Activate"
+                    text: root.cfg_ActivePlaylistId === root._selectedId ? i18nc("@action:button deactivate playlist", "Deactivate") : i18nc("@action:button activate playlist", "Activate")
                     enabled: lvItems.count > 0 || root.cfg_ActivePlaylistId === root._selectedId
                     onClicked: {
                         if (!root.manager) return;
@@ -543,12 +546,12 @@ Item {
     Dialog {
         id: namePromptCreate
         objectName: "namePromptCreate"
-        title: "New playlist"
+        title: i18nc("@title:window new playlist name prompt", "New playlist")
         modal: true
         anchors.centerIn: parent
         contentItem: TextField {
             id: createNameField
-            placeholderText: "Playlist name"
+            placeholderText: i18nc("@info:placeholder playlist name input", "Playlist name")
         }
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: {
@@ -565,7 +568,7 @@ Item {
     Dialog {
         id: deleteConfirmPrompt
         objectName: "deleteConfirmPrompt"
-        title: "Delete playlist"
+        title: i18nc("@title:window delete playlist confirmation", "Delete playlist")
         modal: true
         implicitWidth: Kirigami.Units.gridUnit * 20
         anchors.centerIn: parent
@@ -581,7 +584,7 @@ Item {
             return "";
         }
         contentItem: Label {
-            text: "Delete the playlist \"" + deleteConfirmPrompt._selectedName + "\"?"
+            text: i18nc("@info confirmation message for deleting playlist, %1=name", "Delete the playlist \"%1\"?", deleteConfirmPrompt._selectedName)
             wrapMode: Text.WordWrap
         }
         standardButtons: Dialog.Yes | Dialog.No

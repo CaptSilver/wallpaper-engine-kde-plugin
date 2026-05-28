@@ -46,8 +46,7 @@ private slots:
     void testEventIdsMatchNotifyrc() {
         QFile f(QStringLiteral(WEK_SOURCE_DIR "/wek.notifyrc"));
         QVERIFY2(f.open(QIODevice::ReadOnly),
-                 qPrintable(QStringLiteral("Failed to open wek.notifyrc at ")
-                            + f.fileName()));
+                 qPrintable(QStringLiteral("Failed to open wek.notifyrc at ") + f.fileName()));
         const auto contents = QString::fromUtf8(f.readAll());
         QVERIFY(contents.contains(QStringLiteral("[Event/wallpaperLoadFailed]")));
         QVERIFY(contents.contains(QStringLiteral("[Event/playlistAdvanced]")));
@@ -66,9 +65,9 @@ private slots:
         QVERIFY(idx >= 0);
         // The next "Action=" line after the [Event/playlistAdvanced] group
         // header should be Action=None.
-        const auto tail            = contents.mid(idx);
-        const auto nextActionLine  = tail.section(QStringLiteral("Action="), 1, 1)
-                                        .section('\n', 0, 0);
+        const auto tail = contents.mid(idx);
+        const auto nextActionLine =
+            tail.section(QStringLiteral("Action="), 1, 1).section('\n', 0, 0);
         QCOMPARE(nextActionLine.trimmed(), QStringLiteral("None"));
     }
 };

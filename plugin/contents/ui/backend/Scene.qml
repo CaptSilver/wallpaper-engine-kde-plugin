@@ -95,6 +95,13 @@ Item{
                 + " item=" + width + "x" + height + " fillMode=" + fillMode);
 
         fps: background.fps
+        // Swapchain present-mode policy + monitor refresh rate.  Forwarded
+        // raw to SceneViewer's Q_PROPERTYs which marshal them into
+        // SceneWallpaper via the PROPERTY_PRESENT_MODE / PROPERTY_OUTPUT_REFRESH_HZ
+        // routes.  Background defaults (Auto + 60Hz) preserve today's behaviour
+        // when the user hasn't touched the new ComboBox.
+        presentMode: background.presentMode
+        outputRefreshHz: background.outputRefreshHz
         muted: background.mute
         speed: background.speed
         assets: sceneItem.assets

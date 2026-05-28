@@ -55,6 +55,7 @@ target_link_libraries(${PROJECT_NAME}
 	KF6::ConfigCore
 	KF6::Notifications
 	KF6::Crash
+	KF6::I18n
 )
 
 # KGlobalAccel wires global keyboard shortcuts through KActionCollection +

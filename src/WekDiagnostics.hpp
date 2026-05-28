@@ -2,7 +2,8 @@
 #include <QObject>
 #include <QString>
 
-namespace wekde {
+namespace wekde
+{
 
 // Collects a support-bundle .tar.gz containing journal tail, GPU info,
 // plugin env, redacted cfg_*, and the renderer cache manifest.
@@ -30,9 +31,9 @@ public:
 
     // Test hooks — exposed for tst_wekdiagnostics; not part of the
     // production QML API.
-    QString collectPluginEnvForTest()   { return collectPluginEnv(); }
+    QString collectPluginEnvForTest() { return collectPluginEnv(); }
     QString collectRedactedCfgForTest() { return collectRedactedCfg(); }
-    QString collectGpuInfoForTest()     { return collectGpuInfo(); }
+    QString collectGpuInfoForTest() { return collectGpuInfo(); }
 
 private:
     QString collectJournal();

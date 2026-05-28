@@ -15,8 +15,7 @@ constexpr const char* kServiceName = "com.github.captsilver.WallpaperEngine";
 constexpr const char* kObjectPath  = "/WallpaperEngine";
 } // namespace
 
-WekControl::WekControl(QObject* parent)
-    : QObject(parent), m_bus(QDBusConnection::sessionBus()) {
+WekControl::WekControl(QObject* parent): QObject(parent), m_bus(QDBusConnection::sessionBus()) {
     // Lazy-register at construction: silent fail on multi-monitor secondaries
     // (the second plasmoid sees "service already owned" and goes silent —
     // the slot bodies still no-op safely without registration).  Also
@@ -41,8 +40,7 @@ WekControl* WekControl::registerOnSessionBus(QObject* parent) {
     return control;
 }
 
-WekControl* WekControl::registerOnConnection(QDBusConnection bus,
-                                             QObject*        parent) {
+WekControl* WekControl::registerOnConnection(QDBusConnection bus, QObject* parent) {
     auto* control = new WekControl(parent, std::move(bus));
     if (! control->registerOn(control->m_bus)) {
         delete control;
@@ -61,8 +59,7 @@ bool WekControl::registerOn(QDBusConnection& bus) {
     }
     if (! bus.registerObject(kObjectPath,
                              this,
-                             QDBusConnection::ExportAllSlots
-                                 | QDBusConnection::ExportAllSignals)) {
+                             QDBusConnection::ExportAllSlots | QDBusConnection::ExportAllSignals)) {
         qWarning("wek-dbus: object registration failed");
         bus.unregisterService(kServiceName);
         return false;
@@ -71,9 +68,7 @@ bool WekControl::registerOn(QDBusConnection& bus) {
     return true;
 }
 
-void WekControl::setPlaylistController(QObject* controller) {
-    m_controller = controller;
-}
+void WekControl::setPlaylistController(QObject* controller) { m_controller = controller; }
 
 // -- Playlist navigation --
 
@@ -117,10 +112,8 @@ void WekControl::ToggleMute() {
 
 void WekControl::ActivatePlaylist(const QString& id) {
     if (! m_controller) return;
-    QMetaObject::invokeMethod(m_controller,
-                              "activatePlaylistById",
-                              Qt::QueuedConnection,
-                              Q_ARG(QString, id));
+    QMetaObject::invokeMethod(
+        m_controller, "activatePlaylistById", Qt::QueuedConnection, Q_ARG(QString, id));
 }
 void WekControl::Reload() {
     if (! m_controller) return;
@@ -132,28 +125,22 @@ void WekControl::Reload() {
 QString WekControl::CurrentWorkshopId() const {
     if (! m_controller) return {};
     QVariant v;
-    QMetaObject::invokeMethod(m_controller,
-                              "currentWorkshopId",
-                              Qt::DirectConnection,
-                              Q_RETURN_ARG(QVariant, v));
+    QMetaObject::invokeMethod(
+        m_controller, "currentWorkshopId", Qt::DirectConnection, Q_RETURN_ARG(QVariant, v));
     return v.toString();
 }
 QString WekControl::CurrentPlaylistId() const {
     if (! m_controller) return {};
     QVariant v;
-    QMetaObject::invokeMethod(m_controller,
-                              "currentPlaylistId",
-                              Qt::DirectConnection,
-                              Q_RETURN_ARG(QVariant, v));
+    QMetaObject::invokeMethod(
+        m_controller, "currentPlaylistId", Qt::DirectConnection, Q_RETURN_ARG(QVariant, v));
     return v.toString();
 }
 int WekControl::CurrentItemIndex() const {
     if (! m_controller) return -1;
     QVariant v;
-    QMetaObject::invokeMethod(m_controller,
-                              "currentItemIndex",
-                              Qt::DirectConnection,
-                              Q_RETURN_ARG(QVariant, v));
+    QMetaObject::invokeMethod(
+        m_controller, "currentItemIndex", Qt::DirectConnection, Q_RETURN_ARG(QVariant, v));
     bool      ok  = false;
     const int idx = v.toInt(&ok);
     return ok ? idx : -1;
@@ -161,8 +148,7 @@ int WekControl::CurrentItemIndex() const {
 
 // -- Signal bridge from QML --
 
-void WekControl::emitWallpaperChanged(const QString& workshopId,
-                                      const QString& playlistId) {
+void WekControl::emitWallpaperChanged(const QString& workshopId, const QString& playlistId) {
     emit WallpaperChanged(workshopId, playlistId);
 }
 

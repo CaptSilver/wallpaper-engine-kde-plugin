@@ -237,16 +237,14 @@ void TestWekControl::allGetters_returnSentinelsWhenControllerIsNull() {
 void TestWekControl::emitWallpaperChanged_firesQtSignal() {
     auto       control = std::make_unique<WekControl>();
     QSignalSpy spy(control.get(), &WekControl::WallpaperChanged);
-    control->emitWallpaperChanged(QStringLiteral("12345"),
-                                  QStringLiteral("favorites"));
+    control->emitWallpaperChanged(QStringLiteral("12345"), QStringLiteral("favorites"));
     QCOMPARE(spy.count(), 1);
 }
 
 void TestWekControl::emitWallpaperChanged_carriesBothArguments() {
     auto       control = std::make_unique<WekControl>();
     QSignalSpy spy(control.get(), &WekControl::WallpaperChanged);
-    control->emitWallpaperChanged(QStringLiteral("12345"),
-                                  QStringLiteral("favorites"));
+    control->emitWallpaperChanged(QStringLiteral("12345"), QStringLiteral("favorites"));
     QCOMPARE(spy.at(0).at(0).toString(), QString("12345"));
     QCOMPARE(spy.at(0).at(1).toString(), QString("favorites"));
 }
@@ -258,14 +256,14 @@ void TestWekControl::registersOnSessionBus_whenBusReachable() {
         QSKIP("no session bus — distrobox without dbus-launch (per "
               "feedback_distrobox_dbus_launch_missing)");
     auto* control = WekControl::registerOnSessionBus();
-    if (! control) QSKIP("service already owned (concurrent test or live "
-                         "plasmoid)");
+    if (! control)
+        QSKIP("service already owned (concurrent test or live "
+              "plasmoid)");
     QVERIFY(control->isRegistered());
     // Validate via introspection round-trip.
-    QDBusInterface iface(
-        QStringLiteral("com.github.captsilver.WallpaperEngine"),
-        QStringLiteral("/WallpaperEngine"),
-        QStringLiteral("com.github.captsilver.WallpaperEngine"));
+    QDBusInterface iface(QStringLiteral("com.github.captsilver.WallpaperEngine"),
+                         QStringLiteral("/WallpaperEngine"),
+                         QStringLiteral("com.github.captsilver.WallpaperEngine"));
     QVERIFY(iface.isValid());
     delete control;
 }
@@ -288,9 +286,9 @@ void TestWekControl::qClassInfo_dbusInterfaceName_isCorrect() {
     // when exporting the object.  Pin the value so a typo here doesn't
     // silently rename the interface (which would break third-party panel
     // widgets without breaking the WekControl build).
-    auto                  control = std::make_unique<WekControl>();
-    const QMetaObject*    meta    = control->metaObject();
-    const int             idx     = meta->indexOfClassInfo("D-Bus Interface");
+    auto               control = std::make_unique<WekControl>();
+    const QMetaObject* meta    = control->metaObject();
+    const int          idx     = meta->indexOfClassInfo("D-Bus Interface");
     QVERIFY(idx >= 0);
     QCOMPARE(QString(meta->classInfo(idx).value()),
              QString("com.github.captsilver.WallpaperEngine"));
@@ -307,16 +305,14 @@ void TestWekControl::registerOnConnection_acceptsInjectedBus_orReturnsNull() {
     // gracefully when the injected connection is invalid (the production
     // analogue of multi-monitor silent-fail).
     QDBusConnection invalid = QDBusConnection::connectToBus(
-        QStringLiteral("unix:path=/no/such/socket"),
-        QStringLiteral("tst_wekcontrol_invalid_bus"));
+        QStringLiteral("unix:path=/no/such/socket"), QStringLiteral("tst_wekcontrol_invalid_bus"));
     // The connection ctor doesn't fail immediately — it fails at first use,
     // i.e. registerService below.  WekControl::registerOnConnection must
     // either return nullptr (registerService failed) or a registered
     // control.  Either is "the seam works"; we just must not crash.
     auto* control = WekControl::registerOnConnection(invalid);
     Q_UNUSED(control);
-    QDBusConnection::disconnectFromBus(
-        QStringLiteral("tst_wekcontrol_invalid_bus"));
+    QDBusConnection::disconnectFromBus(QStringLiteral("tst_wekcontrol_invalid_bus"));
     delete control;
     QVERIFY(true);
 }

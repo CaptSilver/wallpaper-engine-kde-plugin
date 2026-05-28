@@ -43,6 +43,7 @@ Item {
         "MouseInput":          false,
         "AnimatedPreview":     false,
         "Fps":                 30,
+        "PresentMode":         0,        // Auto (matches main.xml default)
         "SwitchTimer":         15,
         "ResumeTime":          1,
         "Volume":              50,

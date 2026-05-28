@@ -7,6 +7,7 @@ import QtQuick 2.5
 import QtQuick.Controls 2.3
 import QtQuick.Layouts 1.2
 
+import org.kde.plasma.core 2.0 as PlasmaCore
 import org.kde.kirigami 2.6 as Kirigami
 
 import ".."
@@ -49,7 +50,7 @@ Item {
 
         Label {
             Layout.fillWidth: true
-            text: "Wallpaper failed to load"
+            text: i18nc("@info wallpaper load failure heading", "Wallpaper failed to load")
             font.bold: true
             font.pointSize: 18
             color: Kirigami.Theme.textColor
@@ -71,14 +72,14 @@ Item {
             columnSpacing: 8
             rowSpacing: 4
 
-            Label { text: "Workshop ID:"; color: Kirigami.Theme.disabledTextColor }
+            Label { text: i18nc("@label workshop id row", "Workshop ID:"); color: Kirigami.Theme.disabledTextColor }
             Label {
                 Layout.fillWidth: true
                 text: infoItem.wid
                 color: Kirigami.Theme.textColor
                 elide: Text.ElideRight
             }
-            Label { text: "Type:"; color: Kirigami.Theme.disabledTextColor }
+            Label { text: i18nc("@label wallpaper type row", "Type:"); color: Kirigami.Theme.disabledTextColor }
             Label {
                 Layout.fillWidth: true
                 text: infoItem.type
@@ -91,18 +92,18 @@ Item {
             spacing: 8
 
             Button {
-                text: "Copy ID"
+                text: i18nc("@action:button copy workshop id to clipboard", "Copy ID")
                 enabled: infoItem.wid && infoItem.wid !== "unknown"
                 onClicked: clipboardHelper.text = infoItem.wid
             }
             Button {
-                text: "Open Workshop"
+                text: i18nc("@action:button open wallpaper workshop page", "Open Workshop")
                 enabled: infoItem.wid && infoItem.wid !== "unknown"
                             && /^[0-9]+$/.test(infoItem.wid)
                 onClicked: Qt.openUrlExternally(Common.getWorkshopUrl(infoItem.wid))
             }
             Button {
-                text: "Open Folder"
+                text: i18nc("@action:button open wallpaper folder in file manager", "Open Folder")
                 enabled: !!infoItem._folderUrl
                 onClicked: Qt.openUrlExternally(infoItem._folderUrl)
             }
@@ -110,7 +111,7 @@ Item {
             // wallpaper config dialog) is meaningful regardless of wid /
             // folder availability.
             Button {
-                text: "Pick another wallpaper"
+                text: i18nc("@action:button pick a different wallpaper", "Pick another wallpaper")
                 onClicked: infoItem.pickAnotherRequested()
             }
         }

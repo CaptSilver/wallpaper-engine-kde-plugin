@@ -16,6 +16,8 @@ Rectangle {
     property real   volume:             50
     property real   speed:              1.0
     property int    fps:                30
+    property int    presentMode:        0       // Auto (matches main.xml default)
+    property int    outputRefreshHz:    60      // 60Hz fallback (matches main.qml's Window.screen guard)
     property bool   hdrOutput:          false
     property string postProcessing:     ""
     property bool   systemAudioCapture: false

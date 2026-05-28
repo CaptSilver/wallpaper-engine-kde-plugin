@@ -24,6 +24,15 @@ Rectangle {
     property int    videoBackend: wallpaper.configuration.VideoBackend
     property int    switchTimer: wallpaper.configuration.SwitchTimer
     property int    fps: wallpaper.configuration.Fps
+    // Swapchain present-mode policy (0=Auto / 1=Fifo / 2=FifoRelaxed / 3=Mailbox / 4=Immediate).
+    // Pumped to backend/Scene.qml -> SceneViewer.presentMode -> SceneWallpaper.
+    property int    presentMode: wallpaper.configuration.PresentMode
+    // Output refresh rate in Hz, sampled from Window.screen.refreshRate.  Auto
+    // policy uses this against `fps` to pick MAILBOX / FIFO_RELAXED / FIFO.
+    // Window.screen is null until the plasmoid is mapped; fall back to 60 then.
+    property int    outputRefreshHz: Window.screen
+                                     ? Math.round(Window.screen.refreshRate)
+                                     : 60
 
     property bool   randomizeWallpaper: wallpaper.configuration.RandomizeWallpaper
     property bool   noRandomWhilePaused: wallpaper.configuration.NoRandomWhilePaused
@@ -584,14 +593,16 @@ Rectangle {
         if(!background.source) {
             if (!wallpaper.configuration.SteamLibraryPath) {
                 backendLoader.loadInfoShow(
-                    "Open the wallpaper settings (right-click the desktop → "
-                    + "Configure Desktop and Wallpaper… → Wallpapers tab → "
-                    + "Library) to pick your Steam library folder, then "
-                    + "choose a Wallpaper Engine wallpaper.");
+                    i18nc("@info:status recovery copy first-run missing steam library",
+                          "Open the wallpaper settings (right-click the desktop → "
+                          + "Configure Desktop and Wallpaper… → Wallpapers tab → "
+                          + "Library) to pick your Steam library folder, then "
+                          + "choose a Wallpaper Engine wallpaper."));
             } else {
                 backendLoader.loadInfoShow(
-                    "No wallpaper selected. Open the wallpaper settings "
-                    + "and pick one from the Wallpapers or Videos tab.");
+                    i18nc("@info:status recovery copy no wallpaper selected",
+                          "No wallpaper selected. Open the wallpaper settings "
+                          + "and pick one from the Wallpapers or Videos tab."));
             }
             return;
         }
@@ -612,27 +623,30 @@ Rectangle {
                     qmlsource = "backend/Scene.qml";
                     properties = {"assets": Common.getAssetsPath(steamlibrary)};
                 } else {
-                    backendLoader.loadInfoShow("Plugin lib not found. To support scene, please compile and install it.");
-                    return; 
+                    backendLoader.loadInfoShow(i18nc("@info:status recovery copy scene plugin lib missing",
+                        "Plugin lib not found. To support scene, please compile and install it."));
+                    return;
                 }
                 break;
             default:
                 if (background.wallpaperType === "application") {
                     backendLoader.loadInfoShow(
-                        "Application wallpapers ship a native Windows .exe "
-                        + "host and cannot be rendered by this Linux plugin. "
-                        + "Pick a Scene, Web, or Video wallpaper instead.");
+                        i18nc("@info:status recovery copy application wallpaper unsupported",
+                              "Application wallpapers ship a native Windows .exe "
+                              + "host and cannot be rendered by this Linux plugin. "
+                              + "Pick a Scene, Web, or Video wallpaper instead."));
                 } else if (background.wallpaperType === "preset") {
                     backendLoader.loadInfoShow(
-                        "Preset wallpapers are configuration overlays on "
-                        + "another workshop entry; they are not standalone. "
-                        + "Open the Workshop page (button below) for the "
-                        + "source wallpaper.");
+                        i18nc("@info:status recovery copy preset wallpaper not standalone",
+                              "Preset wallpapers are configuration overlays on "
+                              + "another workshop entry; they are not standalone. "
+                              + "Open the Workshop page (button below) for the "
+                              + "source wallpaper."));
                 } else {
                     backendLoader.loadInfoShow(
-                        "Wallpaper type '" + background.wallpaperType
-                        + "' is not supported (recognized types: scene, "
-                        + "web, video).");
+                        i18nc("@info:status recovery copy unsupported wallpaper type, %1=type",
+                              "Wallpaper type '%1' is not supported (recognized types: scene, web, video).",
+                              background.wallpaperType));
                 }
                 return;
         }

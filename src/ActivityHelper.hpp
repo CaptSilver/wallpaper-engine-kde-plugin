@@ -68,12 +68,12 @@ signals:
     void currentActivityChanged(const QString& activity);
 
 private:
-    QString groupNameFor(const QString& activity) const;
+    QString  groupNameFor(const QString& activity) const;
     KConfig* config() const;
 
-    QString                 m_configFile; // empty → user's default Plasma config
+    QString                          m_configFile; // empty → user's default Plasma config
     mutable std::unique_ptr<KConfig> m_config;
-    QString                 m_currentActivity; // mirrors Consumer; "" → "_default"
+    QString                          m_currentActivity; // mirrors Consumer; "" → "_default"
 };
 
 } // namespace wekde

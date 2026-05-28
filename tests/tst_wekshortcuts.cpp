@@ -35,15 +35,13 @@ void TestWekShortcuts::registersExpectedActions() {
     WekShortcuts shortcuts;
     auto*        coll = shortcuts.collectionForTest();
     QVERIFY(coll);
-    const QStringList expectedIds = {QStringLiteral("next_wallpaper"),
-                                     QStringLiteral("previous_wallpaper"),
-                                     QStringLiteral("toggle_pause"),
-                                     QStringLiteral("toggle_mute"),
-                                     QStringLiteral("reload_wallpaper"),
-                                     QStringLiteral("open_library")};
+    const QStringList expectedIds = {
+        QStringLiteral("next_wallpaper"),   QStringLiteral("previous_wallpaper"),
+        QStringLiteral("toggle_pause"),     QStringLiteral("toggle_mute"),
+        QStringLiteral("reload_wallpaper"), QStringLiteral("open_library")
+    };
     for (const auto& id : expectedIds) {
-        QVERIFY2(coll->action(id) != nullptr,
-                 qPrintable(QStringLiteral("missing action: ") + id));
+        QVERIFY2(coll->action(id) != nullptr, qPrintable(QStringLiteral("missing action: ") + id));
     }
 }
 
@@ -60,8 +58,7 @@ void TestWekShortcuts::allActionLabels_areNonEmpty() {
     auto*        coll = shortcuts.collectionForTest();
     for (auto* action : coll->actions()) {
         QVERIFY2(! action->text().isEmpty(),
-                 qPrintable(QStringLiteral("action %1 has empty text")
-                                .arg(action->objectName())));
+                 qPrintable(QStringLiteral("action %1 has empty text").arg(action->objectName())));
         QVERIFY(! action->objectName().isEmpty());
     }
 }
@@ -115,13 +112,12 @@ void TestWekShortcuts::allActions_haveDistinctIds() {
     // Two actions with the same id would conflict in the kglobalshortcutsrc
     // section [wallpaper_engine] -- the second would silently overwrite the
     // first.  Pin the contract.
-    WekShortcuts shortcuts;
-    auto*        coll = shortcuts.collectionForTest();
+    WekShortcuts  shortcuts;
+    auto*         coll = shortcuts.collectionForTest();
     QSet<QString> seen;
     for (auto* action : coll->actions()) {
         const auto id = action->objectName();
-        QVERIFY2(! seen.contains(id),
-                 qPrintable(QStringLiteral("duplicate action id: ") + id));
+        QVERIFY2(! seen.contains(id), qPrintable(QStringLiteral("duplicate action id: ") + id));
         seen.insert(id);
     }
     QCOMPARE(seen.size(), 6);

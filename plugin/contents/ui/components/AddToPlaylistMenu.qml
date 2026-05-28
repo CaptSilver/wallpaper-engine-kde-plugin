@@ -4,6 +4,7 @@
 // name and creates+adds.
 import QtQuick
 import QtQuick.Controls 2.3
+import org.kde.plasma.core 2.0 as PlasmaCore
 
 Menu {
     id: root
@@ -32,7 +33,7 @@ Menu {
                 && typeof root.manager.playlistContains === "function"
                 && root.manager.playlistContains(id, root.item.workshopid)
             enabled: ! _alreadyIn
-            text: _alreadyIn ? (name + "  (added)") : name
+            text: _alreadyIn ? i18nc("@item:inmenu playlist already contains wallpaper, %1=name", "%1  (added)", name) : name
             onTriggered: {
                 if (root.manager && root.item)
                     root.manager.addItem(id, root.item.workshopid);
@@ -41,19 +42,19 @@ Menu {
     }
     MenuSeparator { }
     MenuItem {
-        text: "New playlist…"
+        text: i18nc("@action:inmenu create new playlist", "New playlist…")
         onTriggered: namePrompt.open()
     }
 
     Dialog {
         id: namePrompt
         objectName: "addPlaylistNamePrompt"
-        title: "New playlist"
+        title: i18nc("@title:window new playlist name prompt", "New playlist")
         modal: true
         anchors.centerIn: Overlay.overlay
         contentItem: TextField {
             id: nameField
-            placeholderText: "Playlist name"
+            placeholderText: i18nc("@info:placeholder playlist name input", "Playlist name")
         }
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: {

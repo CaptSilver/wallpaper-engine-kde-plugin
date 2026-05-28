@@ -81,7 +81,7 @@ KCM.GridView {
             Kirigami.Action {
                 visible: root.showFavorites
                 icon.name: favor ? "user-bookmarks-symbolic" : "bookmark-add-symbolic"
-                tooltip: favor ? "Remove from favorites" : "Add to favorites"
+                tooltip: favor ? i18nc("@info:tooltip remove wallpaper from favorites", "Remove from favorites") : i18nc("@info:tooltip add wallpaper to favorites", "Add to favorites")
                 Accessible.role: Accessible.Button
                 Accessible.name: tooltip
                 onTriggered: root.toggleFavor(model, index)
@@ -89,7 +89,7 @@ KCM.GridView {
             Kirigami.Action {
                 visible: root.showWorkshopLink
                 icon.name: "folder-remote-symbolic"
-                tooltip: "Open Workshop Link"
+                tooltip: i18nc("@info:tooltip open workshop link in browser", "Open Workshop Link")
                 enabled: workshopid && workshopid.match(Common.regex_workshop_online)
                 Accessible.role: Accessible.Button
                 Accessible.name: tooltip
@@ -179,8 +179,8 @@ KCM.GridView {
                         id: badgeText
                         anchors.centerIn: parent
                         text: model.type === "application"
-                            ? "Application (unsupported)"
-                            : "Preset (unsupported)"
+                            ? i18nc("@info badge unsupported application wallpaper", "Application (unsupported)")
+                            : i18nc("@info badge unsupported preset wallpaper", "Preset (unsupported)")
                         color: "white"
                         font.pointSize: Kirigami.Theme.smallFont.pointSize
                     }

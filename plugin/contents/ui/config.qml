@@ -246,19 +246,19 @@ ColumnLayout {
         id: bar
         implicitWidth: font.pixelSize*8 * 5
         PlasmaComponents.TabButton {
-            text: "Wallpapers"
+            text: i18nc("@title:tab wallpapers list", "Wallpapers")
         }
         PlasmaComponents.TabButton {
-            text: "Videos"
+            text: i18nc("@title:tab videos list", "Videos")
         }
         PlasmaComponents.TabButton {
-            text: "Playlists"
+            text: i18nc("@title:tab playlists list", "Playlists")
         }
         PlasmaComponents.TabButton {
-            text: "Settings"
+            text: i18nc("@title:tab settings panel", "Settings")
         }
         PlasmaComponents.TabButton {
-            text: "About"
+            text: i18nc("@title:tab about info", "About")
         }
     }
 

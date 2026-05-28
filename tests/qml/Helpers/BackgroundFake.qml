@@ -15,6 +15,8 @@ QtObject {
     property bool   mute:        false
     property real   speed:       1.0
     property int    fps:         30
+    property int    presentMode: 0          // Auto (matches main.xml default)
+    property int    outputRefreshHz: 60     // 60Hz fallback (matches main.qml's Window.screen guard)
     property bool   mpvStats:    false
     property bool   hdrOutput:   false
     property string postProcessing: ""    // empty = wallpaper-default; matches main.qml

@@ -58,7 +58,7 @@ set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH} ${CMAKE_MODULE_PATH})
 
 if(ECM_VERSION_MAJOR EQUAL 6)
   find_package(Plasma REQUIRED)
-  find_package(KF6 ${KF6_MIN_VERSION} REQUIRED COMPONENTS Package Config Notifications Crash)
+  find_package(KF6 ${KF6_MIN_VERSION} REQUIRED COMPONENTS Package Config Notifications Crash I18n)
   # GlobalAccel + CoreAddons are optional at configure time so the build
   # degrades gracefully on minimal Fedora/Debian sysroots that ship the rest
   # of KF6 but not the global-shortcut bits.  When present, src/CMakeLists.txt
@@ -238,6 +238,16 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/src/backend_scene/cmake/WekWarnings.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/src/backend_scene/cmake/WekHardening.cmake)
 
 add_subdirectory(src)
+
+# Install translation catalogs once the po/ skeleton exists.  Gated on
+# EXISTS so the build is green during the period between the i18n wire-up
+# and any per-page string wrap actually populating po/, and so external
+# packaging from a non-clean tarball without po/ still works.
+# ki18n_install walks po/<lang>/*.po, compiles to .mo, installs to
+# ${KDE_INSTALL_LOCALEDIR}/<lang>/LC_MESSAGES/.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/po)
+    ki18n_install(po)
+endif()
 
 option(BUILD_TESTS "Build unit tests (requires only Qt6 Core+Test)" OFF)
 if(BUILD_TESTS)

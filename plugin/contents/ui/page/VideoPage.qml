@@ -6,6 +6,7 @@ import QtQuick.Controls 2.3
 import QtQuick.Layouts 1.5
 import QtQuick.Dialogs
 
+import org.kde.plasma.core 2.0 as PlasmaCore
 import org.kde.kirigami 2.6 as Kirigami
 
 import ".."
@@ -73,7 +74,7 @@ Item {
             }
             Label {
                 text: vlm.model.count > 0
-                    ? "(" + vlm.model.count + " video" + (vlm.model.count === 1 ? "" : "s") + ")"
+                    ? i18ncp("@info video count badge, %1=count", "(%1 video)", "(%1 videos)", vlm.model.count)
                     : ""
                 color: Kirigami.Theme.disabledTextColor
                 visible: ! vlm.scanning && text !== ""
@@ -85,11 +86,11 @@ Item {
                 implicitHeight: 20
             }
             Button {
-                text: "Change folder…"
+                text: i18nc("@action:button change video folder", "Change folder…")
                 onClicked: folderDialog.open()
             }
             Button {
-                text: "Rescan"
+                text: i18nc("@action:button rescan video folder", "Rescan")
                 enabled: ! vlm.scanning
                 onClicked: vlm.refresh()
             }
@@ -104,12 +105,12 @@ Item {
                 anchors.centerIn: parent
                 spacing: 12
                 Label {
-                    text: "No video folder selected"
+                    text: i18nc("@info video page empty state", "No video folder selected")
                     Layout.alignment: Qt.AlignHCenter
                     font.pixelSize: 20
                 }
                 Button {
-                    text: "Choose folder…"
+                    text: i18nc("@action:button choose video folder", "Choose folder…")
                     Layout.alignment: Qt.AlignHCenter
                     onClicked: folderDialog.open()
                 }

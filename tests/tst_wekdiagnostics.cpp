@@ -12,9 +12,7 @@ class TestWekDiagnostics : public QObject {
     Q_OBJECT
 
 private slots:
-    void initTestCase() {
-        QStandardPaths::setTestModeEnabled(true);
-    }
+    void initTestCase() { QStandardPaths::setTestModeEnabled(true); }
 
     void testBundleContainsExpectedFiles() {
         WekDiagnostics diag;
@@ -25,11 +23,10 @@ private slots:
 
         // Crack the tar.gz; verify expected files inside.
         QProcess tar;
-        tar.start(QStringLiteral("tar"),
-                  {QStringLiteral("-tzf"), bundlePath});
+        tar.start(QStringLiteral("tar"), { QStringLiteral("-tzf"), bundlePath });
         QVERIFY(tar.waitForFinished(2000));
-        const auto contents = QString::fromUtf8(tar.readAllStandardOutput())
-                                .split('\n', Qt::SkipEmptyParts);
+        const auto contents =
+            QString::fromUtf8(tar.readAllStandardOutput()).split('\n', Qt::SkipEmptyParts);
 
         const QStringList expected = {
             QStringLiteral("./journal.txt"),
@@ -41,29 +38,26 @@ private slots:
             QStringLiteral("./plugin-version.txt"),
         };
         for (const auto& f : expected) {
-            QVERIFY2(contents.contains(f),
-                     qPrintable(QStringLiteral("bundle missing: ") + f));
+            QVERIFY2(contents.contains(f), qPrintable(QStringLiteral("bundle missing: ") + f));
         }
 
         QFile::remove(bundlePath);
     }
 
     void testRedactsHomePathInEnvDump() {
-        qputenv("WEKDE_TEST_PATH",
-                QFile::encodeName(QDir::homePath() + QStringLiteral("/secret")));
+        qputenv("WEKDE_TEST_PATH", QFile::encodeName(QDir::homePath() + QStringLiteral("/secret")));
         WekDiagnostics diag;
         const auto     envDump = diag.collectPluginEnvForTest();
         QVERIFY(envDump.contains(QStringLiteral("WEKDE_TEST_PATH=<HOME>/secret")));
-        QVERIFY2(! envDump.contains(QDir::homePath()),
-                 "home path leaked in env dump");
+        QVERIFY2(! envDump.contains(QDir::homePath()), "home path leaked in env dump");
         qunsetenv("WEKDE_TEST_PATH");
     }
 
     void testRedactsCfgPathFields() {
         // Write a fixture KConfig with cfg paths in the captsilver block.
         const auto cfgPath =
-            QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
-            + QStringLiteral("/plasma-org.kde.plasma.desktop-appletsrc");
+            QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
+            QStringLiteral("/plasma-org.kde.plasma.desktop-appletsrc");
         QDir().mkpath(QFileInfo(cfgPath).absolutePath());
         {
             QFile f(cfgPath);
@@ -86,8 +80,7 @@ WallpaperWorkShopId=1234567
         // are scrubbed; non-path keys are kept verbatim for debugging).
         QVERIFY(cfgDump.contains(QStringLiteral("WallpaperWorkShopId=1234567")));
         // The raw paths should NOT leak.
-        QVERIFY2(! cfgDump.contains(QStringLiteral("/home/user/Steam")),
-                 "Steam path leaked");
+        QVERIFY2(! cfgDump.contains(QStringLiteral("/home/user/Steam")), "Steam path leaked");
     }
 
     void testLastErrorPopulatedOnFailure() {

@@ -10,26 +10,24 @@
 #include <QStandardPaths>
 
 #ifndef WEK_VERSION
-#define WEK_VERSION "unknown"
+#    define WEK_VERSION "unknown"
 #endif
 
-namespace wekde {
-
-WekDiagnostics::WekDiagnostics(QObject* parent) : QObject(parent) {}
-
-QString WekDiagnostics::saveBundle()
+namespace wekde
 {
+
+WekDiagnostics::WekDiagnostics(QObject* parent): QObject(parent) {}
+
+QString WekDiagnostics::saveBundle() {
     const auto cacheRoot = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
     QDir       dir(cacheRoot + QStringLiteral("/wallpaper-scene-renderer"));
     if (! dir.exists()) {
         if (! dir.mkpath(QStringLiteral("."))) {
-            m_lastError =
-                QStringLiteral("Failed to create cache dir: %1").arg(dir.absolutePath());
+            m_lastError = QStringLiteral("Failed to create cache dir: %1").arg(dir.absolutePath());
             return {};
         }
     }
-    const auto ts =
-        QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
+    const auto ts  = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
     const auto out = QStringLiteral("%1/diag-%2.tar.gz").arg(dir.absolutePath(), ts);
 
     QMap<QString, QByteArray> files;
@@ -54,22 +52,23 @@ QString WekDiagnostics::saveBundle()
     return out;
 }
 
-QString WekDiagnostics::collectJournal()
-{
+QString WekDiagnostics::collectJournal() {
     QProcess p;
     p.start(QStringLiteral("journalctl"),
-            {QStringLiteral("--user-unit"), QStringLiteral("plasma-plasmashell"),
-             QStringLiteral("-n"), QStringLiteral("5000"), QStringLiteral("--no-pager")});
+            { QStringLiteral("--user-unit"),
+              QStringLiteral("plasma-plasmashell"),
+              QStringLiteral("-n"),
+              QStringLiteral("5000"),
+              QStringLiteral("--no-pager") });
     if (! p.waitForFinished(3000)) {
         return QStringLiteral("journalctl timed out or unavailable.");
     }
     return QString::fromUtf8(p.readAllStandardOutput());
 }
 
-QString WekDiagnostics::collectGpuInfo()
-{
+QString WekDiagnostics::collectGpuInfo() {
     QProcess lspci;
-    lspci.start(QStringLiteral("lspci"), {QStringLiteral("-k")});
+    lspci.start(QStringLiteral("lspci"), { QStringLiteral("-k") });
     lspci.waitForFinished(1000);
     const auto lspciOut = QString::fromUtf8(lspci.readAllStandardOutput());
 
@@ -82,7 +81,7 @@ QString WekDiagnostics::collectGpuInfo()
     out << QStringLiteral("=== lspci -k (VGA/3D entries) ===");
     QRegularExpression vgaRe(QStringLiteral("^.*(VGA|3D|Display|DRM).*$"),
                              QRegularExpression::MultilineOption);
-    auto m = vgaRe.globalMatch(lspciOut);
+    auto               m = vgaRe.globalMatch(lspciOut);
     while (m.hasNext()) out << m.next().captured(0);
 
     out << QString() << QStringLiteral("=== lsmod (GPU modules) ===");
@@ -94,26 +93,23 @@ QString WekDiagnostics::collectGpuInfo()
     return out.join('\n');
 }
 
-QString WekDiagnostics::collectVulkanInfo()
-{
+QString WekDiagnostics::collectVulkanInfo() {
     QProcess p;
-    p.start(QStringLiteral("vulkaninfo"), {QStringLiteral("--summary")});
+    p.start(QStringLiteral("vulkaninfo"), { QStringLiteral("--summary") });
     if (! p.waitForFinished(2000)) {
         return QStringLiteral("vulkaninfo unavailable or timed out.");
     }
     return QString::fromUtf8(p.readAllStandardOutput()).left(20000); // 20KB cap
 }
 
-QString WekDiagnostics::collectPluginEnv()
-{
+QString WekDiagnostics::collectPluginEnv() {
     const QStringList prefixes = {
-        QStringLiteral("WEKDE_"),  QStringLiteral("QT_"),
-        QStringLiteral("KDE_"),    QStringLiteral("XDG_"),
-        QStringLiteral("MESA_"),   QStringLiteral("AMD_VULKAN_"),
+        QStringLiteral("WEKDE_"),  QStringLiteral("QT_"),   QStringLiteral("KDE_"),
+        QStringLiteral("XDG_"),    QStringLiteral("MESA_"), QStringLiteral("AMD_VULKAN_"),
         QStringLiteral("NVIDIA_"), QStringLiteral("VK_"),
     };
-    auto       env  = QProcessEnvironment::systemEnvironment();
-    const auto home = QDir::homePath();
+    auto        env  = QProcessEnvironment::systemEnvironment();
+    const auto  home = QDir::homePath();
     QStringList wanted;
     for (const auto& key : env.keys()) {
         for (const auto& pfx : prefixes) {
@@ -130,11 +126,9 @@ QString WekDiagnostics::collectPluginEnv()
     return wanted.join('\n');
 }
 
-QString WekDiagnostics::collectRedactedCfg()
-{
-    const auto cfgPath =
-        QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
-        + QStringLiteral("/plasma-org.kde.plasma.desktop-appletsrc");
+QString WekDiagnostics::collectRedactedCfg() {
+    const auto cfgPath = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
+                         QStringLiteral("/plasma-org.kde.plasma.desktop-appletsrc");
     QFile f(cfgPath);
     if (! f.open(QIODevice::ReadOnly)) {
         return QStringLiteral("Plasma config not readable at %1").arg(cfgPath);
@@ -168,18 +162,14 @@ QString WekDiagnostics::collectRedactedCfg()
     return wanted.join('\n');
 }
 
-QString WekDiagnostics::collectCacheManifest()
-{
-    const auto cacheRoot =
-        QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
-        + QStringLiteral("/wallpaper-scene-renderer");
+QString WekDiagnostics::collectCacheManifest() {
+    const auto cacheRoot = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) +
+                           QStringLiteral("/wallpaper-scene-renderer");
     QDir d(cacheRoot);
-    if (! d.exists())
-        return QStringLiteral("No renderer cache directory at %1").arg(cacheRoot);
+    if (! d.exists()) return QStringLiteral("No renderer cache directory at %1").arg(cacheRoot);
 
     QStringList lines;
-    const auto  entries =
-        d.entryInfoList(QDir::Files | QDir::NoDotAndDotDot, QDir::Name);
+    const auto  entries = d.entryInfoList(QDir::Files | QDir::NoDotAndDotDot, QDir::Name);
     for (const auto& fi : entries) {
         lines << QStringLiteral("%1\t%2 bytes\t%3")
                      .arg(fi.fileName())
@@ -189,23 +179,19 @@ QString WekDiagnostics::collectCacheManifest()
     return lines.join('\n');
 }
 
-QString WekDiagnostics::collectPluginVersion()
-{
+QString WekDiagnostics::collectPluginVersion() {
     return QStringLiteral("plugin: %1\n").arg(QStringLiteral(WEK_VERSION));
     // Submodule HEAD: deferred — would require a configure_file generated
     // header with the submodule SHA baked in.
 }
 
-QString WekDiagnostics::collectPipelineDiag()
-{
+QString WekDiagnostics::collectPipelineDiag() {
     // Opt-in via WEKDE_PIPELINE_DIAG=1.  Picks up the renderer's last
     // pipeline diagnostic dump if the user reproduced the issue with the
     // env var set; otherwise omitted from the bundle.
-    if (qEnvironmentVariable("WEKDE_PIPELINE_DIAG").trimmed() != QLatin1String("1"))
-        return {};
-    const auto cacheRoot =
-        QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
-        + QStringLiteral("/wallpaper-scene-renderer/pipeline-diag.txt");
+    if (qEnvironmentVariable("WEKDE_PIPELINE_DIAG").trimmed() != QLatin1String("1")) return {};
+    const auto cacheRoot = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) +
+                           QStringLiteral("/wallpaper-scene-renderer/pipeline-diag.txt");
     QFile f(cacheRoot);
     if (! f.open(QIODevice::ReadOnly))
         return QStringLiteral("WEKDE_PIPELINE_DIAG=1 set but no pipeline-diag.txt at %1")
@@ -213,12 +199,10 @@ QString WekDiagnostics::collectPipelineDiag()
     return QString::fromUtf8(f.readAll()).left(200000); // 200KB cap
 }
 
-bool WekDiagnostics::pack(const QString&                   outPath,
-                          const QMap<QString, QByteArray>& files)
-{
-    const auto tempDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation)
-                         + QStringLiteral("/wek-diag-")
-                         + QDateTime::currentDateTime().toString(QStringLiteral("hhmmss"));
+bool WekDiagnostics::pack(const QString& outPath, const QMap<QString, QByteArray>& files) {
+    const auto tempDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation) +
+                         QStringLiteral("/wek-diag-") +
+                         QDateTime::currentDateTime().toString(QStringLiteral("hhmmss"));
     if (! QDir().mkpath(tempDir)) {
         m_lastError = QStringLiteral("Failed to create temp dir: %1").arg(tempDir);
         return false;
@@ -234,9 +218,9 @@ bool WekDiagnostics::pack(const QString&                   outPath,
         staging.write(it.value());
     }
     QProcess tar;
-    tar.start(QStringLiteral("tar"),
-              {QStringLiteral("-czf"), outPath, QStringLiteral("-C"), tempDir,
-               QStringLiteral(".")});
+    tar.start(
+        QStringLiteral("tar"),
+        { QStringLiteral("-czf"), outPath, QStringLiteral("-C"), tempDir, QStringLiteral(".") });
     const bool ok = tar.waitForFinished(5000);
     QDir(tempDir).removeRecursively();
     if (! ok || tar.exitCode() != 0) {

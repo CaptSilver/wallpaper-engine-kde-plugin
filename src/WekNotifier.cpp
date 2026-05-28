@@ -2,10 +2,10 @@
 #include <KNotification>
 #include <QDebug>
 
-namespace wekde {
-
-void WekNotifier::wallpaperLoadFailed(const QString& workshopId, const QString& reason)
+namespace wekde
 {
+
+void WekNotifier::wallpaperLoadFailed(const QString& workshopId, const QString& reason) {
     auto* notification = new KNotification(QStringLiteral("wallpaperLoadFailed"));
     notification->setComponentName(QStringLiteral(kComponentName));
     notification->setTitle(QStringLiteral("Wallpaper could not be loaded"));
@@ -29,9 +29,8 @@ void WekNotifier::wallpaperLoadFailed(const QString& workshopId, const QString& 
     notification->sendEvent();
 }
 
-void WekNotifier::playlistAdvanced(const QString& workshopId, const QString& title,
-                                   int itemIndex, int totalItems, const QString& playlistName)
-{
+void WekNotifier::playlistAdvanced(const QString& workshopId, const QString& title, int itemIndex,
+                                   int totalItems, const QString& playlistName) {
     Q_UNUSED(workshopId); // not embedded in user-visible text; available for future
     auto* notification = new KNotification(QStringLiteral("playlistAdvanced"));
     notification->setComponentName(QStringLiteral(kComponentName));
@@ -46,14 +45,14 @@ void WekNotifier::playlistAdvanced(const QString& workshopId, const QString& tit
     notification->sendEvent();
 }
 
-void WekNotifier::assetsMissing(const QString& workshopId, const QString& path)
-{
+void WekNotifier::assetsMissing(const QString& workshopId, const QString& path) {
     auto* notification = new KNotification(QStringLiteral("assetsMissing"));
     notification->setComponentName(QStringLiteral(kComponentName));
     notification->setTitle(QStringLiteral("Wallpaper assets missing"));
-    notification->setText(QStringLiteral("Workshop %1 — expected file not found at %2. "
-                                          "Re-subscribe from Steam Workshop, or remove from playlist.")
-                              .arg(workshopId, path));
+    notification->setText(
+        QStringLiteral("Workshop %1 — expected file not found at %2. "
+                       "Re-subscribe from Steam Workshop, or remove from playlist.")
+            .arg(workshopId, path));
     notification->setIconName(QStringLiteral("dialog-warning"));
     QObject::connect(notification,
                      QOverload<KNotification::CloseReason>::of(&KNotification::closed),
@@ -62,8 +61,7 @@ void WekNotifier::assetsMissing(const QString& workshopId, const QString& path)
     notification->sendEvent();
 }
 
-void WekNotifier::backendUnavailable(const QString& backendName, const QString& reason)
-{
+void WekNotifier::backendUnavailable(const QString& backendName, const QString& reason) {
     auto* notification = new KNotification(QStringLiteral("backendUnavailable"));
     notification->setComponentName(QStringLiteral(kComponentName));
     notification->setTitle(QStringLiteral("Wallpaper backend not available"));

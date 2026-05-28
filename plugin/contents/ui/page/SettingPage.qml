@@ -18,6 +18,7 @@ Flickable {
     Kirigami.Theme.inherit: true
 
     property alias cfg_Fps: sliderFps.value
+    property alias cfg_PresentMode: cbPresentMode.currentIndex
     property alias cfg_Volume: sliderVol.value
     property alias cfg_MpvStats: ckbox_mpvStats.checked
     property alias cfg_Speed: spin_speed.dValue
@@ -60,40 +61,40 @@ Flickable {
 
         OptionGroup {
             Layout.fillWidth: true
-            header.text: 'Common Option'
+            header.text: i18nc("@title:group settings section common options", "Common Option")
             header.text_color: Kirigami.Theme.textColor
             header.icon: '../../images/cheveron-down.svg'
             header.color: Kirigami.Theme.activeBackgroundColor
 
             OptionItem {
-                text: 'Pause'
+                text: i18nc("@label playback pause setting", "Pause")
                 text_color: Kirigami.Theme.textColor
                 icon: '../../images/pause.svg'
                 actor:  ComboBox {
                     id: pauseMode
                     model: [
                         {
-                            text: "Focus or Maximized Window",
+                            text: i18nc("@item:inlistbox pause mode", "Focus or Maximized Window"),
                             value: Common.PauseMode.FocusOrMax
                         },
                         {
-                            text: "Focus Window",
+                            text: i18nc("@item:inlistbox pause mode", "Focus Window"),
                             value: Common.PauseMode.Focus
                         },
                         {
-                            text: "Maximized Window",
+                            text: i18nc("@item:inlistbox pause mode", "Maximized Window"),
                             value: Common.PauseMode.Max
                         },
                         {
-                            text: "FullScreen",
+                            text: i18nc("@item:inlistbox pause mode", "FullScreen"),
                             value: Common.PauseMode.FullScreen
                         },
                         {
-                            text: "Any Window",
+                            text: i18nc("@item:inlistbox pause mode", "Any Window"),
                             value: Common.PauseMode.Any
                         },
                         {
-                            text: "Never",
+                            text: i18nc("@item:inlistbox pause mode", "Never"),
                             value: Common.PauseMode.Never
                         }
                     ]
@@ -105,27 +106,27 @@ Flickable {
                     Text {
                         Layout.fillWidth: true
                         color: Kirigami.Theme.disabledTextColor
-                        text: "Automatically pauses playback if any/focus/maximized window detected"
+                        text: i18nc("@info pause mode help text", "Automatically pauses playback if any/focus/maximized window detected")
                         wrapMode: Text.Wrap
                     }
                }
             }
             OptionItem {
-                text: 'Only check window on current screen'
+                text: i18nc("@label settings option", "Only check window on current screen")
                 text_color: Kirigami.Theme.textColor
                 actor: Switch {
                     id: ckbox_pauseFilterByScreen
                 }
             }
             OptionItem {
-                text: 'Pause if PC is on battery power'
+                text: i18nc("@label settings option", "Pause if PC is on battery power")
                 text_color: Kirigami.Theme.textColor
                 actor: Switch {
                     id: chkbox_pauseOnBatPower
                 }
             }
             OptionItem {
-                text: 'Pause if battery level is below'
+                text: i18nc("@label settings option", "Pause if battery level is below")
                 text_color: Kirigami.Theme.textColor
                 actor: SpinBox {
                         id: spin_pauseBatPercent
@@ -135,15 +136,15 @@ Flickable {
                 }
             }
             OptionItem {
-                text: 'When screen is locked'
+                text: i18nc("@label settings option", "When screen is locked")
                 text_color: Kirigami.Theme.textColor
                 icon: '../../images/pause.svg'
                 actor: ComboBox {
                     id: cbScreenSaverPolicy
                     model: [
-                        { text: "Keep running",                              value: 0 },
-                        { text: "Pause (recommended)",                       value: 1 },
-                        { text: "Load alternate wallpaper (coming soon)",    value: 2, enabled: false },
+                        { text: i18nc("@item:inlistbox screensaver policy", "Keep running"),                              value: 0 },
+                        { text: i18nc("@item:inlistbox screensaver policy", "Pause (recommended)"),                       value: 1 },
+                        { text: i18nc("@item:inlistbox screensaver policy", "Load alternate wallpaper (coming soon)"),    value: 2, enabled: false },
                     ]
                     textRole: "text"
                     onActivated: cfg_ScreenSaverPolicy = Common.cbCurrentValue(this)
@@ -153,28 +154,28 @@ Flickable {
                     Text {
                         Layout.fillWidth: true
                         color: Kirigami.Theme.disabledTextColor
-                        text: "Lock-screen state is session-wide on Plasma; every screen pauses together. There is no per-screen lock policy."
+                        text: i18nc("@info screensaver policy help text", "Lock-screen state is session-wide on Plasma; every screen pauses together. There is no per-screen lock policy.")
                         wrapMode: Text.Wrap
                     }
                 }
             }
             OptionItem {
-                text: 'Display'
+                text: i18nc("@label settings option", "Display")
                 text_color: Kirigami.Theme.textColor
                 icon: '../../images/window.svg'
                 actor: ComboBox {
                     id: displayMode
                     model: [
                         {
-                            text: "Keep Aspect Ratio",
+                            text: i18nc("@item:inlistbox display mode", "Keep Aspect Ratio"),
                             value: Common.DisplayMode.Aspect
                         },
                         {
-                            text: "Scale and Crop",
+                            text: i18nc("@item:inlistbox display mode", "Scale and Crop"),
                             value: Common.DisplayMode.Crop
                         },
                         {
-                            text: "Scale to Fill",
+                            text: i18nc("@item:inlistbox display mode", "Scale to Fill"),
                             value: Common.DisplayMode.Scale
                         },
                     ]
@@ -188,7 +189,7 @@ Flickable {
                 // Only meaningful in Keep Aspect Ratio mode — Crop/Scale fill
                 // the screen edge-to-edge so the backdrop is never visible.
                 visible: cfg_DisplayMode == Common.DisplayMode.Aspect
-                text: 'Background Color'
+                text: i18nc("@label settings option", "Background Color")
                 text_color: Kirigami.Theme.textColor
                 actor: RowLayout {
                     spacing: 8
@@ -199,7 +200,7 @@ Flickable {
                         onColorPicked: (value) => cfg_BackgroundColor = value.toString()
                     }
                     Button {
-                        text: "Reset"
+                        text: i18nc("@action:button reset background color", "Reset")
                         enabled: !Qt.colorEqual(cfg_BackgroundColor, "black")
                         onClicked: {
                             cfg_BackgroundColor = "black";
@@ -211,15 +212,14 @@ Flickable {
                     Text {
                         Layout.fillWidth: true
                         color: Kirigami.Theme.disabledTextColor
-                        text: "Color drawn in the letterbox/pillarbox bars when "
-                            + "the wallpaper's aspect ratio doesn't match the screen."
+                        text: i18nc("@info background color help text", "Color drawn in the letterbox/pillarbox bars when the wallpaper's aspect ratio doesn't match the screen.")
                         wrapMode: Text.Wrap
                     }
                 }
             }
 
             OptionItem {
-                text: 'Resume Time'
+                text: i18nc("@label settings option", "Resume Time")
                 text_color: Kirigami.Theme.textColor
                 icon: '../../images/timer.svg'
                 actor: RowLayout {
@@ -231,19 +231,19 @@ Flickable {
                             to: 60*1000
                             stepSize: 50
                         }
-                        Label { text: " ms"; color: Kirigami.Theme.textColor }
+                        Label { text: i18nc("@label suffix milliseconds, with leading space", " ms"); color: Kirigami.Theme.textColor }
                     }
                 }
                 contentBottom: ColumnLayout {
                     Text {
                         Layout.fillWidth: true
                         color: Kirigami.Theme.disabledTextColor
-                        text: "Time to wait to resume playback from pause"
+                        text: i18nc("@info resume time help text", "Time to wait to resume playback from pause")
                     }
                 }
             }
             OptionItem {
-                text: 'Randomize Timer'
+                text: i18nc("@label settings option", "Randomize Timer")
                 text_color: Kirigami.Theme.textColor
                 icon: '../../images/time.svg'
                 actor: Switch {
@@ -253,8 +253,7 @@ Flickable {
                     Text {
                         Layout.fillWidth: true
                         color: Kirigami.Theme.disabledTextColor
-                        text: "Equivalent to activating the built-in 'Filtered Library' playlist. "
-                            + "Cycles through wallpapers passing the filter chips on the Wallpapers page."
+                        text: i18nc("@info randomize timer help text", "Equivalent to activating the built-in 'Filtered Library' playlist. Cycles through wallpapers passing the filter chips on the Wallpapers page.")
                         wrapMode: Text.Wrap
                     }
                     RowLayout {
@@ -262,7 +261,7 @@ Flickable {
                         visible: ckbox_randomizeWallpaper.checked
                         Label {
                             id:heightpicker
-                            text: "Randomize every "
+                            text: i18nc("@label prefix for randomize-every spinner, with trailing space", "Randomize every ")
                             color: Kirigami.Theme.textColor
                         }
                         SpinBox {
@@ -272,7 +271,7 @@ Flickable {
                             to: 60*24*30
                             stepSize: 1
                         }
-                        Label { text: " min"; color: Kirigami.Theme.textColor }
+                        Label { text: i18nc("@label suffix minutes, with leading space", " min"); color: Kirigami.Theme.textColor }
                         Item { Layout.fillWidth: true }
                     }
                     RowLayout {
@@ -280,7 +279,7 @@ Flickable {
                         visible: ckbox_randomizeWallpaper.checked
                         Label {
                             id: randomWhilePausedSetter
-                            text: "Skip randomizing while wallpaper is paused  "
+                            text: i18nc("@label settings option", "Skip randomizing while wallpaper is paused  ")
                             color: Kirigami.Theme.textColor
                         }
                         Switch {
@@ -291,7 +290,7 @@ Flickable {
             }
 
             OptionItem {
-                text: 'Notify on playlist advance'
+                text: i18nc("@label settings option", "Notify on playlist advance")
                 text_color: Kirigami.Theme.textColor
                 icon: '../../images/information-outline.svg'
                 actor: Switch {
@@ -301,16 +300,14 @@ Flickable {
                     Text {
                         Layout.fillWidth: true
                         color: Kirigami.Theme.disabledTextColor
-                        text: "Show a tray notification when the playlist advances "
-                            + "to a new wallpaper. Off by default — enable if you want "
-                            + "to confirm which wallpaper just appeared."
+                        text: i18nc("@info playlist notify help text", "Show a tray notification when the playlist advances to a new wallpaper. Off by default — enable if you want to confirm which wallpaper just appeared.")
                         wrapMode: Text.Wrap
                     }
                 }
             }
 
             OptionItem {
-                text: "Playback Speed"
+                text: i18nc("@label settings option", "Playback Speed")
                 text_color: Kirigami.Theme.textColor
                 icon: '../../images/fast-forward.svg'
                 actor: RowLayout {
@@ -325,7 +322,7 @@ Flickable {
 
 
             OptionItem {
-                text: "Mute Audio"
+                text: i18nc("@label settings option", "Mute Audio")
                 text_color: Kirigami.Theme.textColor
                 icon: ckbox_muteAudio.checked
                     ? '../../images/volume-off.svg'
@@ -335,7 +332,7 @@ Flickable {
                 }
             }
             OptionItem {
-                text: "Volume"
+                text: i18nc("@label settings option", "Volume")
                 text_color: Kirigami.Theme.textColor
                 visible: !cfg_MuteAudio
                 actor: RowLayout {
@@ -357,7 +354,7 @@ Flickable {
             }
 
             OptionItem {
-                text: "System Audio Capture"
+                text: i18nc("@label settings option", "System Audio Capture")
                 text_color: Kirigami.Theme.textColor
                 icon: '../../images/volume-up.svg'
                 actor: Switch {
@@ -366,7 +363,7 @@ Flickable {
                 contentBottom: ColumnLayout {
                     Text {
                         Layout.fillWidth: true
-                        text: "When enabled, audio-reactive wallpapers respond to all system audio (music, videos, games). When disabled, only the wallpaper's own background music is used."
+                        text: i18nc("@info system audio capture help text", "When enabled, audio-reactive wallpapers respond to all system audio (music, videos, games). When disabled, only the wallpaper's own background music is used.")
                         color: Kirigami.Theme.disabledTextColor
                         wrapMode: Text.WordWrap
                         font.italic: true
@@ -378,7 +375,7 @@ Flickable {
             OptionItem {
                 visible: libcheck.wallpaper
                 text_color: Kirigami.Theme.textColor
-                text: "Mouse Input"
+                text: i18nc("@label settings option", "Mouse Input")
                 icon: '../../images/mouse.svg'
                 actor: Switch {
                     id: ckbox_mouseInput
@@ -387,7 +384,7 @@ Flickable {
 
             OptionItem {
                 text_color: Kirigami.Theme.textColor
-                text: "Animated Preview"
+                text: i18nc("@label settings option", "Animated Preview")
                 icon: '../../images/gif.svg'
                 actor: Switch {
                     id: ckbox_animatedPreview
@@ -405,9 +402,7 @@ Flickable {
                              && Kirigami.Settings.hasReducedAnimations
                              && cfg_AnimatedPreview
                     type: Kirigami.MessageType.Information
-                    text: "Reduced motion is enabled system-wide. "
-                        + "Consider disabling Animated Preview for less "
-                        + "motion in this plugin."
+                    text: i18nc("@info reduced motion hint banner", "Reduced motion is enabled system-wide. Consider disabling Animated Preview for less motion in this plugin.")
                 }
             }
        }
@@ -415,24 +410,24 @@ Flickable {
         OptionGroup {
             Layout.fillWidth: true
 
-            header.text: 'Video Option'
+            header.text: i18nc("@title:group settings section video options", "Video Option")
             header.text_color: Kirigami.Theme.textColor
             header.icon: '../../images/cheveron-down.svg'
             header.color: Kirigami.Theme.activeBackgroundColor
 
             OptionItem {
-                text: 'Video Backend'
+                text: i18nc("@label settings option", "Video Backend")
                 text_color: Kirigami.Theme.textColor
                 icon: '../../images/plugin.svg'
                 actor: ComboBox {
                     model: [
                         {
-                            text: "QtMultimedia",
+                            text: i18nc("@item:inlistbox video backend", "QtMultimedia"),
                             value: Common.VideoBackend.QtMultimedia,
                             enabled: true
                         },
                         {
-                            text: "Mpv",
+                            text: i18nc("@item:inlistbox video backend", "Mpv"),
                             value: Common.VideoBackend.Mpv,
                             enabled: libcheck.wallpaper
                         }
@@ -444,7 +439,7 @@ Flickable {
             }
 
             OptionItem {
-                text: 'Show Mpv Stats'
+                text: i18nc("@label settings option", "Show Mpv Stats")
                 text_color: Kirigami.Theme.textColor
                 icon: '../../images/information-outline.svg'
                 visible: cfg_VideoBackend == Common.VideoBackend.Mpv
@@ -456,14 +451,14 @@ Flickable {
         OptionGroup {
             Layout.fillWidth: true
 
-            header.text: 'Scene Option'
+            header.text: i18nc("@title:group settings section scene options", "Scene Option")
             header.text_color: Kirigami.Theme.textColor
             header.icon: '../../images/cheveron-down.svg'
             header.color: Kirigami.Theme.activeBackgroundColor
             visible: libcheck.wallpaper
 
             OptionItem {
-                text: 'Fps'
+                text: i18nc("@label settings option frames per second", "Fps")
                 text_color: Kirigami.Theme.textColor
                 icon: '../../images/tuning.svg'
                 actor: RowLayout {
@@ -485,13 +480,44 @@ Flickable {
                     Text {
                         Layout.fillWidth: true
                         color: Kirigami.Theme.disabledTextColor
-                        text: "Low: 10, Medium: 15, High: 25, Ultra High: 30"
+                        text: i18nc("@info fps preset help text", "Low: 10, Medium: 15, High: 25, Ultra High: 30")
                     }
                 }
 
             }
             OptionItem {
-                text: 'HDR Output'
+                text: i18nc("@label settings option swapchain present mode", "Present mode")
+                text_color: Kirigami.Theme.textColor
+                actor: ComboBox {
+                    id: cbPresentMode
+                    // Model indices match the PresentModePolicy enum values
+                    // (Auto=0 ... Immediate=4), so cfg_PresentMode (aliased to
+                    // currentIndex) maps directly to the policy without a value
+                    // lookup table.  See src/Vulkan/include/Vulkan/Swapchain.hpp.
+                    model: [
+                        i18nc("@item present mode auto",         "Auto (recommended)"),
+                        i18nc("@item present mode fifo",         "Strict vsync (FIFO)"),
+                        i18nc("@item present mode fifo relaxed", "Relaxed vsync (FIFO_RELAXED)"),
+                        i18nc("@item present mode mailbox",      "Unthrottled (MAILBOX)"),
+                        i18nc("@item present mode immediate",    "Immediate (no vsync)"),
+                    ]
+                }
+                contentBottom: ColumnLayout {
+                    Text {
+                        Layout.fillWidth: true
+                        color: Kirigami.Theme.disabledTextColor
+                        text: i18nc("@info present mode help text",
+                            "Auto picks based on Fps vs the monitor's refresh rate. "
+                            + "FIFO avoids tearing but may judder when Fps is below refresh. "
+                            + "Relaxed vsync smooths sub-refresh Fps. MAILBOX delivers the "
+                            + "latest frame (low latency, may waste GPU/battery). "
+                            + "Immediate disables vsync.")
+                        wrapMode: Text.Wrap
+                    }
+                }
+            }
+            OptionItem {
+                text: i18nc("@label settings option HDR output", "HDR Output")
                 text_color: Kirigami.Theme.textColor
                 actor: Switch {
                     id: ckbox_hdrOutput
@@ -500,14 +526,14 @@ Flickable {
                     Text {
                         Layout.fillWidth: true
                         color: Kirigami.Theme.disabledTextColor
-                        text: "Pass HDR colors to the compositor without tonemapping. Requires Plasma HDR support."
+                        text: i18nc("@info HDR output help text", "Pass HDR colors to the compositor without tonemapping. Requires Plasma HDR support.")
                         wrapMode: Text.Wrap
                     }
                 }
             }
             OptionItem {
                 id: cacheQuotaItem
-                text: 'Cache disk quota'
+                text: i18nc("@label settings option cache disk quota", "Cache disk quota")
                 text_color: Kirigami.Theme.textColor
                 icon: '../../images/information-outline.svg'
                 actor: RowLayout {
@@ -558,7 +584,7 @@ Flickable {
             }
             OptionItem {
                 id: shaderCacheItem
-                text: 'Shader cache'
+                text: i18nc("@label settings option shader cache", "Shader cache")
                 text_color: Kirigami.Theme.textColor
                 icon: '../../images/information-outline.svg'
                 // Bumped by the Clear action to force the cache-size Text
@@ -570,16 +596,16 @@ Flickable {
                     flat: false
                     actions: [
                         Kirigami.Action {
-                            text: 'Show'
-                            tooltip: 'Show in file manager'
+                            text: i18nc("@action:button show shader cache", "Show")
+                            tooltip: i18nc("@info:tooltip show shader cache", "Show in file manager")
                             onTriggered: {
                                 if(plugin_info.cache_path)
                                     Qt.openUrlExternally(plugin_info.cache_path);
                             }
                         },
                         Kirigami.Action {
-                            text: 'Clear'
-                            tooltip: 'Delete cached compiled shaders'
+                            text: i18nc("@action:button clear shader cache", "Clear")
+                            tooltip: i18nc("@info:tooltip clear shader cache", "Delete cached compiled shaders")
                             enabled: plugin_info.cache_path
                             onTriggered: clearShaderCacheConfirm.open()
                         }
@@ -595,8 +621,8 @@ Flickable {
 
                         color: Kirigami.Theme.disabledTextColor
                         text: plugin_info.cache_path
-                        ? `${cache_path} - ${cache_size}`
-                        : `Not available`
+                        ? i18nc("@info shader cache path - size, %1=path, %2=size", "%1 - %2", cache_path, cache_size)
+                        : i18nc("@info shader cache not available", "Not available")
 
                         property string cache_size: {
                             // Touch _rev so the binding re-evaluates.
@@ -606,7 +632,7 @@ Flickable {
                                     this.cache_size = Utils.prettyBytes(res);
                                 }).catch(reason => console.error(reason));
                             }
-                            return "? MB";
+                            return i18nc("@info shader cache size placeholder while loading", "? MB");
                         }
                     }
                 }
@@ -619,12 +645,12 @@ Flickable {
     Dialog {
         id: clearShaderCacheConfirm
         objectName: "clearShaderCacheConfirm"
-        title: "Clear shader cache"
+        title: i18nc("@title:window clear shader cache confirmation", "Clear shader cache")
         modal: true
         implicitWidth: Kirigami.Units.gridUnit * 22
         anchors.centerIn: Overlay.overlay
         contentItem: Label {
-            text: "Delete all cached compiled shaders? They will be regenerated on the next wallpaper load (first frame may be slower)."
+            text: i18nc("@info confirmation message for clearing shader cache", "Delete all cached compiled shaders? They will be regenerated on the next wallpaper load (first frame may be slower).")
             wrapMode: Text.WordWrap
         }
         standardButtons: Dialog.Yes | Dialog.No

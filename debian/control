@@ -14,6 +14,7 @@ Build-Depends:
  libkf6notifications-dev,
  libkf6crash-dev,
  libkf6globalaccel-dev,
+ libkf6i18n-dev,
  libplasma-dev,
  plasma-workspace-dev,
  qt6-base-dev,
@@ -40,6 +41,7 @@ Depends:
  libkf6notifications6,
  libkf6crash6,
  libkf6globalaccel6,
+ libkf6i18n6,
 Recommends:
  gstreamer1.0-libav,
  qt6-webengine,

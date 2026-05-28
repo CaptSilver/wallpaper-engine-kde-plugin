@@ -22,6 +22,7 @@ BuildRequires: kf6-kconfig-devel
 BuildRequires: kf6-knotifications-devel
 BuildRequires: kf6-kcrash-devel
 BuildRequires: kf6-kglobalaccel-devel
+BuildRequires: kf6-ki18n-devel
 BuildRequires: lz4-devel
 BuildRequires: mpv-libs-devel
 BuildRequires: qt6-qtbase-private-devel
@@ -43,6 +44,7 @@ Requires: glew
 Requires: kf6-knotifications
 Requires: kf6-kcrash
 Requires: kf6-kglobalaccel
+Requires: kf6-ki18n
 Recommends: gstreamer1-libav
 Recommends: qt6-qtwebengine
 Suggests: pipewire-pulse

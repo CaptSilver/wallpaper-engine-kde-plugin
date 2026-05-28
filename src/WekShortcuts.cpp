@@ -20,33 +20,31 @@ namespace
 // so on multi-monitor secondaries with no service the call just goes
 // nowhere -- the primary plasmoid still handled it.
 void invokeDBusMethod(const QString& method) {
-    auto msg = QDBusMessage::createMethodCall(
-        QStringLiteral("com.github.captsilver.WallpaperEngine"),
-        QStringLiteral("/WallpaperEngine"),
-        QStringLiteral("com.github.captsilver.WallpaperEngine"),
-        method);
+    auto msg =
+        QDBusMessage::createMethodCall(QStringLiteral("com.github.captsilver.WallpaperEngine"),
+                                       QStringLiteral("/WallpaperEngine"),
+                                       QStringLiteral("com.github.captsilver.WallpaperEngine"),
+                                       method);
     QDBusConnection::sessionBus().asyncCall(msg);
 }
 
 } // namespace
 
 WekShortcuts::WekShortcuts(QObject* parent)
-    : QObject(parent),
-      m_actions(new KActionCollection(this, QStringLiteral("wallpaper_engine"))) {
-
+    : QObject(parent), m_actions(new KActionCollection(this, QStringLiteral("wallpaper_engine"))) {
     m_actions->setComponentDisplayName(QStringLiteral("Wallpaper Engine"));
 
     // Helper: create the action, default-unbind via setGlobalShortcut({}),
     // and wire its triggered() to the async D-Bus call.
-    auto registerAction = [this](const QString& id,
-                                 const QString& label,
-                                 const QString& dbusMember) -> QAction* {
+    auto registerAction =
+        [this](const QString& id, const QString& label, const QString& dbusMember) -> QAction* {
         auto* action = m_actions->addAction(id);
         action->setText(label);
         // Default-unbound -- KDE convention.  User binds via System Settings.
-        KGlobalAccel::self()->setGlobalShortcut(action, QList<QKeySequence>{});
-        QObject::connect(action, &QAction::triggered, this,
-                         [dbusMember]() { invokeDBusMethod(dbusMember); });
+        KGlobalAccel::self()->setGlobalShortcut(action, QList<QKeySequence> {});
+        QObject::connect(action, &QAction::triggered, this, [dbusMember]() {
+            invokeDBusMethod(dbusMember);
+        });
         return action;
     };
 
@@ -76,7 +74,7 @@ WekShortcuts::WekShortcuts(QObject* parent)
     // openWallpaperConfig signal.
     auto* openLib = m_actions->addAction(QStringLiteral("open_library"));
     openLib->setText(QStringLiteral("Open wallpaper library (configuration dialog)"));
-    KGlobalAccel::self()->setGlobalShortcut(openLib, QList<QKeySequence>{});
+    KGlobalAccel::self()->setGlobalShortcut(openLib, QList<QKeySequence> {});
     QObject::connect(openLib, &QAction::triggered, this, []() {
         qInfo("wek-shortcuts: 'Open Library' shortcut triggered; user "
               "should right-click desktop -> Configure Desktop and "

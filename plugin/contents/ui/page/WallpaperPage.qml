@@ -58,12 +58,12 @@ RowLayout {
     Dialog {
         id: resetSceneOptsConfirm
         objectName: "resetSceneOptsConfirm"
-        title: "Reset scene options"
+        title: i18nc("@title:window reset scene options confirmation", "Reset scene options")
         modal: true
         implicitWidth: Kirigami.Units.gridUnit * 20
         anchors.centerIn: Overlay.overlay
         contentItem: Label {
-            text: "Reset all per-wallpaper scene options to defaults? This cannot be undone."
+            text: i18nc("@info confirmation message for resetting scene options", "Reset all per-wallpaper scene options to defaults? This cannot be undone.")
             wrapMode: Text.WordWrap
         }
         standardButtons: Dialog.Yes | Dialog.No
@@ -76,12 +76,12 @@ RowLayout {
     Dialog {
         id: resetUserPropsConfirm
         objectName: "resetUserPropsConfirm"
-        title: "Reset wallpaper properties"
+        title: i18nc("@title:window reset wallpaper properties confirmation", "Reset wallpaper properties")
         modal: true
         implicitWidth: Kirigami.Units.gridUnit * 20
         anchors.centerIn: Overlay.overlay
         contentItem: Label {
-            text: "Reset this wallpaper's user properties to defaults? Any tuning you've done will be lost."
+            text: i18nc("@info confirmation message for resetting user properties", "Reset this wallpaper's user properties to defaults? Any tuning you've done will be lost.")
             wrapMode: Text.WordWrap
         }
         standardButtons: Dialog.Yes | Dialog.No
@@ -117,7 +117,10 @@ RowLayout {
 
                 Label {
                     visible: cfg_WallpaperWorkShopId
-                    text: `Shopid: ${cfg_WallpaperWorkShopId}  Type: ${Common.unpackWallpaperSource(cfg_WallpaperSource).type}`
+                    text: i18nc("@info active wallpaper info banner, %1=workshop id, %2=type",
+                                "Shopid: %1  Type: %2",
+                                cfg_WallpaperWorkShopId,
+                                Common.unpackWallpaperSource(cfg_WallpaperSource).type)
                     //${cfg_WallpaperType}
                 }
 
@@ -149,13 +152,13 @@ RowLayout {
                     actions: [
                         Kirigami.Action {
                             icon.name: "folder-symbolic"
-                            text: 'Library'
-                            tooltip: cfg_SteamLibraryPath ? cfg_SteamLibraryPath : 'Select steam library dir'
+                            text: i18nc("@action:button steam library picker", "Library")
+                            tooltip: cfg_SteamLibraryPath ? cfg_SteamLibraryPath : i18nc("@info:tooltip steam library picker default text", "Select steam library dir")
                             onTriggered: wpDialog.open()
                         },
                         Kirigami.Action {
                             id: action_cb_filter
-                            text: 'Filter'
+                            text: i18nc("@action:button filter wallpapers", "Filter")
                             icon.name: "view-filter"
                             readonly property var model: Common.filterModel
                             readonly property var modelValues: Common.filterModel.getValueArray(cfg_FilterStr)
@@ -174,18 +177,18 @@ RowLayout {
                             property int currentIndex: Common.modelIndexOfValue(model, cfg_SortMode)
                             readonly property var model: [
                                 {
-                                    text: "Sort By Workshop Id",
-                                    short: "Id",
+                                    text: i18nc("@item:inmenu sort wallpapers by workshop id", "Sort By Workshop Id"),
+                                    short: i18nc("@action:button short sort label, workshop id", "Id"),
                                     value: Common.SortMode.Id
                                 },
                                 {
-                                    text: "Sort Alphabetically By Name",
-                                    short: "Alphabetical",
+                                    text: i18nc("@item:inmenu sort wallpapers alphabetically", "Sort Alphabetically By Name"),
+                                    short: i18nc("@action:button short sort label, alphabetical", "Alphabetical"),
                                     value: Common.SortMode.Name
                                 },
                                 {
-                                    text: "Show Newest Modified First",
-                                    short: "Modified",
+                                    text: i18nc("@item:inmenu sort newest modified first", "Show Newest Modified First"),
+                                    short: i18nc("@action:button short sort label, modified", "Modified"),
                                     value: Common.SortMode.Modified
                                 }
                             ]
@@ -199,13 +202,13 @@ RowLayout {
                             icon.name: wpListModel.scanning
                                 ? "view-refresh"
                                 : "view-refresh-symbolic"
-                            text: wpListModel.scanning ? 'Refreshing…' : 'Refresh'
+                            text: wpListModel.scanning ? i18nc("@action:button refresh in progress", "Refreshing…") : i18nc("@action:button refresh wallpaper list", "Refresh")
                             enabled: ! wpListModel.scanning
                             onTriggered: wpListModel.refresh()
                         },
                         Kirigami.Action {
                             icon.name: "list-add-symbolic"
-                            text: 'Save filter as playlist…'
+                            text: i18nc("@action:button save filter as playlist", "Save filter as playlist…")
                             // Enable when filtered list is non-empty AND narrows
                             // the full library (otherwise duplicates "select all").
                             enabled: wallpaperPageRoot.playlistManager
@@ -252,12 +255,12 @@ RowLayout {
                         Layout.fillWidth: true
                         Label {
                             Layout.fillWidth: true
-                            text: "Filters"
+                            text: i18nc("@title:group filters popup", "Filters")
                             font.bold: true
                         }
                         ToolButton {
-                            text: "Reset"
-                            ToolTip.text: "Reset to default filters"
+                            text: i18nc("@action:button reset filters", "Reset")
+                            ToolTip.text: i18nc("@info:tooltip reset filters", "Reset to default filters")
                             ToolTip.visible: hovered
                             ToolTip.delay: 500
                             onClicked: {
@@ -266,7 +269,7 @@ RowLayout {
                             }
                         }
                         ToolButton {
-                            text: "Close"
+                            text: i18nc("@action:button close filters popup", "Close")
                             onClicked: filterPopup.close()
                         }
                     }
@@ -328,11 +331,11 @@ RowLayout {
                         Layout.fillWidth: true
                         verticalAlignment: Text.AlignVCenter
                         text: wallpaperPageRoot.cfg_ActivePlaylistId === "__filtered_library__"
-                            ? "Filtered Library is active · Item " + (wallpaperPageRoot.cfg_CurrentItemIndex + 1)
-                            : "Playlist is active · Item " + (wallpaperPageRoot.cfg_CurrentItemIndex + 1)
+                            ? i18nc("@info:status filtered library active, %1=1-based item index", "Filtered Library is active · Item %1", wallpaperPageRoot.cfg_CurrentItemIndex + 1)
+                            : i18nc("@info:status playlist active, %1=1-based item index", "Playlist is active · Item %1", wallpaperPageRoot.cfg_CurrentItemIndex + 1)
                     }
                     Button {
-                        text: "Stop"
+                        text: i18nc("@action:button stop active playlist", "Stop")
                         onClicked: {
                             if (wallpaperPageRoot.playlistManager)
                                 wallpaperPageRoot.playlistManager.deactivate();
@@ -374,13 +377,13 @@ RowLayout {
                     level: 2
                     text: {
                         if(!pyext.ok) {
-                            return `Python helper run failed: ${pyext.log}`;
+                            return i18nc("@info:status python helper failure, %1=log output", "Python helper run failed: %1", pyext.log);
                         }
                         if(!cfg_SteamLibraryPath)
-                            return "Select your steam library through the folder selecting button above";
+                            return i18nc("@info:status no steam library selected", "Select your steam library through the folder selecting button above");
                         if(wpListModel.countNoFilter > 0)
-                            return `Found ${wpListModel.countNoFilter} wallpapers, but none of them matched filters`;
-                        return `There are no wallpapers in steam library`;
+                            return i18nc("@info:status filter excludes all wallpapers, %1=total count", "Found %1 wallpapers, but none of them matched filters", wpListModel.countNoFilter);
+                        return i18nc("@info:status no wallpapers found in steam library", "There are no wallpapers in steam library");
                     }
                     opacity: 0.5
                 }
@@ -415,7 +418,7 @@ RowLayout {
 
             FolderDialog {
                 id: wpDialog
-                title: "Select steamlibrary folder"
+                title: i18nc("@title:window steam library folder picker", "Select steamlibrary folder")
                 onAccepted: {
                     const path = Utils.trimCharR(wpDialog.selectedFolder.toString(), '/');
                     cfg_SteamLibraryPath = path;
@@ -427,12 +430,12 @@ RowLayout {
             // currently in wpListModel.model into a new sequential playlist.
             Dialog {
                 id: saveFilterPrompt
-                title: "Save filter as playlist"
+                title: i18nc("@title:window save filter as playlist", "Save filter as playlist")
                 modal: true
                 anchors.centerIn: parent
                 contentItem: TextField {
                     id: saveFilterNameField
-                    placeholderText: "Playlist name"
+                    placeholderText: i18nc("@info:placeholder playlist name input", "Playlist name")
                 }
                 standardButtons: Dialog.Ok | Dialog.Cancel
                 onAccepted: {
@@ -542,8 +545,8 @@ RowLayout {
                     sourceComponent: Label {
                         text: right_content.wpmodel
                               && right_content.wpmodel.type === "application"
-                            ? "Application wallpapers ship a native Windows .exe host and cannot be rendered by this plugin. Apply will fail."
-                            : "Preset wallpapers reference another workshop entry; they are not standalone and cannot be rendered by this plugin. Apply will fail."
+                            ? i18nc("@info pre-apply warning unsupported application wallpaper", "Application wallpapers ship a native Windows .exe host and cannot be rendered by this plugin. Apply will fail.")
+                            : i18nc("@info pre-apply warning unsupported preset wallpaper", "Preset wallpapers reference another workshop entry; they are not standalone and cannot be rendered by this plugin. Apply will fail.")
                         color: Kirigami.Theme.negativeTextColor
                         wrapMode: Text.WordWrap
                         horizontalAlignment: Text.AlignHCenter
@@ -622,19 +625,19 @@ RowLayout {
                                     ? "bookmarks-symbolic"
                                     : "bookmark-add-symbolic"
                                 tooltip: right_content.wpmodel.favor
-                                    ? 'Remove from favorites'
-                                    : 'Add to favorites'
+                                    ? i18nc("@info:tooltip remove wallpaper from favorites", "Remove from favorites")
+                                    : i18nc("@info:tooltip add wallpaper to favorites", "Add to favorites")
                                 onTriggered: picViewLoader.item.toggleFavor(right_content.wpmodel)
                             },
                             Kirigami.Action {
                                 icon.name: "emblem-symbolic-link"
-                                tooltip: "Open Workshop Link"
+                                tooltip: i18nc("@info:tooltip open workshop link in browser", "Open Workshop Link")
                                 enabled: right_content.wpmodel.workshopid.match(Common.regex_workshop_online)
                                 onTriggered: Qt.openUrlExternally(Common.getWorkshopUrl(right_content.wpmodel.workshopid))
                             },
                             Kirigami.Action {
                                 icon.name: "folder-symbolic"
-                                tooltip: "Open Containing Folder"
+                                tooltip: i18nc("@info:tooltip open wallpaper containing folder", "Open Containing Folder")
                                 // Qt.openUrlExternally silently no-ops on
                                 // bare paths — needs a scheme. Most
                                 // wpmodel.path values are already
@@ -849,7 +852,7 @@ RowLayout {
                         return config.hasOwnProperty(key) || in_config_changes(key);
                     }
 
-                    header.text: 'Option'
+                    header.text: i18nc("@title:group per-wallpaper options panel", "Option")
                     header.text_color: Kirigami.Theme.textColor
                     header.icon: '../../images/cheveron-down.svg'
                     header.color: Kirigami.Theme.activeBackgroundColor
@@ -860,7 +863,7 @@ RowLayout {
                         flat: true
                         actions: [
                             Kirigami.Action {
-                                text: 'Reset'
+                                text: i18nc("@action:button reset per-wallpaper options", "Reset")
                                 onTriggered: resetSceneOptsConfirm.open()
                             }
                         ]
@@ -870,21 +873,21 @@ RowLayout {
                         model: [
                             {
                                 mark_: markModel,
-                                text: 'Display',
+                                text: i18nc("@label per-wallpaper display option", "Display"),
                                 config_key: 'display_mode',
                                 comp: right_opt_combox,
                                 props: {
                                     model: [
                                         {
-                                            text: "Keep Aspect Ratio",
+                                            text: i18nc("@item:inlistbox display mode", "Keep Aspect Ratio"),
                                             value: Common.DisplayMode.Aspect
                                         },
                                         {
-                                            text: "Scale and Crop",
+                                            text: i18nc("@item:inlistbox display mode", "Scale and Crop"),
                                             value: Common.DisplayMode.Crop
                                         },
                                         {
-                                            text: "Scale to Fill",
+                                            text: i18nc("@item:inlistbox display mode", "Scale to Fill"),
                                             value: Common.DisplayMode.Scale
                                         },
                                     ],
@@ -897,7 +900,7 @@ RowLayout {
                             // to the wallpaper's native aspect (nativeAspectRatio).
                             {
                                 mark_: markModel,
-                                text: 'Background Color',
+                                text: i18nc("@label per-wallpaper background color option", "Background Color"),
                                 config_key: 'background_color',
                                 comp: right_opt_color,
                                 props: {
@@ -905,7 +908,7 @@ RowLayout {
                                 },
                             },
                             {
-                                text: 'Mute Audio',
+                                text: i18nc("@label per-wallpaper mute audio option", "Mute Audio"),
                                 config_key: 'mute_audio',
                                 comp: right_opt_switch,
                                 props: {
@@ -913,8 +916,8 @@ RowLayout {
                                 },
                             },
                             {
-                                text: 'Volume',
-                                config_key: 'volume', 
+                                text: i18nc("@label per-wallpaper volume option", "Volume"),
+                                config_key: 'volume',
                                 comp: right_opt_spinbox,
                                 props: {
                                     def_val: cfg_Volume,
@@ -924,8 +927,8 @@ RowLayout {
                                 },
                             },
                             {
-                                text: 'Speed',
-                                config_key: 'speed', 
+                                text: i18nc("@label per-wallpaper speed option", "Speed"),
+                                config_key: 'speed',
                                 comp: right_opt_dspinbox,
                                 props: {
                                     def_val: cfg_Speed,
@@ -938,7 +941,7 @@ RowLayout {
                             // default. Experimental: Ultra can look too dark on
                             // some scenes (audit open); opt-in per wallpaper.
                             {
-                                text: 'Postprocessing (Ultra, experimental)',
+                                text: i18nc("@label per-wallpaper postprocessing option", "Postprocessing (Ultra, experimental)"),
                                 config_key: 'postprocessing',
                                 comp: right_opt_switch,
                                 props: {
@@ -1019,10 +1022,10 @@ RowLayout {
                         TextField {
                             id: pathField
                             width: 220
-                            placeholderText: "(no file selected)"
+                            placeholderText: i18nc("@info:placeholder no file picked yet", "(no file selected)")
                         }
                         Button {
-                            text: "Browse…"
+                            text: i18nc("@action:button browse for file", "Browse…")
                             onClicked: fileDlg.open()
                         }
                         FileDialog {
@@ -1046,10 +1049,10 @@ RowLayout {
                         TextField {
                             id: pathField
                             width: 220
-                            placeholderText: "(no folder selected)"
+                            placeholderText: i18nc("@info:placeholder no folder picked yet", "(no folder selected)")
                         }
                         Button {
-                            text: "Browse…"
+                            text: i18nc("@action:button browse for folder", "Browse…")
                             onClicked: dirDlg.open()
                         }
                         FolderDialog {
@@ -1169,7 +1172,7 @@ RowLayout {
                         cfg_PerOptChanged++;
                     }
 
-                    header.text: 'User Properties'
+                    header.text: i18nc("@title:group per-wallpaper user properties panel", "User Properties")
                     header.text_color: Kirigami.Theme.textColor
                     header.icon: '../../images/cheveron-down.svg'
                     header.color: Kirigami.Theme.activeBackgroundColor
@@ -1180,7 +1183,7 @@ RowLayout {
                         flat: true
                         actions: [
                             Kirigami.Action {
-                                text: 'Reset'
+                                text: i18nc("@action:button reset user properties", "Reset")
                                 onTriggered: resetUserPropsConfirm.open()
                             }
                         ]

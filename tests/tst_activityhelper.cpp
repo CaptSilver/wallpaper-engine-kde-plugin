@@ -136,8 +136,7 @@ private slots:
         // On disk, [General] holds the value, no [Activity_uuid-current] group.
         KConfig      cfg(cfgPath, KConfig::SimpleConfig);
         KConfigGroup general(&cfg, "General");
-        QCOMPARE(general.readEntry("WallpaperWorkShopId", QString()),
-                 QStringLiteral("W_GLOBAL"));
+        QCOMPARE(general.readEntry("WallpaperWorkShopId", QString()), QStringLiteral("W_GLOBAL"));
         KConfigGroup activity(&cfg, "Activity_uuid-current");
         QCOMPARE(activity.hasKey("WallpaperWorkShopId"), false);
 

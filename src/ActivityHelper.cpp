@@ -29,8 +29,8 @@ bool isUnknownActivity(const QString& a) {
 }
 } // namespace
 
-ActivityHelper::ActivityHelper(QObject* parent): QObject(parent), m_currentActivity(kDefaultActivity)
-{
+ActivityHelper::ActivityHelper(QObject* parent)
+    : QObject(parent), m_currentActivity(kDefaultActivity) {
     // When WEK_HAS_PLASMA_ACTIVITIES is defined at build time, the production
     // path connects KActivities::Consumer::currentActivityChanged here.  The
     // unit-test path bypasses Consumer entirely and drives the activity via
@@ -38,14 +38,11 @@ ActivityHelper::ActivityHelper(QObject* parent): QObject(parent), m_currentActiv
 }
 
 ActivityHelper::ActivityHelper(const QString& configFile, QObject* parent)
-    : QObject(parent), m_configFile(configFile), m_currentActivity(kDefaultActivity)
-{}
+    : QObject(parent), m_configFile(configFile), m_currentActivity(kDefaultActivity) {}
 
 ActivityHelper::~ActivityHelper() = default;
 
-QString ActivityHelper::currentActivity() const {
-    return m_currentActivity;
-}
+QString ActivityHelper::currentActivity() const { return m_currentActivity; }
 
 QString ActivityHelper::groupNameFor(const QString& activity) const {
     const QString a = isUnknownActivity(activity) ? QString::fromUtf8(kDefaultActivity) : activity;
@@ -65,8 +62,8 @@ KConfig* ActivityHelper::config() const {
                 QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
             // Best-effort default; safe to write because KConfig only creates
             // the file on first sync().
-            m_config = std::make_unique<KConfig>(cfg + QStringLiteral("/wekrc"),
-                                                  KConfig::SimpleConfig);
+            m_config =
+                std::make_unique<KConfig>(cfg + QStringLiteral("/wekrc"), KConfig::SimpleConfig);
         } else {
             m_config = std::make_unique<KConfig>(m_configFile, KConfig::SimpleConfig);
         }
@@ -75,7 +72,7 @@ KConfig* ActivityHelper::config() const {
 }
 
 QString ActivityHelper::readPerActivity(const QString& key) const {
-    KConfig*     cfg          = config();
+    KConfig*     cfg = config();
     KConfigGroup activityGroup(cfg, groupNameFor(m_currentActivity));
     if (activityGroup.hasKey(key)) {
         return activityGroup.readEntry(key, QString());
@@ -98,10 +95,9 @@ void ActivityHelper::setForActivity(const QString& activity, const QString& key,
                                     const QVariant& value) {
     KConfig* cfg = config();
     // "all" is the affinity sentinel for "All Activities" — target [General].
-    const QString groupName = (activity == QLatin1String("all"))
-                                   ? QString::fromUtf8(kGeneralGroup)
-                                   : groupNameFor(activity);
-    KConfigGroup group(cfg, groupName);
+    const QString groupName = (activity == QLatin1String("all")) ? QString::fromUtf8(kGeneralGroup)
+                                                                 : groupNameFor(activity);
+    KConfigGroup  group(cfg, groupName);
     group.writeEntry(key, value);
     cfg->sync();
 }
@@ -115,7 +111,8 @@ void ActivityHelper::dropActivity(const QString& activity) {
 }
 
 void ActivityHelper::setCurrentActivityForTesting(const QString& activity) {
-    const QString next = isUnknownActivity(activity) ? QString::fromUtf8(kDefaultActivity) : activity;
+    const QString next =
+        isUnknownActivity(activity) ? QString::fromUtf8(kDefaultActivity) : activity;
     if (next == m_currentActivity) return;
     m_currentActivity = next;
     Q_EMIT currentActivityChanged(m_currentActivity);

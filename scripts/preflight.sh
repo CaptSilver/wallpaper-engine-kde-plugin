@@ -654,13 +654,7 @@ ok "ctest passed"
 # Findings (crash/oom/timeout/leak) under build/sub/fuzz-crashes/ fail the gate.
 if [[ "$NO_FUZZ" == "0" ]]; then
     FUZZ_SECS="${FUZZ_SECS:-20}"
-    # WPTexImageParser temporarily excluded: the seeded-corpus coverage uplift
-    # surfaced a class of OOM/timeout inputs in the lz4/dxt decompression
-    # paths that legitimately need a focused audit (the harness keeps
-    # producing ever-larger pathologies as malloc caps are bumped).  Run it
-    # manually via `build/sub/src/Test/fuzz_WPTexImageParser` during the
-    # audit; the audit lands the parser fixes + restores the target here.
-    FUZZ_TARGETS=(WPMdlParser WPPkgFs
+    FUZZ_TARGETS=(WPMdlParser WPPkgFs WPTexImageParser
                   WPShaderParser WPShaderCompile WPSceneParser
                   WPParticleParser WPSoundParser WPJsonParse)
     step "Fuzz smoke (libFuzzer seeded, ${FUZZ_SECS}s × ${#FUZZ_TARGETS[@]} targets)"

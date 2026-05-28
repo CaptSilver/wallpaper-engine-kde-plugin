@@ -112,4 +112,53 @@ QtObject {
     function clearReadRoots() {
         clearReadRootsCount += 1;
     }
+
+    // ── workshop-update detection (test stubs return empty maps) ──────────
+    property var _workshopManifestReturns: ({})
+    property var _allSeenVersionsReturns:  ({})
+    property int  readWorkshopManifestCount:  0
+    property var  lastReadWorkshopManifestPath: undefined
+    property int  allSeenVersionsCount:       0
+    property int  recordSeenVersionCount:     0
+    property var  lastRecordSeenVersionArgs:  ({ id: "", version: 0 })
+    property int  seenVersionCount:           0
+    property var  lastSeenVersionId:          undefined
+    property int  pruneOrphanThumbnailsCount: 0
+    property int  enforceCacheQuotaCount:     0
+
+    function readWorkshopManifest(steamLibraryPath) {
+        readWorkshopManifestCount += 1;
+        lastReadWorkshopManifestPath = steamLibraryPath;
+        return _workshopManifestReturns;
+    }
+    function allSeenVersions() {
+        allSeenVersionsCount += 1;
+        return _allSeenVersionsReturns;
+    }
+    function recordSeenVersion(id, version) {
+        recordSeenVersionCount += 1;
+        lastRecordSeenVersionArgs = { id: id, version: version };
+    }
+    function seenVersion(id) {
+        seenVersionCount += 1;
+        lastSeenVersionId = id;
+        return 0;
+    }
+    function pruneOrphanThumbnails(cacheRoot, manifestIds) {
+        pruneOrphanThumbnailsCount += 1;
+        return 0;
+    }
+    function enforceCacheQuota(roots, quotaBytes) {
+        enforceCacheQuotaCount += 1;
+        return 0;
+    }
+    function enforceCacheQuotaForce(roots, quotaBytes) {
+        enforceCacheQuotaCount += 1;
+        return 0;
+    }
+
+    // Last GC bytes-freed status — exposed to the SettingPage Text binding
+    // under the "Run cache GC now" button so the user sees the freed
+    // count without polling.
+    property real lastGcBytesFreed: 0
 }

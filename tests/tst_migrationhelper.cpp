@@ -4,6 +4,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QDir>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 #include <KConfig>
 #include <KConfigGroup>
@@ -424,6 +426,163 @@ private slots:
         helper.runIfNeeded();
 
         QVERIFY(QFileInfo::exists(d.path() + "/wekde/migrated-from-catsout"));
+    }
+
+    // ── seedLastSeenVersions ────────────────────────────────────────────────
+    //
+    // First-launch helpers: seed every existing <id>.json with the current
+    // Steam manifest's timeupdated so the user doesn't see "everything
+    // appears updated" on the first launch after the feature lands.
+    void seedLastSeen_seedsExistingConfigsFromManifest() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        qputenv("XDG_CONFIG_HOME", d.path().toLocal8Bit());
+
+        // Two pre-existing <id>.json files without last_seen_version.
+        QDir(d.path()).mkpath("wekde/wallpaper");
+        const QString cfg1 = d.path() + "/wekde/wallpaper/100.json";
+        const QString cfg2 = d.path() + "/wekde/wallpaper/200.json";
+        QFile         f1(cfg1);
+        QVERIFY(f1.open(QIODevice::WriteOnly));
+        f1.write(R"({"display_mode": 1})");
+        f1.close();
+        QFile f2(cfg2);
+        QVERIFY(f2.open(QIODevice::WriteOnly));
+        f2.write(R"({"volume": 50})");
+        f2.close();
+
+        // Synthetic Steam library with appworkshop_431960.acf naming both.
+        QTemporaryDir lib;
+        QVERIFY(lib.isValid());
+        const QString acf = lib.path() + "/steamapps/workshop/appworkshop_431960.acf";
+        QDir(lib.path()).mkpath("steamapps/workshop");
+        QFile ac(acf);
+        QVERIFY(ac.open(QIODevice::WriteOnly));
+        ac.write(R"("AppWorkshop" { "WorkshopItemsInstalled" {
+            "100" { "timeupdated" "1000" }
+            "200" { "timeupdated" "2000" }
+        } })");
+        ac.close();
+
+        wekde::MigrationHelper helper;
+        helper.seedLastSeenVersions(lib.path());
+
+        // Verify both files now carry last_seen_version matching the manifest.
+        for (const auto& pair : { std::make_pair(cfg1, 1000), std::make_pair(cfg2, 2000) }) {
+            QFile f(pair.first);
+            QVERIFY(f.open(QIODevice::ReadOnly));
+            const QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+            QVERIFY(doc.isObject());
+            QCOMPARE(doc.object().value("last_seen_version").toVariant().toLongLong(),
+                     qint64 { pair.second });
+        }
+
+        // Marker should now be set.
+        KConfig      rc(d.path() + "/wekde/migrations.rc", KConfig::SimpleConfig);
+        KConfigGroup g = rc.group(QStringLiteral("Migrations"));
+        QVERIFY(g.readEntry("last-seen-seeded", false));
+    }
+
+    void seedLastSeen_idempotent_marker_blocks_secondRun() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        qputenv("XDG_CONFIG_HOME", d.path().toLocal8Bit());
+
+        // Pre-set the marker.
+        QDir(d.path()).mkpath("wekde");
+        {
+            KConfig      rc(d.path() + "/wekde/migrations.rc", KConfig::SimpleConfig);
+            KConfigGroup g = rc.group(QStringLiteral("Migrations"));
+            g.writeEntry("last-seen-seeded", true);
+            rc.sync();
+        }
+
+        // Pre-existing config — must be untouched by a marker-blocked call.
+        QDir(d.path()).mkpath("wekde/wallpaper");
+        const QString cfg = d.path() + "/wekde/wallpaper/77.json";
+        QFile         f(cfg);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(R"({"display_mode": 1})");
+        f.close();
+
+        // Synthetic manifest with this id.
+        QTemporaryDir lib;
+        QVERIFY(lib.isValid());
+        QDir(lib.path()).mkpath("steamapps/workshop");
+        QFile ac(lib.path() + "/steamapps/workshop/appworkshop_431960.acf");
+        QVERIFY(ac.open(QIODevice::WriteOnly));
+        ac.write(R"("AppWorkshop" { "WorkshopItemsInstalled" {
+            "77" { "timeupdated" "9999" }
+        } })");
+        ac.close();
+
+        wekde::MigrationHelper helper;
+        helper.seedLastSeenVersions(lib.path());
+
+        // last_seen_version must NOT have been written — marker blocked us.
+        QFile post(cfg);
+        QVERIFY(post.open(QIODevice::ReadOnly));
+        const QJsonDocument doc = QJsonDocument::fromJson(post.readAll());
+        QVERIFY(doc.isObject());
+        QVERIFY(! doc.object().contains("last_seen_version"));
+    }
+
+    void seedLastSeen_emptySteamLibrary_setsMarkerNoSeeding() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        qputenv("XDG_CONFIG_HOME", d.path().toLocal8Bit());
+        QDir(d.path()).mkpath("wekde/wallpaper");
+        QFile f(d.path() + "/wekde/wallpaper/55.json");
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(R"({"display_mode": 1})");
+        f.close();
+
+        wekde::MigrationHelper helper;
+        helper.seedLastSeenVersions(QString {});
+
+        // No seed (empty manifest).
+        QFile post(d.path() + "/wekde/wallpaper/55.json");
+        QVERIFY(post.open(QIODevice::ReadOnly));
+        const QJsonDocument doc = QJsonDocument::fromJson(post.readAll());
+        QVERIFY(doc.isObject());
+        QVERIFY(! doc.object().contains("last_seen_version"));
+
+        // But marker IS set — we still consider the one-shot done.
+        KConfig      rc(d.path() + "/wekde/migrations.rc", KConfig::SimpleConfig);
+        KConfigGroup g = rc.group(QStringLiteral("Migrations"));
+        QVERIFY(g.readEntry("last-seen-seeded", false));
+    }
+
+    void seedLastSeen_preservesExistingLastSeenValues() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        qputenv("XDG_CONFIG_HOME", d.path().toLocal8Bit());
+        QDir(d.path()).mkpath("wekde/wallpaper");
+        QFile f(d.path() + "/wekde/wallpaper/42.json");
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        // Pre-existing last_seen_version different from manifest.
+        f.write(R"({"display_mode": 1, "last_seen_version": 555})");
+        f.close();
+
+        QTemporaryDir lib;
+        QVERIFY(lib.isValid());
+        QDir(lib.path()).mkpath("steamapps/workshop");
+        QFile ac(lib.path() + "/steamapps/workshop/appworkshop_431960.acf");
+        QVERIFY(ac.open(QIODevice::WriteOnly));
+        ac.write(R"("AppWorkshop" { "WorkshopItemsInstalled" {
+            "42" { "timeupdated" "9999" }
+        } })");
+        ac.close();
+
+        wekde::MigrationHelper helper;
+        helper.seedLastSeenVersions(lib.path());
+
+        // Existing 555 must be preserved — seed only fills the absent case.
+        QFile post(d.path() + "/wekde/wallpaper/42.json");
+        QVERIFY(post.open(QIODevice::ReadOnly));
+        const QJsonDocument doc = QJsonDocument::fromJson(post.readAll());
+        QVERIFY(doc.isObject());
+        QCOMPARE(doc.object().value("last_seen_version").toVariant().toLongLong(), qint64 { 555 });
     }
 };
 

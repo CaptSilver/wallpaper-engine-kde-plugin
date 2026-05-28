@@ -1,0 +1,95 @@
+{
+  "survivors": [
+    {
+      "file": "build/impl-mutation/tst_weburlinterceptor_autogen/MSUBPBEFSN/moc_WebUrlInterceptor.cpp",
+      "line": 73,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "build/impl-mutation/tst_weburlinterceptor_autogen/MSUBPBEFSN/moc_WebUrlInterceptor.cpp",
+      "line": 97,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "build/impl-mutation/tst_weburlinterceptor_autogen/MSUBPBEFSN/moc_WebUrlInterceptor.cpp",
+      "line": 97,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "build/impl-mutation/tst_weburlinterceptor_autogen/MSUBPBEFSN/moc_WebUrlInterceptor.cpp",
+      "line": 99,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "build/impl-mutation/tst_weburlinterceptor_autogen/MSUBPBEFSN/moc_WebUrlInterceptor.cpp",
+      "line": 100,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "build/impl-mutation/tst_weburlinterceptor_autogen/MSUBPBEFSN/moc_WebUrlInterceptor.cpp",
+      "line": 100,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "build/impl-mutation/tst_weburlinterceptor_autogen/MSUBPBEFSN/moc_WebUrlInterceptor.cpp",
+      "line": 104,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "build/impl-mutation/tst_weburlinterceptor_autogen/MSUBPBEFSN/moc_WebUrlInterceptor.cpp",
+      "line": 105,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "build/impl-mutation/tst_weburlinterceptor_autogen/MSUBPBEFSN/moc_WebUrlInterceptor.cpp",
+      "line": 105,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "build/impl-mutation/tst_weburlinterceptor_autogen/include/tst_weburlinterceptor.moc",
+      "line": 96,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "build/impl-mutation/tst_weburlinterceptor_autogen/include/tst_weburlinterceptor.moc",
+      "line": 130,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "build/impl-mutation/tst_weburlinterceptor_autogen/include/tst_weburlinterceptor.moc",
+      "line": 130,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "build/impl-mutation/tst_weburlinterceptor_autogen/include/tst_weburlinterceptor.moc",
+      "line": 132,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "build/impl-mutation/tst_weburlinterceptor_autogen/include/tst_weburlinterceptor.moc",
+      "line": 133,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "build/impl-mutation/tst_weburlinterceptor_autogen/include/tst_weburlinterceptor.moc",
+      "line": 133,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "build/impl-mutation/tst_weburlinterceptor_autogen/include/tst_weburlinterceptor.moc",
+      "line": 137,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "build/impl-mutation/tst_weburlinterceptor_autogen/include/tst_weburlinterceptor.moc",
+      "line": 138,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "build/impl-mutation/tst_weburlinterceptor_autogen/include/tst_weburlinterceptor.moc",
+      "line": 138,
+      "mutator": "cxx_lt_to_le"
+    }
+  ],
+  "_comment": "Surviving mutants accepted as baseline. Run scripts/mutation.sh --refresh-baseline to update; new entries in a non-refresh run fail the gate."
+}

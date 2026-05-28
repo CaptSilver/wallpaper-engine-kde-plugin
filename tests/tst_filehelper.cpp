@@ -1674,6 +1674,453 @@ private slots:
         guard.restored = true;
         QFile::setPermissions(cfgDir, origPerms);
     }
+
+    // ── pruneOrphanThumbnails (orphan-GC) ────────────────────────────────────
+    //
+    // Orphan-GC is conservative: only sidecar-anchored thumbnails are
+    // candidates. Entries without a sidecar are kept (backwards-safe for
+    // pre-feature caches).
+    void pruneOrphanThumbnails_removesOrphansKeepsLive() {
+        // Place the cache under QStandardPaths::CacheLocation so the
+        // isUnderRoot belt accepts it.
+        const QString cacheRoot =
+            QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/wekde-test-prune-A";
+        QDir().mkpath(cacheRoot);
+        struct Cleanup {
+            QString path;
+            ~Cleanup() { QDir(path).removeRecursively(); }
+        } cu { cacheRoot };
+
+        QTemporaryDir realDir;
+        QVERIFY(realDir.isValid());
+        // live source — touched real file
+        const QString liveSrc = realDir.path() + "/clip.mp4";
+        QFile         lf(liveSrc);
+        QVERIFY(lf.open(QIODevice::WriteOnly));
+        lf.write("x");
+        lf.close();
+
+        // Orphan entry: abc.jpg + abc.meta pointing at a deleted file.
+        QVERIFY(writeBytes(cacheRoot + "/abc.jpg", 1024));
+        QFile am(cacheRoot + "/abc.meta");
+        QVERIFY(am.open(QIODevice::WriteOnly));
+        am.write(QJsonDocument(QJsonObject { { "src", "/nonexistent.mp4" } })
+                     .toJson(QJsonDocument::Compact));
+        am.close();
+
+        // Live entry: def.jpg + def.meta pointing at the touched real file.
+        QVERIFY(writeBytes(cacheRoot + "/def.jpg", 2048));
+        QFile dm(cacheRoot + "/def.meta");
+        QVERIFY(dm.open(QIODevice::WriteOnly));
+        dm.write(QJsonDocument(QJsonObject { { "src", liveSrc } }).toJson(QJsonDocument::Compact));
+        dm.close();
+
+        // No-sidecar entry: kept (backwards-safe).
+        QVERIFY(writeBytes(cacheRoot + "/nosc.jpg", 512));
+
+        FileHelper fh;
+        const auto freed = fh.pruneOrphanThumbnails(cacheRoot, {}, { realDir.path() });
+        QVERIFY(freed > 0);
+        QVERIFY(! QFile::exists(cacheRoot + "/abc.jpg"));
+        QVERIFY(! QFile::exists(cacheRoot + "/abc.meta"));
+        QVERIFY(QFile::exists(cacheRoot + "/def.jpg"));
+        QVERIFY(QFile::exists(cacheRoot + "/def.meta"));
+        QVERIFY(QFile::exists(cacheRoot + "/nosc.jpg")); // backwards-safe
+    }
+
+    void pruneOrphanThumbnails_skipsEntriesWithoutSidecar() {
+        const QString cacheRoot =
+            QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/wekde-test-prune-B";
+        QDir().mkpath(cacheRoot);
+        struct Cleanup {
+            QString p;
+            ~Cleanup() { QDir(p).removeRecursively(); }
+        } cu { cacheRoot };
+
+        QVERIFY(writeBytes(cacheRoot + "/legacy.jpg", 256));
+        FileHelper fh;
+        QCOMPARE(fh.pruneOrphanThumbnails(cacheRoot, {}, {}), qint64 { 0 });
+        QVERIFY(QFile::exists(cacheRoot + "/legacy.jpg"));
+    }
+
+    void pruneOrphanThumbnails_refusesPathOutsideCacheRoot() {
+        // /tmp is NOT under QStandardPaths::CacheLocation (in test mode the
+        // location lives under m_tmp); pass /tmp as the cache root and
+        // expect the belt to refuse.
+        FileHelper fh;
+        QCOMPARE(fh.pruneOrphanThumbnails("/tmp", {}, {}), qint64 { 0 });
+    }
+
+    void pruneOrphanThumbnails_keepsEntryWhenSrcUnderRoot() {
+        const QString cacheRoot =
+            QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/wekde-test-prune-C";
+        QDir().mkpath(cacheRoot);
+        QTemporaryDir wsRoot;
+        QVERIFY(wsRoot.isValid());
+        // Source path is under wsRoot but the FILE itself doesn't exist.
+        // Our liveness check should still keep it because the canonical
+        // path lies under the seeded root (Steam not mounted yet => keep).
+        struct Cleanup {
+            QString p;
+            ~Cleanup() { QDir(p).removeRecursively(); }
+        } cu { cacheRoot };
+
+        const QString src = wsRoot.path() + "/sub/preview.mp4";
+        QDir().mkpath(QFileInfo(src).absolutePath());
+        QFile f(src);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.close();
+
+        QVERIFY(writeBytes(cacheRoot + "/keep.jpg", 100));
+        QFile m(cacheRoot + "/keep.meta");
+        QVERIFY(m.open(QIODevice::WriteOnly));
+        m.write(QJsonDocument(QJsonObject { { "src", src } }).toJson(QJsonDocument::Compact));
+        m.close();
+
+        FileHelper fh;
+        QCOMPARE(fh.pruneOrphanThumbnails(cacheRoot, { wsRoot.path() }, {}), qint64 { 0 });
+        QVERIFY(QFile::exists(cacheRoot + "/keep.jpg"));
+    }
+
+    // ── enforceCacheQuota (LRU eviction) ─────────────────────────────────────
+    void enforceCacheQuota_zeroIsUnlimited() {
+        const QString cacheRoot =
+            QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/wekde-test-quota-Z";
+        QDir().mkpath(cacheRoot);
+        struct Cleanup {
+            QString p;
+            ~Cleanup() { QDir(p).removeRecursively(); }
+        } cu { cacheRoot };
+        QVERIFY(writeBytes(cacheRoot + "/big.jpg", 5 * 1024 * 1024));
+        FileHelper fh;
+        QCOMPARE(fh.enforceCacheQuotaForce({ cacheRoot }, 0), qint64 { 0 });
+        QVERIFY(QFile::exists(cacheRoot + "/big.jpg"));
+    }
+
+    void enforceCacheQuota_underQuotaIsNoOp() {
+        const QString cacheRoot =
+            QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/wekde-test-quota-U";
+        QDir().mkpath(cacheRoot);
+        struct Cleanup {
+            QString p;
+            ~Cleanup() { QDir(p).removeRecursively(); }
+        } cu { cacheRoot };
+        QVERIFY(writeBytes(cacheRoot + "/small.jpg", 1024));
+        FileHelper fh;
+        QCOMPARE(fh.enforceCacheQuotaForce({ cacheRoot }, 10 * 1024 * 1024), qint64 { 0 });
+        QVERIFY(QFile::exists(cacheRoot + "/small.jpg"));
+    }
+
+    void enforceCacheQuota_keepsRecentEvictsOld() {
+        const QString cacheRoot =
+            QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/wekde-test-quota-E";
+        QDir().mkpath(cacheRoot);
+        struct Cleanup {
+            QString p;
+            ~Cleanup() { QDir(p).removeRecursively(); }
+        } cu { cacheRoot };
+
+        // Two 1MB files. Make oldF mtime older so the heuristic picks it.
+        QVERIFY(writeBytes(cacheRoot + "/oldF.jpg", 1024 * 1024));
+        QVERIFY(writeBytes(cacheRoot + "/newF.jpg", 1024 * 1024));
+        // Bump the oldF file's mtime backwards by 7 days so atime-fallback
+        // picks it for eviction first (utimensat would be cleanest but
+        // QFile lacks a direct helper; setFileTime covers atime+mtime).
+        QFile of(cacheRoot + "/oldF.jpg");
+        QVERIFY(of.open(QIODevice::ReadWrite));
+        QVERIFY(
+            of.setFileTime(QDateTime::currentDateTime().addDays(-7), QFile::FileModificationTime));
+        QVERIFY(of.setFileTime(QDateTime::currentDateTime().addDays(-7), QFile::FileAccessTime));
+        of.close();
+        QFile nf(cacheRoot + "/newF.jpg");
+        QVERIFY(nf.open(QIODevice::ReadWrite));
+        QVERIFY(nf.setFileTime(QDateTime::currentDateTime(), QFile::FileAccessTime));
+        nf.close();
+
+        FileHelper   fh;
+        const qint64 quota = static_cast<qint64>(1.5 * 1024 * 1024); // fits one, not two
+        const qint64 freed = fh.enforceCacheQuotaForce({ cacheRoot }, quota);
+        QVERIFY(freed >= 1024 * 1024); // oldF gone
+        QVERIFY(! QFile::exists(cacheRoot + "/oldF.jpg"));
+        QVERIFY(QFile::exists(cacheRoot + "/newF.jpg"));
+        QCOMPARE(fh.lastGcBytesFreed(), freed);
+    }
+
+    void enforceCacheQuota_evictsSidecarWithJpg() {
+        const QString cacheRoot =
+            QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/wekde-test-quota-S";
+        QDir().mkpath(cacheRoot);
+        struct Cleanup {
+            QString p;
+            ~Cleanup() { QDir(p).removeRecursively(); }
+        } cu { cacheRoot };
+
+        QVERIFY(writeBytes(cacheRoot + "/oldF.jpg", 1024 * 1024));
+        QFile mm(cacheRoot + "/oldF.meta");
+        QVERIFY(mm.open(QIODevice::WriteOnly));
+        mm.write(QJsonDocument(QJsonObject { { "src", "/nonexistent" } })
+                     .toJson(QJsonDocument::Compact));
+        mm.close();
+        QVERIFY(writeBytes(cacheRoot + "/newF.jpg", 1024 * 1024));
+
+        // Age the oldF pair so it's the eviction target.
+        QFile of(cacheRoot + "/oldF.jpg");
+        QVERIFY(of.open(QIODevice::ReadWrite));
+        of.setFileTime(QDateTime::currentDateTime().addDays(-7), QFile::FileAccessTime);
+        of.close();
+
+        FileHelper fh;
+        fh.enforceCacheQuotaForce({ cacheRoot }, 1500 * 1024);
+        QVERIFY(! QFile::exists(cacheRoot + "/oldF.jpg"));
+        QVERIFY(! QFile::exists(cacheRoot + "/oldF.meta")); // sidecar gone too
+    }
+
+    void enforceCacheQuota_throttledByDefault() {
+        const QString cacheRoot =
+            QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/wekde-test-quota-T";
+        QDir().mkpath(cacheRoot);
+        struct Cleanup {
+            QString p;
+            ~Cleanup() { QDir(p).removeRecursively(); }
+        } cu { cacheRoot };
+
+        QVERIFY(writeBytes(cacheRoot + "/a.jpg", 1024 * 1024));
+        QVERIFY(writeBytes(cacheRoot + "/b.jpg", 1024 * 1024));
+        QFile a(cacheRoot + "/a.jpg");
+        QVERIFY(a.open(QIODevice::ReadWrite));
+        a.setFileTime(QDateTime::currentDateTime().addDays(-7), QFile::FileAccessTime);
+        a.close();
+
+        FileHelper   fh;
+        const qint64 first = fh.enforceCacheQuota({ cacheRoot }, 1500 * 1024);
+        QVERIFY(first >= 1024 * 1024);
+
+        // Add a new file then call again — throttle should keep it (returns
+        // the previous freed total, no work).
+        QVERIFY(writeBytes(cacheRoot + "/c.jpg", 1024 * 1024));
+        QFile cc(cacheRoot + "/c.jpg");
+        QVERIFY(cc.open(QIODevice::ReadWrite));
+        cc.setFileTime(QDateTime::currentDateTime().addDays(-7), QFile::FileAccessTime);
+        cc.close();
+        const qint64 second = fh.enforceCacheQuota({ cacheRoot }, 1500 * 1024);
+        QCOMPARE(second, first);
+        QVERIFY(QFile::exists(cacheRoot + "/c.jpg")); // not evicted by throttled call
+    }
+
+    void enforceCacheQuota_refusesRootsOutsideCacheLocation() {
+        FileHelper    fh;
+        QTemporaryDir outside;
+        QVERIFY(outside.isValid());
+        QVERIFY(writeBytes(outside.path() + "/x.jpg", 100));
+        // /tmp is outside QStandardPaths::CacheLocation; nothing freed.
+        QCOMPARE(fh.enforceCacheQuotaForce({ outside.path() }, 1), qint64 { 0 });
+        QVERIFY(QFile::exists(outside.path() + "/x.jpg"));
+    }
+
+    // ── generateThumbnail sidecar emission ───────────────────────────────────
+    void generateThumbnail_writesSidecarForExisting() {
+        QTemporaryDir cache;
+        QVERIFY(cache.isValid());
+        // Pre-create a stub JPEG and verify a missing sidecar is written on
+        // the short-circuit (exists-and-non-empty) branch.
+        const QString out = cache.path() + "/abc.jpg";
+        QVERIFY(writeBytes(out, 16));
+        const QString sidecar = cache.path() + "/abc.meta";
+        QVERIFY(! QFile::exists(sidecar)); // pre-feature state
+
+        FileHelper fh;
+        QSignalSpy spy(&fh, &FileHelper::thumbnailReady);
+        fh.generateThumbnail("/path/to/source.mp4", out, 0.5);
+        QVERIFY(spy.wait(2000));
+        QVERIFY(QFile::exists(sidecar));
+        QFile s(sidecar);
+        QVERIFY(s.open(QIODevice::ReadOnly));
+        const QJsonDocument doc = QJsonDocument::fromJson(s.readAll());
+        QVERIFY(doc.isObject());
+        QCOMPARE(doc.object().value("src").toString(), QString("/path/to/source.mp4"));
+    }
+
+    // ── readWorkshopManifest (Valve KVFormat) ────────────────────────────────
+    void readWorkshopManifest_parsesValveKV() {
+        QTemporaryDir lib;
+        QVERIFY(lib.isValid());
+        const QString acfPath = lib.path() + "/steamapps/workshop/appworkshop_431960.acf";
+        QDir().mkpath(QFileInfo(acfPath).absolutePath());
+        QFile f(acfPath);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(R"("AppWorkshop"
+{
+    "appid"  "431960"
+    "WorkshopItemsInstalled"
+    {
+        "2866203962"
+        {
+            "size"          "12345678"
+            "timeupdated"   "1721398765"
+        }
+        "3363252053"
+        {
+            "size"          "9876543"
+            "timeupdated"   "1735000000"
+        }
+        "3453251764"
+        {
+            "size"          "55"
+        }
+    }
+}
+)");
+        f.close();
+        FileHelper fh;
+        const auto m = fh.readWorkshopManifest(lib.path());
+        QCOMPARE(m.size(), 3);
+        QCOMPARE(m.value("2866203962").toLongLong(), qint64 { 1721398765 });
+        QCOMPARE(m.value("3363252053").toLongLong(), qint64 { 1735000000 });
+        // Missing timeupdated -> 0
+        QCOMPARE(m.value("3453251764").toLongLong(), qint64 { 0 });
+    }
+
+    void readWorkshopManifest_failsoftOnMalformed() {
+        QTemporaryDir lib;
+        QVERIFY(lib.isValid());
+        const QString acfPath = lib.path() + "/steamapps/workshop/appworkshop_431960.acf";
+        QDir().mkpath(QFileInfo(acfPath).absolutePath());
+        QFile f(acfPath);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(R"("AppWorkshop"
+{
+    "appid"  "431960"
+    "WorkshopItemsInstalled"
+    {
+        "broken)");
+        f.close();
+        FileHelper fh;
+        const auto m = fh.readWorkshopManifest(lib.path());
+        QVERIFY(m.isEmpty());
+    }
+
+    void readWorkshopManifest_returnsEmptyOnMissingFile() {
+        FileHelper fh;
+        QVERIFY(fh.readWorkshopManifest("/nonexistent/library").isEmpty());
+    }
+
+    void readWorkshopManifest_returnsEmptyOnEmptyInput() {
+        FileHelper fh;
+        QVERIFY(fh.readWorkshopManifest(QString()).isEmpty());
+    }
+
+    void readWorkshopManifest_stripsFileUri() {
+        QTemporaryDir lib;
+        QVERIFY(lib.isValid());
+        const QString acfPath = lib.path() + "/steamapps/workshop/appworkshop_431960.acf";
+        QDir().mkpath(QFileInfo(acfPath).absolutePath());
+        QFile f(acfPath);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(R"("AppWorkshop" { "WorkshopItemsInstalled" { "42" { "timeupdated" "100" } } })");
+        f.close();
+        FileHelper fh;
+        const auto m = fh.readWorkshopManifest("file://" + lib.path());
+        QCOMPARE(m.size(), 1);
+        QCOMPARE(m.value("42").toLongLong(), qint64 { 100 });
+    }
+
+    // ── recordSeenVersion / seenVersion ──────────────────────────────────────
+    void recordSeenVersion_writesBackToIdJson() {
+        // Use isolated config dir under the test-mode QStandardPaths.
+        const QString cfg =
+            QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
+            "/wekde/wallpaper";
+        QDir().mkpath(cfg);
+        QFile pre(cfg + "/123.json");
+        QVERIFY(pre.open(QIODevice::WriteOnly));
+        pre.write(R"({"display_mode": 1})");
+        pre.close();
+
+        FileHelper fh;
+        fh.recordSeenVersion("123", 1721398765);
+
+        QFile post(cfg + "/123.json");
+        QVERIFY(post.open(QIODevice::ReadOnly));
+        const QJsonDocument d = QJsonDocument::fromJson(post.readAll());
+        QVERIFY(d.isObject());
+        QCOMPARE(d.object().value("display_mode").toInt(), 1);
+        QCOMPARE(d.object().value("last_seen_version").toVariant().toLongLong(),
+                 qint64 { 1721398765 });
+    }
+
+    void recordSeenVersion_createsFileWhenAbsent() {
+        const QString cfg =
+            QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
+            "/wekde/wallpaper";
+        QDir().mkpath(cfg);
+        // Make sure file doesn't exist yet.
+        QFile::remove(cfg + "/456.json");
+
+        FileHelper fh;
+        fh.recordSeenVersion("456", 12345);
+
+        QFile post(cfg + "/456.json");
+        QVERIFY(post.exists());
+        QVERIFY(post.open(QIODevice::ReadOnly));
+        const QJsonDocument d = QJsonDocument::fromJson(post.readAll());
+        QVERIFY(d.isObject());
+        QCOMPARE(d.object().value("last_seen_version").toVariant().toLongLong(), qint64 { 12345 });
+    }
+
+    void seenVersion_returnsZeroWhenKeyAbsent() {
+        const QString cfg =
+            QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
+            "/wekde/wallpaper";
+        QDir().mkpath(cfg);
+        QFile pre(cfg + "/789.json");
+        QVERIFY(pre.open(QIODevice::WriteOnly));
+        pre.write(R"({"display_mode": 1})");
+        pre.close();
+
+        FileHelper fh;
+        QCOMPARE(fh.seenVersion("789"), qint64 { 0 });
+    }
+
+    void seenVersion_returnsZeroWhenFileAbsent() {
+        FileHelper fh;
+        QCOMPARE(fh.seenVersion("doesnotexist"), qint64 { 0 });
+    }
+
+    void recordSeenVersion_idempotent() {
+        const QString cfg =
+            QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
+            "/wekde/wallpaper";
+        QDir().mkpath(cfg);
+        QFile::remove(cfg + "/idemp.json");
+        FileHelper fh;
+        fh.recordSeenVersion("idemp", 42);
+        fh.recordSeenVersion("idemp", 42);
+        QCOMPARE(fh.seenVersion("idemp"), qint64 { 42 });
+    }
+
+    void allSeenVersions_returnsMap() {
+        const QString cfg =
+            QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
+            "/wekde/wallpaper";
+        // Clean slate first — prior tests leave files behind in the same
+        // test-mode config dir.
+        QDir(cfg).removeRecursively();
+        QDir().mkpath(cfg);
+
+        FileHelper fh;
+        fh.recordSeenVersion("aaa", 100);
+        fh.recordSeenVersion("bbb", 200);
+        QFile noVer(cfg + "/ccc.json");
+        QVERIFY(noVer.open(QIODevice::WriteOnly));
+        noVer.write(R"({"display_mode": 1})");
+        noVer.close();
+
+        const auto m = fh.allSeenVersions();
+        QCOMPARE(m.size(), 2);
+        QCOMPARE(m.value("aaa").toLongLong(), qint64 { 100 });
+        QCOMPARE(m.value("bbb").toLongLong(), qint64 { 200 });
+        QVERIFY(! m.contains("ccc"));
+    }
 };
 
 QTEST_MAIN(TestFileHelper)

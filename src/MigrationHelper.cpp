@@ -3,12 +3,17 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLoggingCategory>
 #include <QStandardPaths>
 #include <QStringList>
+#include <QVariantMap>
 
 #include <KConfig>
 #include <KConfigGroup>
+
+#include "FileHelper.hpp"
 
 Q_LOGGING_CATEGORY(lcWek, "wekde.migration")
 
@@ -137,6 +142,55 @@ void MigrationHelper::runIfNeeded() {
     } else {
         qCWarning(lcWek) << "failed to write marker:" << markerPath;
     }
+}
+
+void MigrationHelper::seedLastSeenVersions(const QString& steamLibraryPath) {
+    // Plugin-config marker: one shared rc under the user's KConfig root so
+    // we don't need a new top-level file. KConfig::SimpleConfig keeps us off
+    // the merged /etc defaults.
+    const QString cfg = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
+    if (cfg.isEmpty()) return;
+    const QString rcPath = cfg + "/wekde/migrations.rc";
+    KConfig       rc(rcPath, KConfig::SimpleConfig);
+    KConfigGroup  g = rc.group(QStringLiteral("Migrations"));
+    if (g.readEntry("last-seen-seeded", false)) {
+        qCInfo(lcWek) << "seedLastSeenVersions: marker present, skipping";
+        return;
+    }
+
+    // Read the Steam manifest via FileHelper. Empty / missing => still set
+    // the marker (we considered migration done) so we don't re-attempt
+    // every plasma start.
+    FileHelper        fh;
+    const QVariantMap manifest = fh.readWorkshopManifest(steamLibraryPath);
+
+    if (! manifest.isEmpty()) {
+        // For every existing <id>.json that doesn't already have a
+        // last_seen_version, write the manifest's current value. Skip the
+        // bindings sidecar files (<id>_bindings.json).
+        QDir                wpDir(fh.allSeenVersions().isEmpty()
+                       ? cfg + "/wekde/wallpaper"
+                       : cfg + "/wekde/wallpaper"); // explicit for clarity
+        const QFileInfoList entries =
+            wpDir.entryInfoList(QStringList { QStringLiteral("*.json") }, QDir::Files);
+        int seeded = 0;
+        for (const QFileInfo& fi : entries) {
+            const QString id = fi.completeBaseName();
+            if (id.endsWith("_bindings")) continue;
+            const qint64 already = fh.seenVersion(id);
+            if (already != 0) continue;
+            const qint64 ts = manifest.value(id).toLongLong();
+            if (ts == 0) continue;
+            fh.recordSeenVersion(id, ts);
+            ++seeded;
+        }
+        qCInfo(lcWek) << "seedLastSeenVersions: seeded" << seeded << "wallpapers";
+    } else {
+        qCInfo(lcWek) << "seedLastSeenVersions: empty manifest, no seed";
+    }
+
+    g.writeEntry("last-seen-seeded", true);
+    rc.sync();
 }
 
 } // namespace wekde

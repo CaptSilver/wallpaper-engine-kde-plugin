@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE node PUBLIC
+   "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+   "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!--
+  Wallpaper Engine plugin D-Bus session-bus surface.
+
+  Service:   com.github.captsilver.WallpaperEngine
+  Object:    /WallpaperEngine
+
+  CLI usage:
+      qdbus com.github.captsilver.WallpaperEngine /WallpaperEngine Next
+      qdbus com.github.captsilver.WallpaperEngine /WallpaperEngine \
+            ActivatePlaylist "favorites"
+
+  Multi-monitor: first-plasmoid-wins service ownership.  The second
+  plasmoid logs "service already registered" and goes silent.  Per-monitor
+  multi-instance D-Bus is a future spec.
+
+  See src/WekControl.{hpp,cpp} for the C++ implementation.
+-->
+<node>
+  <interface name="com.github.captsilver.WallpaperEngine">
+    <method name="Next"/>
+    <method name="Previous"/>
+    <method name="Pause"/>
+    <method name="Resume"/>
+    <method name="Toggle"/>
+    <method name="Mute"/>
+    <method name="Unmute"/>
+    <method name="ToggleMute"/>
+    <method name="ActivatePlaylist">
+      <arg name="id" type="s" direction="in"/>
+    </method>
+    <method name="Reload"/>
+    <method name="CurrentWorkshopId">
+      <arg name="value" type="s" direction="out"/>
+    </method>
+    <method name="CurrentPlaylistId">
+      <arg name="value" type="s" direction="out"/>
+    </method>
+    <method name="CurrentItemIndex">
+      <arg name="value" type="i" direction="out"/>
+    </method>
+    <signal name="WallpaperChanged">
+      <arg name="workshopId" type="s"/>
+      <arg name="playlistId" type="s"/>
+    </signal>
+  </interface>
+</node>

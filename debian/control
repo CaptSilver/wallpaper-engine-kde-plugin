@@ -11,6 +11,9 @@ Build-Depends:
  libvulkan-dev,
  libkf6package-dev,
  libkf6config-dev,
+ libkf6notifications-dev,
+ libkf6crash-dev,
+ libkf6globalaccel-dev,
  libplasma-dev,
  plasma-workspace-dev,
  qt6-base-dev,
@@ -34,9 +37,13 @@ Depends:
  ${shlibs:Depends},
  ${misc:Depends},
  plasma-workspace,
+ libkf6notifications6,
+ libkf6crash6,
+ libkf6globalaccel6,
 Recommends:
  gstreamer1.0-libav,
  qt6-webengine,
+ vulkan-tools,
 Suggests:
  pipewire-pulse,
 Description: Wallpaper Engine integration for KDE Plasma 6

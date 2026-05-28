@@ -162,6 +162,15 @@ Rectangle {
         console.error(`backend ${backname} first frame`);
         if (wallpaper.hasOwnProperty('accentColor'))
             wallpaper.accentColorChanged();
+        // Record the manifest timestamp we loaded so the "Updated" badge
+        // clears for this wallpaper. workshopManifest may be empty (Steam
+        // library not configured, malformed .acf) — record 0 in that case
+        // so the badge stays gone if the user later mounts a manifest.
+        const wid = background.workshopid;
+        if (wid && wpListModel.workshopManifest) {
+            const ts = wpListModel.workshopManifest[wid] || 0;
+            if (ts > 0) pyext.record_seen_version(wid, ts);
+        }
     }
 
     Component.onDestruction: {
@@ -330,6 +339,24 @@ Rectangle {
         workshopDirs: Common.getProjectDirs(background.steamlibrary)
         globalConfigPath: Common.getGlobalConfigPath(background.steamlibrary)
         filterStr: background.filterStr
+        // Manifest + seen-versions powering the "Updated" badge. Populated
+        // once in Component.onCompleted below — evaluated bindings on these
+        // two functions caused a feedback loop where each re-evaluation
+        // produced a fresh map object, flipping the model's identity and
+        // re-triggering downstream bindings. record_seen_version after
+        // first-frame mutates the on-disk store but NOT the in-memory
+        // workshopManifest/seenVersions properties — the badge clearing
+        // only matters once the user re-opens the picker, which
+        // re-instantiates the model via the editor.
+        workshopManifest: ({})
+        seenVersions:     ({})
+        Component.onCompleted: {
+            if (background.steamlibrary) {
+                workshopManifest = pyext.read_workshop_manifest(
+                                       Common.urlNative(background.steamlibrary));
+            }
+            seenVersions = pyext.all_seen_versions();
+        }
         initItemOp: (item) => {
             if(!background.customConf) return;
             item.favor = background.customConf.favor.has(item.workshopid);
@@ -343,6 +370,23 @@ Rectangle {
             wallpaper.configuration.WallpaperSource = Common.packWallpaperSource(model);
         }
     }
+    // Notification + diagnostics helpers. Per-monitor dedup is handled at
+    // the QML caller side via `Window.screen?.primary !== false`; without
+    // the guard a multi-monitor user would see 1+N popups for the same
+    // failure (the wallpaper plasmoid is per-screen).
+    WekNotifier   { id: notifier }
+    WekDiagnostics { id: diagnostics }
+
+    // Headless control surface — D-Bus session bus.  First-plasmoid-wins
+    // on multi-monitor; the second plasmoid logs "service already
+    // registered" and goes silent.  See src/WekControl.{hpp,cpp} for the
+    // C++ side.  setPlaylistController binds the route once both elements
+    // are constructed.
+    WekControl {
+        id: dbusControl
+        Component.onCompleted: dbusControl.setPlaylistController(playlistController)
+    }
+
     PlaylistController {
         id: playlistController
         wpListModel: wpListModel
@@ -350,6 +394,9 @@ Rectangle {
         common: Common
         noRandomWhilePaused: background.noRandomWhilePaused
         desktopOk: background.ok
+        notifier: notifier
+        notifyOnAdvance: wallpaper.configuration.PlaylistNotifyOnAdvance
+        dbusControl: dbusControl
 
         // Runtime mgr owns the playback cycle. (editorMode defaults to false.)
         activePlaylistIdRead:      wallpaper.configuration.ActivePlaylistId
@@ -487,6 +534,14 @@ Rectangle {
             }
         }
         function loadInfoShow(info) {
+            // Per-monitor dedup — only the primary screen fires notifications.
+            // On multi-monitor the wallpaper plasmoid is per-screen; without
+            // dedup the user sees 1+N popups for the same failure. `!== false`
+            // (not `=== true`) lets undefined fall through as truthy → fire-
+            // by-default on Plasma versions that don't expose primary.
+            if (Window.screen?.primary !== false) {
+                notifier.wallpaperLoadFailed(background.workshopid || "", info);
+            }
             this.load("backend/InfoShow.qml", {
                 wid: background.workshopid,
                 type: background.wallpaperType,
@@ -604,6 +659,37 @@ Rectangle {
         // (no subprocess, no plasmashell restart) and returns normally, so it
         // is safe to run applySource() and the signal connects below after it.
         MigrationHelper.runIfNeeded();
+
+        // One-shot seed of last_seen_version for every existing <id>.json
+        // based on the current Steam manifest. Without this, the first
+        // launch after the Updated-badge feature lands would mark every
+        // configured wallpaper as updated (no last_seen_version => 0 < any
+        // manifest timestamp). Idempotent via its own KConfig marker;
+        // empty steamlibrary just sets the marker and returns.
+        MigrationHelper.seedLastSeenVersions(Common.urlNative(background.steamlibrary));
+
+        // Cache GC pass — best-effort, never blocks the desktop.
+        //   1. Orphan-GC over video-thumbs cache: drop entries whose source
+        //      .mp4 no longer resolves under the installed-wallpaper or
+        //      video-folder roots. Sidecars (.meta) anchor each thumbnail to
+        //      its source so we can do this safely; entries without a sidecar
+        //      (pre-feature cache) are kept.
+        //   2. LRU eviction across the renderer cache + video-thumbs to keep
+        //      the on-disk footprint under cfg_CacheQuotaMB (default 500 MB).
+        //      Throttled inside FileHelper to one run per minute so frequent
+        //      wallpaper switches don't churn the disk.
+        if (typeof plugin_info !== 'undefined' && plugin_info && plugin_info.cache_path) {
+            const thumbDir = Common.urlNative(plugin_info.cache_path);
+            const installed = Common.getProjectDirs(background.steamlibrary);
+            const videoDirs = [];
+            if (wallpaper.configuration.VideoFolderPath)
+                videoDirs.push(Common.urlNative(wallpaper.configuration.VideoFolderPath));
+            pyext.prune_orphan_thumbnails(thumbDir, installed, videoDirs);
+            const quotaMB = wallpaper.configuration.CacheQuotaMB || 0;
+            if (quotaMB > 0) {
+                pyext.enforce_cache_quota([thumbDir], quotaMB * 1024 * 1024);
+            }
+        }
 
         // load first backend
         applySource();

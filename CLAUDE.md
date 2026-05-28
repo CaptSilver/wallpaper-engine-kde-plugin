@@ -64,7 +64,7 @@ is the single source of truth. The default run is the comprehensive gate:
 1. **clang-format lint** — parent-repo C/C++ (excludes `build|tests/build|tests/fixtures`).
 2. **Submodule build + tests** — `backend_scene_tests` + `scenescript_tests`.
 3. **Main project ctest** — the `tests/` binaries.
-4. **Fuzz smoke** — 8 libFuzzer harnesses, cold-start (`FUZZ_SECS=N` to tune, default 20s each).
+4. **Fuzz smoke** — 9 libFuzzer harnesses, **seeded from `tests/fuzz_corpus/<target>/seed/`** (cold-start fallback when missing). `FUZZ_SECS=N` to tune (default 20s each). After long fuzz sessions, refresh the committed seeds with `scripts/fuzz/minimize.sh <target>`. Size budget: 200 KB per target. Fuzz crash regressions are pinned under `tests/fixtures/fuzz_regressions/<target>/*.bin` and replayed by the parser doctests; pin a new artifact with `scripts/fuzz/pin-regression.sh`.
 
 Coverage and mutation testing are **separate opt-ins** (`-DCOVERAGE=ON` / `-DMUTATION_TESTING=ON`),
 not part of the default preflight path — run them on demand (see the topic memory files).
@@ -91,12 +91,20 @@ to invoke from inside the `src/backend_scene` submodule.
 
 ```bash
 scripts/preflight.sh --werror     # build full project with -DWEK_WERROR=ON (see Warning flags)
+scripts/preflight.sh --coverage   # llvm-cov + qmlcov vs tests/.coverage-baseline.json (NON-FATAL until COVERAGE_FATAL=1)
 scripts/preflight.sh --tsan       # WEK_SANITIZE=thread over the SceneScript + thread suites
 scripts/preflight.sh --sanitize=address,undefined   # ASAN+UBSAN over parent + submodule suites
 ```
 
-`--werror` and `--sanitize=...` are **non-fatal** today (they surface findings without failing the
-run); `--tsan` is a gate (FATAL on a race). See `scripts/preflight.sh --help`.
+`--werror`, `--coverage`, and `--sanitize=...` are **non-fatal** today (they surface findings without
+failing the run); `--tsan` is a gate (FATAL on a race). Coverage flips to FATAL with
+`COVERAGE_FATAL=1`; refresh the baseline with `WEK_COVERAGE_REFRESH=1`. See `scripts/preflight.sh --help`.
+
+`scripts/mutation.sh` runs Mull (auto-fetched via the submodule's `FetchMull.cmake`) over the
+instrumented parent test targets and diffs the surviving-mutant set against `tests/.mull-baseline.json`.
+**Not** wired into the default preflight (heavy: 10-15 min full / 1-5 min `--diff-only`); the script
+is the gate, called separately from preflight. New survivors fail (exit 1); `--refresh-baseline`
+rewrites the committed survivor set.
 
 ### Warning flags & `-Werror`
 

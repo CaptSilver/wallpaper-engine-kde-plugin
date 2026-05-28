@@ -165,6 +165,12 @@ ColumnLayout {
         }
         enabled: Boolean(cfg_SteamLibraryPath)
         readfile: pyext.readfile
+        // Re-read the manifest whenever the user re-configures the Steam
+        // library path. Empty path => empty map => no badges.
+        workshopManifest: cfg_SteamLibraryPath
+                          ? pyext.read_workshop_manifest(Common.urlNative(cfg_SteamLibraryPath))
+                          : ({})
+        seenVersions: pyext.all_seen_versions()
     }
 
     PlaylistController {

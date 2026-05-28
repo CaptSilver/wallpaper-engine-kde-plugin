@@ -7,7 +7,6 @@
 namespace wallpaper::audio
 {
 class AudioAnalyzer;
-class AudioCapture;
 } // namespace wallpaper::audio
 
 namespace wekde
@@ -71,7 +70,6 @@ private:
     int  m_intervalMs { 33 };
 
     std::shared_ptr<wallpaper::audio::AudioAnalyzer> m_analyzer;
-    std::unique_ptr<wallpaper::audio::AudioCapture>  m_capture;
     QTimer                                           m_timer;
 };
 

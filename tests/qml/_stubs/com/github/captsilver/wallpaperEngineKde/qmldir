@@ -11,4 +11,7 @@ WebAudioBridge 1.2 WebAudioBridge.qml
 WebUrlInterceptor 1.2 WebUrlInterceptor.qml
 SafeWallpaperBridge 1.2 SafeWallpaperBridge.qml
 PlaylistManager 1.2 PlaylistManager.qml
+WekControl 1.2 WekControl.qml
+WekNotifier 1.2 WekNotifier.qml
+WekDiagnostics 1.2 WekDiagnostics.qml
 singleton MigrationHelper 1.2 MigrationHelperStub.qml

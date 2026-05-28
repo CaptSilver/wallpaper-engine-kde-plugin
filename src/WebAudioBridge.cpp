@@ -1,7 +1,7 @@
 #include "WebAudioBridge.hpp"
 
 #include "Audio/AudioAnalyzer.h"
-#include "Audio/AudioCapture.h"
+#include "Audio/AudioBus.h"
 
 #include <QDebug>
 #include <vector>
@@ -34,33 +34,43 @@ void WebAudioBridge::setIntervalMs(int ms) {
 }
 
 void WebAudioBridge::start() {
-    m_analyzer = std::make_shared<wallpaper::audio::AudioAnalyzer>();
-    m_capture  = std::make_unique<wallpaper::audio::AudioCapture>();
-
-    if (! m_capture->Init(m_analyzer)) {
-        // No .monitor source available (or PulseAudio/PipeWire missing).
-        // Keep analyzer alive so test hooks still function, but don't
-        // burn CPU running an FFT timer over silence.
-        qWarning() << "WebAudioBridge: system audio capture unavailable; "
+    // Acquire the shared analyzer from the process-singleton AudioBus.
+    // Any scene wallpaper that already opened system capture will share
+    // the same PulseAudio monitor stream + FFT pipeline; otherwise the
+    // bus opens one on our behalf.  Acquire returns a valid analyzer
+    // even when capture-init fails (no .monitor source / PulseAudio
+    // missing) — the timer will still run but the spectrum stays empty,
+    // matching the pre-bus qWarning fall-through path.
+    m_analyzer = wallpaper::audio::AudioBus::Acquire(/*wantSystemCapture=*/true);
+    if (! m_analyzer) {
+        qWarning() << "WebAudioBridge: AudioBus::Acquire returned null; "
                       "audio-reactive web wallpapers will receive no spectrum data";
-        m_capture.reset();
         m_timer.stop();
         return;
     }
-
+    if (! wallpaper::audio::AudioBus::HasSystemCapture()) {
+        qWarning() << "WebAudioBridge: system audio capture unavailable; "
+                      "audio-reactive web wallpapers will receive no spectrum data";
+        m_timer.stop();
+        return;
+    }
     m_timer.start();
 }
 
 void WebAudioBridge::stop() {
     m_timer.stop();
-    if (m_capture) m_capture->Stop();
-    m_capture.reset();
+    // Dropping the shared_ptr decrements the bus's subscriber count; if
+    // we were the last system-capture wanter the bus releases the
+    // PulseAudio monitor stream, if we were the last subscriber of any
+    // kind it tears the whole bus down.
     m_analyzer.reset();
 }
 
 void WebAudioBridge::onTimerTick() {
     if (! m_analyzer) return;
-    m_analyzer->Process();
+    // The bus owns Process() — the 60Hz internal thread already runs it
+    // once per ~16ms.  We just sample the latest spectrum at our own
+    // emit cadence (30Hz by default, set via setIntervalMs).
     QList<double> buf = encodeBuffer(*m_analyzer);
     if (! buf.isEmpty()) emit audioBuffer(buf);
 }

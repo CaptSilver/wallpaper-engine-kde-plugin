@@ -11,6 +11,11 @@
 #include <QDateTime>
 #include <QMutexLocker>
 #include <QThreadPool>
+#include <QHash>
+#include <QVariant>
+#include <algorithm>
+#include <functional>
+#include <optional>
 
 #ifdef WEKDE_HAS_MPV
 #    include "backend_mpv/ThumbnailGrabber.hpp"
@@ -38,6 +43,32 @@ static bool isUnderAnyRoot(const QString& canon, const QSet<QString>& roots) {
         if (isUnderRoot(canon, root)) return true;
     }
     return false;
+}
+
+// Sidecar path for a thumbnail JPEG: strip a trailing `.jpg` (case-insensitive)
+// and substitute `.meta`. If `thumbPath` doesn't end in `.jpg` we append `.meta`
+// — the orphan-GC keeps backwards-safe behaviour either way (entries without a
+// matching sidecar are kept).
+static QString sidecarFor(const QString& thumbPath) {
+    if (thumbPath.endsWith(QStringLiteral(".jpg"), Qt::CaseInsensitive))
+        return thumbPath.left(thumbPath.size() - 4) + QStringLiteral(".meta");
+    return thumbPath + QStringLiteral(".meta");
+}
+
+// Write the sidecar JSON describing the source `videoPath` next to `outPath`.
+// Best-effort — failure is logged and otherwise ignored (the thumbnail itself
+// is still useful; the sidecar only anchors the orphan-GC).
+static void writeSidecar(const QString& outPath, const QString& videoPath) {
+    const QString sidecarPath = sidecarFor(outPath);
+    QFile         f(sidecarPath);
+    if (! f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        qWarning() << "FileHelper::writeSidecar: cannot open" << sidecarPath;
+        return;
+    }
+    QJsonObject obj;
+    obj["src"] = videoPath;
+    const QJsonDocument doc(obj);
+    f.write(doc.toJson(QJsonDocument::Compact));
 }
 
 // Find the index just past the closing '>' of the first real <head start tag
@@ -550,6 +581,10 @@ void FileHelper::generateThumbnail(const QString& videoPath, const QString& outP
                                    double atSeconds) {
     // Short-circuit if cached thumbnail already exists.
     if (QFileInfo::exists(outPath) && QFileInfo(outPath).size() > 0) {
+        // Refresh the sidecar if it's missing — users with pre-feature
+        // thumbnails get one written on first re-touch so the orphan-GC
+        // becomes effective without requiring a manual cache wipe.
+        if (! QFileInfo::exists(sidecarFor(outPath))) writeSidecar(outPath, videoPath);
         QMetaObject::invokeMethod(
             this,
             [this, videoPath, outPath]() {
@@ -589,6 +624,12 @@ void FileHelper::generateThumbnail(const QString& videoPath, const QString& outP
         }
         wekde::ThumbnailGrabber grabber;
         const bool              ok = grabber.grab(videoPath, outPath, atSeconds);
+        if (ok) {
+            // Anchor this entry to its source so the orphan-GC can later
+            // map outPath -> videoPath. Best-effort; thumbnail still valid
+            // even if the sidecar write fails.
+            writeSidecar(outPath, videoPath);
+        }
         {
             QMutexLocker lock(&m_inflightMutex);
             m_inflight.remove(videoPath);
@@ -628,6 +669,385 @@ QVariantList FileHelper::scanVideoFolder(const QString& path) {
         entry["mtime"] = fi.lastModified().toSecsSinceEpoch();
         entry["size"]  = fi.size();
         out.append(entry);
+    }
+    return out;
+}
+
+// ── Orphan-GC + quota helpers ─────────────────────────────────────────────────
+
+namespace
+{
+// True iff `src` resolves under any of the seeded roots OR exists as a real
+// file. Used by pruneOrphanThumbnails: a thumbnail "lives" while its source
+// remains visible to the plugin (either canonically under a workshop dir or
+// directly accessible at the recorded path). Empty roots => only the
+// file-exists check matters.
+bool sourceStillLive(const QString& src, const QSet<QString>& canonRoots) {
+    if (src.isEmpty()) return false;
+    // First the cheap path-existence test — covers Videos-tab sources that
+    // are absolute symlinks outside any seeded root.
+    if (QFileInfo::exists(src)) return true;
+    // Otherwise see if it canonically lands under one of the seeded roots
+    // (workshop/myprojects/defaultprojects/video-folder). canonicalFilePath
+    // returns empty if the file is missing, so this branch covers the
+    // "seeded root exists but the file was deleted" case AS A MISS — meaning
+    // we treat it as an orphan, which matches expectations: a deleted source
+    // file under a still-mounted workshop dir is gone for good.
+    const QString canon = QFileInfo(src).canonicalFilePath();
+    if (canon.isEmpty()) return false;
+    return isUnderAnyRoot(canon, canonRoots);
+}
+} // namespace
+
+qint64 FileHelper::pruneOrphanThumbnails(const QString&     cacheRoot,
+                                         const QStringList& installedWallpaperDirs,
+                                         const QStringList& videoFolderPaths) {
+    if (cacheRoot.isEmpty()) return 0;
+    // Safety belt: refuse anything outside QStandardPaths::CacheLocation.
+    // Mirrors clearCacheDir.
+    QString native = cacheRoot;
+    if (native.startsWith("file://")) native = native.mid(7);
+    const QString cacheRootCanon =
+        QFileInfo(QStandardPaths::writableLocation(QStandardPaths::CacheLocation))
+            .canonicalFilePath();
+    if (cacheRootCanon.isEmpty()) return 0;
+    const QString canon = QFileInfo(native).canonicalFilePath();
+    if (canon.isEmpty()) return 0; // dir doesn't exist => nothing to do
+    if (! isUnderRoot(canon, cacheRootCanon)) {
+        qWarning() << "FileHelper::pruneOrphanThumbnails refused path outside cache root:"
+                   << cacheRoot;
+        return 0;
+    }
+
+    // Build canonicalised root set from installedWallpaperDirs + videoFolderPaths.
+    // Each entry is canonicalised on insert; non-existent paths are dropped.
+    QSet<QString> canonRoots;
+    auto          addRoot = [&](const QString& p) {
+        if (p.isEmpty()) return;
+        QString s = p;
+        if (s.startsWith("file://")) s = s.mid(7);
+        const QString c = QFileInfo(s).canonicalFilePath();
+        if (! c.isEmpty()) canonRoots.insert(c);
+    };
+    for (const QString& p : installedWallpaperDirs) addRoot(p);
+    for (const QString& p : videoFolderPaths) addRoot(p);
+
+    qint64 freed = 0;
+    QDir   dir(canon);
+    if (! dir.exists()) return 0;
+    // Walk top-level files only — video-thumbs is a flat dir of <hash>.jpg.
+    const QFileInfoList entries =
+        dir.entryInfoList(QStringList { QStringLiteral("*.meta") }, QDir::Files);
+    for (const QFileInfo& fi : entries) {
+        const QString metaPath = fi.absoluteFilePath();
+        // Verify the sidecar canonically lies under cacheRootCanon. Defense
+        // in depth against a TOCTOU swap or escaping symlink.
+        const QString metaCanon = QFileInfo(metaPath).canonicalFilePath();
+        if (metaCanon.isEmpty() || ! isUnderRoot(metaCanon, cacheRootCanon)) {
+            qWarning() << "FileHelper::pruneOrphanThumbnails refused entry outside cache root:"
+                       << metaPath;
+            continue;
+        }
+        QFile mf(metaPath);
+        if (! mf.open(QIODevice::ReadOnly)) continue;
+        const QJsonDocument doc = QJsonDocument::fromJson(mf.readAll());
+        mf.close();
+        if (doc.isNull() || ! doc.isObject()) continue;
+        const QString src = doc.object().value("src").toString();
+        if (sourceStillLive(src, canonRoots)) continue;
+
+        // Orphan — drop the .meta and its companion .jpg (if any).
+        const QString jpgPath  = metaPath.left(metaPath.size() - 5) + QStringLiteral(".jpg");
+        const qint64  jpgBytes = QFile::exists(jpgPath) ? QFileInfo(jpgPath).size() : 0;
+        const qint64  meBytes  = fi.size();
+        QFile::remove(metaPath);
+        if (QFile::exists(jpgPath)) QFile::remove(jpgPath);
+        freed += jpgBytes + meBytes;
+    }
+    return freed;
+}
+
+qint64 FileHelper::enforceCacheQuotaForce(const QStringList& roots, qint64 quotaBytes) {
+    if (quotaBytes <= 0) return 0; // 0 = unlimited
+    const QString cacheRootCanon =
+        QFileInfo(QStandardPaths::writableLocation(QStandardPaths::CacheLocation))
+            .canonicalFilePath();
+    if (cacheRootCanon.isEmpty()) return 0;
+
+    // Collect every regular file under each root, with its atime + size.
+    struct Entry {
+        QString path;
+        qint64  atime { 0 };
+        qint64  size { 0 };
+    };
+    QList<Entry> all;
+    qint64       total = 0;
+    for (const QString& root : roots) {
+        if (root.isEmpty()) continue;
+        QString native = root;
+        if (native.startsWith("file://")) native = native.mid(7);
+        const QString canon = QFileInfo(native).canonicalFilePath();
+        if (canon.isEmpty()) continue;
+        if (! isUnderRoot(canon, cacheRootCanon)) {
+            qWarning() << "FileHelper::enforceCacheQuota refused root outside cache:" << root;
+            continue;
+        }
+        QDirIterator it(canon, QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QString   fp = it.next();
+            const QFileInfo fi(fp);
+            Entry           e;
+            e.path = fi.absoluteFilePath();
+            // Prefer atime (recent reads bump it on relatime mounts); fall
+            // back to mtime when atime <= mtime (a heuristic for noatime
+            // mounts where atime is frozen at create-time).
+            const qint64 atime = fi.lastRead().toMSecsSinceEpoch();
+            const qint64 mtime = fi.lastModified().toMSecsSinceEpoch();
+            e.atime            = (atime > mtime) ? atime : mtime;
+            e.size             = fi.size();
+            total += e.size;
+            all.append(e);
+        }
+    }
+    if (total <= quotaBytes) {
+        // Under quota — no eviction needed. Don't touch m_lastGcBytesFreed
+        // (preserve the previous freed value so the UI keeps showing the
+        // most recent activity rather than flickering back to 0).
+        return 0;
+    }
+
+    // Sort oldest-first by atime; delete until under cap.
+    std::sort(all.begin(), all.end(), [](const Entry& a, const Entry& b) {
+        return a.atime < b.atime;
+    });
+    qint64 freed = 0;
+    for (const Entry& e : all) {
+        if (total <= quotaBytes) break;
+        if (! QFile::remove(e.path)) {
+            qWarning() << "FileHelper::enforceCacheQuota: cannot delete" << e.path;
+            continue;
+        }
+        freed += e.size;
+        total -= e.size;
+        // Drop matching sidecar (or vice-versa: if we deleted a .meta, drop
+        // its .jpg). The pairing keeps the orphan-GC tally consistent.
+        if (e.path.endsWith(QStringLiteral(".jpg"), Qt::CaseInsensitive)) {
+            const QString sc = sidecarFor(e.path);
+            if (QFile::exists(sc)) {
+                const qint64 sz = QFileInfo(sc).size();
+                if (QFile::remove(sc)) {
+                    freed += sz;
+                    total -= sz;
+                }
+            }
+        } else if (e.path.endsWith(QStringLiteral(".meta"), Qt::CaseInsensitive)) {
+            const QString jp = e.path.left(e.path.size() - 5) + QStringLiteral(".jpg");
+            if (QFile::exists(jp)) {
+                const qint64 sz = QFileInfo(jp).size();
+                if (QFile::remove(jp)) {
+                    freed += sz;
+                    total -= sz;
+                }
+            }
+        }
+    }
+
+    m_lastEnforceMs = QDateTime::currentMSecsSinceEpoch();
+    if (freed != m_lastGcBytesFreed) {
+        m_lastGcBytesFreed = freed;
+        emit lastGcBytesFreedChanged();
+    }
+    return freed;
+}
+
+qint64 FileHelper::enforceCacheQuota(const QStringList& roots, qint64 quotaBytes) {
+    // Throttle: skip if a successful run completed within the last 60 s.
+    // The "Run cache GC now" button calls enforceCacheQuotaForce to bypass.
+    const qint64 now      = QDateTime::currentMSecsSinceEpoch();
+    const qint64 cooldown = 60'000;
+    if (m_lastEnforceMs != 0 && (now - m_lastEnforceMs) < cooldown) {
+        return m_lastGcBytesFreed; // Report previous, no work this call.
+    }
+    return enforceCacheQuotaForce(roots, quotaBytes);
+}
+
+// ── Steam Workshop manifest (Valve KVFormat) ──────────────────────────────────
+
+namespace
+{
+// Tiny Valve-KV lexer. The grammar we accept is a strict subset that covers
+// every appworkshop_<appid>.acf Steam emits:
+//
+//   file   := pair*
+//   pair   := STRING (STRING | object)
+//   object := '{' pair* '}'
+//
+// STRING is a `"…"` quoted token (no escapes in practice in Steam's writer;
+// we tolerate `\"`, `\\`, `\n`, `\t`). Whitespace is any ASCII <= 0x20.
+//
+// Returns a QVariantMap mirroring the tree (string => QString or nested
+// QVariantMap); std::nullopt on syntax error. Fail-soft: callers treat any
+// parse failure as "no manifest" and badge nothing.
+std::optional<QVariantMap> parseValveKV(const QString& text) {
+    int       pos = 0;
+    const int n   = text.size();
+
+    auto skipWs = [&]() {
+        while (pos < n) {
+            const QChar c = text.at(pos);
+            // Treat ASCII <= 0x20 as whitespace AND skip C-style // comments
+            // (Steam doesn't emit them, but some hand-edited acfs have them).
+            if (c.unicode() <= 0x20) {
+                ++pos;
+            } else if (c == QLatin1Char('/') && pos + 1 < n &&
+                       text.at(pos + 1) == QLatin1Char('/')) {
+                while (pos < n && text.at(pos) != QLatin1Char('\n')) ++pos;
+            } else {
+                break;
+            }
+        }
+    };
+
+    auto parseString = [&](QString& out) -> bool {
+        skipWs();
+        if (pos >= n || text.at(pos) != QLatin1Char('"')) return false;
+        ++pos; // consume opening "
+        out.clear();
+        while (pos < n) {
+            const QChar c = text.at(pos++);
+            if (c == QLatin1Char('"')) return true;
+            if (c == QLatin1Char('\\') && pos < n) {
+                const QChar esc = text.at(pos++);
+                if (esc == QLatin1Char('n'))
+                    out.append(QLatin1Char('\n'));
+                else if (esc == QLatin1Char('t'))
+                    out.append(QLatin1Char('\t'));
+                else if (esc == QLatin1Char('r'))
+                    out.append(QLatin1Char('\r'));
+                else
+                    out.append(esc); // \\ \" and anything else literal
+            } else {
+                out.append(c);
+            }
+        }
+        return false; // unterminated string
+    };
+
+    // Forward declare so parsePairs can recurse into nested objects via
+    // std::function (lambda capture limits prevent direct recursion).
+    std::function<bool(QVariantMap&)> parsePairs;
+
+    parsePairs = [&](QVariantMap& out) -> bool {
+        while (true) {
+            skipWs();
+            if (pos >= n) return true;
+            if (text.at(pos) == QLatin1Char('}')) return true; // caller consumes
+            QString key;
+            if (! parseString(key)) return false;
+            skipWs();
+            if (pos >= n) return false;
+            const QChar nxt = text.at(pos);
+            if (nxt == QLatin1Char('"')) {
+                QString val;
+                if (! parseString(val)) return false;
+                out.insert(key, val);
+            } else if (nxt == QLatin1Char('{')) {
+                ++pos;
+                QVariantMap nested;
+                if (! parsePairs(nested)) return false;
+                skipWs();
+                if (pos >= n || text.at(pos) != QLatin1Char('}')) return false;
+                ++pos; // consume }
+                out.insert(key, nested);
+            } else {
+                return false;
+            }
+        }
+    };
+
+    QVariantMap root;
+    if (! parsePairs(root)) return std::nullopt;
+    skipWs();
+    if (pos != n) return std::nullopt; // trailing garbage
+    return root;
+}
+} // namespace
+
+QVariantMap FileHelper::readWorkshopManifest(const QString& steamLibraryPath) {
+    QVariantMap empty;
+    if (steamLibraryPath.isEmpty()) return empty;
+    QString lib = steamLibraryPath;
+    if (lib.startsWith("file://")) lib = lib.mid(7);
+    const QString acfPath = lib + "/steamapps/workshop/appworkshop_431960.acf";
+    QFile         f(acfPath);
+    if (! f.exists() || ! f.open(QIODevice::ReadOnly | QIODevice::Text)) return empty;
+    const QString text = QString::fromUtf8(f.readAll());
+    f.close();
+    const auto parsed = parseValveKV(text);
+    if (! parsed.has_value()) return empty;
+    // Walk AppWorkshop -> WorkshopItemsInstalled -> <id> -> timeupdated.
+    const QVariantMap appWorkshop = parsed->value(QStringLiteral("AppWorkshop")).toMap();
+    const QVariantMap installed =
+        appWorkshop.value(QStringLiteral("WorkshopItemsInstalled")).toMap();
+    QVariantMap out;
+    for (auto it = installed.constBegin(); it != installed.constEnd(); ++it) {
+        const QVariantMap entry = it.value().toMap();
+        const QString     ts    = entry.value(QStringLiteral("timeupdated")).toString();
+        // Missing or unparseable timeupdated => 0. qint64 keeps full Steam
+        // timestamps (32-bit unix epoch fits trivially, leave room for
+        // Y2038 + Steam-future).
+        bool         ok    = false;
+        const qint64 value = ts.toLongLong(&ok);
+        out.insert(it.key(), ok ? value : qint64 { 0 });
+    }
+    return out;
+}
+
+qint64 FileHelper::seenVersion(const QString& id) const {
+    const QString filePath = wallpaperConfigFile(id);
+    QFile         f(filePath);
+    if (! f.exists() || ! f.open(QIODevice::ReadOnly)) return 0;
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+    if (doc.isNull() || ! doc.isObject()) return 0;
+    const QJsonValue v = doc.object().value(QStringLiteral("last_seen_version"));
+    if (! v.isDouble()) return 0;
+    // toVariant().toLongLong handles the JSON-double-fits-int53 edge cleanly.
+    return v.toVariant().toLongLong();
+}
+
+void FileHelper::recordSeenVersion(const QString& id, qint64 timeUpdated) {
+    if (id.isEmpty()) return;
+    // Read existing config, merge in last_seen_version, write atomically.
+    // Mirrors writeWallpaperConfig's read-merge-write pattern but exposes
+    // a single-key fast path so callers don't need to round-trip a full
+    // QVariantMap.
+    const QString filePath = wallpaperConfigFile(id);
+    QJsonObject   obj;
+    QFile         in(filePath);
+    if (in.exists() && in.open(QIODevice::ReadOnly)) {
+        const QJsonDocument d = QJsonDocument::fromJson(in.readAll());
+        if (! d.isNull() && d.isObject()) obj = d.object();
+        in.close();
+    }
+    obj["last_seen_version"] = static_cast<double>(timeUpdated);
+    if (! atomicWriteJson(filePath, QJsonDocument(obj))) {
+        qWarning() << "FileHelper::recordSeenVersion: write failed for" << filePath;
+    }
+}
+
+QVariantMap FileHelper::allSeenVersions() const {
+    QVariantMap out;
+    QDir        dir(wallpaperConfigDir());
+    if (! dir.exists()) return out;
+    const QFileInfoList entries =
+        dir.entryInfoList(QStringList { QStringLiteral("*.json") }, QDir::Files);
+    for (const QFileInfo& fi : entries) {
+        // Skip bindings files (id_bindings.json); only per-wallpaper config
+        // files carry last_seen_version.
+        if (fi.completeBaseName().endsWith("_bindings")) continue;
+        const QString id = fi.completeBaseName();
+        const qint64  v  = seenVersion(id);
+        if (v != 0) out.insert(id, v);
     }
     return out;
 }

@@ -120,6 +120,39 @@ KCM.GridView {
                     ? animatedPre : staticPre
             }
 
+            // "Updated since you last loaded it" dot badge. The Loader keeps
+            // it out of the scene-graph entirely for un-updated entries —
+            // important for libraries with hundreds of wallpapers where only
+            // one or two might carry the badge at any given time.
+            //
+            // model.updated may be absent on QML test stubs (older ListModel
+            // shapes lack the field) — `=== true` keeps the binding silent
+            // in that case rather than triggering a TypeError.
+            Loader {
+                id: updatedBadge
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.margins: Kirigami.Units.smallSpacing
+                z: 2
+                active: model.updated === true
+                sourceComponent: Rectangle {
+                    width: Kirigami.Units.iconSizes.small
+                    height: width
+                    radius: width / 2
+                    color: Kirigami.Theme.positiveTextColor
+                    border.color: Qt.rgba(0, 0, 0, 0.5)
+                    border.width: 1
+                    ToolTip.visible: ma.containsMouse
+                    ToolTip.text: i18n("Updated since you last loaded it")
+                    MouseArea {
+                        id: ma
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        acceptedButtons: Qt.NoButton
+                    }
+                }
+            }
+
             // Unsupported-type badge. WallpaperListModel.loadItemFromJson
             // lowercases project.type at load; we surface the two unrenderable
             // types ('application' = native Windows .exe host, 'preset' =

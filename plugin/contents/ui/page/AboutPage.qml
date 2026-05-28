@@ -1,9 +1,12 @@
 import QtQuick 2.6
 import QtQuick.Controls 2.2
+import QtQuick.Dialogs
 import QtQuick.Layouts 1.5
 
 import ".."
 import "../components"
+
+import com.github.captsilver.wallpaperEngineKde
 
 import org.kde.plasma.core 2.0 as PlasmaCore
 import org.kde.plasma.components 3.0 as PlasmaComponents
@@ -16,6 +19,18 @@ Flickable {
 
     Layout.fillWidth: true
     ScrollBar.vertical: ScrollBar { id: scrollbar }
+
+    // Diagnostic-bundle helpers — non-visual children of the Flickable so
+    // the OptionGroup below stays a clean list of OptionItem rows.  The
+    // WekDiagnostics QObject collects the bundle; FileDialog presents the
+    // save-as picker after a successful bundle create.
+    WekDiagnostics { id: diagnostics }
+    FileDialog {
+        id: saveBundleDialog
+        title: "Save diagnostic bundle as..."
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["Tar gzip (*.tar.gz)"]
+    }
     //ScrollBar.horizontal: ScrollBar { }
 
     contentWidth: width - (scrollbar.visible ? scrollbar.width : 0)
@@ -177,6 +192,45 @@ Flickable {
                         <li>file helper: native</li>
                         </ul>
                     `
+                    wrapMode: Text.Wrap
+                    textFormat: Text.RichText
+                }
+            }
+        }
+
+        OptionItem {
+            text: 'Diagnostic bundle'
+            text_color: Kirigami.Theme.textColor
+            icon: '../../images/information-outline.svg'
+
+            actor: Button {
+                text: "Save diagnostic bundle..."
+                onClicked: {
+                    const path = diagnostics.saveBundle();
+                    if (path) {
+                        // Open a save-as dialog so the user can move the bundle
+                        // out of the cache dir.  Default-selected name is the
+                        // bundle's filename.
+                        saveBundleDialog.currentFile = "file://" + path;
+                        saveBundleDialog.open();
+                    } else {
+                        console.warn("[wek-diag] Bundle creation failed:",
+                                     diagnostics.lastError());
+                        // Once GAP-5 has fully landed the renderer surface
+                        // could fire notifier.backendUnavailable("Diagnostics",
+                        // lastError) here.
+                    }
+                }
+            }
+
+            contentBottom: ColumnLayout {
+                Text {
+                    Layout.fillWidth: true
+                    color: Kirigami.Theme.disabledTextColor
+                    text: "Collects journal, GPU info, plugin environment, and "
+                        + "redacted config into a single archive you can attach to a "
+                        + "GitHub issue. Your home path is redacted to &lt;HOME&gt; "
+                        + "before saving; review the bundle before posting publicly."
                     wrapMode: Text.Wrap
                     textFormat: Text.RichText
                 }

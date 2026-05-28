@@ -15,6 +15,9 @@ namespace wekde
 
 class FileHelper : public QObject {
     Q_OBJECT
+    // Bytes freed by the most recent enforceCacheQuota run (0 if last run was
+    // a no-op or never ran). UI binds this to render "Last GC: N MB freed".
+    Q_PROPERTY(qint64 lastGcBytesFreed READ lastGcBytesFreed NOTIFY lastGcBytesFreedChanged)
 
 public:
     explicit FileHelper(QObject* parent = nullptr);
@@ -106,6 +109,26 @@ public:
     // error or path-outside-cache violation.
     Q_INVOKABLE bool clearCacheDir(const QString& path);
 
+    // Walk `cacheRoot` (a video-thumbs directory) and drop any <hash>.jpg
+    // whose <hash>.meta sidecar references a source path that no longer
+    // resolves under any of the seeded roots AND no longer exists on disk.
+    // Entries without sidecars are KEPT (backwards-safe — pre-feature
+    // cache survives). Returns bytes freed. Same isUnderRoot symlink-escape
+    // safety as clearCacheDir.
+    Q_INVOKABLE qint64 pruneOrphanThumbnails(const QString&     cacheRoot,
+                                             const QStringList& installedWallpaperDirs,
+                                             const QStringList& videoFolderPaths);
+
+    // Recursively walk each root, sum bytes; if over `quotaBytes`, delete
+    // oldest entries (by atime, mtime fallback) until under the cap. Drops
+    // matching .meta sidecars alongside their .jpg. Throttled to one run
+    // per minute (use the *Force overload to skip the throttle for manual
+    // "Run cache GC now" button). quotaBytes == 0 means unlimited (no-op).
+    // Returns bytes freed (0 if no-op).
+    Q_INVOKABLE qint64 enforceCacheQuota(const QStringList& roots, qint64 quotaBytes);
+    Q_INVOKABLE qint64 enforceCacheQuotaForce(const QStringList& roots, qint64 quotaBytes);
+    qint64             lastGcBytesFreed() const { return m_lastGcBytesFreed; }
+
     // Atomic JSON write: encode `doc` to UTF-8, write to <path>.tmp, flush,
     // then rename(2) to `path`. Returns false on any failure; the temp file
     // is removed on failure to avoid clutter. Uses no instance state — static
@@ -113,7 +136,33 @@ public:
     // FileHelper (whose ctor mkpaths the wallpaper config dir as a side effect).
     static bool atomicWriteJson(const QString& path, const QJsonDocument& doc);
 
+    // Steam Workshop manifest parsing (Valve KVFormat .acf). Returns a hash
+    // of workshop-id -> timeupdated. Fail-soft on missing file, I/O error,
+    // or malformed input (returns empty hash). `steamLibraryPath` is the
+    // user's Steam library root (e.g. ~/.steam/steam or a custom drive
+    // root); we append the relative path to steamapps/workshop/<appid>.acf.
+    Q_INVOKABLE QVariantMap readWorkshopManifest(const QString& steamLibraryPath);
+
+    // Read the last_seen_version key from <id>.json (0 if file absent or
+    // key not set). Mirror of recordSeenVersion.
+    Q_INVOKABLE qint64 seenVersion(const QString& id) const;
+
+    // Write the last_seen_version key into <id>.json (merged with any
+    // existing keys via atomicWriteJson). Idempotent; creates the file
+    // if absent.
+    Q_INVOKABLE void recordSeenVersion(const QString& id, qint64 timeUpdated);
+
+    // Return a map of workshop-id -> last_seen_version covering every
+    // <id>.json under the wallpaper config dir. Missing key => entry
+    // absent from the map (callers default to 0).
+    Q_INVOKABLE QVariantMap allSeenVersions() const;
+
 signals:
+    // Emitted when lastGcBytesFreed changes (after every enforceCacheQuota
+    // run that actually freed bytes; not emitted for no-op runs that
+    // skipped due to under-quota or zero-quota).
+    void lastGcBytesFreedChanged();
+
     void thumbnailReady(const QString& videoPath, const QString& outPath, bool ok);
     void dirSizeReady(const QString& path, qint64 bytes);
     void fileReadReady(const QString& path, const QByteArray& contents, bool ok);
@@ -145,6 +194,16 @@ private:
     // Lazy-constructed QFileSystemWatcher for wallpaper directories. Parented
     // to this so Qt destroys it with the FileHelper.
     QFileSystemWatcher* m_wallpaperDirWatcher { nullptr };
+
+    // Rolling tally of bytes freed by the most recent enforceCacheQuota
+    // run; surfaced as a Q_PROPERTY for the SettingPage "Last GC: N MB
+    // freed" readout.
+    qint64 m_lastGcBytesFreed { 0 };
+
+    // Monotonic timestamp (msecs since epoch) of the last successful
+    // enforceCacheQuota run; the throttle skips runs called < 60 s after.
+    // qint64{0} sentinel = never ran (always allow first run).
+    qint64 m_lastEnforceMs { 0 };
 };
 
 } // namespace wekde

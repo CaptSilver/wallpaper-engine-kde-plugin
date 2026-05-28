@@ -1,5 +1,6 @@
 #pragma once
 #include <QObject>
+#include <QString>
 
 namespace wekde
 {
@@ -15,6 +16,18 @@ public:
     /// PATH/process checks — migration is performed in-process. Public for
     /// testing; runIfNeeded() calls it internally.
     bool shouldRun() const;
+
+    /// One-shot seeding of last_seen_version into every existing
+    /// <wallpaper-id>.json based on the current Steam manifest. Avoids the
+    /// "everything appears updated" badge spam the first time the feature
+    /// lands — without this every wallpaper the user has configured would
+    /// show the Updated badge until they clicked through each one.
+    /// Idempotent via a `last-seen-seeded` marker in the plugin's KConfig
+    /// rc (subsequent runIfNeeded calls are no-ops). `steamLibraryPath` is
+    /// the user's Steam library root; empty path => still set the marker
+    /// (no manifest to seed from, but we still consider migration done so
+    /// subsequent runs skip).
+    Q_INVOKABLE void seedLastSeenVersions(const QString& steamLibraryPath);
 
     /// One-shot migration of wallpaper settings from the old catsout plugin
     /// section to the captsilver section, performed IN-PROCESS via KConfig (no

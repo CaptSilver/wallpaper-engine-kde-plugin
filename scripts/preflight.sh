@@ -18,6 +18,11 @@
 #                                      #   targets. NON-FATAL today (surfaces residual
 #                                      #   warnings); flip WERROR_FATAL=1 once the tree is
 #                                      #   warning-clean to make it a gate.
+#   scripts/preflight.sh --coverage   # opt-in coverage leg: builds parent tests with
+#                                      #   -DCOVERAGE=ON, runs llvm-cov + qmlcov, diffs
+#                                      #   totals vs tests/.coverage-baseline.json.
+#                                      #   NON-FATAL until COVERAGE_FATAL=1.
+#                                      #   WEK_COVERAGE_REFRESH=1 overwrites baseline.
 #   scripts/preflight.sh --render-smoke # opt-in headless render smoke (D10a): builds the
 #                                      #   plain GLFW sceneviewer, renders a tiny fixture
 #                                      #   under Mesa lavapipe (CPU Vulkan, no GPU), asserts
@@ -30,10 +35,10 @@
 #                                      #   fantasticcar default. SKIPS when assets absent.
 #                                      #   NOT in the default gate (lavapipe CPU runs slow).
 #
-# The --tsan / --sanitize / --werror / --render-smoke / --render-oracle legs are
-# standalone (lint + that one build/run only); they use fresh build dirs
-# (build/impl-tsan / build/impl-asan / build/impl-werror / build/impl-d10 /
-# build/impl-oracle) and do not run the normal build/test/fuzz flow.
+# The --tsan / --sanitize / --werror / --coverage / --render-smoke / --render-oracle
+# legs are standalone (lint + that one build/run only); they use fresh build dirs
+# (build/impl-tsan / build/impl-asan / build/impl-werror / build/impl-coverage /
+# build/impl-d10 / build/impl-oracle) and do not run the normal build/test/fuzz flow.
 #
 # Env: FUZZ_SECS=N overrides per-target fuzz duration (default 20; 7 targets ≈ 2.3 min).
 #
@@ -75,10 +80,11 @@ for arg in "$@"; do
         --tsan)      MODE=sanitize; SAN_SPEC="thread" ;;
         --sanitize=*) MODE=sanitize; SAN_SPEC="${arg#--sanitize=}" ;;
         --werror)    MODE=werror ;;
+        --coverage)  MODE=coverage ;;
         --render-smoke) MODE=render-smoke ;;
         --render-oracle) MODE=render-oracle ;;
         -h|--help)
-            sed -n '2,44p' "$0"
+            sed -n '2,55p' "$0"
             exit 0
             ;;
         *) echo "unknown flag: $arg" >&2; exit 2 ;;
@@ -124,6 +130,9 @@ DEPS_FEDORA=(
 
     # sanitizer runtimes (libasan.so.8 lives only inside distrobox per CLAUDE.md)
     libasan libubsan
+
+    # JSON parsing for opt-in coverage + mutation legs (baseline diff)
+    jq
 )
 
 # ── Distrobox detection + bootstrap ──────────────────────────────────────────
@@ -341,6 +350,154 @@ if [[ "$MODE" == "werror" ]]; then
     fi
 fi
 
+# ── Coverage leg (opt-in, standalone) ─────────────────────────────────────────
+# Builds the parent tests with -DCOVERAGE=ON (Clang source-based coverage), runs
+# ctest with LLVM_PROFILE_FILE=…/%p.profraw, merges via llvm-profdata, exports
+# totals via `llvm-cov export -format=text`, then diffs the cxx_lines / cxx_regions /
+# qml percentages against tests/.coverage-baseline.json.  Also drives the existing
+# qmlcov target (custom homegrown QML hits tracer, threshold 95%).
+#
+# tst_qml and tst_main_integration are label/regex-excluded from the coverage
+# ctest run because they fail in the standalone tests build (missing native QML
+# types like WekNotifier / WekDiagnostics that the full project ships).  The
+# qmlcov target re-runs QML coverage independently with its own instrumented
+# mirror, so QML coverage is still measured.
+#
+# NON-FATAL by default (soft-launch): a regression beyond the 0.5pp tolerance
+# prints a warning but does not fail the run.  COVERAGE_FATAL=1 flips it to a
+# gate.  WEK_COVERAGE_REFRESH=1 rewrites tests/.coverage-baseline.json from the
+# current numbers (use after intentionally-coverage-affecting changes).
+if [[ "$MODE" == "coverage" ]]; then
+    step "Coverage leg (-DCOVERAGE=ON) — ${YELLOW}NON-FATAL${RESET} unless COVERAGE_FATAL=1"
+
+    # jq parses llvm-cov export + qmlcov report.json on the host (the script's
+    # own context).  llvm-profdata / llvm-cov run inside the distrobox alongside
+    # the compilers.  Both checks degrade gracefully when run inside-the-box
+    # (jq is in DEPS_FEDORA, llvm-* ship with clang).
+    if ! command -v jq >/dev/null; then
+        fail "jq not found on host (run: scripts/preflight.sh --bootstrap) — install with 'sudo dnf install jq' or similar"
+    fi
+    if ! dbox "command -v llvm-profdata >/dev/null && command -v llvm-cov >/dev/null"; then
+        fail "llvm-profdata / llvm-cov not found in build env (Clang's coverage tools — install llvm-tools or clang-tools-extra)"
+    fi
+
+    cov_build="build/impl-coverage"
+    rm -rf "$cov_build"
+    COV_GEN="-G Ninja"
+    dbox "CC=/usr/bin/clang CXX=/usr/bin/clang++ \
+          cmake -B $cov_build -S tests $COV_GEN \
+                -DCOVERAGE=ON -DCMAKE_BUILD_TYPE=Debug" \
+        || fail "coverage configure failed"
+    dbox "cmake --build $cov_build" || fail "coverage build failed"
+    ok "coverage build complete"
+
+    # Run ctest with the same exclusions the standalone tests build needs.
+    # tst_qml requires real QML plugin types beyond what the standalone build
+    # ships; tst_main_integration loads main.qml which references those types.
+    step "Run instrumented tests (LLVM_PROFILE_FILE=…/%p.profraw)"
+    cov_prof_dir="$cov_build/coverage"
+    dbox "rm -rf $cov_prof_dir && mkdir -p $cov_prof_dir"
+    dbox "cd $cov_build && QT_QPA_PLATFORM=offscreen \
+          LLVM_PROFILE_FILE='coverage/%p.profraw' \
+          ctest --output-on-failure --label-exclude 'DISPLAY_NEEDED' \
+                -E 'tst_main_integration'" \
+        || fail "instrumented ctest failed"
+
+    step "Merge + export coverage"
+    dbox "llvm-profdata merge -sparse $cov_prof_dir/*.profraw \
+          -o $cov_prof_dir/merged.profdata" \
+        || fail "llvm-profdata merge failed"
+
+    # Object set + ignore regex mirror tests/CMakeLists.txt's add_custom_target(coverage).
+    cov_objs="$cov_build/tst_filehelper \
+              -object=$cov_build/tst_mpriscolors \
+              -object=$cov_build/tst_mousegrabber \
+              -object=$cov_build/tst_mpvbackend \
+              -object=$cov_build/tst_thumbnail_grabber \
+              -object=$cov_build/tst_migrationhelper \
+              -object=$cov_build/tst_playlist_manager"
+    cov_ignore='-ignore-filename-regex=(^/usr/|/Qt6/|/tests/tst_|_autogen/|/moc_|third_party|backend_mpv/MpvBackend|backend_mpv/qthelper)'
+    dbox "llvm-cov report $cov_objs \
+          -instr-profile=$cov_prof_dir/merged.profdata \"$cov_ignore\" \
+          > $cov_build/coverage.txt" \
+        || fail "llvm-cov report failed"
+    dbox "llvm-cov export -format=text $cov_objs \
+          -instr-profile=$cov_prof_dir/merged.profdata \"$cov_ignore\" \
+          > $cov_build/coverage.json" \
+        || fail "llvm-cov export failed"
+
+    # QML coverage — runs the existing qmlcov target which writes _qmlcov/report.json.
+    # Threshold-fail behaviour stays inside the target; we read the percentage
+    # for the baseline diff regardless of pass/fail.
+    step "Run qmlcov target"
+    qmlcov_rc=0
+    dbox "cmake --build $cov_build --target qmlcov" || qmlcov_rc=$?
+    if [[ "$qmlcov_rc" != "0" ]]; then
+        warn "qmlcov below its internal 95% threshold (rc=$qmlcov_rc) — captured for baseline diff"
+    fi
+
+    # Parse current numbers.
+    cov_json="$cov_build/coverage.json"
+    qmlcov_json="$cov_build/_qmlcov/report.json"
+    if [[ ! -s "$cov_json" ]]; then
+        fail "coverage.json not produced"
+    fi
+    cur_cxx_lines=$(jq -r '.data[0].totals.lines.percent' "$cov_json")
+    cur_cxx_regions=$(jq -r '.data[0].totals.regions.percent' "$cov_json")
+    if [[ -s "$qmlcov_json" ]]; then
+        # report.py emits overall_coverage as 0.0..1.0; report as a percentage.
+        cur_qml=$(jq -r '.overall_coverage * 100' "$qmlcov_json")
+    else
+        warn "qmlcov did not produce report.json — recording 0 for QML in this run"
+        cur_qml=0
+    fi
+    printf '%s  current:%s cxx_lines=%.2f cxx_regions=%.2f qml=%.2f\n' \
+        "$BLUE" "$RESET" "$cur_cxx_lines" "$cur_cxx_regions" "$cur_qml"
+
+    baseline=tests/.coverage-baseline.json
+    if [[ "${WEK_COVERAGE_REFRESH:-0}" == "1" ]]; then
+        jq -n --argjson lines "$cur_cxx_lines" \
+              --argjson regions "$cur_cxx_regions" \
+              --argjson qml "$cur_qml" \
+              '{cxx_lines: $lines, cxx_regions: $regions, qml: $qml,
+                _comment: "Totals from llvm-cov export + tools/qmlcov/report.py. Run WEK_COVERAGE_REFRESH=1 scripts/preflight.sh --coverage to update."}' \
+            > "$baseline"
+        ok "baseline refreshed: $baseline"
+        exit 0
+    fi
+
+    if [[ ! -s "$baseline" ]]; then
+        warn "no baseline file ($baseline) — run WEK_COVERAGE_REFRESH=1 scripts/preflight.sh --coverage to seed"
+        printf '\n%sCoverage leg complete (NO BASELINE — informational).%s\n' "$YELLOW" "$RESET"
+        exit 0
+    fi
+    base_lines=$(jq -r '.cxx_lines' "$baseline")
+    base_regions=$(jq -r '.cxx_regions' "$baseline")
+    base_qml=$(jq -r '.qml' "$baseline")
+
+    # 0.5pp tolerance — typical run-to-run jitter is well below this.
+    regressed=0
+    awk -v c="$cur_cxx_lines"   -v b="$base_lines"   'BEGIN{exit !((b-c) > 0.5)}' && regressed=1 || true
+    awk -v c="$cur_cxx_regions" -v b="$base_regions" 'BEGIN{exit !((b-c) > 0.5)}' && regressed=1 || true
+    awk -v c="$cur_qml"         -v b="$base_qml"     'BEGIN{exit !((b-c) > 0.5)}' && regressed=1 || true
+
+    if [[ "$regressed" == "1" ]]; then
+        warn "coverage regression vs baseline (tolerance 0.5pp):"
+        printf '  cxx_lines:   %s -> %s\n' "$base_lines"   "$cur_cxx_lines"
+        printf '  cxx_regions: %s -> %s\n' "$base_regions" "$cur_cxx_regions"
+        printf '  qml:         %s -> %s\n' "$base_qml"     "$cur_qml"
+        if [[ "${COVERAGE_FATAL:-0}" == "1" ]]; then
+            fail "coverage leg failed (COVERAGE_FATAL=1)"
+        fi
+        warn "non-fatal — set COVERAGE_FATAL=1 to gate, or WEK_COVERAGE_REFRESH=1 to update the baseline"
+        printf '\n%sCoverage leg complete (NON-FATAL regression noted).%s\n' "$YELLOW" "$RESET"
+        exit 0
+    fi
+    ok "coverage at/above baseline (tolerance 0.5pp)"
+    printf '\n%sCoverage leg passed.%s\n' "$GREEN" "$RESET"
+    exit 0
+fi
+
 # ── Render-smoke leg (opt-in, standalone) — D10a ──────────────────────────────
 # Builds the plain GLFW sceneviewer and renders a tiny fixture scene headless
 # under Mesa lavapipe (CPU Vulkan), asserting rc==0 + a NON-BLANK framebuffer.
@@ -489,17 +646,27 @@ step "Main project tests (ctest)"
 dbox "ctest --test-dir build/tests --output-on-failure" || fail "ctest failed"
 ok "ctest passed"
 
-# ── 6. Fuzz smoke (libFuzzer cold-start regression gate) ─────────────────────
+# ── 6. Fuzz smoke (libFuzzer seeded regression gate) ─────────────────────────
 # Catches the unbounded-resize / unterminated-buffer bug class on parser entry
-# points (WPMdlParser, WPTexImageParser). Cold-start only: no seed corpus
-# dependency, so this works on a fresh checkout. Each harness ~30s; 60s total.
+# points (WPMdlParser, WPTexImageParser). Seeded from
+# tests/fuzz_corpus/<target>/seed/ (cold-start fallback when seed dir is
+# absent). Each harness ~30s; ~3 min total across 9 targets.
 # Findings (crash/oom/timeout/leak) under build/sub/fuzz-crashes/ fail the gate.
 if [[ "$NO_FUZZ" == "0" ]]; then
     FUZZ_SECS="${FUZZ_SECS:-20}"
     FUZZ_TARGETS=(WPMdlParser WPTexImageParser WPPkgFs
                   WPShaderParser WPShaderCompile WPSceneParser
                   WPParticleParser WPSoundParser WPJsonParse)
-    step "Fuzz smoke (libFuzzer cold-start, ${FUZZ_SECS}s × ${#FUZZ_TARGETS[@]} targets)"
+    step "Fuzz smoke (libFuzzer seeded, ${FUZZ_SECS}s × ${#FUZZ_TARGETS[@]} targets)"
+
+    # Size budget: each tests/fuzz_corpus/<target>/seed must be <= 200 KB.
+    for d in tests/fuzz_corpus/*/seed; do
+        [[ -d "$d" ]] || continue
+        b=$(du -bs "$d" | cut -f1)
+        if [[ "$b" -gt 204800 ]]; then
+            fail "fuzz corpus size budget exceeded: $d ($b bytes > 204800)"
+        fi
+    done
 
     if [[ "$MODE" != "test-only" ]]; then
         dbox "cmake --build build/sub --target fuzzers" \
@@ -517,13 +684,26 @@ if [[ "$NO_FUZZ" == "0" ]]; then
         fi
         corpus="build/sub/fuzz-corpus-$target"
         mkdir -p "$corpus"
+        seed_dir="tests/fuzz_corpus/$target/seed"
         # libFuzzer exits non-zero on first finding (which is what we want for a
         # gate). set -o pipefail inside dbox preserves that exit through tail.
-        dbox "set -o pipefail; $binary $corpus \
-                -max_total_time=$FUZZ_SECS -timeout=5 -max_len=65536 \
-                -malloc_limit_mb=512 -rss_limit_mb=2048 \
-                -artifact_prefix=$crash_dir/ -print_final_stats=1 2>&1 \
-              | tail -8" || true
+        # Pass the checked-in seed dir as a read-only secondary corpus when
+        # present; libFuzzer accepts multiple positional corpora and uses the
+        # first writable one for newly-discovered mutants.
+        if [[ -d "$seed_dir" ]]; then
+            dbox "set -o pipefail; $binary $corpus $seed_dir \
+                    -max_total_time=$FUZZ_SECS -timeout=15 -max_len=65536 \
+                    -malloc_limit_mb=512 -rss_limit_mb=2048 \
+                    -artifact_prefix=$crash_dir/ -print_final_stats=1 2>&1 \
+                  | tail -8" || true
+        else
+            # No checked-in seeds for this target — fall back to cold-start.
+            dbox "set -o pipefail; $binary $corpus \
+                    -max_total_time=$FUZZ_SECS -timeout=15 -max_len=65536 \
+                    -malloc_limit_mb=512 -rss_limit_mb=2048 \
+                    -artifact_prefix=$crash_dir/ -print_final_stats=1 2>&1 \
+                  | tail -8" || true
+        fi
         artifacts=$(find "$crash_dir" -maxdepth 1 -type f \
             \( -name 'crash-*' -o -name 'oom-*' \
                -o -name 'timeout-*' -o -name 'leak-*' \) 2>/dev/null | wc -l)

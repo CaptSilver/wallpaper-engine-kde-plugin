@@ -1,6 +1,7 @@
 #include <QQmlExtensionPlugin>
 #include <QQmlEngine>
 #include <array>
+#include <KCrash>
 #include "MpvBackend.hpp"
 #include "SceneBackend.hpp"
 #include "MouseGrabber.hpp"
@@ -16,6 +17,13 @@
 #include "PlaylistManager.hpp"
 #include "PlaylistsModel.hpp"
 #include "PlaylistItemsModel.hpp"
+#include "WekControl.hpp"
+#include "WekNotifier.hpp"
+#include "WekDiagnostics.hpp"
+#ifdef WEKDE_HAS_GLOBALACCEL
+#    include "WekShortcuts.hpp"
+#    include <QCoreApplication>
+#endif
 
 constexpr std::array<uint, 2> WPVer { 1, 2 };
 
@@ -26,6 +34,19 @@ class Port : public QQmlExtensionPlugin {
 public:
     void registerTypes(const char* uri) override {
         if (strcmp(uri, "com.github.captsilver.wallpaperEngineKde") != 0) return;
+
+        // Register with KCrash so DrKonqi enriches the crash dialog with
+        // our plugin .so's symbols and product-name.  plasmashell itself
+        // already registers (KCrash::initialize() is idempotent), but our
+        // addition lets DrKonqi attribute crashes inside the wallpaper
+        // plugin to "Wallpaper Engine Plugin" rather than generic
+        // "Plasma Shell" — gets the bug report to the right maintainer
+        // faster.
+        KCrash::initialize();
+        KCrash::setApplicationProductName(QStringLiteral("Wallpaper Engine Plugin"));
+        KCrash::setApplicationVersion(QStringLiteral(WEK_VERSION));
+        KCrash::setBugAddress("https://github.com/CaptSilver/wallpaper-engine-kde-plugin/issues");
+
         qputenv("QML_XHR_ALLOW_FILE_READ", "1");
         // Allow web wallpapers to make cross-origin requests (XHR/fetch).
         // Wallpaper Engine (Windows) uses CEF with --disable-web-security;
@@ -63,10 +84,22 @@ public:
             WPVer[1],
             "PlaylistItemsModel",
             "PlaylistItemsModel is created via PlaylistManager.itemsModel()");
+        qmlRegisterType<wekde::WekControl>(uri, WPVer[0], WPVer[1], "WekControl");
+        qmlRegisterType<wekde::WekNotifier>(uri, WPVer[0], WPVer[1], "WekNotifier");
+        qmlRegisterType<wekde::WekDiagnostics>(uri, WPVer[0], WPVer[1], "WekDiagnostics");
         qmlRegisterSingletonType<wekde::MigrationHelper>(
             uri, WPVer[0], WPVer[1], "MigrationHelper", [](QQmlEngine*, QJSEngine*) -> QObject* {
                 return new wekde::MigrationHelper();
             });
+
+#ifdef WEKDE_HAS_GLOBALACCEL
+        // Register KGlobalAccel-bound actions.  Construct once per process
+        // (qApp ownership ensures the KActionCollection lives as long as
+        // the host process).  KGlobalAccel dedupes by action id within the
+        // component name, so multi-plasmoid construction is harmless.
+        static auto* shortcuts = new wekde::WekShortcuts(qApp);
+        Q_UNUSED(shortcuts);
+#endif
     }
 };
 

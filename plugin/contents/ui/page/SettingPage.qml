@@ -29,6 +29,8 @@ Flickable {
     property alias cfg_RandomizeWallpaper: ckbox_randomizeWallpaper.checked
     property alias cfg_NoRandomWhilePaused: ckbox_noRandomWhilePaused.checked
     property alias cfg_PauseFilterByScreen: ckbox_pauseFilterByScreen.checked
+    property alias cfg_PlaylistNotifyOnAdvance: ckbox_playlistNotify.checked
+    property alias cfg_CacheQuotaMB: spin_cacheQuota.value
 
     property alias cfg_PauseOnBatPower: chkbox_pauseOnBatPower.checked
     property alias cfg_PauseBatPercent: spin_pauseBatPercent.value
@@ -289,6 +291,25 @@ Flickable {
             }
 
             OptionItem {
+                text: 'Notify on playlist advance'
+                text_color: Kirigami.Theme.textColor
+                icon: '../../images/information-outline.svg'
+                actor: Switch {
+                    id: ckbox_playlistNotify
+                }
+                contentBottom: ColumnLayout {
+                    Text {
+                        Layout.fillWidth: true
+                        color: Kirigami.Theme.disabledTextColor
+                        text: "Show a tray notification when the playlist advances "
+                            + "to a new wallpaper. Off by default — enable if you want "
+                            + "to confirm which wallpaper just appeared."
+                        wrapMode: Text.Wrap
+                    }
+                }
+            }
+
+            OptionItem {
                 text: "Playback Speed"
                 text_color: Kirigami.Theme.textColor
                 icon: '../../images/fast-forward.svg'
@@ -481,6 +502,57 @@ Flickable {
                         color: Kirigami.Theme.disabledTextColor
                         text: "Pass HDR colors to the compositor without tonemapping. Requires Plasma HDR support."
                         wrapMode: Text.Wrap
+                    }
+                }
+            }
+            OptionItem {
+                id: cacheQuotaItem
+                text: 'Cache disk quota'
+                text_color: Kirigami.Theme.textColor
+                icon: '../../images/information-outline.svg'
+                actor: RowLayout {
+                    Layout.fillWidth: true
+                    SpinBox {
+                        id: spin_cacheQuota
+                        from: 0
+                        to: 100000
+                        stepSize: 100
+                        // 0 displays "Unlimited" to match the label semantics.
+                        textFromValue: function(value, locale) {
+                            return value === 0 ? i18n("Unlimited") : value.toString();
+                        }
+                        valueFromText: function(text, locale) {
+                            if (text === i18n("Unlimited")) return 0;
+                            return parseInt(text) || 0;
+                        }
+                        ToolTip.visible: hovered
+                        ToolTip.text: i18n("Cache quota in MB; 0 = unlimited. Renderer + thumbnail caches are auto-evicted LRU when this is exceeded.")
+                    }
+                    Button {
+                        text: i18n("Run cache GC now")
+                        enabled: plugin_info.cache_path
+                        onClicked: {
+                            if (! pyext) return;
+                            pyext.enforce_cache_quota_force(
+                                [Common.urlNative(plugin_info.cache_path)],
+                                (cfg_CacheQuotaMB || 0) * 1024 * 1024);
+                        }
+                    }
+                }
+                contentBottom: ColumnLayout {
+                    Text {
+                        Layout.fillWidth: true
+                        color: Kirigami.Theme.disabledTextColor
+                        wrapMode: Text.Wrap
+                        // Read via pyext.helper (Q_PROPERTY-backed bindable
+                        // property on the underlying FileHelper) so the
+                        // readout updates live without an explicit poll.
+                        // Hides itself when no GC has run yet.
+                        visible: pyext && pyext.helper && pyext.helper.lastGcBytesFreed > 0
+                        text: pyext && pyext.helper
+                              ? i18n("Last GC: %1 MB freed",
+                                     (pyext.helper.lastGcBytesFreed / 1048576).toFixed(1))
+                              : ""
                     }
                 }
             }

@@ -12,6 +12,16 @@ Item {
     property int sortMode: Common.SortMode.Id
     property bool enabled: true
 
+    // Steam Workshop manifest: workshopid -> timeupdated (qint64 unix
+    // timestamp). Empty {} when Steam library isn't configured or the
+    // appworkshop_431960.acf can't be parsed. Updated externally by the
+    // wallpaper page on settings change / refresh.
+    property var workshopManifest: ({})
+    // Mirror of <id>.json's last_seen_version values; an item is "updated"
+    // iff workshopManifest[id] > seenVersions[id]. seenVersions is also
+    // refreshed externally — recordSeenVersion writes to disk only.
+    property var seenVersions: ({})
+
     property var initItemOp: null
     property var _initItemOp: Boolean(initItemOp) ? initItemOp : function(){ }
     property var readfile: null 
@@ -78,7 +88,7 @@ Item {
     }
 
     function loadItemFromJson(text, el) {
-        const project = Utils.parseJson(text);    
+        const project = Utils.parseJson(text);
         if(project !== null) {
             if("title" in project)
                 el.title = project.title;
@@ -94,6 +104,16 @@ Item {
                 el.tags = project.tags.map(el => Object({key: el}));
             }
         }
+        // Compute the "updated" badge state. Truthy iff the Steam-side
+        // manifest reports a newer timeupdated than the per-wallpaper
+        // last_seen_version recorded by the previous load. Empty manifest /
+        // missing entry => not updated (and crucially: not "everything
+        // updated" — first-launch users with MigrationHelper-seeded
+        // last_seen_version match, while users without the seed see no
+        // badges instead of all-badges).
+        const ts = (workshopManifest && workshopManifest[el.workshopid]) || 0;
+        const seen = (seenVersions && seenVersions[el.workshopid]) || 0;
+        el.updated = (ts > 0 && ts > seen);
     }
 
     function loadPlaylists() {

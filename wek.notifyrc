@@ -1,0 +1,33 @@
+# Notification event taxonomy for the Wallpaper Engine plugin.
+# Visible to users in System Settings -> Notifications -> Wallpaper Engine.
+# Each [Event/<id>] block matches a KNotification("<id>") in WekNotifier.cpp.
+
+[Global]
+IconName=preferences-desktop-wallpaper
+Name=Wallpaper Engine
+Comment=Wallpaper Engine for KDE Plasma 6
+
+[Event/wallpaperLoadFailed]
+Name=Wallpaper failed to load
+Comment=A wallpaper could not be loaded (corrupt file, missing assets, or unsupported type)
+Action=Popup
+DefaultAction=Popup
+
+[Event/playlistAdvanced]
+Name=Playlist advanced
+Comment=The next wallpaper in an active playlist has been activated
+Action=None
+DefaultAction=None
+# Default off — users opt in if they want a notification on each playlist tick.
+
+[Event/assetsMissing]
+Name=Wallpaper assets missing
+Comment=A wallpaper's expected files are missing on disk (e.g., after Steam Workshop unsubscribe)
+Action=Popup
+DefaultAction=Popup
+
+[Event/backendUnavailable]
+Name=Wallpaper backend unavailable
+Comment=A wallpaper backend (Scene / MPV / Web) failed to initialise or is missing
+Action=Popup
+DefaultAction=Popup

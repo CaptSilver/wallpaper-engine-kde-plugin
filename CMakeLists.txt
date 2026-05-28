@@ -58,7 +58,13 @@ set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH} ${CMAKE_MODULE_PATH})
 
 if(ECM_VERSION_MAJOR EQUAL 6)
   find_package(Plasma REQUIRED)
-  find_package(KF6 ${KF6_MIN_VERSION} REQUIRED COMPONENTS Package Config)
+  find_package(KF6 ${KF6_MIN_VERSION} REQUIRED COMPONENTS Package Config Notifications Crash)
+  # GlobalAccel + CoreAddons are optional at configure time so the build
+  # degrades gracefully on minimal Fedora/Debian sysroots that ship the rest
+  # of KF6 but not the global-shortcut bits.  When present, src/CMakeLists.txt
+  # wires the WekShortcuts class into the plugin .so and exposes the
+  # KActionCollection in System Settings -> Shortcuts -> Wallpaper Engine.
+  find_package(KF6 ${KF6_MIN_VERSION} COMPONENTS GlobalAccel CoreAddons QUIET)
   include(KDEInstallDirs6)
 else()
   find_package(KF5 ${KF_MIN_VERSION} REQUIRED COMPONENTS Package Plasma)
@@ -124,6 +130,14 @@ else()
     VERBATIM)
 endif()
 
+# ── D-Bus introspection XML ──────────────────────────────────────────────────
+# Headless control interface for the wallpaper engine (Next / Previous /
+# Pause / etc.).  Installed at the FDO-standard interfaces location so
+# `qdbus`, `busctl`, and KDE's d-bus introspection tooling can read it
+# without contacting a live plasmashell.  See src/WekControl.{hpp,cpp}.
+install(FILES plugin/contents/dbus/com.github.captsilver.WallpaperEngine.xml
+        DESTINATION ${KDE_INSTALL_DATAROOTDIR}/dbus-1/interfaces)
+
 # ── Migration script ─────────────────────────────────────────────────────────
 install(PROGRAMS scripts/migrate-from-catsout.sh
         DESTINATION ${KDE_INSTALL_DATADIR}/wek/scripts
@@ -183,6 +197,13 @@ install(FILES
 # Project's own GPL-2.0-only text (top-level LICENSE).
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
         DESTINATION "${KDE_INSTALL_DATADIR}/wek/licenses")
+
+# KNotification event taxonomy.  ${KDE_INSTALL_KNOTIFY5RCDIR} resolves to
+# share/knotifications6/ on KF6 (ECM keeps the 5RCDIR name for source
+# compatibility).  Each [Event/...] group in wek.notifyrc matches a
+# KNotification("<id>") in WekNotifier.cpp; users see the events in System
+# Settings -> Notifications -> Wallpaper Engine.
+install(FILES wek.notifyrc DESTINATION ${KDE_INSTALL_KNOTIFY5RCDIR})
 
 # Top-level summary; configure_file substitutes @PROJECT_NAME@ + @KDE_INSTALL_DATADIR@.
 configure_file(

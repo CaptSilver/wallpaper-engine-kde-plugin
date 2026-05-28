@@ -339,6 +339,7 @@ add_executable(tst_webaudio
     tst_webaudio.cpp
     ${WEKDE_SRC_DIR}/WebAudioBridge.cpp
     ${WEKDE_AUDIO_DIR}/AudioAnalyzer.cpp
+    ${WEKDE_AUDIO_DIR}/AudioBus.cpp
     ${WEKDE_UTILS_DIR}/Logging.cpp
     ${WEKDE_UTILS_DIR}/SceneProfiler.cpp
     ${WEKDE_UTILS_DIR}/Sha.cpp           # genSha1, used by Logging.cpp
@@ -370,8 +371,14 @@ if(COVERAGE)
     target_link_options(tst_webaudio PRIVATE ${_cov_link_flags})
 endif()
 add_test(NAME tst_webaudio COMMAND tst_webaudio -v2)
+# WEK_TEST_AUDIO_NULL_CAPTURE keeps the process-singleton AudioBus from
+# touching PulseAudio when the bridge's start() Acquires from it (the
+# test binary stubs AudioCapture::Init to return false, so the bus
+# would otherwise call into the stub harmlessly — but the env hook
+# also short-circuits the bus's Process-thread spawn under future
+# null-capture-aware refactors).
 set_tests_properties(tst_webaudio PROPERTIES
-    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;WEK_TEST_AUDIO_NULL_CAPTURE=1")
 
 # ── SafeWallpaperBridge contract tests ────────────────────────────────────────
 # Pins the read-only Q_PROPERTY surface + signal-only contract for the
@@ -403,9 +410,14 @@ set_tests_properties(tst_safewallpaperbridge PROPERTIES
 # directly (no umbrella `find_package(KF6 …)` because the standalone test
 # build doesn't pull in ECM).
 find_package(KF6Config REQUIRED)
+# MigrationHelper now also calls into FileHelper for seedLastSeenVersions
+# (Steam workshop manifest parsing + per-wallpaper config writes), so the
+# test binary needs FileHelper.cpp plus its qrc.
 add_executable(tst_migrationhelper
     tst_migrationhelper.cpp
     ${WEKDE_SRC_DIR}/MigrationHelper.cpp
+    ${WEKDE_SRC_DIR}/FileHelper.cpp
+    ${WEKDE_SRC_DIR}/qwebchannel.qrc
 )
 target_include_directories(tst_migrationhelper PRIVATE ${WEKDE_SRC_DIR})
 target_link_libraries(tst_migrationhelper PRIVATE Qt6::Core Qt6::Test KF6::ConfigCore)
@@ -419,6 +431,85 @@ if(MUTATION_TESTING)
         -g -grecord-command-line)
 endif()
 add_test(NAME tst_migrationhelper COMMAND tst_migrationhelper -v2)
+
+# ── ActivityHelper unit tests ─────────────────────────────────────────────────
+# Per-Activity KConfig sub-group routing with [General] fallback.  The helper
+# is read/write-tested through an injected config-file path so each case runs
+# against a QTemporaryDir.  The production wiring to KActivities::Consumer
+# (libPlasmaActivities) is enabled at build time via WEK_HAS_PLASMA_ACTIVITIES;
+# the unit tests bypass Consumer entirely and drive the current-activity slot
+# directly so they don't need a running KActivityManagerd.
+add_executable(tst_activityhelper
+    tst_activityhelper.cpp
+    ${WEKDE_SRC_DIR}/ActivityHelper.cpp
+)
+target_include_directories(tst_activityhelper PRIVATE ${WEKDE_SRC_DIR})
+target_link_libraries(tst_activityhelper PRIVATE Qt6::Core Qt6::Test KF6::ConfigCore)
+if(COVERAGE)
+    target_compile_options(tst_activityhelper PRIVATE ${_cov_compile_flags})
+    target_link_options(tst_activityhelper PRIVATE ${_cov_link_flags})
+endif()
+if(MUTATION_TESTING)
+    target_compile_options(tst_activityhelper PRIVATE
+        -fpass-plugin=${MULL_PLUGIN_PATH}
+        -g -grecord-command-line)
+endif()
+add_test(NAME tst_activityhelper COMMAND tst_activityhelper -v2)
+
+# ── WekNotifier unit tests ────────────────────────────────────────────────────
+# Pure non-crash + notifyrc-contract checks for the QML-facing KNotification
+# wrapper.  Requires KF6::Notifications + a session bus for the four "does
+# not crash" cases (skipped via QSKIP when no bus is available — distrobox
+# without dbus-launch).  The notifyrc-content tests run regardless of bus.
+find_package(KF6Notifications QUIET)
+find_package(Qt6 COMPONENTS DBus QUIET)
+if(KF6Notifications_FOUND AND Qt6DBus_FOUND)
+    add_executable(tst_weknotifier
+        tst_weknotifier.cpp
+        ${WEKDE_SRC_DIR}/WekNotifier.cpp)
+    target_include_directories(tst_weknotifier PRIVATE ${WEKDE_SRC_DIR})
+    target_link_libraries(tst_weknotifier PRIVATE
+        Qt6::Test Qt6::Core Qt6::DBus
+        KF6::Notifications)
+    target_compile_definitions(tst_weknotifier PRIVATE
+        WEK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/..")
+    if(COVERAGE)
+        target_compile_options(tst_weknotifier PRIVATE ${_cov_compile_flags})
+        target_link_options(tst_weknotifier PRIVATE ${_cov_link_flags})
+    endif()
+    if(MUTATION_TESTING)
+        target_compile_options(tst_weknotifier PRIVATE
+            -fpass-plugin=${MULL_PLUGIN_PATH}
+            -g -grecord-command-line)
+    endif()
+    add_test(NAME tst_weknotifier COMMAND tst_weknotifier -v2)
+    set_tests_properties(tst_weknotifier PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+else()
+    message(STATUS "KF6Notifications not found — skipping tst_weknotifier")
+endif()
+
+# ── WekDiagnostics unit tests ─────────────────────────────────────────────────
+# Pure Qt6 Core+Test — no KF6 deps.  Exercises bundle composition, home-path
+# redaction, KConfig path-field redaction, lastError contract, and non-crash
+# on missing system tools (lspci / lsmod stripped distrobox).  WEK_VERSION=
+# "testbuild" supplies the macro that collectPluginVersion expands at compile.
+add_executable(tst_wekdiagnostics
+    tst_wekdiagnostics.cpp
+    ${WEKDE_SRC_DIR}/WekDiagnostics.cpp)
+target_include_directories(tst_wekdiagnostics PRIVATE ${WEKDE_SRC_DIR})
+target_link_libraries(tst_wekdiagnostics PRIVATE Qt6::Test Qt6::Core)
+target_compile_definitions(tst_wekdiagnostics PRIVATE WEK_VERSION="testbuild")
+if(COVERAGE)
+    target_compile_options(tst_wekdiagnostics PRIVATE ${_cov_compile_flags})
+    target_link_options(tst_wekdiagnostics PRIVATE ${_cov_link_flags})
+endif()
+if(MUTATION_TESTING)
+    target_compile_options(tst_wekdiagnostics PRIVATE
+        -fpass-plugin=${MULL_PLUGIN_PATH}
+        -g -grecord-command-line)
+endif()
+add_test(NAME tst_wekdiagnostics COMMAND tst_wekdiagnostics -v2)
 
 # ── PlaylistManager unit tests ────────────────────────────────────────────────
 add_executable(tst_playlist_manager
@@ -442,6 +533,67 @@ if(MUTATION_TESTING)
         -g -grecord-command-line)
 endif()
 add_test(NAME tst_playlist_manager COMMAND tst_playlist_manager -v2)
+
+# ── WekControl D-Bus surface tests ────────────────────────────────────────────
+# Pure-routing tests that exercise WekControl::*  dispatch into a
+# PlaylistControllerStub without standing up a session bus.  The two
+# session-bus-needing cases QSKIP per feedback_distrobox_dbus_launch_missing
+# (dbus-launch / dbus-run-session absent in Bazzite distrobox).
+find_package(Qt6 COMPONENTS DBus QUIET)
+if(Qt6DBus_FOUND)
+    add_executable(tst_wekcontrol
+        tst_wekcontrol.cpp
+        ${WEKDE_SRC_DIR}/WekControl.cpp
+    )
+    target_include_directories(tst_wekcontrol PRIVATE ${WEKDE_SRC_DIR})
+    target_link_libraries(tst_wekcontrol PRIVATE
+        Qt6::Core Qt6::Test Qt6::DBus)
+    if(COVERAGE)
+        target_compile_options(tst_wekcontrol PRIVATE ${_cov_compile_flags})
+        target_link_options(tst_wekcontrol PRIVATE ${_cov_link_flags})
+    endif()
+    if(MUTATION_TESTING)
+        target_compile_options(tst_wekcontrol PRIVATE
+            -fpass-plugin=${MULL_PLUGIN_PATH}
+            -g -grecord-command-line)
+    endif()
+    add_test(NAME tst_wekcontrol COMMAND tst_wekcontrol -v2)
+    set_tests_properties(tst_wekcontrol PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()
+
+# ── WekShortcuts KGlobalAccel routing tests ───────────────────────────────────
+# KGlobalAccel + KCoreAddons (KActionCollection) are optional dev-headers --
+# the test build degrades gracefully when kf6-kglobalaccel-devel /
+# libkf6globalaccel-dev is absent.  The C++ plugin .so gates the
+# WekShortcuts class itself behind WEKDE_HAS_GLOBALACCEL (src/CMakeLists.txt).
+find_package(KF6GlobalAccel QUIET)
+find_package(KF6CoreAddons QUIET)
+if(KF6GlobalAccel_FOUND AND KF6CoreAddons_FOUND AND Qt6DBus_FOUND)
+    add_executable(tst_wekshortcuts
+        tst_wekshortcuts.cpp
+        ${WEKDE_SRC_DIR}/WekShortcuts.cpp
+    )
+    target_include_directories(tst_wekshortcuts PRIVATE ${WEKDE_SRC_DIR})
+    target_link_libraries(tst_wekshortcuts PRIVATE
+        Qt6::Core Qt6::Test Qt6::DBus
+        KF6::GlobalAccel
+        KF6::CoreAddons)
+    if(COVERAGE)
+        target_compile_options(tst_wekshortcuts PRIVATE ${_cov_compile_flags})
+        target_link_options(tst_wekshortcuts PRIVATE ${_cov_link_flags})
+    endif()
+    if(MUTATION_TESTING)
+        target_compile_options(tst_wekshortcuts PRIVATE
+            -fpass-plugin=${MULL_PLUGIN_PATH}
+            -g -grecord-command-line)
+    endif()
+    add_test(NAME tst_wekshortcuts COMMAND tst_wekshortcuts -v2)
+    set_tests_properties(tst_wekshortcuts PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+else()
+    message(STATUS "KF6GlobalAccel / KF6CoreAddons not found — skipping tst_wekshortcuts")
+endif()
 
 # ── QML tests (qmltestrunner) ─────────────────────────────────────────────────
 # Prefer Qt6-specific binary names. The bare `qmltestrunner` on some Debian/
@@ -590,9 +742,10 @@ endif()
 # not C++ executables, so they are not listed.
 foreach(_wek_test_target
         tst_filehelper tst_plugininfo tst_mpriscolors tst_mousegrabber tst_mpvbackend
-        tst_thumbnail_grabber tst_webaudio tst_migrationhelper
+        tst_thumbnail_grabber tst_webaudio tst_migrationhelper tst_activityhelper
         tst_playlist_manager tst_main_integration tst_ttyswitchmonitor
-        tst_safewallpaperbridge tst_weburlinterceptor tst_screensavermonitor)
+        tst_safewallpaperbridge tst_weburlinterceptor tst_screensavermonitor
+        tst_wekcontrol tst_wekshortcuts tst_weknotifier tst_wekdiagnostics)
     if(TARGET ${_wek_test_target})
         wek_apply_sanitizers(${_wek_test_target})
     endif()
@@ -620,6 +773,9 @@ if(TEST tst_ttyswitchmonitor)
 endif()
 if(TEST tst_screensavermonitor)
     set_tests_properties(tst_screensavermonitor PROPERTIES LABELS "DBUS_NEEDED")
+endif()
+if(TEST tst_weknotifier)
+    set_tests_properties(tst_weknotifier PROPERTIES LABELS "DBUS_NEEDED")
 endif()
 
 # ── Coverage report target ────────────────────────────────────────────────────

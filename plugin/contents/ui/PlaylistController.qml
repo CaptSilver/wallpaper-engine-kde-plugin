@@ -8,6 +8,7 @@
 // Subsequent runs are no-ops (PlaylistManager's playlists.json existence
 // gate is the one-shot trigger).
 import QtQuick
+import QtQuick.Window
 import com.github.captsilver.wallpaperEngineKde
 
 Item {
@@ -19,6 +20,20 @@ Item {
     property var common:          null  // Common namespace (DI)
     property bool noRandomWhilePaused: false
     property bool desktopOk: true
+    // Optional notifier — set by main.qml to fire tray notifications on
+    // skip / advance.  null for config.qml (editor mode) where notifications
+    // would just spam the user during list editing.
+    property var notifier: null
+    property bool notifyOnAdvance: false
+
+    // Optional D-Bus bridge — set by main.qml; null in editor / tests.  When
+    // set, _applyWorkshopId calls into it to emit a WallpaperChanged D-Bus
+    // signal every time the workshop id transitions.  See src/WekControl.*.
+    property var dbusControl: null
+    // Local "paused" mirror for the QML side — pauseTicks() is timer-only and
+    // PlaylistManager doesn't expose an isPaused Q_PROPERTY, so we track it
+    // here for togglePause() decisions.
+    property bool _userPaused: false
 
     // Reads — parent supplies plain values rather than the config object,
     // because main.qml's `wallpaper.configuration` and config.qml's `root`
@@ -91,6 +106,84 @@ Item {
     // Expose mgr for the editor pages
     readonly property alias manager: mgr
 
+    // -- Public export layer ---------------------------------------------
+    // Invoked from WekControl (C++) via QMetaObject::invokeMethod after a
+    // session-bus method call.  Method names are lowerCamelCase to match
+    // QML's metatype lookup; the C++ adapter renames as needed.
+
+    function next() {
+        // Advance the playlist by one step.  acceptPick("") on no-items is
+        // handled inside _serveFilteredPick.
+        mgr.skipCurrent();
+    }
+
+    function previous() {
+        // PlaylistManager has no public "go-back" API today — wrap with the
+        // same skip path so the D-Bus contract remains complete and a future
+        // implementation can fill it in.  Logs a hint for telemetry.
+        console.info("[playlist] previous() — not implemented; advancing");
+        mgr.skipCurrent();
+    }
+
+    function pause() {
+        root._userPaused = true;
+        mgr.pauseTicks();
+    }
+
+    function resume() {
+        root._userPaused = false;
+        mgr.resumeTicks();
+    }
+
+    function togglePause() {
+        if (root._userPaused) root.resume();
+        else                  root.pause();
+    }
+
+    function mute() {
+        if (typeof wallpaper !== "undefined")
+            wallpaper.configuration.MuteAudio = true;
+    }
+
+    function unmute() {
+        if (typeof wallpaper !== "undefined")
+            wallpaper.configuration.MuteAudio = false;
+    }
+
+    function toggleMute() {
+        if (typeof wallpaper !== "undefined") {
+            wallpaper.configuration.MuteAudio =
+                ! wallpaper.configuration.MuteAudio;
+        }
+    }
+
+    function activatePlaylistById(id) {
+        root.setActivePlaylistId(id);
+    }
+
+    function reload() {
+        // Bump the cross-context reload seq + re-read playlists.json on the
+        // runtime side.
+        root.bumpReloadSeq();
+        if (! root.editorMode) mgr.reload();
+    }
+
+    // Getters — direct-connection from the C++ adapter.  Return QVariant
+    // so Q_RETURN_ARG(QVariant) marshalling works on the C++ side.
+    function currentWorkshopId() {
+        if (typeof wallpaper !== "undefined")
+            return wallpaper.configuration.WallpaperWorkShopId || "";
+        return "";
+    }
+
+    function currentPlaylistId() {
+        return root.activePlaylistIdRead || "";
+    }
+
+    function currentItemIndex() {
+        return root.currentItemIndexRead;
+    }
+
     function _resolveItem(workshopId) {
         if (!workshopId) return null;
         // Prefer the unfiltered source via findItem(): the user's filter
@@ -151,11 +244,39 @@ Item {
                 return;
             }
             console.warn("[playlist] item", workshopId, "not resolvable; skipping");
+            // Surface as a tray notification — actionable for the user
+            // (re-subscribe in Steam Workshop or remove from playlist).
+            // Per-monitor dedup at the caller: only primary screen fires.
+            if (root.notifier && Window.screen?.primary !== false) {
+                root.notifier.assetsMissing(workshopId, "scene.pkg / project.json");
+            }
             mgr.skipCurrent();
             return;
         }
         root._pendingWorkshopId = "";
         root.setWallpaperFromItem(item);
+
+        // Emit D-Bus WallpaperChanged on every successful advance.  Third-
+        // party panel widgets subscribe to this for "now playing" displays.
+        if (root.dbusControl) {
+            root.dbusControl.emitWallpaperChanged(
+                workshopId, root.activePlaylistIdRead || "");
+        }
+
+        // Optional advance notification. Off by default — a 30-item playlist
+        // on a 5-min cycle would be ~288 popups/day.
+        if (root.notifyOnAdvance && root.notifier
+            && Window.screen?.primary !== false) {
+            const playlistName = mgr.activePlaylistId === "__filtered_library__"
+                ? "Filtered Library" : (mgr.activePlaylistId || "");
+            const title = item.title || workshopId;
+            const total = (root.wpListModel && root.wpListModel.model)
+                ? root.wpListModel.model.count : 0;
+            root.notifier.playlistAdvanced(
+                workshopId, title,
+                (root.currentItemIndexRead || 0) + 1,
+                total, playlistName);
+        }
     }
 
     Connections {

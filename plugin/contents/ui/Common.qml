@@ -41,7 +41,11 @@ QtObject {
         contentrating: "Everyone",
         tags: [],
         favor: false,
-        playlists: []
+        playlists: [],
+        // True iff the Steam Workshop manifest reports a newer timeupdated
+        // than the per-wallpaper last_seen_version (set after the wallpaper
+        // last rendered). Drives the "Updated" badge in WallpaperGrid.
+        updated: false
     })
 
     function wpitemFromQtObject(qobj) {

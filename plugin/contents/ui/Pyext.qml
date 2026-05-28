@@ -125,6 +125,35 @@ Item {
     function watch_wallpaper_dir(path)    { fileHelper.watchWallpaperDir(path); }
     function unwatch_all_wallpaper_dirs() { fileHelper.unwatchAllWallpaperDirs(); }
 
+    // Cache GC + quota helpers (GAP-8). Synchronous on C++ side — small dirs;
+    // future async dispatch via QThreadPool is straightforward if needed.
+    function prune_orphan_thumbnails(cacheRoot, installedDirs, videoDirs) {
+        return fileHelper.pruneOrphanThumbnails(cacheRoot, installedDirs || [], videoDirs || []);
+    }
+    function enforce_cache_quota(roots, quotaBytes) {
+        return fileHelper.enforceCacheQuota(roots || [], quotaBytes);
+    }
+    function enforce_cache_quota_force(roots, quotaBytes) {
+        return fileHelper.enforceCacheQuotaForce(roots || [], quotaBytes);
+    }
+    // Steam Workshop manifest helpers (GAP-9). Synchronous reads; the .acf
+    // is ~tens of KB for a few hundred items.
+    function read_workshop_manifest(steamLibraryPath) {
+        return fileHelper.readWorkshopManifest(steamLibraryPath);
+    }
+    function all_seen_versions() {
+        return fileHelper.allSeenVersions();
+    }
+    function record_seen_version(id, timeUpdated) {
+        fileHelper.recordSeenVersion(id, timeUpdated);
+    }
+
+    // Expose the underlying FileHelper so QML can bind to its
+    // Q_PROPERTY values (e.g. lastGcBytesFreed for the SettingPage readout).
+    // Read-only — callers should still go through this wrapper for the
+    // promise-shaped API.
+    readonly property alias helper: fileHelper
+
     // Pending thumbnail requests keyed by videoPath. Each entry is an array of
     // {resolve, reject, outPath} callbacks waiting on the next thumbnailReady
     // signal matching that videoPath.

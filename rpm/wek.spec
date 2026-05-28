@@ -113,6 +113,8 @@ ctest --test-dir %{_builddir}/wek-build/tests \
 %{_bindir}/wek-migrate-from-catsout
 # D-Bus introspection XML for the WallpaperEngine control surface.
 %{_datadir}/dbus-1/interfaces/com.github.captsilver.WallpaperEngine.xml
+# KNotification event taxonomy (System Settings -> Notifications -> Wallpaper Engine).
+%{_datadir}/knotifications6/wek.notifyrc
 
 %changelog
 * %(date +'%a %b %d %Y') packager - %{version}-%{release}.git%{shortcommit}

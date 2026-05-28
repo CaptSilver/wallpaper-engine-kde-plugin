@@ -3,6 +3,7 @@ import com.github.captsilver.wallpaperEngineKde
 import QtQuick.Window
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.plasmoid
+import org.kde.kirigami as Kirigami
 
 WallpaperItem {
 Rectangle {
@@ -35,6 +36,15 @@ Rectangle {
     property bool   hdrOutput: wallpaper.configuration.HdrOutput
     property string postProcessing: get_opt_value('postprocessing', false) ? "ultra" : ""
     property bool   systemAudioCapture: wallpaper.configuration.SystemAudioCapture
+
+    // Honour the desktop's "Reduce animations" accessibility pref. The
+    // `hasOwnProperty` guard keeps the binding silent on Plasma 6.0/6.1
+    // where `hasReducedAnimations` may not exist yet (KF6 floor is 6.0;
+    // the property shipped later). Read once at construction; Kirigami
+    // emits no setting-change signal so a static read is fine.
+    readonly property bool reducedMotion: Kirigami.Settings.hasOwnProperty('hasReducedAnimations')
+                                          ? Kirigami.Settings.hasReducedAnimations
+                                          : false
 
     
     property var curOpt: ({})
@@ -419,7 +429,7 @@ Rectangle {
         color: "#cccccc"
         font.pixelSize: 18
         opacity: 0.0
-        Behavior on opacity { NumberAnimation { duration: 250 } }
+        Behavior on opacity { NumberAnimation { duration: background.reducedMotion ? 0 : 250 } }
         onVisibleChanged: opacity = visible ? 0.7 : 0.0
         Component.onCompleted: opacity = visible ? 0.7 : 0.0
     }
@@ -434,8 +444,11 @@ Rectangle {
         // every 15 min looks brutal as a flash of background color; a
         // 250ms opacity fade reads as intentional. opacity is bound to a
         // simple flag the loader flips around the destroy+create dance.
+        // Gated to 0ms when the desktop has "Reduce animations" enabled
+        // (then the swap is an instant cut — preferred over a fade for
+        // a user who asked for less motion).
         opacity: _fadeOpacity
-        Behavior on opacity { NumberAnimation { duration: 250 } }
+        Behavior on opacity { NumberAnimation { duration: background.reducedMotion ? 0 : 250 } }
         property real _fadeOpacity: 1.0
 
         signal loaded

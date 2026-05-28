@@ -398,6 +398,7 @@ RowLayout {
                     showWorkshopLink: true
                     customConf: root.customConf
                     autoCommitOnIndexResolve: !cfg_WallpaperSource
+                    accessibleName: "Wallpaper Engine wallpapers"
 
                     onItemClicked: (item, index) => {
                         cfg_WallpaperSource = Common.packWallpaperSource(item);

@@ -130,6 +130,7 @@ Item {
             showWorkshopLink: false
             customConf: null
             autoCommitOnIndexResolve: false
+            accessibleName: "Plain videos"
 
             onItemClicked: (item, idx) => root._commitItem(item)
             onItemRightClicked: (item, idx, x, y) => {

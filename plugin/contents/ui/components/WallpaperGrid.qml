@@ -22,10 +22,29 @@ KCM.GridView {
     property bool   showFavorites: true
     property bool   showWorkshopLink: true
     property var    customConf: null              // {favor: Set} when showFavorites
+    property string accessibleName: "Wallpapers"  // override per-caller (Orca announces this)
     signal itemClicked(var item, int index)
     signal favorToggled(var item, int index)
     signal itemRightClicked(var item, int index, real x, real y)
     signal saveCustomConfRequested()
+
+    // Screen-reader hints. KCM.GridView is a QML Item under the hood, so the
+    // attached Accessible.* props are honoured even though the framework
+    // didn't ship them.
+    Accessible.role: Accessible.List
+    Accessible.name: accessibleName
+
+    // System-pref read for honouring "Reduce animations" in the desktop's
+    // accessibility settings. `hasOwnProperty` survives older Kirigami
+    // builds where `hasReducedAnimations` may not yet exist (Plasma 6.0/
+    // 6.1) without a binding error — the AnimatedImage preview Loader
+    // below reads this to fall back to a static Image.  Non-`readonly`
+    // so the QML test harness can override the live binding to probe
+    // both axes (animatedPreviewActive × reducedMotion) without mocking
+    // the Kirigami singleton itself.
+    property bool reducedMotion: Kirigami.Settings.hasOwnProperty('hasReducedAnimations')
+                                 ? Kirigami.Settings.hasReducedAnimations
+                                 : false
 
     // ── Internal state preserved from original implementation ────────────────
     readonly property var currentModel: view.model.get(view.currentIndex)
@@ -38,11 +57,33 @@ KCM.GridView {
     view.delegate: KCM.GridDelegate {
         text: title
         hoverEnabled: true
+
+        // Screen-reader announcement per tile. Falls back to workshopid when
+        // title is empty (offline-rebuilt entries, malformed project.json).
+        // Description carries the unrenderable-type hint surfaced visually by
+        // the badge Loader below — Orca speaks it after the name so the user
+        // hears "Wallpaper 2866 — Unsupported: Windows application".
+        Accessible.role: Accessible.ListItem
+        Accessible.name: title || workshopid
+        Accessible.description: {
+            if (!model.type) return "";
+            if (model.type === "application") return "Unsupported: Windows application";
+            if (model.type === "preset")      return "Unsupported: preset overlay";
+            return model.type;
+        }
+        Accessible.selected: index === view.currentIndex
+        Accessible.onPressAction: {
+            view.currentIndex = index;
+            root.itemClicked(model, index);
+        }
+
         actions: [
             Kirigami.Action {
                 visible: root.showFavorites
                 icon.name: favor ? "user-bookmarks-symbolic" : "bookmark-add-symbolic"
                 tooltip: favor ? "Remove from favorites" : "Add to favorites"
+                Accessible.role: Accessible.Button
+                Accessible.name: tooltip
                 onTriggered: root.toggleFavor(model, index)
             },
             Kirigami.Action {
@@ -50,6 +91,8 @@ KCM.GridView {
                 icon.name: "folder-remote-symbolic"
                 tooltip: "Open Workshop Link"
                 enabled: workshopid && workshopid.match(Common.regex_workshop_online)
+                Accessible.role: Accessible.Button
+                Accessible.name: tooltip
                 onTriggered: Qt.openUrlExternally(Common.getWorkshopUrl(workshopid))
             }
         ]
@@ -68,7 +111,13 @@ KCM.GridView {
             Loader {
                 id: imgPre
                 anchors.fill: parent
-                sourceComponent: root.animatedPreviewActive ? animatedPre : staticPre
+                // System "Reduce animations" pref wins over the user's
+                // cfg_AnimatedPreview: never pump GIF playback into the
+                // grid when the desktop asked us not to. The user-pref
+                // controls only the downward direction; reduced-motion
+                // is one-way authoritative.
+                sourceComponent: (root.animatedPreviewActive && !root.reducedMotion)
+                    ? animatedPre : staticPre
             }
 
             // Unsupported-type badge. WallpaperListModel.loadItemFromJson
@@ -145,10 +194,14 @@ KCM.GridView {
 
         // Right-click: emit signal so the parent page can pop a context menu
         // (e.g. AddToPlaylistMenu). Doesn't block left-click — propagates.
+        // Accessible.ignored: the MouseArea is a supplemental gesture; the
+        // context menu's own items are announced via their own MenuItem roles
+        // once the menu pops, so this anchor doesn't need to speak.
         MouseArea {
             anchors.fill: parent
             acceptedButtons: Qt.RightButton
             propagateComposedEvents: true
+            Accessible.ignored: true
             onClicked: function(mouse) {
                 root.itemRightClicked(model, index, mouse.x, mouse.y);
             }

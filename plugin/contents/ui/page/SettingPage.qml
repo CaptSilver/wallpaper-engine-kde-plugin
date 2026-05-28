@@ -371,6 +371,23 @@ Flickable {
                 actor: Switch {
                     id: ckbox_animatedPreview
                 }
+                // Hint banner shown only when the desktop has system-wide
+                // "Reduce animations" enabled AND the user still has
+                // Animated Preview on.  We don't auto-flip the config —
+                // less surprising to suggest the change than make it.
+                // `hasOwnProperty` guard keeps the binding quiet on
+                // Plasma 6.0/6.1 where `hasReducedAnimations` may not
+                // exist yet.
+                contentBottom: Kirigami.InlineMessage {
+                    Layout.fillWidth: true
+                    visible: Kirigami.Settings.hasOwnProperty('hasReducedAnimations')
+                             && Kirigami.Settings.hasReducedAnimations
+                             && cfg_AnimatedPreview
+                    type: Kirigami.MessageType.Information
+                    text: "Reduced motion is enabled system-wide. "
+                        + "Consider disabling Animated Preview for less "
+                        + "motion in this plugin."
+                }
             }
        }
 

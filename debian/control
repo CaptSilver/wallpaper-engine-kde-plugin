@@ -34,7 +34,11 @@ Depends:
  ${shlibs:Depends},
  ${misc:Depends},
  plasma-workspace,
+Recommends:
  gstreamer1.0-libav,
+ qt6-webengine,
+Suggests:
+ pipewire-pulse,
 Description: Wallpaper Engine integration for KDE Plasma 6
  A wallpaper plugin integrating Wallpaper Engine into KDE Plasma 6
  wallpaper settings. Supports Scene (2D), Web, and Video wallpapers.

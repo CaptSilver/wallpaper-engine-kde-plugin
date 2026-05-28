@@ -33,12 +33,13 @@ BuildRequires: nodejs
 %endif
 
 Requires: plasma-workspace
-Requires: gstreamer1-libav
 Requires: mpv-libs
 Requires: lz4
 Requires: qt6-qtwebchannel
-Requires: qt6-qtwebengine
 Requires: glew
+Recommends: gstreamer1-libav
+Recommends: qt6-qtwebengine
+Suggests: pipewire-pulse
 
 %global _enable_debug_package 0
 %global debug_package %{nil}

@@ -169,6 +169,37 @@ dpkg-buildpackage -us -uc -b
 sudo apt install ../wallpaper-engine-kde-plugin_*.deb
 ```
 
+### Optional backend dependencies
+
+The plugin supports three wallpaper types. The Scene type needs only the
+base dependencies (Vulkan); the others have additional packages that ship
+as `Recommends:` and install by default but can be skipped for a slimmer
+install:
+
+| Backend                           | Wallpaper type | Package (Debian)            | Package (Fedora)  | Footprint |
+|-----------------------------------|----------------|-----------------------------|-------------------|-----------|
+| **Scene**                         | Scene (2D/3D)  | base deps                   | base deps         | -         |
+| **Mpv** (default video)           | Video          | `libmpv2` (auto via shlibs) | `mpv-libs`        | ~5 MB     |
+| **QtMultimedia** (fallback video) | Video          | `gstreamer1.0-libav`        | `gstreamer1-libav`| ~30 MB    |
+| **Web**                           | Web (HTML/JS)  | `qt6-webengine`             | `qt6-qtwebengine` | ~200 MB   |
+
+Slim install (Scene + Mpv only):
+
+```sh
+# Debian / Ubuntu
+sudo apt install --no-install-recommends ./wallpaper-engine-kde-plugin_*.deb
+
+# Fedora
+sudo dnf install --setopt=install_weak_deps=False ./wallpaper-engine-kde-plugin-qt6-*.rpm
+```
+
+> **Note on partial demotion (Debian):** the plugin `.so` link-binds to
+> `Qt::WebEngineCore`, so `${shlibs:Depends}` still pulls
+> `libqt6webenginecore6` even with `--no-install-recommends`. A future
+> runtime-`dlopen` refactor would close this gap; until then, the slim
+> Debian install retains the ~50 MB QtWebEngineCore lib without the
+> top-level QtWebEngine integration.
+
 ## Activate in Plasma
 
 After installing via any method:

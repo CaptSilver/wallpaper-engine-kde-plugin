@@ -38,11 +38,19 @@ jobs:
             extra-cmake-modules \
             libplasma \
             kconfig \
+            knotifications \
+            kcrash \
+            kglobalaccel \
+            ki18n \
+            kxmlgui \
             qt6-declarative \
             qt6-webchannel \
+            qt6-webengine \
             vulkan-headers \
             mpv \
-            lz4
+            lz4 \
+            freetype2 \
+            libpulse
 
       - name: Configure
         run: |
@@ -87,12 +95,20 @@ jobs:
             kf6-kcoreaddons-devel \
             kf6-kpackage-devel \
             kf6-kconfig-devel \
+            kf6-knotifications-devel \
+            kf6-kcrash-devel \
+            kf6-kglobalaccel-devel \
+            kf6-ki18n-devel \
+            kf6-kxmlgui-devel \
             lz4-devel \
             mpv-devel \
             qt6-qtbase-private-devel \
             libplasma-devel \
             qt6-qtwebchannel-devel \
-            qt6-qtdeclarative-devel
+            qt6-qtwebengine-devel \
+            qt6-qtdeclarative-devel \
+            freetype-devel \
+            pulseaudio-libs-devel
 
       - name: Configure
         run: |
@@ -140,15 +156,22 @@ jobs:
             libvulkan-dev \
             libkf6package-dev \
             libkf6config-dev \
+            libkf6notifications-dev \
+            libkf6crash-dev \
+            libkf6globalaccel-dev \
+            libkf6i18n-dev \
+            libkf6xmlgui-dev \
             libplasma-dev \
             plasma-workspace-dev \
             qt6-base-dev \
             qt6-base-private-dev \
             qt6-declarative-dev \
             qt6-webchannel-dev \
+            qt6-webengine-dev \
             libmpv-dev \
             liblz4-dev \
-            libfreetype-dev
+            libfreetype-dev \
+            libpulse-dev
 
       - name: Configure
         run: |
@@ -190,13 +213,21 @@ jobs:
             qt6-qtbase-devel \
             qt6-qtdeclarative-devel \
             qt6-qtwebchannel-devel \
+            qt6-qtwebengine-devel \
             mpv-devel \
             kf6-kirigami-devel \
             kf6-kconfig-devel \
             kf6-kcmutils \
+            kf6-knotifications-devel \
+            kf6-kcrash-devel \
+            kf6-kglobalaccel-devel \
+            kf6-ki18n-devel \
+            kf6-kxmlgui-devel \
             plasma-workspace \
             libplasma-devel \
             plasma-workspace-devel \
+            freetype-devel \
+            pulseaudio-libs-devel \
             nodejs
 
       - name: Configure (standalone test build)

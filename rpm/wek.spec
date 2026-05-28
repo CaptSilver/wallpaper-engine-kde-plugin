@@ -93,7 +93,14 @@ ctest --test-dir %{_builddir}/wek-build/tests \
 %endif
 
 %files
-%license LICENSE
+# The project's LICENSE + every vendored third-party license is installed by
+# cmake under ${_datadir}/wek/licenses/.  Listing the directory once via
+# %license captures the project LICENSE (at wek/licenses/LICENSE) AND each
+# per-library subdir AND THIRD_PARTY_LICENSES.md.  A previous standalone
+# `%license LICENSE` line tried to also stage the project license at the
+# distro-standard /usr/share/licenses/<pkg>/LICENSE path, but cmake doesn't
+# install there — rpmbuild then failed to find the file.  The wek/licenses
+# tree is the single source of truth.
 %license %{_datadir}/wek/licenses
 # QML plugin (single payload directory under /usr/lib64).
 %dir %{_libdir}/qt6

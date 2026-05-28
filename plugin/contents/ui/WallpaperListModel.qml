@@ -292,6 +292,44 @@ Item {
         });
 
     }
+    // Attach a QFileSystemWatcher to each top-level workshop directory so
+    // that Steam-subscribe / unsubscribe events refresh the picker without
+    // requiring a manual Refresh click. One watcher per library (not per
+    // wallpaper subdir) keeps the inotify slot budget under any reasonable
+    // /proc/sys/fs/inotify/max_user_watches ceiling.
+    function _attachWatchers() {
+        if (! Boolean(pyext) || typeof pyext.unwatch_all_wallpaper_dirs !== "function") return;
+        pyext.unwatch_all_wallpaper_dirs();
+        this.workshopDirs.forEach(el => {
+            const dirs = (Array.isArray(el) ? el : [el]).map(Common.urlNative);
+            // Only watch the primary resolved path; fallbacks are handled by
+            // get_folder_list per the existing refresh() pattern.
+            if (dirs.length > 0 && dirs[0] && dirs[0].length > 0) {
+                pyext.watch_wallpaper_dir(dirs[0]);
+            }
+        });
+    }
+
+    onWorkshopDirsChanged: _attachWatchers()
+
+    // Steam's atomic-download writes 2-3 directoryChanged events per subscribe
+    // (creates dotfile, renames into place). 500 ms debounce coalesces.
+    Connections {
+        target: Boolean(pyext) ? pyext : null
+        ignoreUnknownSignals: true
+        function onWallpaperDirChanged(path) {
+            _watchDebounceTimer.restart();
+        }
+    }
+    Timer {
+        id: _watchDebounceTimer
+        interval: 500
+        repeat: false
+        onTriggered: {
+            if (root.enabled) root.refresh();
+        }
+    }
+
     Component.onCompleted: {
         this.modelRefreshed.connect(function() { root._sourceRev = root._sourceRev + 1; });
         this.filterStrChanged.connect(function() {
@@ -308,7 +346,11 @@ Item {
             if(fc === root.readfile) return Promise.resolve();
             return root.refresh().then(() => { fc = root.readfile; });
         });
-        return this.refresh();
+        // Attach watchers AFTER the initial refresh kicks off; a subdir added
+        // mid-scan triggers the watcher which re-refreshes (debounced).
+        const r = this.refresh();
+        _attachWatchers();
+        return r;
     }
 
     // scan once

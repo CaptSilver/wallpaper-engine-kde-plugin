@@ -359,4 +359,34 @@ TestCase {
         verify(xhr.responseText.indexOf("byWorkshopId") !== -1,
                "findItem should consult a byWorkshopId Map for O(1) lookups");
     }
+
+    // 200-entry async scan: loadFolderLists must drive the injected readfile
+    // for every wallpaper subdir, populate the unfiltered folderWorker.model,
+    // and bump _sourceRev exactly once. The previous Pyext.qml _makePromise
+    // sham resolved continuations synchronously, so this contract held by
+    // luck; once readfile becomes a real Promise dispatched off-thread, the
+    // continuation chain MUST still terminate with every item present and
+    // findItem resolving for the last id added.
+    function test_loadFolderLists_200entryScan_resolvesAllItems() {
+        fakeFileContent = '{"title":"X"}';
+        const items = [];
+        for (let i = 0; i < 200; ++i) items.push({ name: "wp" + i, mtime: i });
+        const beforeReads = readfileCalls.length;
+        wpModel.loadFolderLists([{ folder: "/wp", items: items }]);
+        // tryVerify polls until the Promise.all fan-in lands (the mock
+        // _thenable is synchronous in this suite — production Pyext will fire
+        // asynchronously via fileReadReady, but the contract under test is
+        // "every item has its project.json read + findItem resolves").
+        tryVerify(() => wpModel.findItem("wp199") !== null, 5000);
+        // initItemOp fires per item.
+        compare(initSeen.length, 200);
+        // readfile fires per item.
+        compare(readfileCalls.length - beforeReads, 200);
+        // Each item resolves through findItem.
+        for (let i = 0; i < 200; ++i) {
+            const got = wpModel.findItem("wp" + i);
+            verify(got !== null, "wp" + i + " missing from model after 200-entry scan");
+            compare(got.title, "X");
+        }
+    }
 }

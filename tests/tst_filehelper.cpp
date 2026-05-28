@@ -408,6 +408,197 @@ private slots:
         QVERIFY(true);                     // no sanitizer trip, no hang
     }
 
+    // ── requestReadFile (async readFile via QThreadPool) ─────────────────────
+    // Mirrors requestDirSize: canonicalise + allowlist + size-cap run inside
+    // the worker thread; fileReadReady(path, contents, ok) is emitted on the
+    // GUI thread. The path delivered in the signal is the caller-supplied
+    // path (NOT the canonical form) so QML waiter maps keyed by the original
+    // path work without a round-trip.
+
+    void requestReadFile_emitsSignalWithContents() {
+        QTemporaryDir td;
+        QVERIFY(td.isValid());
+        const QString path = td.filePath("hello.txt");
+        QFile         f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("hello world");
+        f.close();
+        FileHelper helper;
+        helper.addReadRoot(td.path());
+        QSignalSpy spy(&helper, &FileHelper::fileReadReady);
+        helper.requestReadFile(path);
+        QCOMPARE(spy.count(), 0); // async — nothing emitted synchronously
+        QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 5000);
+        const auto args = spy.takeFirst();
+        QCOMPARE(args.at(0).toString(), path);
+        QCOMPARE(args.at(1).toByteArray(), QByteArray("hello world"));
+        QCOMPARE(args.at(2).toBool(), true);
+    }
+
+    void requestReadFile_rejectsOutsideAllowlist() {
+        // /etc/hostname is universally readable on Linux — a clean witness
+        // for "would have succeeded permissive; must be ok=false with an
+        // allowlist seeded that does NOT include /etc".
+        if (! QFileInfo::exists("/etc/hostname")) QSKIP("no /etc/hostname witness on this system");
+        QTemporaryDir td;
+        FileHelper    helper;
+        helper.addReadRoot(td.path());
+        QSignalSpy spy(&helper, &FileHelper::fileReadReady);
+        helper.requestReadFile("/etc/hostname");
+        QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 5000);
+        const auto args = spy.takeFirst();
+        QCOMPARE(args.at(0).toString(), QStringLiteral("/etc/hostname"));
+        QCOMPARE(args.at(2).toBool(), false);
+        QVERIFY(args.at(1).toByteArray().isEmpty());
+    }
+
+    void requestReadFile_rejectsOverSizeLimit() {
+        QTemporaryDir td;
+        QVERIFY(td.isValid());
+        const QString path = td.filePath("big.bin");
+        QFile         f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        // 65 MiB > 64 MiB cap — use resize() for a sparse file to avoid
+        // allocating 65 MiB of test heap.
+        QVERIFY(f.resize(FileHelper::kMaxReadSize + 1));
+        f.close();
+        FileHelper helper;
+        helper.addReadRoot(td.path());
+        QSignalSpy spy(&helper, &FileHelper::fileReadReady);
+        helper.requestReadFile(path);
+        QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 5000);
+        const auto args = spy.takeFirst();
+        QCOMPARE(args.at(2).toBool(), false);
+        QVERIFY(args.at(1).toByteArray().isEmpty());
+    }
+
+    void requestReadFile_concurrentBatch() {
+        // 100 paths read in parallel must each emit a signal with ok=true.
+        // Don't gate on wall time (CI may be slow); the guard is "every
+        // request emitted exactly once, ok=true, contents match".
+        QTemporaryDir td;
+        QVERIFY(td.isValid());
+        const int      N = 100;
+        QList<QString> paths;
+        for (int i = 0; i < N; ++i) {
+            const QString p = td.filePath(QStringLiteral("f%1.txt").arg(i));
+            QFile         f(p);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write(QByteArray(1024, 'x'));
+            f.close();
+            paths.append(p);
+        }
+        FileHelper helper;
+        helper.addReadRoot(td.path());
+        QSignalSpy spy(&helper, &FileHelper::fileReadReady);
+        for (const auto& p : paths) helper.requestReadFile(p);
+        QTRY_COMPARE_WITH_TIMEOUT(spy.count(), N, 10000);
+        for (int i = 0; i < N; ++i) {
+            QCOMPARE(spy.at(i).at(2).toBool(), true);
+            QCOMPARE(spy.at(i).at(1).toByteArray().size(), qint64(1024));
+        }
+    }
+
+    void requestReadFile_dtorWaitsForInflight() {
+        // Destroying the helper while a request is in flight must not crash;
+        // ~FileHelper drains m_pool via waitForDone(). Silent on glibc without
+        // ASAN/TSan; pins the contract.
+        QTemporaryDir td;
+        QVERIFY(td.isValid());
+        const QString p = td.filePath("x.txt");
+        QFile         f(p);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("x");
+        f.close();
+        {
+            FileHelper helper;
+            helper.addReadRoot(td.path());
+            helper.requestReadFile(p);
+            // Immediate dtor — m_pool::waitForDone() must drain.
+        }
+        QCoreApplication::processEvents(); // drain queued events
+        QVERIFY(true);                     // no sanitizer trip, no hang
+    }
+
+    // ── watchWallpaperDir (QFileSystemWatcher on workshop dirs) ─────────────
+    // Inotify-backed watcher attached to the top-level workshop directory.
+    // Subdir add / remove fires directoryChanged → wallpaperDirChanged on the
+    // GUI thread. Tests use mkdir / rm to drive the underlying inotify event.
+
+    void watchWallpaperDir_emitsSignalOnSubdirAdd() {
+        QTemporaryDir td;
+        QVERIFY(td.isValid());
+        FileHelper helper;
+        QSignalSpy spy(&helper, &FileHelper::wallpaperDirChanged);
+        helper.watchWallpaperDir(td.path());
+        // Inotify is async; wait for the kernel to attach the watch then
+        // create a subdir to trigger directoryChanged.
+        QVERIFY(QDir(td.path()).mkdir("newwp"));
+        QTRY_VERIFY_WITH_TIMEOUT(spy.count() >= 1, 5000);
+        QCOMPARE(spy.first().at(0).toString(), td.path());
+    }
+
+    void watchWallpaperDir_emitsSignalOnSubdirRemove() {
+        QTemporaryDir td;
+        QVERIFY(td.isValid());
+        QVERIFY(QDir(td.path()).mkdir("tobedeleted"));
+        FileHelper helper;
+        QSignalSpy spy(&helper, &FileHelper::wallpaperDirChanged);
+        helper.watchWallpaperDir(td.path());
+        QVERIFY(QDir(td.path() + "/tobedeleted").removeRecursively());
+        QTRY_VERIFY_WITH_TIMEOUT(spy.count() >= 1, 5000);
+    }
+
+    void watchWallpaperDir_dedupAddSamePath() {
+        // QFileSystemWatcher's addPath is idempotent — re-adding a watched
+        // path is a no-op. We can't directly observe the dedup (Qt exposes
+        // no per-path watch count), but we CAN observe that a single mkdir
+        // still produces a sane number of emissions (≥ 1, not double).
+        QTemporaryDir td;
+        QVERIFY(td.isValid());
+        FileHelper helper;
+        QSignalSpy spy(&helper, &FileHelper::wallpaperDirChanged);
+        helper.watchWallpaperDir(td.path());
+        helper.watchWallpaperDir(td.path()); // dedup
+        QVERIFY(QDir(td.path()).mkdir("once"));
+        QTRY_VERIFY_WITH_TIMEOUT(spy.count() >= 1, 5000);
+        // The watch is single, not double, so we don't see 2x emissions.
+        // (A single mkdir can produce 1-3 raw inotify events depending on
+        // FS — but no MORE than that.)
+        QVERIFY2(spy.count() <= 4, "duplicate addPath produced extra emissions");
+    }
+
+    void unwatchAllWallpaperDirs_stopsSignals() {
+        QTemporaryDir td;
+        QVERIFY(td.isValid());
+        FileHelper helper;
+        QSignalSpy spy(&helper, &FileHelper::wallpaperDirChanged);
+        helper.watchWallpaperDir(td.path());
+        helper.unwatchAllWallpaperDirs();
+        QVERIFY(QDir(td.path()).mkdir("after_unwatch"));
+        QTest::qWait(500); // give the watcher time to (NOT) fire
+        QCOMPARE(spy.count(), 0);
+    }
+
+    void watchWallpaperDir_emptyPath_isNoOp() {
+        // Empty path early-returns; no watcher constructed, no emission.
+        FileHelper helper;
+        QSignalSpy spy(&helper, &FileHelper::wallpaperDirChanged);
+        helper.watchWallpaperDir(QString());
+        // Subsequent unwatch on a never-constructed watcher must not crash.
+        helper.unwatchAllWallpaperDirs();
+        QCOMPARE(spy.count(), 0);
+    }
+
+    void watchWallpaperDir_nonexistentPath_warnsAndNoOps() {
+        // Non-existent paths log a warning + early-return.
+        FileHelper helper;
+        QSignalSpy spy(&helper, &FileHelper::wallpaperDirChanged);
+        helper.watchWallpaperDir("/tmp/wekde_test_never_existed_zzz");
+        QTest::qWait(200);
+        QCOMPARE(spy.count(), 0);
+    }
+
     // ── getFolderList ─────────────────────────────────────────────────────────
     void getFolderList_nonExistentDirNoFallback() {
         FileHelper  helper;

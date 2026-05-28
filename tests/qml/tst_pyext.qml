@@ -45,8 +45,12 @@ TestCase {
 
     function test_readfileReturnsPromise() {
         let observed = null;
-        pyext.readfile("/x").then(v => { observed = v; });
-        // Stub returns "" — promise resolves synchronously.
+        const p = pyext.readfile("/x");
+        verify(p && typeof p.then === "function"); // real Promise now
+        p.then(v => { observed = v; });
+        // Stub's Qt.callLater fires fileReadReady — poll like the
+        // generate_thumbnail / get_dir_size resolves-on-signal tests.
+        tryVerify(() => observed === "", 2000);
         compare(observed, "");
     }
 

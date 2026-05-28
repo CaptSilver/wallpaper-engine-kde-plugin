@@ -14,6 +14,8 @@ QtObject {
 
     signal thumbnailReady(string videoPath, string outPath, bool ok)
     signal dirSizeReady(string path, real bytes)
+    signal fileReadReady(string path, var contents, bool ok)
+    signal wallpaperDirChanged(string path)
 
     // ── test recorders (test-only stub) ──────────────────────────────────
     property int  readFileCount:              0
@@ -36,6 +38,11 @@ QtObject {
     property var  lastGenerateThumbnailArgs:  ({ videoPath: "", outPath: "", atSeconds: 0 })
     property int  requestDirSizeCount:        0
     property var  lastRequestDirSizeArgs:     ({ path: "", depth: 0 })
+    property int  requestReadFileCount:       0
+    property var  lastRequestReadFilePath:    undefined
+    property int  watchWallpaperDirCount:     0
+    property var  lastWatchWallpaperDirPath:  undefined
+    property int  unwatchAllWallpaperDirsCount: 0
     property int  addReadRootCount:           0
     property var  lastAddReadRootPath:        undefined
     property int  clearReadRootsCount:        0
@@ -81,6 +88,22 @@ QtObject {
         requestDirSizeCount += 1;
         lastRequestDirSizeArgs = { path: path, depth: depth };
         Qt.callLater(() => stub.dirSizeReady(path, 0));
+    }
+    // Fire fileReadReady via callLater so readfile()'s promise resolves
+    // without a QSignalSpy/wait (mirrors the generateThumbnail / requestDirSize
+    // stubs). Returns _readReturns as the contents and ok=true so production
+    // code traverses the success branch.
+    function requestReadFile(path) {
+        requestReadFileCount += 1;
+        lastRequestReadFilePath = path;
+        Qt.callLater(() => stub.fileReadReady(path, _readReturns, true));
+    }
+    function watchWallpaperDir(path) {
+        watchWallpaperDirCount += 1;
+        lastWatchWallpaperDirPath = path;
+    }
+    function unwatchAllWallpaperDirs() {
+        unwatchAllWallpaperDirsCount += 1;
     }
     function addReadRoot(path) {
         addReadRootCount += 1;

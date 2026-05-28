@@ -661,17 +661,20 @@ TestCase {
                 };
             } catch (e) {}
         }
-        const beforeReads = fh.readFileCount;
+        // pyext.readfile now routes through fileHelper.requestReadFile (the
+        // async path); the stub's recorder is requestReadFileCount, not the
+        // legacy synchronous readFileCount.
+        const beforeReads = fh.requestReadFileCount;
         desc.loadDescription();
         // loadDescription reads project.json via pyext.readfile when the
         // wpmodel path resolves to a project path. The wpmodel reassignment
         // above also triggers user_props_group._loadProps which kicks off
         // additional readfile()s, so observe via ">=" rather than "==".
         if (rc) {
-            verify(fh.readFileCount > beforeReads,
+            verify(fh.requestReadFileCount > beforeReads,
                    "loadDescription must trigger at least one pyext.readfile");
         } else {
-            verify(fh.readFileCount >= beforeReads);
+            verify(fh.requestReadFileCount >= beforeReads);
         }
     }
 
@@ -1112,7 +1115,9 @@ TestCase {
         }
         // Reassign right_content.wpmodel to a path that matches
         // Common.regex_path_check (must contain wallpaper_engine/projects/<lc>/).
-        const beforeReads = fh.readFileCount;
+        // pyext.readfile now routes through fileHelper.requestReadFile (the
+        // async path); the stub's recorder is requestReadFileCount.
+        const beforeReads = fh.requestReadFileCount;
         try {
             rc.wpmodel = {
                 workshopid: "100",
@@ -1128,8 +1133,8 @@ TestCase {
         verify(typeof v !== "undefined");
         // _loadProps body calls pyext.readfile(projectPath) when both
         // workshopid and the matching path are set; observe via the
-        // routed FileHelper.readFile recorder.
-        verify(fh.readFileCount > beforeReads,
+        // routed FileHelper.requestReadFile recorder.
+        verify(fh.requestReadFileCount > beforeReads,
                "_loadProps must trigger at least one pyext.readfile for project.json");
     }
 

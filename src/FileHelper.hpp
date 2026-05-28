@@ -8,6 +8,8 @@
 #include <QJsonDocument>
 #include <QThreadPool>
 
+class QFileSystemWatcher;
+
 namespace wekde
 {
 
@@ -69,6 +71,33 @@ public:
     Q_INVOKABLE void generateThumbnail(const QString& videoPath, const QString& outPath,
                                        double atSeconds);
 
+    // Asynchronous readFile: dispatches the canonicalise + allowlist + read off
+    // the GUI thread on the per-instance QThreadPool and emits
+    // fileReadReady(path, contents, ok) on the GUI thread. Mirrors
+    // requestDirSize. ALL allowlist + size-cap checks run inside the worker
+    // thread (canonicalisation needs syscalls — not safe on GUI thread); the
+    // async path does NOT bypass the gate. The path delivered in the signal is
+    // the path the caller passed (NOT the canonical one), so QML-side waiter
+    // maps keyed by the originally-requested path work without an extra
+    // round-trip.
+    Q_INVOKABLE void requestReadFile(const QString& path);
+
+    // Wallpaper directory watcher. Lazy-constructs a QFileSystemWatcher and
+    // attaches `path` (intended to be a top-level workshop directory, not each
+    // wallpaper subdir — inotify slot budget). A directoryChanged event on
+    // any watched dir emits wallpaperDirChanged(path) on the GUI thread.
+    // QML-side WallpaperListModel debounces 500 ms (Steam's atomic-rename
+    // download generates 2-3 events per subscribe) then calls refresh().
+    // addPath() is idempotent — re-adding the same path is a no-op via Qt's
+    // own dedup. On unsupported filesystems (NFS / FUSE / sshfs) Qt logs a
+    // warning and the watcher silently fails; the manual Refresh button +
+    // 10 s safety-net Timer remain as fallback.
+    Q_INVOKABLE void watchWallpaperDir(const QString& path);
+    // Remove every watched wallpaper directory. Called by QML when the
+    // workshopDirs list changes (settings widen/narrow) so stale watchers
+    // don't accumulate.
+    Q_INVOKABLE void unwatchAllWallpaperDirs();
+
     // Recursively remove the contents of a directory under the user's cache
     // root (QStandardPaths::CacheLocation). Refuses paths outside the cache
     // root — a safety belt against a stray "/" or "/home/<user>" landing
@@ -87,6 +116,11 @@ public:
 signals:
     void thumbnailReady(const QString& videoPath, const QString& outPath, bool ok);
     void dirSizeReady(const QString& path, qint64 bytes);
+    void fileReadReady(const QString& path, const QByteArray& contents, bool ok);
+    // Emitted on the GUI thread when a watched wallpaper directory changes.
+    // `path` is the parent directory whose contents changed (NOT the subdir
+    // that was added/removed — QFileSystemWatcher doesn't expose that).
+    void wallpaperDirChanged(const QString& path);
 
 private:
     QString configDir() const;
@@ -107,6 +141,10 @@ private:
     // Canonicalised allowlist; seeded from QML via addReadRoot. Empty
     // => permissive (back-compat). See readFile body for the check.
     QSet<QString> m_readRoots;
+
+    // Lazy-constructed QFileSystemWatcher for wallpaper directories. Parented
+    // to this so Qt destroys it with the FileHelper.
+    QFileSystemWatcher* m_wallpaperDirWatcher { nullptr };
 };
 
 } // namespace wekde

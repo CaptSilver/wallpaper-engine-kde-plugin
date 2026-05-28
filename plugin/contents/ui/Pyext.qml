@@ -10,6 +10,11 @@ Item {
     readonly property string log: ""
     readonly property string version: "native"
 
+    // Forwarded from FileHelper::wallpaperDirChanged. The QML-side
+    // WallpaperListModel attaches a Connection + 500 ms debounce Timer and
+    // calls refresh() on each settle.
+    signal wallpaperDirChanged(string path)
+
     // Internal C++ FileHelper instance
     FileHelper {
         id: fileHelper
@@ -57,9 +62,16 @@ Item {
     }
 
     function readfile(path) {
-        const data = fileHelper.readFile(path);
-        // Return as string (QML handles QByteArray to string conversion)
-        return _makePromise(data);
+        // Async: fileHelper.requestReadFile dispatches to the per-instance
+        // QThreadPool and resolves via onFileReadReady. Coalescing: multiple
+        // concurrent callers for the same path share one C++ request through
+        // root._readWaiters.
+        return new Promise((resolve, reject) => {
+            if (! root._readWaiters[path])
+                root._readWaiters[path] = [];
+            root._readWaiters[path].push({ resolve: resolve, reject: reject });
+            fileHelper.requestReadFile(path);
+        });
     }
 
     function get_dir_size(path, depth) {
@@ -110,6 +122,9 @@ Item {
         return _makePromise(ok);
     }
 
+    function watch_wallpaper_dir(path)    { fileHelper.watchWallpaperDir(path); }
+    function unwatch_all_wallpaper_dirs() { fileHelper.unwatchAllWallpaperDirs(); }
+
     // Pending thumbnail requests keyed by videoPath. Each entry is an array of
     // {resolve, reject, outPath} callbacks waiting on the next thumbnailReady
     // signal matching that videoPath.
@@ -117,6 +132,10 @@ Item {
     // Pending getDirSize requests keyed by absolute path. Each entry is an array
     // of resolve callbacks waiting on the next dirSizeReady for that path.
     property var _dirSizeWaiters: ({})
+    // Pending readfile requests keyed by path. Each entry is an array of
+    // {resolve, reject} callbacks. Multiple concurrent callers for the same
+    // path coalesce onto ONE C++ requestReadFile.
+    property var _readWaiters: ({})
 
     function generate_thumbnail(videoPath, outPath, atSeconds) {
         return new Promise((resolve, reject) => {
@@ -142,6 +161,18 @@ Item {
             const waiters = root._dirSizeWaiters[path] || [];
             delete root._dirSizeWaiters[path];
             for (let i = 0; i < waiters.length; i++) waiters[i](bytes);
+        }
+        function onFileReadReady(path, contents, ok) {
+            const waiters = root._readWaiters[path] || [];
+            delete root._readWaiters[path];
+            for (let i = 0; i < waiters.length; i++) {
+                const w = waiters[i];
+                if (ok) w.resolve(contents);
+                else    w.reject(new Error("readFile failed: " + path));
+            }
+        }
+        function onWallpaperDirChanged(path) {
+            root.wallpaperDirChanged(path);
         }
     }
 }

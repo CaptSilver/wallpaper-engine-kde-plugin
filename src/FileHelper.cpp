@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QDirIterator>
 #include <QFileInfo>
+#include <QFileSystemWatcher>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -262,6 +263,94 @@ void FileHelper::requestDirSize(const QString& path, int depth) {
             },
             Qt::QueuedConnection);
     });
+}
+
+void FileHelper::requestReadFile(const QString& path) {
+    // Pool-thread lambda performs canonicalise + allowlist + size-cap + read,
+    // then marshals fileReadReady back to the GUI thread. Cold-cache scans of
+    // ~1000 workshop project.json files used to block the GUI for tens of
+    // seconds via Pyext.qml's sham _makePromise wrapper over the synchronous
+    // readFile; this gets the work off the GUI thread without bypassing any of
+    // the gates the sync readFile enforces. m_pool waitForDone() in the dtor
+    // keeps `this` alive until in-flight lambdas finish.
+    m_pool.start([this, path]() {
+        QByteArray contents;
+        bool       ok = false;
+
+        // Strip file:// to match readFile() / addReadRoot() — QML callers
+        // sometimes pass through Common.urlNative, sometimes not.
+        QString native = path;
+        if (native.startsWith("file://")) native = native.mid(7);
+
+        // Canonicalise; non-existent paths canonicalise to empty string.
+        const QString canon = QFileInfo(native).canonicalFilePath();
+
+        const bool allowlistOk = m_readRoots.isEmpty() ? true : isUnderAnyRoot(canon, m_readRoots);
+        if (! allowlistOk) {
+            qWarning() << "FileHelper::requestReadFile refused path outside allowed roots:" << path
+                       << "(canon:" << canon << ")";
+        } else {
+            QFile file(native);
+            if (file.open(QIODevice::ReadOnly)) {
+                const qint64 sz = file.size();
+                if (sz > kMaxReadSize) {
+                    qWarning() << "FileHelper::requestReadFile refused over-size file:" << path
+                               << "(" << sz << "bytes >" << kMaxReadSize << ")";
+                } else {
+                    contents = file.readAll();
+                    ok       = (contents.size() == sz);
+                }
+            } else {
+                qWarning() << "FileHelper::requestReadFile: cannot open:" << path;
+            }
+        }
+
+        // Deliver on the GUI thread. Capture by value — `this` is kept alive
+        // by m_pool.waitForDone() in the dtor.
+        QMetaObject::invokeMethod(
+            this,
+            [this, path, contents, ok]() {
+                emit fileReadReady(path, contents, ok);
+            },
+            Qt::QueuedConnection);
+    });
+}
+
+void FileHelper::watchWallpaperDir(const QString& path) {
+    if (path.isEmpty()) return;
+    // Strip file:// to match the other path-taking entry points (addReadRoot,
+    // clearCacheDir). QML callers often pass through Common.urlNative which
+    // already strips it, but not always.
+    QString native = path;
+    if (native.startsWith("file://")) native = native.mid(7);
+
+    // QFileSystemWatcher::addPath silently logs a warning + returns false on
+    // non-existent paths; do the existence check up-front so the warning is
+    // actionable. A missing path is normal during Steam library uninstall.
+    QFileInfo info(native);
+    if (! info.isDir()) {
+        qWarning() << "FileHelper::watchWallpaperDir: path is not a directory:" << path;
+        return;
+    }
+    if (! m_wallpaperDirWatcher) {
+        m_wallpaperDirWatcher = new QFileSystemWatcher(this);
+        connect(m_wallpaperDirWatcher,
+                &QFileSystemWatcher::directoryChanged,
+                this,
+                [this](const QString& p) {
+                    emit wallpaperDirChanged(p);
+                });
+    }
+    // Qt's addPath silently dedups against currently-watched paths and
+    // returns false if the watcher is full or the path is unreadable —
+    // both safe to ignore.
+    m_wallpaperDirWatcher->addPath(native);
+}
+
+void FileHelper::unwatchAllWallpaperDirs() {
+    if (! m_wallpaperDirWatcher) return;
+    const auto dirs = m_wallpaperDirWatcher->directories();
+    if (! dirs.isEmpty()) m_wallpaperDirWatcher->removePaths(dirs);
 }
 
 QVariantMap FileHelper::getFolderList(const QString& path, const QVariantMap& opt) {

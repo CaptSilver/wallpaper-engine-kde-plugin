@@ -52,8 +52,8 @@ mull-runner-<ver> build/tests/tst_filehelper
 # Submodule tests (backend_scene — requires doctest, Qt6 for SceneScript tests)
 cmake -B build/sub -S src/backend_scene -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/sub
-./build/sub/src/Test/backend_scene_tests      # ~2800 doctest cases (excludes SceneScript)
-./build/sub/src/Test/scenescript_tests         # ~730 doctest cases (SceneScript JS APIs)
+./build/sub/src/Test/backend_scene_tests      # ~3000 doctest cases (excludes SceneScript)
+./build/sub/src/Test/scenescript_tests         # ~750 doctest cases (SceneScript JS APIs)
 ```
 
 ### Local CI / preflight (the comprehensive gate)
@@ -152,21 +152,29 @@ Bump the CMake / Qt floor when the **lowest-row** column moves up:
 ### Main plugin (this repo)
 
 - **src/** — C++ code for the QML plugin
-  - `plugin.cpp` — QML plugin entry point. Registers 12 types under `com.github.captsilver.wallpaperEngineKde`:
+  - `plugin.cpp` — QML plugin entry point. Registers 18 types under `com.github.captsilver.wallpaperEngineKde`:
     - Creatable: `PluginInfo` (cache path + version), `MouseGrabber`, `SceneViewer`, `Mpv`,
-      `TTYSwitchMonitor`, `MprisMonitor`, `FileHelper`, `WebAudioBridge`, `PlaylistManager`.
+      `TTYSwitchMonitor`, `ScreenSaverMonitor`, `MprisMonitor`, `FileHelper`,
+      `WebAudioBridge`, `WebUrlInterceptor`, `SafeWallpaperBridge`, `PlaylistManager`,
+      `WekControl`, `WekNotifier`, `WekDiagnostics`.
     - Uncreatable (owned by `PlaylistManager`): `PlaylistsModel`, `PlaylistItemsModel`.
     - Singleton: `MigrationHelper`.
     A `com.github.catsout.…` shim package installs in parallel as a v1.3 migration aid
-    (see `WEK_INSTALL_CATSOUT_SHIM` in the root `CMakeLists.txt`).
+    (see `WEK_INSTALL_CATSOUT_SHIM` in the root `CMakeLists.txt`). When built with
+    `WEKDE_HAS_GLOBALACCEL`, `WekShortcuts` is also instantiated once per process
+    (not a QML type — bound to `qApp` for KGlobalAccel).
   - `FileHelper.cpp` — native C++ helper for file ops, wallpaper config CRUD, HTML patching for web wallpapers, thumbnail generation.
   - `MouseGrabber` — mouse event capture and forwarding to target QML items.
   - `TTYSwitchMonitor` — D-Bus listener for `PrepareForSleep` (TTY switch / suspend).
+  - `ScreenSaverMonitor` — pauses the renderer when the screen locker or screensaver activates (logind / freedesktop ScreenSaver D-Bus).
   - `MprisMonitor` — MPRIS2 player state + colour extraction for media-aware wallpapers.
   - `PluginInfo` — exposes cache path and version to QML.
   - `WebAudioBridge` — Web-Audio API bridge between QtWebEngine wallpapers and host audio.
+  - `WebUrlInterceptor` — QWebEngineUrlRequestInterceptor sandboxing `file://` fetches for web wallpapers.
+  - `SafeWallpaperBridge` — QWebChannel-exposed bridge with a read-only property surface for web wallpapers.
   - `MigrationHelper` — runs the v1.2→1.3 catsout-id migration in-process via KConfig.
   - `PlaylistManager` / `PlaylistsModel` / `PlaylistItemsModel` — wallpaper playlist editor + runtime.
+  - `WekControl` / `WekNotifier` / `WekDiagnostics` — host-side control surface, KNotification wrapper, and diagnostics collector used by the settings UI.
 
 - **src/backend_mpv/** — MPV backend for video wallpapers
   - Uses libmpv for playback
@@ -180,10 +188,13 @@ Bump the CMake / Qt floor when the **lowest-row** column moves up:
   - `backend/Mpv.qml` — MPV QML integration
 
 - **tests/** — Main project unit tests (Qt6Test + QuickTest + node).
-  - C++ binaries: `tst_filehelper`, `tst_plugininfo`, `tst_mpriscolors`,
+  - C++ binaries (18): `tst_filehelper`, `tst_plugininfo`, `tst_mpriscolors`,
     `tst_mousegrabber`, `tst_mpvbackend`, `tst_thumbnail_grabber`, `tst_webaudio`,
-    `tst_migrationhelper`, `tst_playlist_manager`, `tst_ttyswitchmonitor`.
-  - QML tests: ~27 `tst_*.qml` files under `tests/qml/` (driven via qmltestrunner).
+    `tst_migrationhelper`, `tst_playlist_manager`, `tst_ttyswitchmonitor`,
+    `tst_screensavermonitor`, `tst_safewallpaperbridge`, `tst_weburlinterceptor`,
+    `tst_wekcontrol`, `tst_weknotifier`, `tst_wekdiagnostics`, `tst_wekshortcuts`,
+    `tst_activityhelper`.
+  - QML tests: ~33 `tst_*.qml` files under `tests/qml/` (driven via qmltestrunner).
   - JS tests: `node --test` over `tests/js/*.test.mjs`.
 
 - **rpm/wek.spec** — RPM packaging spec
@@ -225,7 +236,7 @@ Git submodule: [CaptSilver/wallpaper-scene-renderer](https://github.com/CaptSilv
 #### Tests
 
 - **src/Test/** — doctest-based unit tests
-  - `test_SceneScript.cpp` — ~730 tests for all JS APIs (Vec3, WEMath, WEColor, layer/sound/scene proxies, dirty tracking, IIFE compilation, timers, device detection).
+  - `test_SceneScript.cpp` — ~750 tests for all JS APIs (Vec3, WEMath, WEColor, layer/sound/scene proxies, dirty tracking, IIFE compilation, timers, device detection).
   - Other test files: WPTexImageParser, SpecTexs, SpriteAnimation, WPShaderTransforms, StringUtils, Algorism, WPUserProperties, WPPuppet, ParticleModify, WPTextLayer
 
 #### Third-party libraries (third_party/)

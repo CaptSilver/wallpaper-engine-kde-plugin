@@ -159,6 +159,17 @@ Rectangle {
     property string nowBackend: ""
 
     property var mouseHooker
+    // Declarative MouseGrabber factory for doHookMouse. Using a Component (vs
+    // Qt.createQmlObject with an inline source string) lets qmlcachegen
+    // precompile the body and surfaces typos at parse time. The MouseGrabber
+    // type is imported at file top (line 2).
+    Component {
+        id: mouseHookerComponent
+        MouseGrabber {
+            z: -1
+            anchors.fill: parent
+        }
+    }
     property bool hasLib: Common.checklib_wallpaper(background)
 
     property var customConf: Common.loadCustomConf(wallpaper.configuration.CustomConf)
@@ -284,13 +295,7 @@ Rectangle {
             }
             console.warn("[WEK] MouseHook: found target " + hookParent);
             if(background.mouseHooker) background.mouseHooker.destroy();
-            background.mouseHooker = Qt.createQmlObject(`import QtQuick 2.12;
-                    import com.github.captsilver.wallpaperEngineKde 1.2
-                    MouseGrabber {
-                        z: -1
-                        anchors.fill: parent
-                    }
-            `, hookParent);
+            background.mouseHooker = mouseHookerComponent.createObject(hookParent);
             return true;
        }
        return false;

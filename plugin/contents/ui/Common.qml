@@ -286,6 +286,13 @@ QtObject {
         return Qt.btoa(JSON.stringify(conf, setTojson));
     }
 
+    // Runtime feature-detection probe: the `libName` import is dynamic and the
+    // whole point is to recover gracefully if the module is absent. A
+    // declarative Component {} with a top-level `import` would be eagerly
+    // resolved at this singleton's load time and would break test/runtime envs
+    // that lack any of the probed-for optional modules (Qt.labs.folderlistmodel,
+    // QtWebChannel, the captsilver plugin). Keeping Qt.createQmlObject here is
+    // therefore intentional — the try/catch is the recovery mechanism.
     function checklib(libName, parentItem) {
         let ok = false;
         let create = null;
@@ -380,11 +387,19 @@ QtObject {
         }
         return gen(item, "", 0);
     }
-    function createVolumeFade(qobj, volume, changePlayerVolum) {
-        const timer = Qt.createQmlObject(`import QtQuick 2.0; Timer {
+    // Declarative Timer factory for createVolumeFade. Using a Component (vs
+    // Qt.createQmlObject with an inline source string) lets qmlcachegen
+    // precompile the Timer body and surfaces typos at parse time instead of
+    // when the binding fires.
+    property Component _volumeFadeTimerComponent: Component {
+        Timer {
             property real volume
             property real volumeFade: 0.0
-        }`, qobj);
+        }
+    }
+
+    function createVolumeFade(qobj, volume, changePlayerVolum) {
+        const timer = _volumeFadeTimerComponent.createObject(qobj);
         timer.interval = 300;
         timer.repeat = true;
         timer.volume = volume;

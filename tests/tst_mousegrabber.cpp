@@ -78,6 +78,7 @@ private slots:
     void setTarget_restoresPrevTargetMask_onClear();
     void setTarget_preservesCustomPriorMask();
     void setTarget_destroyedPrevTarget_noCrash();
+    void setTarget_chainedAttachDetach_restoresEachInTurn();
     void setForceCapture_emitsSignalOnChange();
     void setForceCapture_sameValueNoSignal();
     void setForceCapture_togglesBackToFalse();
@@ -219,6 +220,30 @@ void TestMouseGrabber::setTarget_destroyedPrevTarget_noCrash() {
     delete a;        // m_target auto-nulls (QPointer)
     g.setTarget(&b); // must NOT crash; restore branch skipped
     QCOMPARE(b.acceptedMouseButtons(), Qt::LeftButton);
+}
+
+// Full chained sequence: setTarget(A) -> setTarget(B) -> setTarget(nullptr).
+// Pins that each step BOTH restores the prior target's mask AND captures the
+// new target's mask before overwriting, so the cache never carries A's
+// pre-attach mask into B's restore (the regression class this fix prevents).
+void TestMouseGrabber::setTarget_chainedAttachDetach_restoresEachInTurn() {
+    wekde::MouseGrabber g;
+    QQuickItem          a;
+    QQuickItem          b;
+    a.setAcceptedMouseButtons(Qt::RightButton);
+    b.setAcceptedMouseButtons(Qt::MiddleButton);
+
+    g.setTarget(&a);
+    QCOMPARE(a.acceptedMouseButtons(), Qt::LeftButton);
+    QCOMPARE(b.acceptedMouseButtons(), Qt::MiddleButton); // untouched
+
+    g.setTarget(&b);
+    QCOMPARE(a.acceptedMouseButtons(), Qt::RightButton); // A restored to pre-attach
+    QCOMPARE(b.acceptedMouseButtons(), Qt::LeftButton);  // B now owned by grabber
+
+    g.setTarget(nullptr);
+    QCOMPARE(a.acceptedMouseButtons(), Qt::RightButton);  // A still its pre-attach
+    QCOMPARE(b.acceptedMouseButtons(), Qt::MiddleButton); // B restored to pre-attach
 }
 
 void TestMouseGrabber::setForceCapture_emitsSignalOnChange() {

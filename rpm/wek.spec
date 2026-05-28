@@ -83,6 +83,8 @@ ctest --test-dir %{_builddir}/wek-build/tests \
 %endif
 
 %files
+%license LICENSE
+%license %{_datadir}/wek/licenses
 # QML plugin (single payload directory under /usr/lib64).
 %dir %{_libdir}/qt6
 %dir %{_libdir}/qt6/qml

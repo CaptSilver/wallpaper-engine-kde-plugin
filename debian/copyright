@@ -7,6 +7,55 @@ Files: *
 Copyright: 2021-2026 catsout, CaptSilver and contributors
 License: GPL-2.0-only
 
+Files: src/backend_scene/third_party/Eigen/*
+Copyright: 2008-2025 Eigen contributors
+License: MPL-2.0 and BSD-3-Clause
+ Eigen is primarily MPL-2.0; some headers are BSD-3-Clause.  See
+ src/backend_scene/third_party/Eigen/COPYING.MPL2 and COPYING.BSD.
+
+Files: src/backend_scene/third_party/glslang/*
+Copyright: 2002-2025 The Khronos Group Inc. and contributors
+License: BSD-3-Clause and Apache-2.0 and others
+ glslang is multi-licensed; see src/backend_scene/third_party/glslang/LICENSE.txt
+ for the canonical breakdown (core glslang BSD-3-Clause; some sub-trees Apache-2.0).
+
+Files: src/backend_scene/third_party/SPIRV-Reflect/*
+Copyright: 2017-2025 Google LLC
+License: Apache-2.0
+
+Files: src/backend_scene/third_party/nlohmann/*
+Copyright: 2013-2025 Niels Lohmann
+License: Expat
+ Also known as MIT.  See src/backend_scene/third_party/nlohmann/LICENSE.MIT.
+
+Files: src/backend_scene/third_party/miniaudio/*
+Copyright: 2018-2025 David Reid
+License: public-domain-Unlicense or Expat
+ Dual-licensed: public-domain (Unlicense) OR MIT.  See
+ src/backend_scene/third_party/miniaudio/LICENSE.
+
+Files: src/backend_scene/third_party/kissfft/*
+Copyright: 2003-2010 Mark Borgerding
+License: BSD-3-Clause
+
+Files: src/backend_scene/third_party/stb_image.h
+Copyright: 2017 Sean Barrett
+License: public-domain-or-Expat
+ Dual-licensed: public-domain OR MIT.  See header preamble.
+
+Files: src/backend_scene/third_party/vk_mem_alloc.h
+Copyright: 2017-2022 Advanced Micro Devices, Inc.
+License: Expat
+ MIT-style permission grant in header.
+
+Files: src/backend_scene/third_party/argparse/*
+ src/backend_scene/third_party/effolkronium/*
+ src/backend_scene/third_party/glad/*
+ src/backend_scene/third_party/vog/*
+Copyright: see source-header preambles
+License: Expat and similar
+ Single-header utility libraries; license text in each header preamble.
+
 License: GPL-2.0-only
  This program is free software; you can redistribute it and/or modify
  it under the terms of the GNU General Public License version 2 as
@@ -14,3 +63,62 @@ License: GPL-2.0-only
  .
  On Debian systems, the full text of the GNU General Public License
  version 2 can be found in `/usr/share/common-licenses/GPL-2'.
+
+License: MPL-2.0
+ This Source Code Form is subject to the terms of the Mozilla Public
+ License, v. 2.0. If a copy of the MPL was not distributed with this
+ file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+License: BSD-3-Clause
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are
+ met:
+ .
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+ .
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+ .
+ 3. Neither the name of the copyright holder nor the names of its
+    contributors may be used to endorse or promote products derived from
+    this software without specific prior written permission.
+ .
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
+ IS" AND ANY EXPRESS OR IMPLIED WARRANTIES ARE DISCLAIMED.
+
+License: Apache-2.0
+ Licensed under the Apache License, Version 2.0 (the "License"); you may
+ not use this file except in compliance with the License.  You may obtain
+ a copy of the License at
+ .
+     https://www.apache.org/licenses/LICENSE-2.0
+ .
+ On Debian systems, the full text of the Apache 2.0 license can be found
+ in `/usr/share/common-licenses/Apache-2.0'.
+
+License: Expat
+ Permission is hereby granted, free of charge, to any person obtaining a
+ copy of this software and associated documentation files (the
+ "Software"), to deal in the Software without restriction, including
+ without limitation the rights to use, copy, modify, merge, publish,
+ distribute, sublicense, and/or sell copies of the Software, and to
+ permit persons to whom the Software is furnished to do so, subject to
+ the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included
+ in all copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+
+License: public-domain-Unlicense
+ This is free and unencumbered software released into the public domain.
+ .
+ For more information, please refer to <https://unlicense.org/>.
+
+License: public-domain-or-Expat
+ This software is dual-licensed: public domain OR MIT/Expat (see Expat
+ paragraph above).  Per the header preamble: "this software is dual-
+ licensed; you may choose either to use the public domain license or the
+ MIT-class license".

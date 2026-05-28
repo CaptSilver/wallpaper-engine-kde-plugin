@@ -137,6 +137,62 @@ install(CODE "
     \"\${_link}\")
 ")
 
+# ── Third-party licenses ─────────────────────────────────────────────────────
+# The plugin statically embeds object code from libraries under
+# src/backend_scene/third_party/.  Each library's license travels with the
+# binary; install them alongside the plugin so distro reviewers (and end
+# users) can find attribution.  Per-library subdir keeps source attribution
+# clear; the top-level THIRD_PARTY_LICENSES.md is a one-page index.
+set(_wek_third_party "${CMAKE_CURRENT_SOURCE_DIR}/src/backend_scene/third_party")
+
+install(FILES
+        "${_wek_third_party}/Eigen/LICENSE"
+        DESTINATION "${KDE_INSTALL_DATADIR}/wek/licenses/Eigen"
+        RENAME LICENSE)
+install(FILES
+        "${_wek_third_party}/glslang/LICENSE.txt"
+        DESTINATION "${KDE_INSTALL_DATADIR}/wek/licenses/glslang"
+        RENAME LICENSE)
+install(FILES
+        "${_wek_third_party}/SPIRV-Reflect/LICENSE"
+        DESTINATION "${KDE_INSTALL_DATADIR}/wek/licenses/SPIRV-Reflect"
+        RENAME LICENSE)
+install(FILES
+        "${_wek_third_party}/nlohmann/LICENSE.MIT"
+        DESTINATION "${KDE_INSTALL_DATADIR}/wek/licenses/nlohmann"
+        RENAME LICENSE)
+install(FILES
+        "${_wek_third_party}/miniaudio/LICENSE"
+        DESTINATION "${KDE_INSTALL_DATADIR}/wek/licenses/miniaudio"
+        RENAME LICENSE)
+install(FILES
+        "${_wek_third_party}/kissfft/COPYING"
+        DESTINATION "${KDE_INSTALL_DATADIR}/wek/licenses/kissfft"
+        RENAME LICENSE)
+# Single-header libs: license text lives in the header preamble.  Install
+# the header itself as the license reference (small file; preserves clarity).
+install(FILES
+        "${_wek_third_party}/stb_image.h"
+        DESTINATION "${KDE_INSTALL_DATADIR}/wek/licenses/stb_image"
+        RENAME LICENSE-EMBEDDED-IN-HEADER.h)
+install(FILES
+        "${_wek_third_party}/vk_mem_alloc.h"
+        DESTINATION "${KDE_INSTALL_DATADIR}/wek/licenses/vk_mem_alloc"
+        RENAME LICENSE-EMBEDDED-IN-HEADER.h)
+
+# Project's own GPL-2.0-only text (top-level LICENSE).
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
+        DESTINATION "${KDE_INSTALL_DATADIR}/wek/licenses")
+
+# Top-level summary; configure_file substitutes @PROJECT_NAME@ + @KDE_INSTALL_DATADIR@.
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY_LICENSES.md.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/THIRD_PARTY_LICENSES.md"
+    @ONLY)
+install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/THIRD_PARTY_LICENSES.md"
+        DESTINATION "${KDE_INSTALL_DATADIR}/wek/licenses")
+
 set(QMLPLUGIN_URI "com.github.captsilver.wallpaperEngineKde")
 string(REPLACE "." "/" QMLPLUGIN_INSTALL_URI ${QMLPLUGIN_URI})
 

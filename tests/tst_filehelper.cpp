@@ -18,6 +18,7 @@
 #include <QVariantMap>
 
 #include "FileHelper.hpp"
+#include "TestSandbox.h"
 
 using namespace wekde;
 
@@ -38,9 +39,9 @@ private:
 private slots:
     // ── test-suite setup / teardown ───────────────────────────────────────────
     void initTestCase() {
-        // Redirect QStandardPaths to a safe test location so tests never
-        // touch the real user config directory.
-        QStandardPaths::setTestModeEnabled(true);
+        // Per-process isolated HOME so QStandardPaths::setTestModeEnabled's
+        // ~/.qttest/ sandbox is unique per parallel Mull mutant invocation.
+        wek::test_sandbox::enableIsolated();
         QVERIFY2(m_tmp.isValid(), "Could not create temporary directory for tests");
     }
 

@@ -75,9 +75,19 @@ is the single source of truth. The default run is the comprehensive gate:
    sanitizer finding. Build dir `build/asan-gate`. The wider parent-tests +
    full-suite ASAN run is still advisory via `--sanitize=address,undefined`.
 6. **Fuzz smoke** — 9 libFuzzer harnesses, **seeded from `tests/fuzz_corpus/<target>/seed/`** (cold-start fallback when missing). `FUZZ_SECS=N` to tune (default 20s each). After long fuzz sessions, refresh the committed seeds with `scripts/fuzz/minimize.sh <target>`. Size budget: 200 KB per target. Fuzz crash regressions are pinned under `tests/fixtures/fuzz_regressions/<target>/*.bin` and replayed by the parser doctests; pin a new artifact with `scripts/fuzz/pin-regression.sh`.
-
-Coverage and mutation testing are **separate opt-ins** (`-DCOVERAGE=ON` / `-DMUTATION_TESTING=ON`),
-not part of the default preflight path — run them on demand (see the topic memory files).
+Coverage + mutation are **opt-in** (the wired-in default-fatal versions were OOMing
+30 GB boxes when run alongside parallel builds):
+- **Coverage**: `scripts/preflight.sh --coverage` (with `COVERAGE_FATAL=1` to gate, or
+  `WEK_COVERAGE_REFRESH=1` to update `tests/.coverage-baseline.json`). Covers parent +
+  submodule with 5 baseline keys (`cxx_lines`/`cxx_regions`/`qml`/`sub_lines`/`sub_regions`),
+  0.5pp tolerance. Build dirs `build/impl-coverage` + `build/impl-coverage-sub`. ~3 min.
+- **Mutation**: `scripts/mutation.sh --diff-only --strict` for the per-PR gate, or bare
+  `scripts/mutation.sh` for the full ~10-20 min sweep. Mull-driven, `--workers=$(nproc)`,
+  `--no-output` to skip GDB post-mortem (7× speedup), `--timeout 8000` per mutant. Tests
+  use `tests/TestSandbox.h`'s `wek::test_sandbox::enableIsolated()` (per-process HOME
+  under `$XDG_CACHE_HOME/wek-test-sandbox/proc-XXXXXX`) so parallel workers don't race
+  on the shared `~/.qttest/` sandbox. MOC autogen filtered out (`_autogen/|/moc_|\.moc$`).
+  Build dirs `build/impl-mutation` + `build/impl-mutation-sub`.
 
 **Install the pre-push hook so the gate isn't silently bypassed:**
 
@@ -88,7 +98,8 @@ git config --unset core.hooksPath              # disable
 ```
 
 The hook is a 5-line wrapper that `exec`s `scripts/preflight.sh`. A full run is ~3-5 min
-(fuzz alone ≈ 2.3 min); a silent push is the hook working, not a hang.
+(fuzz alone ≈ 2.3 min); a silent push is the hook working, not a hang. Opt-in coverage
+and mutation legs are NOT in the default flow — invoke separately when wanted.
 
 Preflight runs inside the Fedora distrobox automatically (it wraps commands in `distrobox enter`
 when run from the host, or runs them directly when already inside the box). To run it inside a
@@ -101,24 +112,30 @@ to invoke from inside the `src/backend_scene` submodule.
 
 ```bash
 scripts/preflight.sh --werror     # build full project with -DWEK_WERROR=ON (see Warning flags)
-scripts/preflight.sh --coverage   # llvm-cov + qmlcov vs tests/.coverage-baseline.json (NON-FATAL until COVERAGE_FATAL=1)
+scripts/preflight.sh --coverage   # standalone: llvm-cov vs tests/.coverage-baseline.json
+                                  # (NON-FATAL when standalone; the default gate runs this FATAL).
+                                  # WEK_COVERAGE_REFRESH=1 to rewrite the baseline.
 scripts/preflight.sh --tsan       # WEK_SANITIZE=thread over the SceneScript + thread suites
 scripts/preflight.sh --sanitize=address,undefined   # ASAN+UBSAN over parent + submodule suites
 ```
 
 `--werror` (whole-tree) is **non-fatal** today (renderer libs not yet audited
-clean). `--coverage` is non-fatal until `COVERAGE_FATAL=1`; refresh the
-baseline with `WEK_COVERAGE_REFRESH=1`. `--sanitize=...` is **FATAL** on
-findings (audited-clean submodule suites + parent tests). `--tsan` is a gate
-(FATAL on a race). The default flow already covers the scoped `-Werror` over
-the 4 shippable targets + ASAN+UBSAN over the submodule doctest suites — the
-opt-in legs are the wider audit runs. See `scripts/preflight.sh --help`.
+clean). `--coverage` (standalone) is non-fatal — use it for inspection or
+`WEK_COVERAGE_REFRESH=1` baseline updates; the default flow runs the coverage
+gate with `COVERAGE_FATAL=1`. `--sanitize=...` is **FATAL** on findings
+(audited-clean submodule suites + parent tests). `--tsan` is a gate (FATAL on
+a race). The default flow already covers the scoped `-Werror` over the 4
+shippable targets + ASAN+UBSAN over the submodule doctest suites + coverage +
+mutation `--diff-only` — the opt-in legs are the wider audit runs. See
+`scripts/preflight.sh --help`.
 
-`scripts/mutation.sh` runs Mull (auto-fetched via the submodule's `FetchMull.cmake`) over the
-instrumented parent test targets and diffs the surviving-mutant set against `tests/.mull-baseline.json`.
-**Not** wired into the default preflight (heavy: 10-15 min full / 1-5 min `--diff-only`); the script
-is the gate, called separately from preflight. New survivors fail (exit 1); `--refresh-baseline`
-rewrites the committed survivor set.
+`scripts/mutation.sh` runs Mull (auto-fetched via the submodule's `FetchMull.cmake`) over
+parent test targets + the submodule's `backend_scene_tests`, diffs surviving mutants
+against `tests/.mull-baseline.json`. **MOC autogen filtered out** (`_autogen/|/moc_|\.moc$`)
+so Qt's autogen churn doesn't generate false positives. **`scripts/mutation.sh --diff-only --strict`
+is wired into the default preflight gate** (typical 0-10 min depending on touched files);
+the bare `scripts/mutation.sh` runs the full ~10-20 min suite. `--refresh-baseline` rewrites the
+committed survivor set after intentional mutation-changing edits.
 
 ### Warning flags & `-Werror`
 

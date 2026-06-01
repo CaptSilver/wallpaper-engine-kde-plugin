@@ -27,6 +27,7 @@
 #include "PlaylistManager.hpp"
 #include "PlaylistsModel.hpp"
 #include "PlaylistItemsModel.hpp"
+#include "TestSandbox.h"
 
 class TstPlaylistManager : public QObject {
     Q_OBJECT
@@ -42,10 +43,9 @@ private:
 
 private slots:
     void initTestCase() {
-        // Redirect QStandardPaths::writableLocation(GenericConfigLocation)
-        // to a sandboxed test path so PlaylistManager never touches the real
-        // user config directory. Mirrors tst_filehelper's pattern.
-        QStandardPaths::setTestModeEnabled(true);
+        // Per-process isolated HOME so QStandardPaths::setTestModeEnabled's
+        // ~/.qttest/ sandbox is unique per parallel Mull mutant invocation.
+        wek::test_sandbox::enableIsolated();
     }
 
     void cleanupTestCase() {

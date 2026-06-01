@@ -1,6 +1,8 @@
 {
-  "cxx_lines": 88.015631784628738,
-  "cxx_regions": 76.858736059479554,
-  "qml": 63.59393232205367,
-  "_comment": "Totals from llvm-cov export + tools/qmlcov/report.py. Run WEK_COVERAGE_REFRESH=1 scripts/preflight.sh --coverage to update."
+  "cxx_lines": 88.760188760188768,
+  "cxx_regions": 76.987060998151563,
+  "qml": 88.11188811188812,
+  "sub_lines": 63.839652980330563,
+  "sub_regions": 57.907999142183144,
+  "_comment": "Totals from llvm-cov export (parent + submodule) + tools/qmlcov/report.py. Run WEK_COVERAGE_REFRESH=1 scripts/preflight.sh --coverage to update."
 }

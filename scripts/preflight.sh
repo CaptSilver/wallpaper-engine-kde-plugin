@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Pre-push verification: lint -> submodule build/tests -> main tests ->
-# scoped -Werror gate -> ASAN+UBSAN gate -> fuzz smoke.
+# scoped -Werror gate -> ASAN+UBSAN gate -> fuzz smoke -> coverage gate ->
+# mutation gate (--diff-only).
 #
 # Usage:
 #   scripts/preflight.sh              # default gate (lint + build + tests +
-#                                      #   scoped -Werror + ASAN+UBSAN + fuzz)
+#                                      #   scoped -Werror + ASAN+UBSAN + fuzz +
+#                                      #   coverage + mutation, all FATAL)
 #   scripts/preflight.sh --fix        # auto-format then run the default gate
 #   scripts/preflight.sh --lint-only  # just clang-format check (fast)
 #   scripts/preflight.sh --no-build   # skip cmake builds, run existing tests only
@@ -27,11 +29,13 @@
 #                                      #   already gated FATAL in the default flow.
 #                                      #   Flip WERROR_FATAL=1 once the renderer libs
 #                                      #   are warning-clean too.
-#   scripts/preflight.sh --coverage   # opt-in coverage leg: builds parent tests with
-#                                      #   -DCOVERAGE=ON, runs llvm-cov + qmlcov, diffs
-#                                      #   totals vs tests/.coverage-baseline.json.
-#                                      #   NON-FATAL until COVERAGE_FATAL=1.
-#                                      #   WEK_COVERAGE_REFRESH=1 overwrites baseline.
+#   scripts/preflight.sh --coverage   # opt-in coverage leg (standalone, informational):
+#                                      #   builds parent + submodule with -DCOVERAGE=ON,
+#                                      #   runs llvm-cov + qmlcov, diffs totals vs
+#                                      #   tests/.coverage-baseline.json.  NON-FATAL when
+#                                      #   invoked standalone — for ad-hoc inspection or
+#                                      #   WEK_COVERAGE_REFRESH=1 baseline updates.
+#                                      #   The default gate runs this with COVERAGE_FATAL=1.
 #   scripts/preflight.sh --render-smoke # opt-in headless render smoke (D10a): builds the
 #                                      #   plain GLFW sceneviewer, renders a tiny fixture
 #                                      #   under Mesa lavapipe (CPU Vulkan, no GPU), asserts
@@ -251,7 +255,7 @@ if [[ "$MODE" == "sanitize" ]]; then
                   cmake -B build/impl-tsan -S src/backend_scene -G Ninja \
                         -DBUILD_TESTS=ON -DWEK_SANITIZE=thread \
                         -DCMAKE_BUILD_TYPE=Debug \
-                  && cmake --build build/impl-tsan \
+                  && cmake --build build/impl-tsan -j\$(nproc) \
                         --target scenescript_tests backend_scene_thread_tests" \
                 || fail "TSAN build failed"
             ok "TSAN targets built"
@@ -291,7 +295,7 @@ if [[ "$MODE" == "sanitize" ]]; then
                         -DBUILD_TESTS=ON -DBUILD_FUZZERS=OFF \
                         -DWEK_SANITIZE=${SAN_SPEC} \
                         -DCMAKE_BUILD_TYPE=Debug \
-                  && cmake --build build/impl-asan \
+                  && cmake --build build/impl-asan -j\$(nproc) \
                         --target backend_scene_tests scenescript_tests" \
                 || fail "submodule sanitizer build failed"
 
@@ -320,7 +324,7 @@ if [[ "$MODE" == "sanitize" ]]; then
                   cmake -B build/impl-asan-main -S tests -G Ninja \
                         -DWEK_SANITIZE=${SAN_SPEC} \
                         -DCMAKE_BUILD_TYPE=Debug \
-                  && cmake --build build/impl-asan-main" \
+                  && cmake --build build/impl-asan-main -j\$(nproc)" \
                 || fail "parent-tests sanitizer build failed"
             dbox "ASAN_OPTIONS='${asan_opts}' UBSAN_OPTIONS='${ubsan_opts}' \
                   QT_QPA_PLATFORM=offscreen \
@@ -352,7 +356,7 @@ if [[ "$MODE" == "werror" ]]; then
     if dbox "CC=/usr/bin/clang CXX=/usr/bin/clang++ \
              cmake -B build/impl-werror -S . $WERR_GEN \
                    -DWEK_WERROR=ON -DCMAKE_BUILD_TYPE=Debug \
-             && cmake --build build/impl-werror"; then
+             && cmake --build build/impl-werror -j\$(nproc)"; then
         ok "-Werror build clean (first-party targets warning-free under -Wall -Wextra)"
         printf '\n%sWEK_WERROR leg passed.%s\n' "$GREEN" "$RESET"
         exit 0
@@ -367,24 +371,29 @@ if [[ "$MODE" == "werror" ]]; then
 fi
 
 # ── Coverage leg (opt-in, standalone) ─────────────────────────────────────────
-# Builds the parent tests with -DCOVERAGE=ON (Clang source-based coverage), runs
-# ctest with LLVM_PROFILE_FILE=…/%p.profraw, merges via llvm-profdata, exports
-# totals via `llvm-cov export -format=text`, then diffs the cxx_lines / cxx_regions /
-# qml percentages against tests/.coverage-baseline.json.  Also drives the existing
-# qmlcov target (custom homegrown QML hits tracer, threshold 95%).
+# Builds the parent tests AND the submodule tests with -DCOVERAGE=ON (Clang
+# source-based coverage), runs each ctest with LLVM_PROFILE_FILE=…/%p.profraw,
+# merges per-tree via llvm-profdata, exports totals via `llvm-cov export -format=text`,
+# then diffs cxx_lines / cxx_regions / qml / sub_lines / sub_regions against
+# tests/.coverage-baseline.json.  Parent ctest also drives the existing qmlcov
+# target (custom homegrown QML hits tracer, threshold 95%).
 #
-# tst_qml and tst_main_integration are label/regex-excluded from the coverage
-# ctest run because they fail in the standalone tests build (missing native QML
-# types like WekNotifier / WekDiagnostics that the full project ships).  The
-# qmlcov target re-runs QML coverage independently with its own instrumented
-# mirror, so QML coverage is still measured.
+# Parent ctest exclusions: tst_qml + tst_main_integration are label/regex-excluded
+# because they fail in the standalone tests build (missing native QML types like
+# WekNotifier / WekDiagnostics that the full project ships).  The qmlcov target
+# re-runs QML coverage independently with its own instrumented mirror.
 #
-# NON-FATAL by default (soft-launch): a regression beyond the 0.5pp tolerance
-# prints a warning but does not fail the run.  COVERAGE_FATAL=1 flips it to a
-# gate.  WEK_COVERAGE_REFRESH=1 rewrites tests/.coverage-baseline.json from the
-# current numbers (use after intentionally-coverage-affecting changes).
+# Submodule ctest: all doctest suites (backend_scene_tests + scenescript_tests
+# when Qt is present), no DISPLAY needed.  Build / profile dir is
+# build/impl-coverage-sub/.
+#
+# FATAL by default when wired into the default flow: a regression beyond the
+# 0.5pp tolerance fails the gate.  WEK_COVERAGE_REFRESH=1 rewrites
+# tests/.coverage-baseline.json from the current numbers (use after intentionally-
+# coverage-affecting changes).  Legacy COVERAGE_FATAL=0 escape hatch retained
+# only when invoked via the standalone --coverage flag (see header).
 if [[ "$MODE" == "coverage" ]]; then
-    step "Coverage leg (-DCOVERAGE=ON) — ${YELLOW}NON-FATAL${RESET} unless COVERAGE_FATAL=1"
+    step "Coverage leg (-DCOVERAGE=ON, parent + submodule)"
 
     # jq parses llvm-cov export + qmlcov report.json on the host (the script's
     # own context).  llvm-profdata / llvm-cov run inside the distrobox alongside
@@ -397,32 +406,33 @@ if [[ "$MODE" == "coverage" ]]; then
         fail "llvm-profdata / llvm-cov not found in build env (Clang's coverage tools — install llvm-tools or clang-tools-extra)"
     fi
 
+    # ── Parent coverage build + run ──────────────────────────────────────────
     cov_build="build/impl-coverage"
     rm -rf "$cov_build"
     COV_GEN="-G Ninja"
     dbox "CC=/usr/bin/clang CXX=/usr/bin/clang++ \
           cmake -B $cov_build -S tests $COV_GEN \
                 -DCOVERAGE=ON -DCMAKE_BUILD_TYPE=Debug" \
-        || fail "coverage configure failed"
-    dbox "cmake --build $cov_build" || fail "coverage build failed"
-    ok "coverage build complete"
+        || fail "coverage configure failed (parent)"
+    dbox "cmake --build $cov_build -j\$(nproc)" || fail "coverage build failed (parent)"
+    ok "parent coverage build complete"
 
     # Run ctest with the same exclusions the standalone tests build needs.
     # tst_qml requires real QML plugin types beyond what the standalone build
     # ships; tst_main_integration loads main.qml which references those types.
-    step "Run instrumented tests (LLVM_PROFILE_FILE=…/%p.profraw)"
+    step "Run instrumented parent tests (LLVM_PROFILE_FILE=…/%p.profraw)"
     cov_prof_dir="$cov_build/coverage"
     dbox "rm -rf $cov_prof_dir && mkdir -p $cov_prof_dir"
     dbox "cd $cov_build && QT_QPA_PLATFORM=offscreen \
           LLVM_PROFILE_FILE='coverage/%p.profraw' \
           ctest --output-on-failure --label-exclude 'DISPLAY_NEEDED' \
                 -E 'tst_main_integration'" \
-        || fail "instrumented ctest failed"
+        || fail "instrumented ctest failed (parent)"
 
-    step "Merge + export coverage"
+    step "Merge + export parent coverage"
     dbox "llvm-profdata merge -sparse $cov_prof_dir/*.profraw \
           -o $cov_prof_dir/merged.profdata" \
-        || fail "llvm-profdata merge failed"
+        || fail "llvm-profdata merge failed (parent)"
 
     # Object set + ignore regex mirror tests/CMakeLists.txt's add_custom_target(coverage).
     cov_objs="$cov_build/tst_filehelper \
@@ -436,30 +446,93 @@ if [[ "$MODE" == "coverage" ]]; then
     dbox "llvm-cov report $cov_objs \
           -instr-profile=$cov_prof_dir/merged.profdata \"$cov_ignore\" \
           > $cov_build/coverage.txt" \
-        || fail "llvm-cov report failed"
+        || fail "llvm-cov report failed (parent)"
     dbox "llvm-cov export -format=text $cov_objs \
           -instr-profile=$cov_prof_dir/merged.profdata \"$cov_ignore\" \
           > $cov_build/coverage.json" \
-        || fail "llvm-cov export failed"
+        || fail "llvm-cov export failed (parent)"
 
     # QML coverage — runs the existing qmlcov target which writes _qmlcov/report.json.
     # Threshold-fail behaviour stays inside the target; we read the percentage
     # for the baseline diff regardless of pass/fail.
     step "Run qmlcov target"
     qmlcov_rc=0
-    dbox "cmake --build $cov_build --target qmlcov" || qmlcov_rc=$?
+    dbox "cmake --build $cov_build --target qmlcov -j\$(nproc)" || qmlcov_rc=$?
     if [[ "$qmlcov_rc" != "0" ]]; then
         warn "qmlcov below its internal 95% threshold (rc=$qmlcov_rc) — captured for baseline diff"
     fi
 
-    # Parse current numbers.
+    # ── Submodule coverage build + run ───────────────────────────────────────
+    cov_build_sub="build/impl-coverage-sub"
+    step "Configure + build submodule with -DCOVERAGE=ON -DBUILD_TESTS=ON"
+    rm -rf "$cov_build_sub"
+    dbox "CC=/usr/bin/clang CXX=/usr/bin/clang++ \
+          cmake -B $cov_build_sub -S src/backend_scene $COV_GEN \
+                -DCOVERAGE=ON -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug" \
+        || fail "coverage configure failed (submodule)"
+    # Build only the test targets — full submodule build is unnecessary for coverage.
+    dbox "cmake --build $cov_build_sub --target backend_scene_tests -j\$(nproc)" \
+        || fail "coverage build failed (submodule: backend_scene_tests)"
+    # scenescript_tests target only exists when Qt6 Core/Qml were found at configure.
+    if dbox "cmake --build $cov_build_sub --target scenescript_tests -j\$(nproc)" 2>/dev/null; then
+        ok "submodule built backend_scene_tests + scenescript_tests"
+    else
+        warn "scenescript_tests not built (Qt6 Core/Qml absent?) — covering backend_scene_tests only"
+    fi
+
+    step "Run instrumented submodule tests (LLVM_PROFILE_FILE=…/%p.profraw)"
+    cov_prof_dir_sub="$cov_build_sub/coverage"
+    dbox "rm -rf $cov_prof_dir_sub && mkdir -p $cov_prof_dir_sub"
+    # Submodule ctest needs WEKDE_HAS_AUDIO_DEVICE absent (default) so the
+    # audio-device test gates remain skipped (no live PulseAudio in CI).
+    # Exclude backend_scene_thread_tests — it's the TSan-target binary, not
+    # built in the coverage configure (would require its own instrumentation
+    # path) and contributes no coverage measure we don't already get from the
+    # main two doctest suites.
+    # ABSOLUTE LLVM_PROFILE_FILE path: submodule ctest tests run from
+    # src/Test/ subdir, not $cov_build_sub, so a relative path drops profile
+    # data in the wrong place.  Resolve to host-visible absolute path.
+    cov_prof_abs_sub="$(realpath "$cov_prof_dir_sub")"
+    dbox "cd $cov_build_sub && QT_QPA_PLATFORM=offscreen \
+          LLVM_PROFILE_FILE='$cov_prof_abs_sub/%p.profraw' \
+          ctest --output-on-failure -E '^backend_scene_thread_tests$'" \
+        || fail "instrumented ctest failed (submodule)"
+
+    step "Merge + export submodule coverage"
+    dbox "llvm-profdata merge -sparse $cov_prof_dir_sub/*.profraw \
+          -o $cov_prof_dir_sub/merged.profdata" \
+        || fail "llvm-profdata merge failed (submodule)"
+
+    # Object set: backend_scene_tests + optional scenescript_tests.
+    # Ignore mirrors src/backend_scene/src/Test/CMakeLists.txt's coverage target.
+    cov_objs_sub="$cov_build_sub/src/Test/backend_scene_tests"
+    if [[ -x "$cov_build_sub/src/Test/scenescript_tests" ]]; then
+        cov_objs_sub="$cov_objs_sub -object=$cov_build_sub/src/Test/scenescript_tests"
+    fi
+    cov_ignore_sub='-ignore-filename-regex=(^/usr/|/Qt6/|/third_party/|/src/Test/|/moc_|_autogen/)'
+    dbox "llvm-cov report $cov_objs_sub \
+          -instr-profile=$cov_prof_dir_sub/merged.profdata \"$cov_ignore_sub\" \
+          > $cov_build_sub/coverage.txt" \
+        || fail "llvm-cov report failed (submodule)"
+    dbox "llvm-cov export -format=text $cov_objs_sub \
+          -instr-profile=$cov_prof_dir_sub/merged.profdata \"$cov_ignore_sub\" \
+          > $cov_build_sub/coverage.json" \
+        || fail "llvm-cov export failed (submodule)"
+
+    # Parse current numbers (parent + submodule + QML).
     cov_json="$cov_build/coverage.json"
+    cov_json_sub="$cov_build_sub/coverage.json"
     qmlcov_json="$cov_build/_qmlcov/report.json"
     if [[ ! -s "$cov_json" ]]; then
-        fail "coverage.json not produced"
+        fail "parent coverage.json not produced"
+    fi
+    if [[ ! -s "$cov_json_sub" ]]; then
+        fail "submodule coverage.json not produced"
     fi
     cur_cxx_lines=$(jq -r '.data[0].totals.lines.percent' "$cov_json")
     cur_cxx_regions=$(jq -r '.data[0].totals.regions.percent' "$cov_json")
+    cur_sub_lines=$(jq -r '.data[0].totals.lines.percent' "$cov_json_sub")
+    cur_sub_regions=$(jq -r '.data[0].totals.regions.percent' "$cov_json_sub")
     if [[ -s "$qmlcov_json" ]]; then
         # report.py emits overall_coverage as 0.0..1.0; report as a percentage.
         cur_qml=$(jq -r '.overall_coverage * 100' "$qmlcov_json")
@@ -467,16 +540,19 @@ if [[ "$MODE" == "coverage" ]]; then
         warn "qmlcov did not produce report.json — recording 0 for QML in this run"
         cur_qml=0
     fi
-    printf '%s  current:%s cxx_lines=%.2f cxx_regions=%.2f qml=%.2f\n' \
-        "$BLUE" "$RESET" "$cur_cxx_lines" "$cur_cxx_regions" "$cur_qml"
+    printf '%s  current:%s cxx_lines=%.2f cxx_regions=%.2f qml=%.2f sub_lines=%.2f sub_regions=%.2f\n' \
+        "$BLUE" "$RESET" "$cur_cxx_lines" "$cur_cxx_regions" "$cur_qml" "$cur_sub_lines" "$cur_sub_regions"
 
     baseline=tests/.coverage-baseline.json
     if [[ "${WEK_COVERAGE_REFRESH:-0}" == "1" ]]; then
         jq -n --argjson lines "$cur_cxx_lines" \
               --argjson regions "$cur_cxx_regions" \
               --argjson qml "$cur_qml" \
+              --argjson sub_lines "$cur_sub_lines" \
+              --argjson sub_regions "$cur_sub_regions" \
               '{cxx_lines: $lines, cxx_regions: $regions, qml: $qml,
-                _comment: "Totals from llvm-cov export + tools/qmlcov/report.py. Run WEK_COVERAGE_REFRESH=1 scripts/preflight.sh --coverage to update."}' \
+                sub_lines: $sub_lines, sub_regions: $sub_regions,
+                _comment: "Totals from llvm-cov export (parent + submodule) + tools/qmlcov/report.py. Run WEK_COVERAGE_REFRESH=1 scripts/preflight.sh --coverage to update."}' \
             > "$baseline"
         ok "baseline refreshed: $baseline"
         exit 0
@@ -490,26 +566,32 @@ if [[ "$MODE" == "coverage" ]]; then
     base_lines=$(jq -r '.cxx_lines' "$baseline")
     base_regions=$(jq -r '.cxx_regions' "$baseline")
     base_qml=$(jq -r '.qml' "$baseline")
+    base_sub_lines=$(jq -r '.sub_lines // 0' "$baseline")
+    base_sub_regions=$(jq -r '.sub_regions // 0' "$baseline")
 
     # 0.5pp tolerance — typical run-to-run jitter is well below this.
     regressed=0
-    awk -v c="$cur_cxx_lines"   -v b="$base_lines"   'BEGIN{exit !((b-c) > 0.5)}' && regressed=1 || true
-    awk -v c="$cur_cxx_regions" -v b="$base_regions" 'BEGIN{exit !((b-c) > 0.5)}' && regressed=1 || true
-    awk -v c="$cur_qml"         -v b="$base_qml"     'BEGIN{exit !((b-c) > 0.5)}' && regressed=1 || true
+    awk -v c="$cur_cxx_lines"    -v b="$base_lines"       'BEGIN{exit !((b-c) > 0.5)}' && regressed=1 || true
+    awk -v c="$cur_cxx_regions"  -v b="$base_regions"     'BEGIN{exit !((b-c) > 0.5)}' && regressed=1 || true
+    awk -v c="$cur_qml"          -v b="$base_qml"         'BEGIN{exit !((b-c) > 0.5)}' && regressed=1 || true
+    awk -v c="$cur_sub_lines"    -v b="$base_sub_lines"   'BEGIN{exit !((b-c) > 0.5)}' && regressed=1 || true
+    awk -v c="$cur_sub_regions"  -v b="$base_sub_regions" 'BEGIN{exit !((b-c) > 0.5)}' && regressed=1 || true
 
     if [[ "$regressed" == "1" ]]; then
         warn "coverage regression vs baseline (tolerance 0.5pp):"
-        printf '  cxx_lines:   %s -> %s\n' "$base_lines"   "$cur_cxx_lines"
-        printf '  cxx_regions: %s -> %s\n' "$base_regions" "$cur_cxx_regions"
-        printf '  qml:         %s -> %s\n' "$base_qml"     "$cur_qml"
-        if [[ "${COVERAGE_FATAL:-0}" == "1" ]]; then
-            fail "coverage leg failed (COVERAGE_FATAL=1)"
+        printf '  cxx_lines:    %s -> %s\n' "$base_lines"       "$cur_cxx_lines"
+        printf '  cxx_regions:  %s -> %s\n' "$base_regions"     "$cur_cxx_regions"
+        printf '  qml:          %s -> %s\n' "$base_qml"         "$cur_qml"
+        printf '  sub_lines:    %s -> %s\n' "$base_sub_lines"   "$cur_sub_lines"
+        printf '  sub_regions:  %s -> %s\n' "$base_sub_regions" "$cur_sub_regions"
+        if [[ "${COVERAGE_FATAL:-1}" == "1" ]]; then
+            fail "coverage leg failed (regression vs baseline)"
         fi
         warn "non-fatal — set COVERAGE_FATAL=1 to gate, or WEK_COVERAGE_REFRESH=1 to update the baseline"
         printf '\n%sCoverage leg complete (NON-FATAL regression noted).%s\n' "$YELLOW" "$RESET"
         exit 0
     fi
-    ok "coverage at/above baseline (tolerance 0.5pp)"
+    ok "coverage at/above baseline (tolerance 0.5pp, parent + submodule)"
     printf '\n%sCoverage leg passed.%s\n' "$GREEN" "$RESET"
     exit 0
 fi
@@ -630,7 +712,7 @@ if [[ "$MODE" != "test-only" ]]; then
           cmake -B build/sub -S src/backend_scene $SUB_GEN \
                 -DBUILD_TESTS=ON -DBUILD_TOOLS=ON -DBUILD_FUZZERS=ON \
                 -DCMAKE_BUILD_TYPE=Debug \
-          && cmake --build build/sub" \
+          && cmake --build build/sub -j\$(nproc)" \
         || fail "submodule build failed"
     ok "submodule built"
 fi
@@ -652,7 +734,7 @@ if [[ "$MODE" != "test-only" ]]; then
     dbox "CC=/usr/bin/clang CXX=/usr/bin/clang++ \
           cmake -B build/tests -S tests $TEST_GEN \
                 -DCMAKE_BUILD_TYPE=Debug \
-          && cmake --build build/tests" \
+          && cmake --build build/tests -j\$(nproc)" \
         || fail "tests build failed"
     ok "tests built"
 fi
@@ -680,7 +762,7 @@ if [[ "$MODE" != "test-only" ]]; then
     if dbox "CC=/usr/bin/clang CXX=/usr/bin/clang++ \
              cmake -B build/werror-shippable -S . $WERR_SCOPED_GEN \
                    -DCMAKE_BUILD_TYPE=Debug \
-             && cmake --build build/werror-shippable \
+             && cmake --build build/werror-shippable -j\$(nproc) \
                    --target WallpaperEngineKde mpvbackend \
                            wescene-renderer-qml wpParticle"; then
         ok "scoped -Werror clean (4 shippable targets)"
@@ -709,7 +791,7 @@ if [[ "$MODE" != "test-only" ]]; then
                 -DBUILD_TESTS=ON -DBUILD_FUZZERS=OFF \
                 -DWEK_SANITIZE=address,undefined \
                 -DCMAKE_BUILD_TYPE=Debug \
-          && cmake --build build/asan-gate \
+          && cmake --build build/asan-gate -j\$(nproc) \
                 --target backend_scene_tests scenescript_tests" \
         || fail "ASAN gate build failed"
 fi
@@ -752,7 +834,7 @@ if [[ "$NO_FUZZ" == "0" ]]; then
     done
 
     if [[ "$MODE" != "test-only" ]]; then
-        dbox "cmake --build build/sub --target fuzzers" \
+        dbox "cmake --build build/sub --target fuzzers -j\$(nproc)" \
             || fail "fuzzer build failed"
     fi
 
@@ -802,5 +884,16 @@ if [[ "$NO_FUZZ" == "0" ]]; then
         ok "fuzz_$target: ${FUZZ_SECS}s clean"
     done
 fi
+
+# ── 7. Coverage gate (parent + submodule, opt-in) ────────────────────────────
+# OPT-IN: invoke separately as `scripts/preflight.sh --coverage` (with
+# COVERAGE_FATAL=1 for gating, WEK_COVERAGE_REFRESH=1 to update baseline).
+# Originally wired here as a default-fatal step but OOM'd on 30 GB machines
+# because the Clang-instrumented build runs in parallel with whatever else
+# is running — keeping it opt-in avoids that.
+
+# ── 8. Mutation gate (parent + submodule, --diff-only --strict, opt-in) ──────
+# OPT-IN: invoke separately as `scripts/mutation.sh --diff-only --strict`.
+# Same OOM concern as coverage when run alongside other heavy builds.
 
 printf '\n%sAll preflight checks passed — safe to push.%s\n' "$GREEN" "$RESET"

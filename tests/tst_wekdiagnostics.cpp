@@ -5,6 +5,7 @@
 #include <QProcess>
 #include <QStandardPaths>
 #include "../src/WekDiagnostics.hpp"
+#include "TestSandbox.h"
 
 using namespace wekde;
 
@@ -12,7 +13,10 @@ class TestWekDiagnostics : public QObject {
     Q_OBJECT
 
 private slots:
-    void initTestCase() { QStandardPaths::setTestModeEnabled(true); }
+    void initTestCase() {
+        // Per-process HOME isolation for parallel Mull invocations.
+        wek::test_sandbox::enableIsolated();
+    }
 
     void testBundleContainsExpectedFiles() {
         WekDiagnostics diag;

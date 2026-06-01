@@ -147,7 +147,10 @@ RowLayout {
                             // painful: the user had to reopen the menu for
                             // every chip. The Popup stays open until
                             // click-outside or Escape.
-                            onTriggered: filterPopup.open()
+                            onTriggered: (source) => {
+                                filterPopup.x = source.x + filterPopup.width / 2
+                                filterPopup.open()
+                            }
                         },
                         Kirigami.Action {
                             id: action_cb_sort
@@ -225,8 +228,7 @@ RowLayout {
                 height: Math.min(
                     (left_content ? left_content.height : 600) - 80,
                     520)
-                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
-                                | Popup.CloseOnPressOutside
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
                 contentItem: ColumnLayout {
                     spacing: 4

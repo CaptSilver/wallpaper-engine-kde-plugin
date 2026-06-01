@@ -92,9 +92,18 @@ DEPS_FEDORA_BASE=(
     vulkan-headers vulkan-loader-devel vulkan-validation-layers vulkan-tools
     plasma-workspace-devel libplasma-devel
     kf6-plasma-devel kf6-kcoreaddons-devel kf6-kpackage-devel kf6-kconfig-devel
+    # KF6 integration: WekNotifier (KNotifications), WekShortcuts (KGlobalAccel
+    # + KXmlGui's KActionCollection), plugin.cpp's KCrash registration, and
+    # i18n() wrapping across QML+C++ (Wave 4 / 5).  Missing any of these
+    # breaks `cmake --build` on a fresh distrobox.
+    kf6-knotifications-devel kf6-kglobalaccel-devel kf6-kxmlgui-devel
+    kf6-kcrash-devel kf6-ki18n-devel
     lz4-devel
     qt6-qtbase-private-devel qt6-qtwebchannel-devel
     qt6-qtdeclarative-devel qt6-qtwebsockets-devel
+    # QtWebEngine: backend/QtWebView.qml uses WebEngineView + WebEngineProfile
+    # + WebEngineUrlRequestInterceptor (sandbox path from SEC-WEB1/2).
+    qt6-qtwebengine-devel
     freetype-devel
     # Sanitizer runtimes — libasan.so.8 is only available inside distrobox per
     # CLAUDE.md; required for ASAN builds of the standalone sceneviewer.

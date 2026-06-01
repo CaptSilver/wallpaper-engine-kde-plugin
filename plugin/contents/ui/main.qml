@@ -170,7 +170,18 @@ Rectangle {
             anchors.fill: parent
         }
     }
-    property bool hasLib: Common.checklib_wallpaper(background)
+    // hasLib is a one-shot capability probe, NOT a live binding.  Common.
+    // checklib_wallpaper calls Qt.createQmlObject(import …; QtObject{},
+    // background) — invoking that DURING binding evaluation (i.e. during
+    // QML load) recursively re-enters Qt's QML loader on the same thread,
+    // races with the outer load's QQmlThread dispatch, and SIGSEGVs in
+    // QQmlThread::internalCallMethodInThread (production crash on
+    // particle wallpapers, plasma 6.6.4 + Qt 6.10.3).  Defaulting to
+    // false + assigning in Component.onCompleted below moves the probe
+    // OUT of the load critical section.  hasLib is only read imperatively
+    // (timers + functions, see lines 255 / 518 / 617 / 627) — no consumer
+    // needs it as a binding.
+    property bool hasLib: false
 
     property var customConf: Common.loadCustomConf(wallpaper.configuration.CustomConf)
 
@@ -673,6 +684,10 @@ Rectangle {
     }
 
     Component.onCompleted: {
+        // hasLib capability probe — see the property declaration above for
+        // why this lives here instead of as a binding.
+        hasLib = Common.checklib_wallpaper(background);
+
         // catsout → captsilver one-shot migration. No-op when the marker is
         // present or no catsout config exists. Runs IN-PROCESS via KConfig
         // (no subprocess, no plasmashell restart) and returns normally, so it

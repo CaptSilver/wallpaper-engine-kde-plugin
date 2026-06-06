@@ -1,5 +1,6 @@
 #include "WebUrlInterceptor.hpp"
 #include <QWebEngineUrlRequestInfo>
+#include <QQuickWebEngineProfile>
 #include <QFileInfo>
 #include <QDir>
 #include <QLoggingCategory>
@@ -8,6 +9,19 @@ namespace wekde
 {
 
 WebUrlInterceptor::WebUrlInterceptor(QObject* parent): QWebEngineUrlRequestInterceptor(parent) {}
+
+void WebUrlInterceptor::installOn(QObject* profile) {
+    // The QML WebEngineProfile is a QQuickWebEngineProfile; its only interceptor
+    // entry point is the C++ setUrlRequestInterceptor() (there is no QML
+    // property).  Fail loudly rather than silently leaving file:// unguarded.
+    auto* qprofile = qobject_cast<QQuickWebEngineProfile*>(profile);
+    if (qprofile == nullptr) {
+        qWarning() << "[WEK] interceptor: installOn() expected a WebEngineProfile, got" << profile
+                   << "-- file:// sandbox NOT active";
+        return;
+    }
+    qprofile->setUrlRequestInterceptor(this);
+}
 
 void WebUrlInterceptor::setWallpaperBaseDir(const QString& baseDirPath) {
     if (baseDirPath.isEmpty()) {

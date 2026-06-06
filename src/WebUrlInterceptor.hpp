@@ -15,6 +15,14 @@ class WebUrlInterceptor : public QWebEngineUrlRequestInterceptor {
 public:
     explicit WebUrlInterceptor(QObject* parent = nullptr);
 
+    // Install this interceptor on a QML WebEngineProfile.  Qt 6 exposes no
+    // QML-assignable `urlRequestInterceptor` property — the only entry point is
+    // QQuickWebEngineProfile::setUrlRequestInterceptor() in C++ — so QML calls
+    // this from the profile's Component.onCompleted.  `profile` is the QML
+    // WebEngineProfile object; a non-profile argument logs loudly and no-ops
+    // (the file:// sandbox is then inactive rather than silently mis-wired).
+    Q_INVOKABLE void installOn(QObject* profile);
+
     // Called from QML before loadHtml() with the wallpaper's directory path
     // (a native local-filesystem path, not a file:// URL).  Empty string
     // resets the gate to "block all file:// requests".

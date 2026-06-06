@@ -6,7 +6,7 @@
 # Pinning to the lowest meets-policy ensures a too-old Qt6 fails fast at
 # configure with a clear error instead of late and cryptically.  Bump again
 # once the floor distro moves to Qt 6.8 (Ubuntu 26.04 LTS expected April 2026).
-find_package(Qt6 6.7 REQUIRED COMPONENTS Quick Qml Core DBus Network WebEngineCore)
+find_package(Qt6 6.7 REQUIRED COMPONENTS Quick Qml Core DBus Network WebEngineCore WebEngineQuick)
 
 add_subdirectory(backend_mpv)
 
@@ -52,6 +52,7 @@ target_link_libraries(${PROJECT_NAME}
 	Qt::DBus
 	Qt::Network
 	Qt::WebEngineCore
+	Qt::WebEngineQuick
 	KF6::ConfigCore
 	KF6::Notifications
 	KF6::Crash

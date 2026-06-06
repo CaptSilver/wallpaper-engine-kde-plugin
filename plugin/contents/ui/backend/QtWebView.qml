@@ -192,9 +192,14 @@ Item {
     // persist their localStorage across reloads.
     WebEngineProfile {
         id: wallpaperProfile
-        urlRequestInterceptor: wallpaperInterceptor
         offTheRecord: false
         storageName: "wek-wallpaper"
+
+        // Wire the per-wallpaper file:// interceptor.  Qt 6 has no QML
+        // `urlRequestInterceptor` property on WebEngineProfile — the only entry
+        // point is QQuickWebEngineProfile::setUrlRequestInterceptor() in C++ —
+        // so the interceptor installs itself here once the profile exists.
+        Component.onCompleted: wallpaperInterceptor.installOn(wallpaperProfile)
 
         // Cap the HTTP cache so animated web wallpapers can't grow
         // ~/.cache/wek-wallpaper/Cache/ unboundedly across long-running
@@ -275,7 +280,7 @@ Item {
         property bool paused: false
         property bool _scriptsReady: false
         property bool _init: {
-            settings.fullscreenSupportEnabled = true;
+            settings.fullScreenSupportEnabled = true;
             settings.autoLoadIconsForPage = false;
             settings.printElementBackgrounds = false;
             settings.playbackRequiresUserGesture = false;

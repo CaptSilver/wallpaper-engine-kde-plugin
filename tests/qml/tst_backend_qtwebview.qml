@@ -289,6 +289,30 @@ TestCase {
             "base must strip the filename");
     }
 
+    // The real WebEngineProfile has NO QML urlRequestInterceptor property (that
+    // binding shipped broken and aborted every web wallpaper); the interceptor
+    // must be installed in C++ via WebUrlInterceptor.installOn(profile) from the
+    // profile's Component.onCompleted.  Pin that wiring so it can't regress to a
+    // non-existent property again.
+    function test_interceptor_installedOnProfile_viaInstallOn() {
+        function findInterceptor() {
+            const buckets = [web.children || [], web.data || []];
+            for (const b of buckets) {
+                for (let i = 0; i < b.length; i++) {
+                    const c = b[i];
+                    if (c && typeof c.installOn === "function") return c;
+                }
+            }
+            return null;
+        }
+        const it = findInterceptor();
+        verify(it !== null, "WebUrlInterceptor sibling must exist");
+        verify(it.installOnCount >= 1,
+            "interceptor must be installed on the profile via installOn() (no QML property exists)");
+        compare(it.lastInstalledProfile, web.wallpaperProfile,
+            "interceptor must be installed on the wallpaper's own profile");
+    }
+
     // ── Feature-permission consent (geolocation, mic, camera, …) ──────────
     // Helper to build a fake Pyext whose read_wallpaper_config returns the
     // supplied object via a synchronous .then() (matches the QtWebView code

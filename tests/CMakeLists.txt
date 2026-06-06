@@ -97,15 +97,17 @@ set_tests_properties(tst_filehelper PROPERTIES TIMEOUT 120)
 # Pure-predicate tests for the file:// allow/block gate.  The QtWebEngineCore
 # component ships in qt6-qtwebengine on Fedora / Bazzite; gated so a build
 # without it just skips (matches how the optional Gui/Quick tests degrade).
-find_package(Qt6 COMPONENTS WebEngineCore QUIET)
-if(Qt6WebEngineCore_FOUND)
+find_package(Qt6 COMPONENTS WebEngineCore WebEngineQuick QUIET)
+if(Qt6WebEngineCore_FOUND AND Qt6WebEngineQuick_FOUND)
     add_executable(tst_weburlinterceptor
         tst_weburlinterceptor.cpp
         ${WEKDE_SRC_DIR}/WebUrlInterceptor.cpp
     )
     target_include_directories(tst_weburlinterceptor PRIVATE ${WEKDE_SRC_DIR})
+    # WebEngineQuick: WebUrlInterceptor.cpp includes QQuickWebEngineProfile for
+    # installOn() (the C++ interceptor-install entry point).
     target_link_libraries(tst_weburlinterceptor PRIVATE
-        Qt6::Core Qt6::Test Qt6::WebEngineCore)
+        Qt6::Core Qt6::Test Qt6::WebEngineCore Qt6::WebEngineQuick)
     if(COVERAGE)
         target_compile_options(tst_weburlinterceptor PRIVATE ${_cov_compile_flags})
         target_link_options(tst_weburlinterceptor PRIVATE ${_cov_link_flags})

@@ -204,8 +204,8 @@ Item {
         // clock/weather wallpapers) is unaffected by this cap.  Setting
         // httpCacheType explicitly guards against a Qt default flip in
         // a future LTS.
-        httpCacheType:    WebEngineProfile.DiskHttpCache
-        httpCacheMaxSize: 50 * 1024 * 1024
+        httpCacheType:        WebEngineProfile.DiskHttpCache
+        httpCacheMaximumSize: 50 * 1024 * 1024
     }
 
     // Consents are persisted under the wallpaper config's `permissions` key

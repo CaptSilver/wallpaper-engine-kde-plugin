@@ -612,7 +612,7 @@ TestCase {
         compare(web.wallpaperProfile.httpCacheType,
                 WebEngineProfile.DiskHttpCache,
                 "wallpaperProfile must declare DiskHttpCache explicitly");
-        compare(web.wallpaperProfile.httpCacheMaxSize,
+        compare(web.wallpaperProfile.httpCacheMaximumSize,
                 50 * 1024 * 1024,
                 "wallpaperProfile must cap the on-disk HTTP cache at 50 MB");
     }

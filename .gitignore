@@ -29,3 +29,6 @@ cmake-build-debug
 /gdb.txt
 /log.txt
 /scripts_scene/
+
+# Local Claude Code project instructions — kept out of git (per repo decision).
+/CLAUDE.md

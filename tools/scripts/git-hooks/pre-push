@@ -3,4 +3,17 @@
 # Skip on a single push with: git push --no-verify
 # Disable entirely with:       git config --unset core.hooksPath
 
-exec "$(git rev-parse --show-toplevel)/tools/scripts/preflight.sh"
+# The 141-on-a-passing-gate abort: the gate takes minutes, during which git's
+# SSH connection to the remote sits idle.  GitHub closes idle connections, so
+# the pack send AFTER the gate dies with SIGPIPE (exit 141) even though the gate
+# passed and printed "safe to push".  The fix is SSH keepalive so the connection
+# survives the gate -- `git config core.sshCommand 'ssh -o ServerAliveInterval=15'`
+# (set up alongside the hook; see CONTRIBUTING.md).
+#
+# Independently, detach the gate from git's hook stdin (the push ref-list):
+# preflight drives every step through `distrobox enter` (podman exec
+# --interactive), which would otherwise attach to that pipe.  Drain it (git
+# closes its write end after sending the ref-list, so this won't block) and run
+# the gate with stdin from /dev/null.
+cat >/dev/null 2>&1 || true
+exec "$(git rev-parse --show-toplevel)/tools/scripts/preflight.sh" </dev/null

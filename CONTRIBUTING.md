@@ -25,6 +25,9 @@ The project uses a single comprehensive local preflight gate
 
 ```bash
 git config core.hooksPath tools/scripts/git-hooks   # installs the pre-push hook
+# Keep the remote's SSH connection alive across the multi-minute gate, or the
+# pack send afterward dies with "Connection closed by remote host" (exit 141):
+git config core.sshCommand 'ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=60'
 cmake -B build -S .
 tools/scripts/preflight.sh                          # ~3-5 min: lint + submodule build + tests + fuzz smoke
 ```

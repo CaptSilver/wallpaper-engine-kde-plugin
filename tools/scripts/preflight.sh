@@ -896,4 +896,9 @@ fi
 # OPT-IN: invoke separately as `tools/scripts/mutation.sh --diff-only --strict`.
 # Same OOM concern as coverage when run alongside other heavy builds.
 
-printf '\n%sAll preflight checks passed — safe to push.%s\n' "$GREEN" "$RESET"
+# Reaching here means every gate above passed (set -e exits non-zero earlier
+# otherwise), so force a clean exit 0 -- a SIGPIPE on this final write (e.g.
+# under a git hook's captured stdout) must not turn a green run into a failed
+# push.
+printf '\n%sAll preflight checks passed — safe to push.%s\n' "$GREEN" "$RESET" 2>/dev/null || true
+exit 0

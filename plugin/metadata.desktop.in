@@ -1,9 +1,9 @@
 [Desktop Entry]
 Encoding=UTF-8
-Name=Wallpaper Engine for Kde
+Name=Wallpaper Engine for KDE
 Type=Service
 Icon=preferences-desktop-wallpaper
-Comment=Wallpaper Engine for Kde
+Comment=Wallpaper Engine for KDE
 
 X-Plasma-MainScript=ui/main.qml
 X-KDE-ServiceTypes=Plasma/Wallpaper

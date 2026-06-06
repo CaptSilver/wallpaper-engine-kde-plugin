@@ -10,11 +10,11 @@
             }
         ],
         "Category": "",
-        "Description": "Wallpaper Engine for Kde",
+        "Description": "Wallpaper Engine for KDE",
         "Icon": "preferences-desktop-wallpaper",
         "Id": "com.github.captsilver.wallpaperEngineKde",
         "License": "GPLv2+",
-        "Name": "Wallpaper Engine for Kde",
+        "Name": "Wallpaper Engine for KDE",
         "ServiceTypes": [
             "Plasma/Wallpaper"
         ],

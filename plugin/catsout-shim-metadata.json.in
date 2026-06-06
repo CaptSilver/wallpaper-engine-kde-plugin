@@ -12,7 +12,7 @@
         "Icon": "preferences-desktop-wallpaper",
         "Id": "com.github.catsout.wallpaperEngineKde",
         "License": "GPLv2+",
-        "Name": "Wallpaper Engine for Kde (legacy id)",
+        "Name": "Wallpaper Engine for KDE (legacy id)",
         "ServiceTypes": [
             "Plasma/Wallpaper"
         ],

@@ -1,7 +1,7 @@
 # ThreadSanitizer suppressions for the WEK test suites.
 #
 # Referenced by tools/scripts/preflight.sh's --tsan leg:
-#   TSAN_OPTIONS="suppressions=$PWD/tsan.supp ..." ./build/.../scenescript_tests
+#   TSAN_OPTIONS="suppressions=$PWD/tools/scripts/tsan.supp ..." ./build/.../scenescript_tests
 #
 # Scope: suppress KNOWN-BENIGN reports from third-party runtime internals only
 # (Qt/glib lazy static init, libstdc++'s atomic<shared_ptr> sharded-lock impl,

@@ -262,7 +262,7 @@ if [[ "$MODE" == "sanitize" ]]; then
 
             # halt_on_error=1 + a non-zero exitcode make any race fail the leg.
             # Suppress only known-benign Qt/glib/libstdc++ runtime internals.
-            local_tsan_opts="suppressions=${REPO_ROOT}/tsan.supp:halt_on_error=1:exitcode=66"
+            local_tsan_opts="suppressions=${REPO_ROOT}/tools/scripts/tsan.supp:halt_on_error=1:exitcode=66"
 
             step "Run backend_scene_thread_tests under TSAN"
             dbox "TSAN_OPTIONS='${local_tsan_opts}' \

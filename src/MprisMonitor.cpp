@@ -172,7 +172,7 @@ void MprisMonitor::findActivePlayer() {
                                 sw2->deleteLater();
                                 if (gen != m_scanGeneration) return; // superseded
                                 QDBusPendingReply<QVariant> statusReply = *sw2;
-                                const bool                  playing     = statusReply.isValid() &&
+                                const bool playing = statusReply.isValid() &&
                                                      statusReply.value().toString() == "Playing";
                                 // Match the old synchronous preference exactly: the
                                 // lowest-ListNames-index "Playing" player wins; with

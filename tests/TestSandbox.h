@@ -30,8 +30,10 @@
 // $HOME/.cache.  Last-resort fallback: /tmp (best effort, may flake cache
 // tests on tmpfs).  The static QTemporaryDir is process-local and
 // auto-cleaned at exit.
-namespace wek {
-namespace test_sandbox {
+namespace wek
+{
+namespace test_sandbox
+{
 
 inline QString sandboxBase() {
     const QByteArray xdgCacheEnv = qgetenv("XDG_CACHE_HOME");
@@ -55,5 +57,5 @@ inline void enableIsolated() {
     QStandardPaths::setTestModeEnabled(true);
 }
 
-}  // namespace test_sandbox
-}  // namespace wek
+} // namespace test_sandbox
+} // namespace wek

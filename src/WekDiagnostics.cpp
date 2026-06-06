@@ -129,7 +129,7 @@ QString WekDiagnostics::collectPluginEnv() {
 QString WekDiagnostics::collectRedactedCfg() {
     const auto cfgPath = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
                          QStringLiteral("/plasma-org.kde.plasma.desktop-appletsrc");
-    QFile f(cfgPath);
+    QFile      f(cfgPath);
     if (! f.open(QIODevice::ReadOnly)) {
         return QStringLiteral("Plasma config not readable at %1").arg(cfgPath);
     }
@@ -165,7 +165,7 @@ QString WekDiagnostics::collectRedactedCfg() {
 QString WekDiagnostics::collectCacheManifest() {
     const auto cacheRoot = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) +
                            QStringLiteral("/wallpaper-scene-renderer");
-    QDir d(cacheRoot);
+    QDir       d(cacheRoot);
     if (! d.exists()) return QStringLiteral("No renderer cache directory at %1").arg(cacheRoot);
 
     QStringList lines;
@@ -192,7 +192,7 @@ QString WekDiagnostics::collectPipelineDiag() {
     if (qEnvironmentVariable("WEKDE_PIPELINE_DIAG").trimmed() != QLatin1String("1")) return {};
     const auto cacheRoot = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) +
                            QStringLiteral("/wallpaper-scene-renderer/pipeline-diag.txt");
-    QFile f(cacheRoot);
+    QFile      f(cacheRoot);
     if (! f.open(QIODevice::ReadOnly))
         return QStringLiteral("WEKDE_PIPELINE_DIAG=1 set but no pipeline-diag.txt at %1")
             .arg(cacheRoot);

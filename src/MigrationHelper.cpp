@@ -169,8 +169,8 @@ void MigrationHelper::seedLastSeenVersions(const QString& steamLibraryPath) {
         // last_seen_version, write the manifest's current value. Skip the
         // bindings sidecar files (<id>_bindings.json).
         QDir                wpDir(fh.allSeenVersions().isEmpty()
-                       ? cfg + "/wekde/wallpaper"
-                       : cfg + "/wekde/wallpaper"); // explicit for clarity
+                                      ? cfg + "/wekde/wallpaper"
+                                      : cfg + "/wekde/wallpaper"); // explicit for clarity
         const QFileInfoList entries =
             wpDir.entryInfoList(QStringList { QStringLiteral("*.json") }, QDir::Files);
         int seeded = 0;

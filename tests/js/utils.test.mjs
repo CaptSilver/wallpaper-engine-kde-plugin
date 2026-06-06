@@ -11,6 +11,7 @@ import {
     prettyBytes,
     fileTypeNameFilters,
     formatPropertyLabel,
+    badgeUpdated,
 } from '../../plugin/contents/ui/js/utils.mjs';
 
 test('parseJson: valid JSON shapes', () => {
@@ -162,4 +163,28 @@ test('formatPropertyLabel: localization prefix wins over HTML strip', () => {
     // — they're identifiers, not user text.
     assert.equal(formatPropertyLabel('ui_browse_properties_<b>nope</b>', 'k'),
                  '<b>nope</b>');
+});
+
+// badgeUpdated — the "Updated since you last loaded it" dot predicate,
+// extracted from WallpaperListModel.loadItemFromJson. A wallpaper badges
+// ONLY if the user has loaded it before (seenVersion > 0) and Steam has
+// updated it since. Never-loaded wallpapers (seenVersion 0) must NOT badge,
+// or the whole library lights up — the bug this guards against marked
+// 1053 of 1084 wallpapers "updated".
+test('badgeUpdated: never-loaded wallpaper (seen 0) does not badge', () => {
+    assert.equal(badgeUpdated(1500000000, 0), false);
+    assert.equal(badgeUpdated(0, 0), false);
+});
+
+test('badgeUpdated: loaded then updated by Steam badges', () => {
+    assert.equal(badgeUpdated(1700000000, 1600000000), true);
+});
+
+test('badgeUpdated: loaded and unchanged does not badge', () => {
+    assert.equal(badgeUpdated(1600000000, 1600000000), false);
+});
+
+test('badgeUpdated: loaded but manifest older or missing does not badge', () => {
+    assert.equal(badgeUpdated(1500000000, 1600000000), false); // older manifest
+    assert.equal(badgeUpdated(0, 1600000000), false);          // no manifest entry
 });

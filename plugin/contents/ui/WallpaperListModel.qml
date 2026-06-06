@@ -104,16 +104,16 @@ Item {
                 el.tags = project.tags.map(el => Object({key: el}));
             }
         }
-        // Compute the "updated" badge state. Truthy iff the Steam-side
-        // manifest reports a newer timeupdated than the per-wallpaper
-        // last_seen_version recorded by the previous load. Empty manifest /
-        // missing entry => not updated (and crucially: not "everything
-        // updated" — first-launch users with MigrationHelper-seeded
-        // last_seen_version match, while users without the seed see no
-        // badges instead of all-badges).
+        // Compute the "updated since you last loaded it" badge state. Only
+        // wallpapers the user has actually loaded before (a recorded
+        // last_seen_version > 0) that the Steam manifest has since bumped get
+        // the dot. A never-loaded wallpaper has no last_seen_version, so it
+        // does NOT badge — otherwise every subscribed-but-never-opened
+        // wallpaper (the bulk of a library) would light up. recordSeenVersion
+        // on load is what later clears the dot.
         const ts = (workshopManifest && workshopManifest[el.workshopid]) || 0;
         const seen = (seenVersions && seenVersions[el.workshopid]) || 0;
-        el.updated = (ts > 0 && ts > seen);
+        el.updated = Utils.badgeUpdated(ts, seen);
     }
 
     function loadPlaylists() {

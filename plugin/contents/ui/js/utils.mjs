@@ -131,3 +131,15 @@ export function fileTypeNameFilters(fileType) {
     }
 }
 
+// Whether a wallpaper should show the "Updated since you last loaded it" dot.
+// `manifestTs` is the Steam Workshop timeupdated; `seenVersion` is the
+// last_seen_version recorded when the wallpaper was last loaded (0 = never
+// loaded / never recorded). Badge only wallpapers the user has actually loaded
+// before AND that Steam has updated since — a never-loaded wallpaper has no
+// "last load" to be newer than, so it must NOT badge, or the whole subscribed
+// library lights up. Extracted from WallpaperListModel.loadItemFromJson so the
+// comparison is unit-testable.
+export function badgeUpdated(manifestTs, seenVersion) {
+    return seenVersion > 0 && manifestTs > seenVersion;
+}
+

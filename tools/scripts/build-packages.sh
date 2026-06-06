@@ -472,3 +472,9 @@ step "Done"
 [[ $WANT_RPM  == 1 ]] && ok "RPM:  $HOME/wallpaper-engine-kde-plugin-qt6-*.rpm"
 [[ $WANT_DEB  == 1 ]] && ok "DEB:  $HOME/wallpaper-engine-kde-plugin_*.deb"
 [[ $WANT_ARCH == 1 ]] && ok "ARCH: $HOME/wallpaper-engine-kde-plugin-*-x86_64.pkg.tar.zst"
+
+# Each summary line above is a `[[ ]] && ok` short-circuit; the last one is
+# false (exit 1) whenever its target isn't selected, which would otherwise make
+# a fully-successful single-target run (e.g. `build-packages.sh rpm`) exit 1.
+# Real failures already abort earlier via `|| fail`, so reaching here is success.
+exit 0

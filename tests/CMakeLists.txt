@@ -570,14 +570,15 @@ endif()
 find_package(KF6GlobalAccel QUIET)
 find_package(KF6CoreAddons QUIET)
 find_package(KF6XmlGui QUIET)        # KActionCollection lives in kxmlgui
-if(KF6GlobalAccel_FOUND AND KF6CoreAddons_FOUND AND KF6XmlGui_FOUND AND Qt6DBus_FOUND)
+find_package(Qt6 COMPONENTS Gui QUIET)   # QGuiApplication for the test main (QAction needs a GUI app)
+if(KF6GlobalAccel_FOUND AND KF6CoreAddons_FOUND AND KF6XmlGui_FOUND AND Qt6DBus_FOUND AND Qt6Gui_FOUND)
     add_executable(tst_wekshortcuts
         tst_wekshortcuts.cpp
         ${WEKDE_SRC_DIR}/WekShortcuts.cpp
     )
     target_include_directories(tst_wekshortcuts PRIVATE ${WEKDE_SRC_DIR})
     target_link_libraries(tst_wekshortcuts PRIVATE
-        Qt6::Core Qt6::Test Qt6::DBus
+        Qt6::Core Qt6::Test Qt6::DBus Qt6::Gui
         KF6::GlobalAccel
         KF6::CoreAddons
         KF6::XmlGui)

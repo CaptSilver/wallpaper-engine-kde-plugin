@@ -13,6 +13,7 @@
 #include <KActionCollection>
 #include <QAction>
 #include <QDBusConnection>
+#include <QGuiApplication>
 #include <QSignalSpy>
 #include <QtTest/QtTest>
 
@@ -123,5 +124,14 @@ void TestWekShortcuts::allActions_haveDistinctIds() {
     QCOMPARE(seen.size(), 6);
 }
 
-QTEST_GUILESS_MAIN(TestWekShortcuts)
+// QAction lives in QtGui and, since Qt 6.11, its constructor dereferences
+// QGuiApplication-owned state -- so building one under a bare QCoreApplication
+// (what QTEST_GUILESS_MAIN provides) segfaults.  In production WekShortcuts is
+// instantiated under plasmashell's QGuiApplication, so mirror that here.
+// QT_QPA_PLATFORM=offscreen (set by the ctest harness) keeps it headless.
+int main(int argc, char* argv[]) {
+    QGuiApplication  app(argc, argv);
+    TestWekShortcuts tc;
+    return QTest::qExec(&tc, argc, argv);
+}
 #include "tst_wekshortcuts.moc"

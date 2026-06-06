@@ -13,7 +13,7 @@
 //
 // setTestModeEnabled hardcodes its sandbox at ~/.qttest/ — a single
 // filesystem path shared by every process running the test binary.  When
-// scripts/mutation.sh runs Mull with --workers > 1, many parallel mutant
+// tools/scripts/mutation.sh runs Mull with --workers > 1, many parallel mutant
 // invocations of the same test binary race on that shared path: one process
 // is mid-write while another is mid-read, files get half-written, and
 // QVERIFY(f.open(QIODevice::WriteOnly)) starts failing.

@@ -62,7 +62,7 @@ bool MigrationHelper::shouldRun() const {
 
     // Either file can be the trigger — a user whose ONLY catsout reference is
     // in kscreenlockerrc must still kick off the migration. The shell shim's
-    // backup/rewrite loops (scripts/migrate-from-catsout.sh:137,161) iterate
+    // backup/rewrite loops (tools/scripts/migrate-from-catsout.sh:137,161) iterate
     // both files for the same reason.
     auto fileMentionsOldUri = [&](const QString& rel) {
         QFile f(cfg + "/" + rel);
@@ -82,7 +82,7 @@ void MigrationHelper::runIfNeeded() {
 
     // Migration runs in-process via KConfig — no plasmashell stop/start, no
     // child process, no cgroup-kill window. The script-based predecessor
-    // (scripts/migrate-from-catsout.sh) was unreliable: spawning it from
+    // (tools/scripts/migrate-from-catsout.sh) was unreliable: spawning it from
     // QProcess::startDetached and then having the script call
     // `systemctl --user stop plasma-plasmashell.service` killed every PID in
     // plasmashell's control-group, including the script itself. The marker

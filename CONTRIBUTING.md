@@ -21,12 +21,12 @@ For binary installs (`.rpm` / `.deb`), see [README.md](README.md).
 ## Local build + test gate
 
 The project uses a single comprehensive local preflight gate
-(`scripts/preflight.sh`) — there is no cloud CI. Three commands get you set up:
+(`tools/scripts/preflight.sh`) — there is no cloud CI. Three commands get you set up:
 
 ```bash
-git config core.hooksPath scripts/git-hooks   # installs the pre-push hook
+git config core.hooksPath tools/scripts/git-hooks   # installs the pre-push hook
 cmake -B build -S .
-scripts/preflight.sh                          # ~3-5 min: lint + submodule build + tests + fuzz smoke
+tools/scripts/preflight.sh                          # ~3-5 min: lint + submodule build + tests + fuzz smoke
 ```
 
 The pre-push hook runs `preflight.sh` on every `git push`. A full run takes
@@ -39,7 +39,7 @@ The project uses `.clang-format` (4-space indent, 100-column lines). The
 canonical command to format your changes is:
 
 ```bash
-scripts/preflight.sh --fix
+tools/scripts/preflight.sh --fix
 ```
 
 Do not run `clang-format -i` over the whole tree — the formatter version
@@ -84,7 +84,7 @@ Every new function should get a test. The project ships three test surfaces:
 | Renderer unit | `src/backend_scene/src/Test/*.cpp` | doctest binaries |
 
 See the spec's "Tests" section in [CLAUDE.md](CLAUDE.md) for the per-layer
-invocations if you need details. The short answer is `scripts/preflight.sh`
+invocations if you need details. The short answer is `tools/scripts/preflight.sh`
 exercises all of them.
 
 ## CLAUDE.md

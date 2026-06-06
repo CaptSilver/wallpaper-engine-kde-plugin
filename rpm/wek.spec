@@ -132,7 +132,7 @@ ctest --test-dir %{_builddir}/wek-build/tests \
   -> com.github.captsilver.wallpaperEngineKde
 - Transitional shim package preserves existing user selectors during upgrade
 - Auto-fallback: in-plugin first-load detection silently runs migration script
-- New: scripts/migrate-from-catsout.sh + /usr/bin/wek-migrate-from-catsout
+- New: tools/scripts/migrate-from-catsout.sh + /usr/bin/wek-migrate-from-catsout
 - Existing per-desktop wallpaper settings migrated transparently (one-time)
 
 * Wed Apr 22 2026 packager - 1.2-1

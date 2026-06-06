@@ -41,7 +41,7 @@ public:
     /// that is moot — there is one plasmashell per session. Safe to call on
     /// every plasmoid construction.
     ///
-    /// NOTE: scripts/migrate-from-catsout.sh still ships as
+    /// NOTE: tools/scripts/migrate-from-catsout.sh still ships as
     /// /usr/bin/wek-migrate-from-catsout for manual/CLI migration, but
     /// runIfNeeded() does NOT invoke it — the two paths are independent.
     Q_INVOKABLE void runIfNeeded();

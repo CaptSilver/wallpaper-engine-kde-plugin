@@ -8,7 +8,7 @@
 
 ## Test plan
 
-- [ ] `scripts/preflight.sh` passes locally
+- [ ] `tools/scripts/preflight.sh` passes locally
 - [ ] New tests added for changed behaviour (or rationale below for "no new tests")
 - [ ] If renderer change: screenshot before/after, or `WEKDE_TIME_DIAG=1` numbers
 

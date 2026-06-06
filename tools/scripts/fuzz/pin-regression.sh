@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# scripts/fuzz/pin-regression.sh — minimise a libFuzzer crash artifact and
+# tools/scripts/fuzz/pin-regression.sh — minimise a libFuzzer crash artifact and
 # pin it as a regression test fixture.
 #
 # Usage:
-#   scripts/fuzz/pin-regression.sh <target> <crash-artifact> [description]
+#   tools/scripts/fuzz/pin-regression.sh <target> <crash-artifact> [description]
 #
 #   target           e.g. WPMdlParser, WPTexImageParser, ...
 #   crash-artifact   path to build/sub/fuzz-crashes/crash-<sha> (or any crash file)

@@ -2,7 +2,7 @@
 # Run a fuzz harness in cold-start and/or seeded modes.
 #
 # Usage:
-#   scripts/fuzz/run.sh <target> [duration_seconds=300] [mode=both]
+#   tools/scripts/fuzz/run.sh <target> [duration_seconds=300] [mode=both]
 #
 #   target           : harness name without the fuzz_ prefix (e.g. "WPMdlParser")
 #   duration_seconds : total wall time across both phases (default 300)
@@ -69,7 +69,7 @@ case "$mode" in
     seeded)
         if [[ ! -d "$seed_dir" || -z "$(ls -A "$seed_dir" 2>/dev/null)" ]]; then
             echo "Seed corpus empty at $seed_dir" >&2
-            echo "Run scripts/fuzz/build-corpus.sh first." >&2
+            echo "Run tools/scripts/fuzz/build-corpus.sh first." >&2
             exit 1
         fi
         run_phase "seeded ($(find "$seed_dir" -type f | wc -l) seeds)" \
@@ -84,7 +84,7 @@ case "$mode" in
         else
             echo
             echo "Skipping seeded phase: seed corpus empty at $seed_dir"
-            echo "(Run scripts/fuzz/build-corpus.sh to populate it.)"
+            echo "(Run tools/scripts/fuzz/build-corpus.sh to populate it.)"
         fi
         ;;
     *)

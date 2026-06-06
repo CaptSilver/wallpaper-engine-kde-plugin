@@ -11,7 +11,7 @@ export CXX = clang++
 #     debian/rules snapshot-changelog && dpkg-buildpackage -uc -us
 .PHONY: snapshot-changelog
 snapshot-changelog:
-	$(CURDIR)/scripts/gen-debian-changelog.sh
+	$(CURDIR)/tools/scripts/gen-debian-changelog.sh
 
 %:
 	dh $@

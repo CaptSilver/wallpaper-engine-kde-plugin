@@ -44,7 +44,7 @@ private slots:
     // Verify the four event ids match wek.notifyrc.  Parse the notifyrc
     // and assert each [Event/<id>] is referenced.
     void testEventIdsMatchNotifyrc() {
-        QFile f(QStringLiteral(WEK_SOURCE_DIR "/wek.notifyrc"));
+        QFile f(QStringLiteral(WEK_SOURCE_DIR "/data/wek.notifyrc"));
         QVERIFY2(f.open(QIODevice::ReadOnly),
                  qPrintable(QStringLiteral("Failed to open wek.notifyrc at ") + f.fileName()));
         const auto contents = QString::fromUtf8(f.readAll());
@@ -58,7 +58,7 @@ private slots:
     // 30-item playlist on a 5-min cycle doesn't spam the tray. Other three
     // events default to Action=Popup because they're actionable failures.
     void testPlaylistAdvancedDefaultsToNoPopup() {
-        QFile f(QStringLiteral(WEK_SOURCE_DIR "/wek.notifyrc"));
+        QFile f(QStringLiteral(WEK_SOURCE_DIR "/data/wek.notifyrc"));
         QVERIFY(f.open(QIODevice::ReadOnly));
         const auto contents = QString::fromUtf8(f.readAll());
         const int  idx      = contents.indexOf(QStringLiteral("[Event/playlistAdvanced]"));

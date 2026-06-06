@@ -4,5 +4,5 @@
   "qml": 88.11188811188812,
   "sub_lines": 63.839652980330563,
   "sub_regions": 57.907999142183144,
-  "_comment": "Totals from llvm-cov export (parent + submodule) + tools/qmlcov/report.py. Run WEK_COVERAGE_REFRESH=1 scripts/preflight.sh --coverage to update."
+  "_comment": "Totals from llvm-cov export (parent + submodule) + tools/qmlcov/report.py. Run WEK_COVERAGE_REFRESH=1 tools/scripts/preflight.sh --coverage to update."
 }

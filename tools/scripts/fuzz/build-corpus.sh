@@ -3,7 +3,7 @@
 # into per-target seed corpora. Pulls from loose files under the workshop dir
 # and from .pkg archives via wp-pkg.
 #
-# Usage: scripts/fuzz/build-corpus.sh [build_dir]
+# Usage: tools/scripts/fuzz/build-corpus.sh [build_dir]
 #
 # Env overrides:
 #   WP_WORKSHOP=<path>   Workshop root (default: ~/.local/share/Steam/...)

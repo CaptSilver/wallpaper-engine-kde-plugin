@@ -2471,5 +2471,5 @@
       "mutator": "cxx_div_to_mul"
     }
   ],
-  "_comment": "Surviving mutants accepted as baseline. Run scripts/mutation.sh --refresh-baseline to update; new entries in a non-refresh run fail the gate."
+  "_comment": "Surviving mutants accepted as baseline. Run tools/scripts/mutation.sh --refresh-baseline to update; new entries in a non-refresh run fail the gate."
 }

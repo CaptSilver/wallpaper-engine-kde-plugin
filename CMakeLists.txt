@@ -89,7 +89,7 @@ if(NOT USE_PLASMAPKG)
   # Transitional shim: install a second package directory at the old catsout URI
   # so existing user installs with `wallpaperplugin=com.github.catsout.…` lines
   # in their plasma-org.kde.plasma.desktop-appletsrc keep resolving.
-  # The shim is removed by scripts/migrate-from-catsout.sh on first plugin load
+  # The shim is removed by tools/scripts/migrate-from-catsout.sh on first plugin load
   # and from CMake entirely in the next release.
   option(WEK_INSTALL_CATSOUT_SHIM
          "Install transitional catsout-id shim KPackage (this release only)" ON)
@@ -139,7 +139,7 @@ install(FILES plugin/contents/dbus/com.github.captsilver.WallpaperEngine.xml
         DESTINATION ${KDE_INSTALL_DATAROOTDIR}/dbus-1/interfaces)
 
 # ── Migration script ─────────────────────────────────────────────────────────
-install(PROGRAMS scripts/migrate-from-catsout.sh
+install(PROGRAMS tools/scripts/migrate-from-catsout.sh
         DESTINATION ${KDE_INSTALL_DATADIR}/wek/scripts
         RENAME migrate-from-catsout.sh)
 install(CODE "
@@ -204,7 +204,7 @@ install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
 # Each [Event/...] group in wek.notifyrc matches a KNotification("<id>") in
 # WekNotifier.cpp; users see the events in System Settings -> Notifications ->
 # Wallpaper Engine.
-install(FILES wek.notifyrc DESTINATION "${KDE_INSTALL_DATADIR}/knotifications6")
+install(FILES data/wek.notifyrc DESTINATION "${KDE_INSTALL_DATADIR}/knotifications6")
 
 # Top-level summary; configure_file substitutes @PROJECT_NAME@ + @KDE_INSTALL_DATADIR@.
 configure_file(

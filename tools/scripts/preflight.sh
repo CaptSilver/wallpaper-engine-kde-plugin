@@ -4,24 +4,24 @@
 # mutation gate (--diff-only).
 #
 # Usage:
-#   scripts/preflight.sh              # default gate (lint + build + tests +
+#   tools/scripts/preflight.sh              # default gate (lint + build + tests +
 #                                      #   scoped -Werror + ASAN+UBSAN + fuzz +
 #                                      #   coverage + mutation, all FATAL)
-#   scripts/preflight.sh --fix        # auto-format then run the default gate
-#   scripts/preflight.sh --lint-only  # just clang-format check (fast)
-#   scripts/preflight.sh --no-build   # skip cmake builds, run existing tests only
-#   scripts/preflight.sh --no-fuzz    # skip fuzz smoke (lint + tests + Werror +
+#   tools/scripts/preflight.sh --fix        # auto-format then run the default gate
+#   tools/scripts/preflight.sh --lint-only  # just clang-format check (fast)
+#   tools/scripts/preflight.sh --no-build   # skip cmake builds, run existing tests only
+#   tools/scripts/preflight.sh --no-fuzz    # skip fuzz smoke (lint + tests + Werror +
 #                                      #   ASAN still run)
-#   scripts/preflight.sh --bootstrap  # (re-)provision fedora distrobox + deps and exit
-#   scripts/preflight.sh --tsan       # opt-in TSAN leg: WEK_SANITIZE=thread, runs
+#   tools/scripts/preflight.sh --bootstrap  # (re-)provision fedora distrobox + deps and exit
+#   tools/scripts/preflight.sh --tsan       # opt-in TSAN leg: WEK_SANITIZE=thread, runs
 #                                      #   scenescript_tests + backend_scene_thread_tests
-#   scripts/preflight.sh --sanitize=address,undefined  # opt-in ASAN+UBSAN leg over the
+#   tools/scripts/preflight.sh --sanitize=address,undefined  # opt-in ASAN+UBSAN leg over the
 #                                      #   parent + submodule suites (FATAL on any
 #                                      #   finding).  The default gate already runs
 #                                      #   the audited-clean submodule subset; this
 #                                      #   standalone leg adds the parent tests/
 #                                      #   project (mpv / QML / file-helper).
-#   scripts/preflight.sh --werror     # opt-in -Werror leg: configures the full project
+#   tools/scripts/preflight.sh --werror     # opt-in -Werror leg: configures the full project
 #                                      #   with -DWEK_WERROR=ON and builds the WHOLE
 #                                      #   tree (incl. the renderer libs).  NON-FATAL
 #                                      #   today — surfaces residual renderer-lib
@@ -29,20 +29,20 @@
 #                                      #   already gated FATAL in the default flow.
 #                                      #   Flip WERROR_FATAL=1 once the renderer libs
 #                                      #   are warning-clean too.
-#   scripts/preflight.sh --coverage   # opt-in coverage leg (standalone, informational):
+#   tools/scripts/preflight.sh --coverage   # opt-in coverage leg (standalone, informational):
 #                                      #   builds parent + submodule with -DCOVERAGE=ON,
 #                                      #   runs llvm-cov + qmlcov, diffs totals vs
 #                                      #   tests/.coverage-baseline.json.  NON-FATAL when
 #                                      #   invoked standalone — for ad-hoc inspection or
 #                                      #   WEK_COVERAGE_REFRESH=1 baseline updates.
 #                                      #   The default gate runs this with COVERAGE_FATAL=1.
-#   scripts/preflight.sh --render-smoke # opt-in headless render smoke (D10a): builds the
+#   tools/scripts/preflight.sh --render-smoke # opt-in headless render smoke (D10a): builds the
 #                                      #   plain GLFW sceneviewer, renders a tiny fixture
 #                                      #   under Mesa lavapipe (CPU Vulkan, no GPU), asserts
 #                                      #   rc==0 + non-blank framebuffer. SKIPS cleanly when
 #                                      #   lavapipe / a display / WE assets are absent.
 #                                      #   NOT in the default gate (lavapipe CPU runs slow).
-#   scripts/preflight.sh --render-oracle # opt-in headless render self-comparison: motion
+#   tools/scripts/preflight.sh --render-oracle # opt-in headless render self-comparison: motion
 #                                      #   (frame@early != frame@late) + warm==cold (byte-
 #                                      #   identical across a cold->warm SPV-cache run) on the
 #                                      #   fantasticcar default. SKIPS when assets absent.
@@ -56,7 +56,7 @@
 # Env: FUZZ_SECS=N overrides per-target fuzz duration (default 20; 7 targets ≈ 2.3 min).
 #
 # Auto-runs on `git push` if hooks are installed:
-#   git config core.hooksPath scripts/git-hooks   # enable
+#   git config core.hooksPath tools/scripts/git-hooks   # enable
 #   git push --no-verify                          # skip once
 #   git config --unset core.hooksPath             # disable
 #
@@ -400,7 +400,7 @@ if [[ "$MODE" == "coverage" ]]; then
     # the compilers.  Both checks degrade gracefully when run inside-the-box
     # (jq is in DEPS_FEDORA, llvm-* ship with clang).
     if ! command -v jq >/dev/null; then
-        fail "jq not found on host (run: scripts/preflight.sh --bootstrap) — install with 'sudo dnf install jq' or similar"
+        fail "jq not found on host (run: tools/scripts/preflight.sh --bootstrap) — install with 'sudo dnf install jq' or similar"
     fi
     if ! dbox "command -v llvm-profdata >/dev/null && command -v llvm-cov >/dev/null"; then
         fail "llvm-profdata / llvm-cov not found in build env (Clang's coverage tools — install llvm-tools or clang-tools-extra)"
@@ -552,14 +552,14 @@ if [[ "$MODE" == "coverage" ]]; then
               --argjson sub_regions "$cur_sub_regions" \
               '{cxx_lines: $lines, cxx_regions: $regions, qml: $qml,
                 sub_lines: $sub_lines, sub_regions: $sub_regions,
-                _comment: "Totals from llvm-cov export (parent + submodule) + tools/qmlcov/report.py. Run WEK_COVERAGE_REFRESH=1 scripts/preflight.sh --coverage to update."}' \
+                _comment: "Totals from llvm-cov export (parent + submodule) + tools/qmlcov/report.py. Run WEK_COVERAGE_REFRESH=1 tools/scripts/preflight.sh --coverage to update."}' \
             > "$baseline"
         ok "baseline refreshed: $baseline"
         exit 0
     fi
 
     if [[ ! -s "$baseline" ]]; then
-        warn "no baseline file ($baseline) — run WEK_COVERAGE_REFRESH=1 scripts/preflight.sh --coverage to seed"
+        warn "no baseline file ($baseline) — run WEK_COVERAGE_REFRESH=1 tools/scripts/preflight.sh --coverage to seed"
         printf '\n%sCoverage leg complete (NO BASELINE — informational).%s\n' "$YELLOW" "$RESET"
         exit 0
     fi
@@ -605,7 +605,7 @@ fi
 # regression class that the Vulkan-free unit tests structurally cannot.
 #
 # DELIBERATELY opt-in (not in the default flow): a CPU-Vulkan render is slow.
-# The driver (scripts/render-smoke.sh) self-probes lavapipe + a display
+# The driver (tools/scripts/render-smoke.sh) self-probes lavapipe + a display
 # (xvfb-run preferred, else a live Wayland/X11 session) + the WE assets dir, and
 # exits 77 to mean "capability missing — SKIP" so this leg is graceful on a box
 # without lavapipe/Xvfb (mirrors the existing skip patterns).
@@ -616,7 +616,7 @@ fi
 if [[ "$MODE" == "render-smoke" ]]; then
     step "Render smoke (D10a — headless Vulkan via lavapipe)"
     rc=0
-    dbox "scripts/render-smoke.sh" || rc=$?
+    dbox "tools/scripts/render-smoke.sh" || rc=$?
     case "$rc" in
         0)  ok "render smoke passed (rc==0, framebuffer non-blank)"
             printf '\n%sRender-smoke leg passed.%s\n' "$GREEN" "$RESET"
@@ -641,7 +641,7 @@ fi
 if [[ "$MODE" == "render-oracle" ]]; then
     step "Render oracle (self-comparison — headless Vulkan via lavapipe)"
     rc=0
-    dbox "scripts/render-oracle.sh" || rc=$?
+    dbox "tools/scripts/render-oracle.sh" || rc=$?
     case "$rc" in
         0)  ok "render oracle passed (motion + warm==cold)"
             printf '\n%sRender-oracle leg passed.%s\n' "$GREEN" "$RESET"
@@ -663,7 +663,7 @@ step "Lint (clang-format)"
 # dependency on a host clang-format being installed (or matching the box's
 # version). DBOX_PREFIX is empty inside the box, so this is a no-op there.
 if ! dbox "command -v clang-format >/dev/null"; then
-    fail "clang-format not found in the fedora distrobox (run: scripts/preflight.sh --bootstrap)"
+    fail "clang-format not found in the fedora distrobox (run: tools/scripts/preflight.sh --bootstrap)"
 fi
 
 # Parent-repo C/C++ files only. git ls-files does not recurse into submodules,
@@ -690,7 +690,7 @@ else
             ;;
         *)
             if ! "${DBOX_PREFIX[@]}" clang-format --dry-run --Werror "${SRCS[@]}" 2>&1; then
-                fail "clang-format violations — run 'scripts/preflight.sh --fix' to auto-format"
+                fail "clang-format violations — run 'tools/scripts/preflight.sh --fix' to auto-format"
             fi
             ok "clang-format clean (${#SRCS[@]} files)"
             ;;
@@ -886,14 +886,14 @@ if [[ "$NO_FUZZ" == "0" ]]; then
 fi
 
 # ── 7. Coverage gate (parent + submodule, opt-in) ────────────────────────────
-# OPT-IN: invoke separately as `scripts/preflight.sh --coverage` (with
+# OPT-IN: invoke separately as `tools/scripts/preflight.sh --coverage` (with
 # COVERAGE_FATAL=1 for gating, WEK_COVERAGE_REFRESH=1 to update baseline).
 # Originally wired here as a default-fatal step but OOM'd on 30 GB machines
 # because the Clang-instrumented build runs in parallel with whatever else
 # is running — keeping it opt-in avoids that.
 
 # ── 8. Mutation gate (parent + submodule, --diff-only --strict, opt-in) ──────
-# OPT-IN: invoke separately as `scripts/mutation.sh --diff-only --strict`.
+# OPT-IN: invoke separately as `tools/scripts/mutation.sh --diff-only --strict`.
 # Same OOM concern as coverage when run alongside other heavy builds.
 
 printf '\n%sAll preflight checks passed — safe to push.%s\n' "$GREEN" "$RESET"

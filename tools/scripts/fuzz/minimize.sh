@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# scripts/fuzz/minimize.sh — refresh a checked-in fuzz seed corpus from a hot
+# tools/scripts/fuzz/minimize.sh — refresh a checked-in fuzz seed corpus from a hot
 # corpus dir produced by a long fuzz session.
 #
 # Usage:
-#   scripts/fuzz/minimize.sh <target> [hot_corpus_dir]
+#   tools/scripts/fuzz/minimize.sh <target> [hot_corpus_dir]
 #
 #   target           e.g. WPMdlParser, WPTexImageParser, WPSceneParser, ...
 #   hot_corpus_dir   default: build/sub/fuzz-corpus-<target>

@@ -58,7 +58,7 @@ cmake --build build/sub
 
 ### Local CI / preflight (the comprehensive gate)
 
-This project uses a **local** verification gate, not cloud CI. `scripts/preflight.sh`
+This project uses a **local** verification gate, not cloud CI. `tools/scripts/preflight.sh`
 is the single source of truth. The default run is the comprehensive gate:
 
 1. **clang-format lint** — parent-repo C/C++ (excludes `build|tests/build|tests/fixtures`).
@@ -74,15 +74,15 @@ is the single source of truth. The default run is the comprehensive gate:
    `-DWEK_SANITIZE=address,undefined` with `halt_on_error=1`. FATAL on any
    sanitizer finding. Build dir `build/asan-gate`. The wider parent-tests +
    full-suite ASAN run is still advisory via `--sanitize=address,undefined`.
-6. **Fuzz smoke** — 9 libFuzzer harnesses, **seeded from `tests/fuzz_corpus/<target>/seed/`** (cold-start fallback when missing). `FUZZ_SECS=N` to tune (default 20s each). After long fuzz sessions, refresh the committed seeds with `scripts/fuzz/minimize.sh <target>`. Size budget: 200 KB per target. Fuzz crash regressions are pinned under `tests/fixtures/fuzz_regressions/<target>/*.bin` and replayed by the parser doctests; pin a new artifact with `scripts/fuzz/pin-regression.sh`.
+6. **Fuzz smoke** — 9 libFuzzer harnesses, **seeded from `tests/fuzz_corpus/<target>/seed/`** (cold-start fallback when missing). `FUZZ_SECS=N` to tune (default 20s each). After long fuzz sessions, refresh the committed seeds with `tools/scripts/fuzz/minimize.sh <target>`. Size budget: 200 KB per target. Fuzz crash regressions are pinned under `tests/fixtures/fuzz_regressions/<target>/*.bin` and replayed by the parser doctests; pin a new artifact with `tools/scripts/fuzz/pin-regression.sh`.
 Coverage + mutation are **opt-in** (the wired-in default-fatal versions were OOMing
 30 GB boxes when run alongside parallel builds):
-- **Coverage**: `scripts/preflight.sh --coverage` (with `COVERAGE_FATAL=1` to gate, or
+- **Coverage**: `tools/scripts/preflight.sh --coverage` (with `COVERAGE_FATAL=1` to gate, or
   `WEK_COVERAGE_REFRESH=1` to update `tests/.coverage-baseline.json`). Covers parent +
   submodule with 5 baseline keys (`cxx_lines`/`cxx_regions`/`qml`/`sub_lines`/`sub_regions`),
   0.5pp tolerance. Build dirs `build/impl-coverage` + `build/impl-coverage-sub`. ~3 min.
-- **Mutation**: `scripts/mutation.sh --diff-only --strict` for the per-PR gate, or bare
-  `scripts/mutation.sh` for the full ~10-20 min sweep. Mull-driven, `--workers=$(nproc)`,
+- **Mutation**: `tools/scripts/mutation.sh --diff-only --strict` for the per-PR gate, or bare
+  `tools/scripts/mutation.sh` for the full ~10-20 min sweep. Mull-driven, `--workers=$(nproc)`,
   `--no-output` to skip GDB post-mortem (7× speedup), `--timeout 8000` per mutant. Tests
   use `tests/TestSandbox.h`'s `wek::test_sandbox::enableIsolated()` (per-process HOME
   under `$XDG_CACHE_HOME/wek-test-sandbox/proc-XXXXXX`) so parallel workers don't race
@@ -92,12 +92,12 @@ Coverage + mutation are **opt-in** (the wired-in default-fatal versions were OOM
 **Install the pre-push hook so the gate isn't silently bypassed:**
 
 ```bash
-git config core.hooksPath scripts/git-hooks   # enable (runs preflight on every `git push`)
+git config core.hooksPath tools/scripts/git-hooks   # enable (runs preflight on every `git push`)
 git push --no-verify                           # skip once (avoid for non-trivial pushes)
 git config --unset core.hooksPath              # disable
 ```
 
-The hook is a 5-line wrapper that `exec`s `scripts/preflight.sh`. A full run is ~3-5 min
+The hook is a 5-line wrapper that `exec`s `tools/scripts/preflight.sh`. A full run is ~3-5 min
 (fuzz alone ≈ 2.3 min); a silent push is the hook working, not a hang. Opt-in coverage
 and mutation legs are NOT in the default flow — invoke separately when wanted.
 
@@ -111,12 +111,12 @@ to invoke from inside the `src/backend_scene` submodule.
 **Opt-in legs** (standalone — lint + that one build/run, fresh build dirs, skip the normal flow):
 
 ```bash
-scripts/preflight.sh --werror     # build full project with -DWEK_WERROR=ON (see Warning flags)
-scripts/preflight.sh --coverage   # standalone: llvm-cov vs tests/.coverage-baseline.json
+tools/scripts/preflight.sh --werror     # build full project with -DWEK_WERROR=ON (see Warning flags)
+tools/scripts/preflight.sh --coverage   # standalone: llvm-cov vs tests/.coverage-baseline.json
                                   # (NON-FATAL when standalone; the default gate runs this FATAL).
                                   # WEK_COVERAGE_REFRESH=1 to rewrite the baseline.
-scripts/preflight.sh --tsan       # WEK_SANITIZE=thread over the SceneScript + thread suites
-scripts/preflight.sh --sanitize=address,undefined   # ASAN+UBSAN over parent + submodule suites
+tools/scripts/preflight.sh --tsan       # WEK_SANITIZE=thread over the SceneScript + thread suites
+tools/scripts/preflight.sh --sanitize=address,undefined   # ASAN+UBSAN over parent + submodule suites
 ```
 
 `--werror` (whole-tree) is **non-fatal** today (renderer libs not yet audited
@@ -127,14 +127,14 @@ gate with `COVERAGE_FATAL=1`. `--sanitize=...` is **FATAL** on findings
 a race). The default flow already covers the scoped `-Werror` over the 4
 shippable targets + ASAN+UBSAN over the submodule doctest suites + coverage +
 mutation `--diff-only` — the opt-in legs are the wider audit runs. See
-`scripts/preflight.sh --help`.
+`tools/scripts/preflight.sh --help`.
 
-`scripts/mutation.sh` runs Mull (auto-fetched via the submodule's `FetchMull.cmake`) over
+`tools/scripts/mutation.sh` runs Mull (auto-fetched via the submodule's `FetchMull.cmake`) over
 parent test targets + the submodule's `backend_scene_tests`, diffs surviving mutants
 against `tests/.mull-baseline.json`. **MOC autogen filtered out** (`_autogen/|/moc_|\.moc$`)
-so Qt's autogen churn doesn't generate false positives. **`scripts/mutation.sh --diff-only --strict`
+so Qt's autogen churn doesn't generate false positives. **`tools/scripts/mutation.sh --diff-only --strict`
 is wired into the default preflight gate** (typical 0-10 min depending on touched files);
-the bare `scripts/mutation.sh` runs the full ~10-20 min suite. `--refresh-baseline` rewrites the
+the bare `tools/scripts/mutation.sh` runs the full ~10-20 min suite. `--refresh-baseline` rewrites the
 committed survivor set after intentional mutation-changing edits.
 
 ### Warning flags & `-Werror`
@@ -154,7 +154,7 @@ other three shippable targets.
 third_party is excluded **by construction** (it never receives these flags — no global
 `add_compile_options`), and the signed/unsigned diagnostic family stays **warning-only** under
 `-Werror` (`-Wno-error=conversion` / `-Wno-error=sign-conversion` / `-Wno-error=sign-compare`)
-since it is noisy across the renderer. Verify with `scripts/preflight.sh --werror`. The
+since it is noisy across the renderer. Verify with `tools/scripts/preflight.sh --werror`. The
 whole-tree leg is **non-fatal** today: the four shippable targets are `-Wall -Wextra` clean
 (and gated FATAL by the default flow via `cmake/WekWerrorScoped.cmake`), but the wider renderer
 libs (Vulkan/RenderGraph/VulkanRender/Scene/Audio) still trip `-Wall/-Wextra` errors

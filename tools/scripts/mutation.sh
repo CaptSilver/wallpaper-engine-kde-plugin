@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# scripts/mutation.sh — Mull-driven mutation testing for parent + submodule C++ tests.
+# tools/scripts/mutation.sh — Mull-driven mutation testing for parent + submodule C++ tests.
 #
 # Usage:
-#   scripts/mutation.sh                          # full run, diff vs baseline
-#   scripts/mutation.sh --diff-only              # run only on changed-file binaries
-#   scripts/mutation.sh --refresh-baseline       # rebuild + overwrite tests/.mull-baseline.json
-#   scripts/mutation.sh --target tst_filehelper  # one binary
-#   scripts/mutation.sh --strict                 # treat new survivors as fatal (rc=1, default)
-#   scripts/mutation.sh --no-strict              # informational mode (rc=0 even with new survivors)
-#   scripts/mutation.sh --help                   # this help
+#   tools/scripts/mutation.sh                          # full run, diff vs baseline
+#   tools/scripts/mutation.sh --diff-only              # run only on changed-file binaries
+#   tools/scripts/mutation.sh --refresh-baseline       # rebuild + overwrite tests/.mull-baseline.json
+#   tools/scripts/mutation.sh --target tst_filehelper  # one binary
+#   tools/scripts/mutation.sh --strict                 # treat new survivors as fatal (rc=1, default)
+#   tools/scripts/mutation.sh --no-strict              # informational mode (rc=0 even with new survivors)
+#   tools/scripts/mutation.sh --help                   # this help
 #
 # Baseline diff:
 #   New survivors (in current run but not baseline) -> fail (rc=1) unless --no-strict.
@@ -30,7 +30,7 @@
 # Runner: discovered dynamically — host-PATH mull-runner-NN preferred, then the
 # binary fetched into build/impl-mutation*/_mull/usr/bin/.
 #
-# Wired into the default preflight gate via `scripts/mutation.sh --diff-only --strict`
+# Wired into the default preflight gate via `tools/scripts/mutation.sh --diff-only --strict`
 # (typical run 1-10 min depending on touched files; 0 min when no mapped sources changed).
 # Full run ~10-20 min across parent + submodule; use the diff-only mode for the gate.
 #
@@ -38,7 +38,7 @@
 set -euo pipefail
 
 # Resolve to the parent repo's working tree even when invoked from inside the
-# `src/backend_scene` submodule (mirrors scripts/preflight.sh).
+# `src/backend_scene` submodule (mirrors tools/scripts/preflight.sh).
 _SUPER=$(git rev-parse --show-superproject-working-tree 2>/dev/null || true)
 cd "${_SUPER:-$(git rev-parse --show-toplevel)}"
 
@@ -363,14 +363,14 @@ ok "aggregated $COUNT surviving mutant(s)"
 
 # ── Refresh-or-diff ───────────────────────────────────────────────────────────
 if [[ "$MODE" == "refresh" ]]; then
-    jq '. + {_comment: "Surviving mutants accepted as baseline. Run scripts/mutation.sh --refresh-baseline to update; new entries in a non-refresh run fail the gate."}' \
+    jq '. + {_comment: "Surviving mutants accepted as baseline. Run tools/scripts/mutation.sh --refresh-baseline to update; new entries in a non-refresh run fail the gate."}' \
         "$OUT_DIR/all.json" > "$BASELINE"
     ok "baseline refreshed: $BASELINE ($COUNT survivors)"
     exit 0
 fi
 
 if [[ ! -s "$BASELINE" ]]; then
-    warn "no baseline yet — run scripts/mutation.sh --refresh-baseline to seed"
+    warn "no baseline yet — run tools/scripts/mutation.sh --refresh-baseline to seed"
     exit 0
 fi
 

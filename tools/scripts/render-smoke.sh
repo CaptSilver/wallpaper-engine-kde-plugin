@@ -14,10 +14,10 @@
 # animation), so any pixel-exact assertion would be flaky.
 #
 # Usage:
-#   scripts/render-smoke.sh                 # build + render + assert non-blank
-#   scripts/render-smoke.sh --no-build      # reuse an existing sceneviewer binary
-#   scripts/render-smoke.sh --keep          # keep the captured PPM (don't clean up)
-#   ASSETS_DIR=/path/to/wallpaper_engine/assets scripts/render-smoke.sh
+#   tools/scripts/render-smoke.sh                 # build + render + assert non-blank
+#   tools/scripts/render-smoke.sh --no-build      # reuse an existing sceneviewer binary
+#   tools/scripts/render-smoke.sh --keep          # keep the captured PPM (don't clean up)
+#   ASSETS_DIR=/path/to/wallpaper_engine/assets tools/scripts/render-smoke.sh
 #
 # Exit codes:
 #   0   render succeeded AND framebuffer non-blank   (PASS)

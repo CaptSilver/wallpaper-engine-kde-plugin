@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Test harness for scripts/migrate-from-catsout.sh.
+# Test harness for tools/scripts/migrate-from-catsout.sh.
 # Each test creates a temp HOME dir, copies a fixture appletsrc into it,
 # runs the script (with HOME / XDG_CONFIG_HOME pointing at the temp dir),
 # and diffs the result against the expected appletsrc.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-SCRIPT="$REPO_ROOT/scripts/migrate-from-catsout.sh"
+SCRIPT="$REPO_ROOT/tools/scripts/migrate-from-catsout.sh"
 FIXTURES="$REPO_ROOT/tests/scripts/fixtures"
 
 PASS=0

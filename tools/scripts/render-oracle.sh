@@ -20,11 +20,11 @@
 # against a committed golden, only two outputs from the SAME machine/build.
 #
 # Usage:
-#   scripts/render-oracle.sh                # build + render + assert
-#   scripts/render-oracle.sh --no-build     # reuse an existing sceneviewer
-#   scripts/render-oracle.sh --keep         # keep captured PPMs
-#   ASSETS_DIR=/path/to/wallpaper_engine/assets scripts/render-oracle.sh
-#   FRAME_EARLY=30 FRAME_LATE=120 MOTION_MIN_FRAC=0.01 scripts/render-oracle.sh
+#   tools/scripts/render-oracle.sh                # build + render + assert
+#   tools/scripts/render-oracle.sh --no-build     # reuse an existing sceneviewer
+#   tools/scripts/render-oracle.sh --keep         # keep captured PPMs
+#   ASSETS_DIR=/path/to/wallpaper_engine/assets tools/scripts/render-oracle.sh
+#   FRAME_EARLY=30 FRAME_LATE=120 MOTION_MIN_FRAC=0.01 tools/scripts/render-oracle.sh
 #
 # Exit codes:
 #   0   motion AND warm==cold both passed                              (PASS)

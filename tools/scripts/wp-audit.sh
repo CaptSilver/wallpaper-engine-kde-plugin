@@ -13,11 +13,11 @@
 #   help      — show this help.
 #
 # Quick examples:
-#   scripts/wp-audit.sh list --type scene --since 2026-05-15
-#   scripts/wp-audit.sh run  --type scene --runtime 10 --out /tmp/wp_audit-may
-#   scripts/wp-audit.sh run  --ids list.txt
-#   scripts/wp-audit.sh rerun --summary /tmp/wp_audit-may/summary.csv
-#   scripts/wp-audit.sh analyze --summary /tmp/wp_audit-may/summary.csv
+#   tools/scripts/wp-audit.sh list --type scene --since 2026-05-15
+#   tools/scripts/wp-audit.sh run  --type scene --runtime 10 --out /tmp/wp_audit-may
+#   tools/scripts/wp-audit.sh run  --ids list.txt
+#   tools/scripts/wp-audit.sh rerun --summary /tmp/wp_audit-may/summary.csv
+#   tools/scripts/wp-audit.sh analyze --summary /tmp/wp_audit-may/summary.csv
 #
 # All paths are configurable; defaults match the project's standard Bazzite layout.
 

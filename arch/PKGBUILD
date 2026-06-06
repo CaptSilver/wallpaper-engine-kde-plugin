@@ -3,7 +3,7 @@
 # PKGBUILD for the Wallpaper Engine KDE Plugin (Plasma 6 / Qt6 / KF6 6.x).
 #
 # This recipe builds from a live git checkout — there is no source= tarball
-# or VCS pull.  The script scripts/build-packages.sh sets WEK_REPO_ROOT to
+# or VCS pull.  The script tools/scripts/build-packages.sh sets WEK_REPO_ROOT to
 # the absolute path of the parent repo before invoking makepkg; if that env
 # isn't set (e.g. an Arch user running `makepkg` directly in arch/), the
 # build() function falls back to $startdir/.. which is also the repo root.

@@ -6,13 +6,13 @@
 # install).
 #
 # Usage:
-#   scripts/build-packages.sh                  # build all: rpm + deb + arch
-#   scripts/build-packages.sh rpm              # build rpm only
-#   scripts/build-packages.sh deb              # build deb only
-#   scripts/build-packages.sh arch             # build arch only
-#   scripts/build-packages.sh --check          # provision deps for selected
+#   tools/scripts/build-packages.sh                  # build all: rpm + deb + arch
+#   tools/scripts/build-packages.sh rpm              # build rpm only
+#   tools/scripts/build-packages.sh deb              # build deb only
+#   tools/scripts/build-packages.sh arch             # build arch only
+#   tools/scripts/build-packages.sh --check          # provision deps for selected
 #                                              # targets; no build
-#   scripts/build-packages.sh arch --check     # provision arch deps only
+#   tools/scripts/build-packages.sh arch --check     # provision arch deps only
 #
 # Containers (auto-created if missing):
 #   fedora -> registry.fedoraproject.org/fedora-toolbox:latest
@@ -410,7 +410,7 @@ build_ubuntu() {
     [[ -f src/backend_scene/CMakeLists.txt ]] \
         || fail "src/backend_scene missing — run 'git submodule update --init --recursive' first"
 
-    bash "$REPO_ROOT/scripts/gen-debian-changelog.sh"
+    bash "$REPO_ROOT/tools/scripts/gen-debian-changelog.sh"
 
     distrobox enter "$UBUNTU_BOX" -- bash -lc "
         set -euo pipefail

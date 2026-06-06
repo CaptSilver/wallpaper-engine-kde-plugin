@@ -84,9 +84,6 @@ cmake -B build/sceneviewer -S src/backend_scene/standalone_view -DCMAKE_BUILD_TY
 cmake --build build/sceneviewer
 ~~~
 
-See [CLAUDE.md "Standalone viewer for debugging"](CLAUDE.md) for the
-Vulkan validation-layer flag and runtime usage.
-
 #### Build and Install
 ```sh
 # Download source

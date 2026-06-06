@@ -124,8 +124,8 @@ fail() { printf '\n%sFAIL:%s %s\n' "$RED" "$RESET" "$*" >&2; exit 1; }
 CONTAINER_NAME="fedora"
 CONTAINER_IMAGE="registry.fedoraproject.org/fedora-toolbox:latest"
 DEPS_FEDORA=(
-    # core toolchain
-    clang cmake extra-cmake-modules ninja-build pkgconf-pkg-config git nodejs gdb
+    # core toolchain (clang-tools-extra provides clang-format for the lint gate)
+    clang clang-tools-extra cmake extra-cmake-modules ninja-build pkgconf-pkg-config git nodejs gdb
 
     # Vulkan (headers + loader devel for cmake's FindVulkan, validation + tools for debug)
     vulkan-headers vulkan-loader-devel vulkan-validation-layers vulkan-tools

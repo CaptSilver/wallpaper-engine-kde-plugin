@@ -34,7 +34,7 @@ sudo apt install ./wallpaper-engine-kde-plugin_*.deb
 1. Install [Wallpaper Engine](https://store.steampowered.com/app/431960/Wallpaper_Engine) on Steam and subscribe to a few wallpapers from the Workshop.
 2. Right-click the desktop → **Configure Desktop and Wallpaper**.
 3. Set **Wallpaper Type** to **Wallpaper Engine for KDE**.
-4. Point **Steam Library** at the folder containing your `steamapps` directory. On most distros that's `~/.local/share/Steam`; with Flatpak Steam (the Bazzite default) it's `~/.var/app/com.valvesoftware.Steam/.local/share/Steam`.
+4. Point **Steam Library** at the folder that holds your `steamapps` directory. Usually that's `~/.local/share/Steam`, including on Bazzite, which ships Steam natively rather than as a Flatpak. If you did install Steam as a Flatpak, point at `~/.var/app/com.valvesoftware.Steam/.local/share/Steam` instead.
 5. Pick a wallpaper and hit **Apply**.
 
 Not sure which folder to point at? This lists every Steam library on disk:

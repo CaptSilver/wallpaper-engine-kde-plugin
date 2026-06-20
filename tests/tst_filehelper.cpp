@@ -1864,10 +1864,16 @@ private slots:
         mm.close();
         QVERIFY(writeBytes(cacheRoot + "/newF.jpg", 1024 * 1024));
 
-        // Age the oldF pair so it's the eviction target.
+        // Age the oldF pair so it's the eviction target. Eviction keys on
+        // max(atime, mtime), so the mtime must be aged too — an atime-only bump
+        // is masked by the just-written mtime and leaves oldF.jpg, oldF.meta and
+        // newF.jpg all tied at "now", making which one gets evicted depend on
+        // std::sort's tie-handling and the filesystem's mtime resolution.
         QFile of(cacheRoot + "/oldF.jpg");
         QVERIFY(of.open(QIODevice::ReadWrite));
-        of.setFileTime(QDateTime::currentDateTime().addDays(-7), QFile::FileAccessTime);
+        QVERIFY(
+            of.setFileTime(QDateTime::currentDateTime().addDays(-7), QFile::FileModificationTime));
+        QVERIFY(of.setFileTime(QDateTime::currentDateTime().addDays(-7), QFile::FileAccessTime));
         of.close();
 
         FileHelper fh;

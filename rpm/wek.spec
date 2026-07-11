@@ -127,6 +127,18 @@ ctest --test-dir %{_builddir}/wek-build/tests \
 * %(date +'%a %b %d %Y') packager - %{version}-%{release}.git%{shortcommit}
 - Snapshot build from commit %{shortcommit} on %(date +'%Y-%m-%d %H:%M %Z')
 
+* Sat Jul 11 2026 packager - 1.4-1
+- Wallpaper playlists: editor with ordered and shuffle playback, per-monitor scope
+- Many scene-rendering fixes: puppet rigs/attachments, scripted clocks and text,
+  animation-layer blending, scene-lighting flicker, long-runtime pixelation
+- Volumetric fog lighting for scene wallpapers
+- Web wallpapers: sandbox file:// access, gate feature permissions, cap HTTP cache
+- Pause the renderer on screen lock / screensaver activation
+- Stability: plasmashell crash + data-race fixes (texture-cache UAF, shader-compile
+  and audio-capture races, malformed-model guards)
+- Lower CPU/memory and faster wallpaper load across the renderer
+- Packaging: Arch PKGBUILD + complete Debian build; translatable UI + accessibility
+
 * Fri May 01 2026 packager - 1.3-1
 - Plugin URI renamed: com.github.catsout.wallpaperEngineKde
   -> com.github.captsilver.wallpaperEngineKde

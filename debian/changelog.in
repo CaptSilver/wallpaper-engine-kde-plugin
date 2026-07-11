@@ -1,3 +1,20 @@
+wallpaper-engine-kde-plugin (1.4) unstable; urgency=medium
+
+  * Wallpaper playlists: editor with ordered and shuffle playback, per-monitor scope.
+  * Many scene-rendering fixes: puppet rigs and attachments, scripted clocks and
+    text, animation-layer blending, scene-lighting flicker, and long-runtime
+    pixelation on scenes left running for hours.
+  * Volumetric fog lighting for scene wallpapers.
+  * Web wallpapers: sandbox file:// access, gate feature permissions, cap the HTTP cache.
+  * Pause the renderer on screen lock and screensaver activation.
+  * Stability: fix plasmashell crashes and data races (texture-cache use-after-free,
+    shader-compile and audio-capture races, malformed-model guards).
+  * Lower CPU and memory use, and faster wallpaper load, across the renderer.
+  * Packaging: Arch PKGBUILD and a complete Debian build; translatable UI and
+    accessibility support.
+
+ -- CaptSilver <https://github.com/CaptSilver>  Sat, 11 Jul 2026 00:00:00 +0000
+
 wallpaper-engine-kde-plugin (1.3) unstable; urgency=medium
 
   * Plugin URI renamed: com.github.catsout.wallpaperEngineKde

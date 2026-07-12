@@ -14,7 +14,7 @@ URL:     https://github.com/captsilver/wallpaper-engine-kde-plugin
 
 BuildRequires: cmake extra-cmake-modules clang
 BuildRequires: vulkan-headers
-BuildRequires: plasma-workspace-devel libplasma-devel
+BuildRequires: plasma-workspace-devel libplasma-devel plasma-activities-devel
 BuildRequires: kf6-plasma-devel
 BuildRequires: kf6-kcoreaddons-devel
 BuildRequires: kf6-kpackage-devel

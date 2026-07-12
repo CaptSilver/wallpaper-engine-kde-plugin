@@ -37,6 +37,7 @@ add_library(${PROJECT_NAME}
 	WekControl.cpp
 	WekNotifier.cpp
 	WekDiagnostics.cpp
+	ActivityHelper.cpp
 	qmldir
 	qwebchannel.qrc
 )
@@ -73,6 +74,14 @@ if(TARGET KF6::GlobalAccel AND TARGET KF6::CoreAddons AND TARGET KF6::XmlGui)
         KF6::CoreAddons
         KF6::XmlGui)
     target_compile_definitions(${PROJECT_NAME} PRIVATE WEKDE_HAS_GLOBALACCEL)
+endif()
+# Plasma::Activities (KActivities::Consumer) is the live per-Activity source.
+# Optional, mirroring WekShortcuts: without plasma-activities-devel the
+# ActivityHelper shim still ships (KConfig routing + QML type) but the live
+# Consumer binding is compiled out.
+if(TARGET Plasma::Activities)
+    target_link_libraries(${PROJECT_NAME} PRIVATE Plasma::Activities)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE WEK_HAS_PLASMA_ACTIVITIES)
 endif()
 target_compile_definitions(${PROJECT_NAME} PRIVATE WEKDE_HAS_MPV)
 target_compile_definitions(${PROJECT_NAME} PRIVATE

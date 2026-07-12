@@ -455,6 +455,14 @@ add_executable(tst_activityhelper
 )
 target_include_directories(tst_activityhelper PRIVATE ${WEKDE_SRC_DIR})
 target_link_libraries(tst_activityhelper PRIVATE Qt6::Core Qt6::Test KF6::ConfigCore)
+# When plasma-activities-devel is present, link Plasma::Activities + define the
+# macro so the live-Consumer smoke case runs (it tolerates the no-daemon case,
+# staying green bus-free).  Absent the package the case is compiled out.
+find_package(PlasmaActivities QUIET)
+if(TARGET Plasma::Activities)
+    target_link_libraries(tst_activityhelper PRIVATE Plasma::Activities)
+    target_compile_definitions(tst_activityhelper PRIVATE WEK_HAS_PLASMA_ACTIVITIES)
+endif()
 if(COVERAGE)
     target_compile_options(tst_activityhelper PRIVATE ${_cov_compile_flags})
     target_link_options(tst_activityhelper PRIVATE ${_cov_link_flags})

@@ -7,6 +7,13 @@
 
 class KConfig;
 
+#ifdef WEK_HAS_PLASMA_ACTIVITIES
+namespace KActivities
+{
+class Consumer;
+}
+#endif
+
 namespace wekde
 {
 
@@ -67,13 +74,26 @@ public:
 signals:
     void currentActivityChanged(const QString& activity);
 
+private Q_SLOTS:
+    // Connected to KActivities::Consumer::currentActivityChanged in the
+    // production (default-ctor) path; routes through applyCurrentActivity().
+    void onConsumerCurrentActivityChanged(const QString& activity);
+
 private:
+    // Normalise (unknown/null → _default), store, and emit currentActivityChanged
+    // when it changes.  Shared by the live Consumer slot and the test seam so the
+    // production path carries no "for testing" vocabulary.
+    void applyCurrentActivity(const QString& activity);
+
     QString  groupNameFor(const QString& activity) const;
     KConfig* config() const;
 
     QString                          m_configFile; // empty → user's default Plasma config
     mutable std::unique_ptr<KConfig> m_config;
     QString                          m_currentActivity; // mirrors Consumer; "" → "_default"
+#ifdef WEK_HAS_PLASMA_ACTIVITIES
+    std::unique_ptr<KActivities::Consumer> m_consumer;
+#endif
 };
 
 } // namespace wekde

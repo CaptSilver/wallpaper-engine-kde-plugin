@@ -6,6 +6,10 @@
 #include <KConfig>
 #include <KConfigGroup>
 
+#ifdef WEK_HAS_PLASMA_ACTIVITIES
+#    include <PlasmaActivities/Consumer>
+#endif
+
 Q_LOGGING_CATEGORY(lcWekActivity, "wekde.activity")
 
 namespace wekde
@@ -31,10 +35,23 @@ bool isUnknownActivity(const QString& a) {
 
 ActivityHelper::ActivityHelper(QObject* parent)
     : QObject(parent), m_currentActivity(kDefaultActivity) {
-    // When WEK_HAS_PLASMA_ACTIVITIES is defined at build time, the production
-    // path connects KActivities::Consumer::currentActivityChanged here.  The
-    // unit-test path bypasses Consumer entirely and drives the activity via
-    // setCurrentActivityForTesting().
+#ifdef WEK_HAS_PLASMA_ACTIVITIES
+    // Production path: own a KActivities::Consumer (the class name is kept for
+    // source compat even though the package/target is plasma-activities /
+    // Plasma::Activities), seed the current activity, and follow it live.  The
+    // test ctor skips this so unit tests stay bus-free — no live
+    // KActivityManagerd required.
+    m_consumer = std::make_unique<KActivities::Consumer>();
+    applyCurrentActivity(m_consumer->currentActivity());
+    connect(m_consumer.get(),
+            &KActivities::Consumer::currentActivityChanged,
+            this,
+            &ActivityHelper::onConsumerCurrentActivityChanged);
+    connect(m_consumer.get(),
+            &KActivities::Consumer::activityRemoved,
+            this,
+            &ActivityHelper::dropActivity);
+#endif
 }
 
 ActivityHelper::ActivityHelper(const QString& configFile, QObject* parent)
@@ -54,9 +71,9 @@ KConfig* ActivityHelper::config() const {
         // Test ctor passes an absolute path; the default ctor would, in a real
         // plasmashell deployment, locate the wallpaper plugin's `wekrc` (or
         // appletsrc subkey) via KSharedConfig.  Tests are the only consumer of
-        // this code path today (the QML side will be wired in Phase 4 of the
-        // plan) so we keep the default branch a no-op rather than guess at the
-        // future shared-config name.
+        // this code path today (no QML reader is wired to it yet), so we keep
+        // the default branch a best-effort guess rather than resolve the real
+        // containment config.
         if (m_configFile.isEmpty()) {
             const QString cfg =
                 QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
@@ -110,12 +127,20 @@ void ActivityHelper::dropActivity(const QString& activity) {
     cfg->sync();
 }
 
-void ActivityHelper::setCurrentActivityForTesting(const QString& activity) {
+void ActivityHelper::applyCurrentActivity(const QString& activity) {
     const QString next =
         isUnknownActivity(activity) ? QString::fromUtf8(kDefaultActivity) : activity;
     if (next == m_currentActivity) return;
     m_currentActivity = next;
     Q_EMIT currentActivityChanged(m_currentActivity);
+}
+
+void ActivityHelper::onConsumerCurrentActivityChanged(const QString& activity) {
+    applyCurrentActivity(activity);
+}
+
+void ActivityHelper::setCurrentActivityForTesting(const QString& activity) {
+    applyCurrentActivity(activity);
 }
 
 } // namespace wekde

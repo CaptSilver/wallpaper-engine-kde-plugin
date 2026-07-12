@@ -137,7 +137,7 @@ DEPS_FEDORA=(
     vulkan-headers vulkan-loader-devel vulkan-validation-layers vulkan-tools
 
     # KDE Plasma 6 / KF6
-    plasma-workspace plasma-workspace-devel libplasma-devel
+    plasma-workspace plasma-workspace-devel libplasma-devel plasma-activities-devel
     kf6-kcoreaddons-devel kf6-kpackage-devel kf6-kirigami-devel kf6-kcmutils
     # KF6 runtime integrations referenced by src/CMakeLists.txt: Notifications
     # (KNotification taxonomy), Crash (drkonqi integration), I18n (KI18n

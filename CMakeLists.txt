@@ -65,6 +65,11 @@ if(ECM_VERSION_MAJOR EQUAL 6)
   # wires the WekShortcuts class into the plugin .so and exposes the
   # KActionCollection in System Settings -> Shortcuts -> Wallpaper Engine.
   find_package(KF6 ${KF6_MIN_VERSION} COMPONENTS GlobalAccel CoreAddons QUIET)
+  # Plasma::Activities (plasma-activities-devel) provides KActivities::Consumer,
+  # the live current-Activity source ActivityHelper follows.  Optional/QUIET so a
+  # sysroot without it degrades to the KConfig-only shim (same posture as
+  # GlobalAccel above).
+  find_package(PlasmaActivities QUIET)
   include(KDEInstallDirs6)
 else()
   find_package(KF5 ${KF_MIN_VERSION} REQUIRED COMPONENTS Package Plasma)

@@ -228,6 +228,51 @@ private slots:
         helper.setCurrentActivityForTesting("00000000-0000-0000-0000-000000000000");
         QCOMPARE(helper.currentActivity(), QStringLiteral("_default"));
     }
+
+    // ── production Consumer wire ──────────────────────────────────────────────
+
+    void onConsumerSignal_updatesCurrentActivity_andEmits() {
+        // The slot KActivities::Consumer::currentActivityChanged connects to in
+        // the production (default-ctor) path.  Invoked directly here (no session
+        // bus) to prove it normalises + stores + emits through the same
+        // applyCurrentActivity() body the test seam uses.
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        const QString         cfgPath = d.path() + "/wekrc";
+        wekde::ActivityHelper helper(cfgPath);
+        QSignalSpy            spy(&helper, &wekde::ActivityHelper::currentActivityChanged);
+
+        QVERIFY(QMetaObject::invokeMethod(&helper,
+                                          "onConsumerCurrentActivityChanged",
+                                          Q_ARG(QString, QStringLiteral("uuid-live"))));
+        QCOMPARE(helper.currentActivity(), QStringLiteral("uuid-live"));
+        QCOMPARE(spy.count(), 1);
+
+        // Null sentinel from a stopped manager normalises to _default.
+        QVERIFY(QMetaObject::invokeMethod(
+            &helper,
+            "onConsumerCurrentActivityChanged",
+            Q_ARG(QString, QStringLiteral("00000000-0000-0000-0000-000000000000"))));
+        QCOMPARE(helper.currentActivity(), QStringLiteral("_default"));
+
+        // Same value twice is debounced (one emit, not two).
+        spy.clear();
+        QVERIFY(QMetaObject::invokeMethod(
+            &helper, "onConsumerCurrentActivityChanged", Q_ARG(QString, QStringLiteral("uuid-x"))));
+        QVERIFY(QMetaObject::invokeMethod(
+            &helper, "onConsumerCurrentActivityChanged", Q_ARG(QString, QStringLiteral("uuid-x"))));
+        QCOMPARE(spy.count(), 1);
+    }
+
+#ifdef WEK_HAS_PLASMA_ACTIVITIES
+    void liveConsumer_defaultCtor_doesNotCrash_andNormalises() {
+        // Default ctor builds a real KActivities::Consumer.  With no running
+        // KActivityManagerd (distrobox/CI) the activity is unknown, so
+        // currentActivity() must resolve to a non-empty bucket, not crash.
+        wekde::ActivityHelper helper;
+        QVERIFY(! helper.currentActivity().isEmpty());
+    }
+#endif
 };
 
 QTEST_MAIN(TstActivityHelper)

@@ -17,6 +17,7 @@ Build-Depends:
  libkf6i18n-dev,
  libkf6xmlgui-dev,
  libplasma-dev,
+ libplasma-activities-dev,
  plasma-workspace-dev,
  qt6-base-dev,
  qt6-base-private-dev,

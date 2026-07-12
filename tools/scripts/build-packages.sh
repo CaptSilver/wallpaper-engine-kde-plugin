@@ -90,7 +90,7 @@ DEPS_FEDORA_BASE=(
     # with "no such file or directory" on first link of any static library.
     llvm
     vulkan-headers vulkan-loader-devel vulkan-validation-layers vulkan-tools
-    plasma-workspace-devel libplasma-devel
+    plasma-workspace-devel libplasma-devel plasma-activities-devel
     kf6-plasma-devel kf6-kcoreaddons-devel kf6-kpackage-devel kf6-kconfig-devel
     # KF6 integration: WekNotifier (KNotifications), WekShortcuts (KGlobalAccel
     # + KXmlGui's KActionCollection), plugin.cpp's KCrash registration, and
@@ -132,6 +132,7 @@ DEPS_ARCH=(
     vulkan-headers
     vulkan-icd-loader
     libplasma
+    plasma-activities
     plasma-workspace
     kconfig
     kcoreaddons
@@ -165,7 +166,7 @@ DEPS_UBUNTU=(
     # not pull the unversioned llvm tools, causing static-library link failures.
     llvm
     libvulkan-dev vulkan-validationlayers vulkan-tools
-    libkf6package-dev libkf6config-dev libplasma-dev plasma-workspace-dev
+    libkf6package-dev libkf6config-dev libplasma-dev libplasma-activities-dev plasma-workspace-dev
     # KF6 integrations referenced by src/CMakeLists.txt (KNotification taxonomy,
     # DrKonqi KCrash, KI18n catalogs, KGlobalAccel shortcuts, KXmlGui for
     # KActionCollection).

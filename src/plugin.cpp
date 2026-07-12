@@ -20,6 +20,7 @@
 #include "WekControl.hpp"
 #include "WekNotifier.hpp"
 #include "WekDiagnostics.hpp"
+#include "ActivityHelper.hpp"
 #ifdef WEKDE_HAS_GLOBALACCEL
 #    include "WekShortcuts.hpp"
 #    include <QCoreApplication>
@@ -89,6 +90,7 @@ public:
         qmlRegisterType<wekde::WekControl>(uri, WPVer[0], WPVer[1], "WekControl");
         qmlRegisterType<wekde::WekNotifier>(uri, WPVer[0], WPVer[1], "WekNotifier");
         qmlRegisterType<wekde::WekDiagnostics>(uri, WPVer[0], WPVer[1], "WekDiagnostics");
+        qmlRegisterType<wekde::ActivityHelper>(uri, WPVer[0], WPVer[1], "ActivityHelper");
         qmlRegisterSingletonType<wekde::MigrationHelper>(
             uri, WPVer[0], WPVer[1], "MigrationHelper", [](QQmlEngine*, QJSEngine*) -> QObject* {
                 return new wekde::MigrationHelper();

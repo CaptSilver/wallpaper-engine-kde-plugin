@@ -34,6 +34,14 @@ if(COVERAGE)
     endif()
     set(_cov_compile_flags -fprofile-instr-generate -fcoverage-mapping -g -O0)
     set(_cov_link_flags -fprofile-instr-generate)
+    # Serialize instrumented links: each -O0 -g coverage link is the RSS spike,
+    # so a wide -j runs many at once and OOMs the box.  A Ninja link pool caps
+    # concurrent links while compiles stay wide.  COVERAGE_LINK_JOBS overridable;
+    # Ninja-only (the RAM-bounded -j in tools/scripts/preflight.sh is the Make
+    # backstop).
+    set(COVERAGE_LINK_JOBS 2 CACHE STRING "Max concurrent links in the COVERAGE build")
+    set_property(GLOBAL PROPERTY JOB_POOLS cov_link_pool=${COVERAGE_LINK_JOBS})
+    set(CMAKE_JOB_POOL_LINK cov_link_pool)
 endif()
 
 # Sanitizer plumbing (WEK_SANITIZE + wek_apply_sanitizers).  Same canonical

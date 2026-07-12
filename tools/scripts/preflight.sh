@@ -35,7 +35,8 @@
 #                                      #   tests/.coverage-baseline.json.  NON-FATAL when
 #                                      #   invoked standalone — for ad-hoc inspection or
 #                                      #   WEK_COVERAGE_REFRESH=1 baseline updates.
-#                                      #   The default gate runs this with COVERAGE_FATAL=1.
+#                                      #   Runs in the default gate only when
+#                                      #   WEK_COVERAGE_IN_GATE=1 (RAM-bounded build).
 #   tools/scripts/preflight.sh --render-smoke # opt-in headless render smoke (D10a): builds the
 #                                      #   plain GLFW sceneviewer, renders a tiny fixture
 #                                      #   under Mesa lavapipe (CPU Vulkan, no GPU), asserts
@@ -68,6 +69,11 @@
 #   sanitizer + Vulkan-debug builds (not yet wired into CI but documented).
 
 set -euo pipefail
+
+# Shared RAM-aware parallelism helper (bounds the memory-heavy coverage build's
+# -j), resolved relative to this script before the cd below.
+_PF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$_PF_DIR/lib/mem.sh"
 
 # Resolve to the parent repo's working tree even when invoked from inside the
 # `src/backend_scene` submodule.  Plain --show-toplevel would land us in the
@@ -414,6 +420,12 @@ fi
 if [[ "$MODE" == "coverage" ]]; then
     step "Coverage leg (-DCOVERAGE=ON, parent + submodule)"
 
+    # RAM-bounded build parallelism: instrumented -O0 -g objects + links are
+    # memory-heavy, so cap -j on available RAM.  The CMAKE_JOB_POOL_LINK pool in
+    # the COVERAGE cmake blocks then caps concurrent links on top of this.
+    cov_jobs="$(mem_bounded_jobs "${WEK_COVERAGE_JOB_MB:-1500}")"
+    ok "coverage build: -j$cov_jobs (RAM-bounded), links pooled (COVERAGE_LINK_JOBS)"
+
     # jq parses llvm-cov export + qmlcov report.json on the host (the script's
     # own context).  llvm-profdata / llvm-cov run inside the distrobox alongside
     # the compilers.  Both checks degrade gracefully when run inside-the-box
@@ -433,7 +445,7 @@ if [[ "$MODE" == "coverage" ]]; then
           cmake -B $cov_build -S tests $COV_GEN \
                 -DCOVERAGE=ON -DCMAKE_BUILD_TYPE=Debug" \
         || fail "coverage configure failed (parent)"
-    dbox "cmake --build $cov_build -j\$(nproc)" || fail "coverage build failed (parent)"
+    dbox "cmake --build $cov_build -j$cov_jobs" || fail "coverage build failed (parent)"
     ok "parent coverage build complete"
 
     # Run ctest with the same exclusions the standalone tests build needs.
@@ -476,7 +488,7 @@ if [[ "$MODE" == "coverage" ]]; then
     # for the baseline diff regardless of pass/fail.
     step "Run qmlcov target"
     qmlcov_rc=0
-    dbox "cmake --build $cov_build --target qmlcov -j\$(nproc)" || qmlcov_rc=$?
+    dbox "cmake --build $cov_build --target qmlcov -j$cov_jobs" || qmlcov_rc=$?
     if [[ "$qmlcov_rc" != "0" ]]; then
         warn "qmlcov below its internal 95% threshold (rc=$qmlcov_rc) — captured for baseline diff"
     fi
@@ -490,10 +502,10 @@ if [[ "$MODE" == "coverage" ]]; then
                 -DCOVERAGE=ON -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug" \
         || fail "coverage configure failed (submodule)"
     # Build only the test targets — full submodule build is unnecessary for coverage.
-    dbox "cmake --build $cov_build_sub --target backend_scene_tests -j\$(nproc)" \
+    dbox "cmake --build $cov_build_sub --target backend_scene_tests -j$cov_jobs" \
         || fail "coverage build failed (submodule: backend_scene_tests)"
     # scenescript_tests target only exists when Qt6 Core/Qml were found at configure.
-    if dbox "cmake --build $cov_build_sub --target scenescript_tests -j\$(nproc)" 2>/dev/null; then
+    if dbox "cmake --build $cov_build_sub --target scenescript_tests -j$cov_jobs" 2>/dev/null; then
         ok "submodule built backend_scene_tests + scenescript_tests"
     else
         warn "scenescript_tests not built (Qt6 Core/Qml absent?) — covering backend_scene_tests only"
@@ -902,12 +914,24 @@ if [[ "$NO_FUZZ" == "0" ]]; then
     done
 fi
 
-# ── 7. Coverage gate (parent + submodule, opt-in) ────────────────────────────
-# OPT-IN: invoke separately as `tools/scripts/preflight.sh --coverage` (with
-# COVERAGE_FATAL=1 for gating, WEK_COVERAGE_REFRESH=1 to update baseline).
-# Originally wired here as a default-fatal step but OOM'd on 30 GB machines
-# because the Clang-instrumented build runs in parallel with whatever else
-# is running — keeping it opt-in avoids that.
+# ── 7. Coverage gate (parent + submodule) — opt-in-to-default ────────────────
+# The instrumented build now RAM-bounds its -j (tools/scripts/lib/mem.sh) and
+# caps concurrent links via a Ninja job pool (the COVERAGE cmake blocks), so it
+# no longer OOMs alongside a wide build.  It still costs a full instrumented
+# rebuild (~3 min), so it stays OUT of the default push until WEK_COVERAGE_IN_GATE=1.
+# Run it as a nested --coverage invocation so the ~200-line leg isn't duplicated.
+if [[ "$MODE" == "full" && "${WEK_COVERAGE_IN_GATE:-0}" == "1" ]]; then
+    step "Coverage gate (WEK_COVERAGE_IN_GATE=1)"
+    crc=0
+    tools/scripts/preflight.sh --coverage || crc=$?
+    if [[ "$crc" == "0" ]]; then
+        ok "coverage gate passed (no regression vs baseline)"
+    elif [[ "${COVERAGE_FATAL:-1}" == "1" ]]; then
+        fail "coverage gate failed — coverage regression vs tests/.coverage-baseline.json"
+    else
+        warn "coverage gate failed (non-fatal — COVERAGE_FATAL=0)"
+    fi
+fi
 
 # ── 8. Mutation gate (Mull --diff-only --strict) — opt-in-to-fatal ───────────
 # mutation.sh RAM-bounds its worker count + build -j (tools/scripts/lib/mem.sh)

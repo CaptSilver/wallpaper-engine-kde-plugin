@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Pre-push verification: lint -> submodule build/tests -> main tests ->
-# scoped -Werror gate -> ASAN+UBSAN gate -> fuzz smoke -> coverage gate ->
-# mutation gate (--diff-only).
+# -Werror gate -> ASAN+UBSAN gate -> fuzz smoke -> mutation gate (--diff-only).
 #
 # Usage:
 #   tools/scripts/preflight.sh              # default gate (lint + build + tests +
-#                                      #   scoped -Werror + ASAN+UBSAN + fuzz +
-#                                      #   coverage + mutation, all FATAL)
+#                                      #   -Werror + ASAN+UBSAN + fuzz + mutation
+#                                      #   --diff-only, opt-in-to-fatal via
+#                                      #   MUTATION_FATAL=1).  Coverage is a
+#                                      #   separate opt-in leg: --coverage
 #   tools/scripts/preflight.sh --fix        # auto-format then run the default gate
 #   tools/scripts/preflight.sh --lint-only  # just clang-format check (fast)
 #   tools/scripts/preflight.sh --no-build   # skip cmake builds, run existing tests only
@@ -908,9 +909,26 @@ fi
 # because the Clang-instrumented build runs in parallel with whatever else
 # is running — keeping it opt-in avoids that.
 
-# ── 8. Mutation gate (parent + submodule, --diff-only --strict, opt-in) ──────
-# OPT-IN: invoke separately as `tools/scripts/mutation.sh --diff-only --strict`.
-# Same OOM concern as coverage when run alongside other heavy builds.
+# ── 8. Mutation gate (Mull --diff-only --strict) — opt-in-to-fatal ───────────
+# mutation.sh RAM-bounds its worker count + build -j (tools/scripts/lib/mem.sh)
+# so it no longer OOMs alongside the other legs, and fast-exits 0 when the diff
+# maps no covered source (no build).  Non-fatal during soft-launch; set
+# MUTATION_FATAL=1 to block a push on a new surviving mutant.  Exit 77 = the Mull
+# runner/build is unavailable (fresh checkout / offline) -> clean skip.
+# mutation.sh does its own distrobox routing, so call it directly (not via dbox).
+if [[ "$MODE" == "full" ]]; then
+    step "Mutation gate (Mull --diff-only --strict)"
+    mrc=0
+    tools/scripts/mutation.sh --diff-only --strict || mrc=$?
+    case "$mrc" in
+        0)  ok "mutation gate: no new surviving mutants vs baseline" ;;
+        77) ok "mutation gate skipped (Mull runner/build unavailable)" ;;
+        *)  if [[ "${MUTATION_FATAL:-0}" == "1" ]]; then
+                fail "mutation gate: new surviving mutant(s) — fix tests or run 'tools/scripts/mutation.sh --refresh-baseline'"
+            fi
+            warn "mutation gate: new surviving mutant(s) (non-fatal — set MUTATION_FATAL=1 to gate)" ;;
+    esac
+fi
 
 # Reaching here means every gate above passed (set -e exits non-zero earlier
 # otherwise), so force a clean exit 0 -- a SIGPIPE on this final write (e.g.

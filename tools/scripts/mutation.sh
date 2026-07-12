@@ -37,6 +37,11 @@
 # Exit codes: 0=clean / 1=new survivors / 2=arg error / 77=runner or build unavailable.
 set -euo pipefail
 
+# Shared RAM-aware parallelism helper (resolved before the cd below, since it is
+# addressed relative to this script, not the working tree).
+_MUT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$_MUT_DIR/lib/mem.sh"
+
 # Resolve to the parent repo's working tree even when invoked from inside the
 # `src/backend_scene` submodule (mirrors tools/scripts/preflight.sh).
 _SUPER=$(git rev-parse --show-superproject-working-tree 2>/dev/null || true)
@@ -171,6 +176,10 @@ fi
 step "targets: ${TARGETS[*]}"
 
 # ── Build only what's needed ─────────────────────────────────────────────────
+# Bound the instrumented build's own parallelism by available RAM: a -g clang
+# compile of the instrumented TUs is memory-heavy, and inside preflight this
+# gate races the other legs' builds.  MULL_BUILD_MB is the per-job RSS budget.
+MULL_BUILD_JOBS="${MULL_BUILD_JOBS:-$(mem_bounded_jobs "${MULL_BUILD_MB:-1536}")}"
 NEED_PARENT=0
 NEED_SUB=0
 for t in "${TARGETS[@]}"; do
@@ -189,7 +198,7 @@ if [[ "$NEED_PARENT" == "1" ]]; then
                     -DMUTATION_TESTING=ON -DCMAKE_BUILD_TYPE=Debug" \
             || fail "mutation configure failed (parent)"
     fi
-    dbox "cmake --build $BUILD -j\$(nproc)" || fail "mutation build failed (parent)"
+    dbox "cmake --build $BUILD -j$MULL_BUILD_JOBS" || fail "mutation build failed (parent)"
     ok "parent mutation build complete"
 fi
 
@@ -201,7 +210,7 @@ if [[ "$NEED_SUB" == "1" ]]; then
                     -DBUILD_TESTS=ON -DMUTATION_TESTING=ON -DCMAKE_BUILD_TYPE=Debug" \
             || fail "mutation configure failed (submodule)"
     fi
-    dbox "cmake --build $BUILD_SUB --target backend_scene_tests -j\$(nproc)" \
+    dbox "cmake --build $BUILD_SUB --target backend_scene_tests -j$MULL_BUILD_JOBS" \
         || fail "mutation build failed (submodule)"
     ok "submodule mutation build complete"
 fi
@@ -273,11 +282,15 @@ MOC_IGNORE='_autogen/|/moc_|\.moc$'
 #
 # MULL_WORKERS / MULL_TIMEOUT_MS / MULL_MIN_TIMEOUT_MS env overrides for
 # low-core machines or CI box throttling.
-MULL_WORKERS="${MULL_WORKERS:-$(nproc 2>/dev/null || echo 4)}"
+# Worker count is bounded by available RAM, not just cores: Mull forks --workers
+# parallel runs of an *instrumented* binary, so peak RSS is workers × per-binary
+# RSS.  32 concurrent instrumented backend_scene_tests is what OOM'd 30 GB boxes.
+# MULL_WORKER_MB is the per-worker RSS budget; an explicit MULL_WORKERS wins.
+MULL_WORKERS="${MULL_WORKERS:-$(mem_bounded_jobs "${MULL_WORKER_MB:-2048}")}"
 [[ "$MULL_WORKERS" -lt 1 ]] && MULL_WORKERS=1
 MULL_TIMEOUT_MS="${MULL_TIMEOUT_MS:-60000}"
 MULL_MIN_TIMEOUT_MS="${MULL_MIN_TIMEOUT_MS:-5000}"
-ok "mull parallelism: $MULL_WORKERS workers, ${MULL_TIMEOUT_MS}ms ceiling / ${MULL_MIN_TIMEOUT_MS}ms floor"
+ok "mull parallelism: $MULL_WORKERS workers (RAM-bounded, cap nproc), build -j$MULL_BUILD_JOBS, ${MULL_TIMEOUT_MS}ms ceiling / ${MULL_MIN_TIMEOUT_MS}ms floor"
 for t in "${TARGETS[@]}"; do
     bin="$(bin_path "$t")"
     if [[ ! -x "$bin" ]]; then

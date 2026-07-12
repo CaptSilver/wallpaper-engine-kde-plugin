@@ -740,6 +740,12 @@ else()
     message(STATUS "Qt6QuickTest not found — skipping tst_main_integration (Phase 3)")
 endif()
 
+# Hermetic bash self-test for tools/scripts/mutation.sh (RAM-bounded worker
+# derivation + --diff-only fast-skip).  No Mull run, no display — fake PATH
+# sandbox, runs in <1s.
+add_test(NAME test_mutation
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_mutation.sh)
+
 # ── Apply opt-in sanitizers to every C++ test target ──────────────────────────
 # No-op unless -DWEK_SANITIZE=... is set.  Guarded by if(TARGET ...) because
 # several targets are conditional on optional Qt components / libmpv.  The

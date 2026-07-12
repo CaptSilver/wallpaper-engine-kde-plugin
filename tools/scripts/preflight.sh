@@ -23,12 +23,11 @@
 #                                      #   project (mpv / QML / file-helper).
 #   tools/scripts/preflight.sh --werror     # opt-in -Werror leg: configures the full project
 #                                      #   with -DWEK_WERROR=ON and builds the WHOLE
-#                                      #   tree (incl. the renderer libs).  NON-FATAL
-#                                      #   today — surfaces residual renderer-lib
-#                                      #   warnings; the four shippable targets are
-#                                      #   already gated FATAL in the default flow.
-#                                      #   Flip WERROR_FATAL=1 once the renderer libs
-#                                      #   are warning-clean too.
+#                                      #   tree (incl. the renderer libs).  FATAL by
+#                                      #   default — the whole first-party tree is now
+#                                      #   -Wall -Wextra clean and the default flow
+#                                      #   gates the same config in step 5a.  Set
+#                                      #   WERROR_FATAL=0 to run it advisory.
 #   tools/scripts/preflight.sh --coverage   # opt-in coverage leg (standalone, informational):
 #                                      #   builds parent + submodule with -DCOVERAGE=ON,
 #                                      #   runs llvm-cov + qmlcov, diffs totals vs
@@ -363,14 +362,13 @@ fi
 # their own flags by construction), and keeps the -Wconversion/-Wsign-conversion
 # family WARNING-only.  Fresh build dir build/impl-werror; skips lint/test/fuzz.
 #
-# NON-FATAL by default: the shippable targets (plugin .so, backend_mpv, the QML
-# bridge, wpParticle) are -Wall -Wextra clean, but the wider renderer libs have
-# not yet been audited under -Werror, so a residual -Wall/-Wextra warning there
-# would fail the build.  Until the whole tree is clean this leg surfaces the
-# breakage without failing preflight.  Flip it to a gate with WERROR_FATAL=1
-# (and then wire it into the default flow / pre-push hook).
+# FATAL by default: the whole first-party tree (the shippable targets AND the
+# wider renderer libs — Vulkan / VulkanRender / RenderGraph / Scene / Audio /
+# Particle) is -Wall -Wextra clean, so a residual first-party warning fails this
+# leg.  The default flow gates the same config in step 5a; this standalone leg
+# is the whole-tree audit entry point.  Set WERROR_FATAL=0 to run it advisory.
 if [[ "$MODE" == "werror" ]]; then
-    step "-Werror leg (WEK_WERROR=ON) — ${YELLOW}NON-FATAL${RESET} unless WERROR_FATAL=1"
+    step "-Werror leg (WEK_WERROR=ON) — FATAL unless WERROR_FATAL=0"
     WERR_GEN=""
     [[ ! -f build/impl-werror/CMakeCache.txt ]] && WERR_GEN="-G Ninja"
     if dbox "CC=/usr/bin/clang CXX=/usr/bin/clang++ \
@@ -381,11 +379,11 @@ if [[ "$MODE" == "werror" ]]; then
         printf '\n%sWEK_WERROR leg passed.%s\n' "$GREEN" "$RESET"
         exit 0
     else
-        if [[ "${WERROR_FATAL:-0}" == "1" ]]; then
-            fail "-Werror build failed (WERROR_FATAL=1) — a first-party -Wall/-Wextra warning is now an error"
+        if [[ "${WERROR_FATAL:-1}" == "1" ]]; then
+            fail "-Werror build failed — a first-party -Wall/-Wextra warning is now an error (WERROR_FATAL=0 to make advisory)"
         fi
-        warn "-Werror build had warnings-as-errors (non-fatal — see log; set WERROR_FATAL=1 to gate)"
-        printf '\n%s-Werror leg complete (NON-FATAL) — residual first-party warnings above.%s\n' "$YELLOW" "$RESET"
+        warn "-Werror build had warnings-as-errors (advisory — WERROR_FATAL=0; see log)"
+        printf '\n%s-Werror leg complete (advisory) — residual first-party warnings above.%s\n' "$YELLOW" "$RESET"
         exit 0
     fi
 fi
@@ -764,30 +762,28 @@ step "Main project tests (ctest)"
 dbox "ctest --test-dir build/tests --output-on-failure" || fail "ctest failed"
 ok "ctest passed"
 
-# ── 5a. Scoped -Werror gate (4 shippable targets, default-gate FATAL) ─────────
-# CLAUDE.md lists the four shippable / dlopen'd targets that are -Wall -Wextra
-# clean: the plugin .so (WallpaperEngineKde), backend_mpv (mpvbackend), the
-# wescene-renderer-qml bridge, and wpParticle.  cmake/WekWerrorScoped.cmake
-# applies -Werror (with the conversion family no-error-gated) to just those
-# four, AS LONG AS -DWEK_WERROR=ON is not set (the full-project audit path
-# already covers them when explicit).  Build the four targets here so a -Wall
-# / -Wextra regression in shippable code is a push-blocker.  Fresh build dir
-# (build/werror-shippable) so the cache stays separate from build/sub /
-# build/tests; reuse persistent dir on repeat runs.  The wider renderer libs
-# are NOT in this gate — their audit stays opt-in via --werror (whole-tree).
+# ── 5a. -Werror gate (whole first-party tree, default-gate FATAL) ─────────────
+# The entire first-party tree is now -Wall -Wextra clean: the four shippable /
+# dlopen'd targets (WallpaperEngineKde, mpvbackend, wescene-renderer-qml,
+# wpParticle) AND the wider renderer libs (Vulkan, VulkanRender, RenderGraph,
+# Scene, Audio, Particle).  -DWEK_WERROR=ON gates the whole tree: WekWarnings.cmake
+# appends -Werror to every first-party warn list (the conversion family stays
+# warning-only), and cmake/WekWerrorScoped.cmake no-ops under WEK_WERROR so there
+# is no double-apply.  Clang only — the audit was under clang, and GCC categorises
+# several diagnostics differently, so downstream GCC packagers build with
+# WEK_WERROR OFF.  Persistent build dir build/werror-shippable, kept separate from
+# build/sub / build/tests; reuse on repeat runs.
 if [[ "$MODE" != "test-only" ]]; then
-    step "Scoped -Werror gate (4 shippable targets)"
+    step "-Werror gate (whole first-party tree, WEK_WERROR=ON)"
     WERR_SCOPED_GEN=""
     [[ ! -f build/werror-shippable/CMakeCache.txt ]] && WERR_SCOPED_GEN="-G Ninja"
     if dbox "CC=/usr/bin/clang CXX=/usr/bin/clang++ \
              cmake -B build/werror-shippable -S . $WERR_SCOPED_GEN \
-                   -DCMAKE_BUILD_TYPE=Debug \
-             && cmake --build build/werror-shippable -j\$(nproc) \
-                   --target WallpaperEngineKde mpvbackend \
-                           wescene-renderer-qml wpParticle"; then
-        ok "scoped -Werror clean (4 shippable targets)"
+                   -DWEK_WERROR=ON -DCMAKE_BUILD_TYPE=Debug \
+             && cmake --build build/werror-shippable -j\$(nproc)"; then
+        ok "-Werror clean (whole first-party tree under -Wall -Wextra)"
     else
-        fail "scoped -Werror gate failed — a -Wall/-Wextra regression in the plugin .so / backend_mpv / wescene-renderer-qml / wpParticle is now an error"
+        fail "-Werror gate failed — a -Wall/-Wextra regression in first-party code (shippable targets or renderer libs) is now an error"
     fi
 fi
 

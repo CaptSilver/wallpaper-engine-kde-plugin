@@ -153,6 +153,11 @@ DEPS_FEDORA=(
 
     # JSON parsing for opt-in coverage + mutation legs (baseline diff)
     jq
+
+    # test session bus: dbus-daemon ships dbus-run-session, which the
+    # tst_mpriscolors ctest wrapper uses to spin up a private bus (nodejs above
+    # covers tst_js). Without it that test reports "Not Run", not a clean skip.
+    dbus-daemon
 )
 
 # ── Distrobox detection + bootstrap ──────────────────────────────────────────
@@ -183,6 +188,18 @@ container_exists() {
     local list
     list=$(distrobox list 2>/dev/null || true)
     grep -qE "^\S+\s*\|\s*${CONTAINER_NAME}\s" <<<"$list"
+}
+
+# Fast probe of the lint/test-critical binaries inside an EXISTING box. A box
+# created by build-packages.sh (or provisioned against an older DEPS_FEDORA) can
+# be missing these, which surfaces as silent ctest "Not Run" — tst_js needs
+# node, tst_mpriscolors needs dbus-run-session — instead of a clean failure.
+# When any are absent we re-run the idempotent dnf install rather than running
+# the gate against a half-provisioned box.
+deps_present() {
+    distrobox enter "$CONTAINER_NAME" -- bash -lc \
+        'command -v clang-format >/dev/null && command -v node >/dev/null && command -v dbus-run-session >/dev/null' \
+        >/dev/null 2>&1
 }
 
 bootstrap_fedora() {
@@ -227,6 +244,9 @@ if inside_fedora; then
     ok "running inside fedora distrobox"
 else
     if [[ "$MODE" == "bootstrap" ]] || ! container_exists; then
+        bootstrap_fedora
+    elif ! deps_present; then
+        warn "fedora distrobox exists but is missing build/test deps (e.g. after a build-packages.sh recreate) — provisioning"
         bootstrap_fedora
     fi
     DBOX_PREFIX=(distrobox enter "$CONTAINER_NAME" --)

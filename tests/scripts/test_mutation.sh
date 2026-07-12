@@ -50,6 +50,26 @@ EOF
     chmod +x "$bindir/cmake"
 }
 
+# A PATH mirror of everything currently reachable EXCEPT jq.  The diff-mapping,
+# fast-skip and build stages of mutation.sh must not require jq (it is only used
+# to parse Mull's report), so the --diff-only subtests run jq-masked to prove it
+# — matching the Fedora CI unit-test image, which ships without jq.
+NOJQ_BIN=""
+make_nojq_path() {
+    NOJQ_BIN=$(mktemp -d)
+    local d f b IFS=:
+    for d in $PATH; do
+        [[ -d "$d" ]] || continue
+        for f in "$d"/*; do
+            b=$(basename "$f")
+            [[ "$b" == jq ]] && continue
+            [[ -e "$NOJQ_BIN/$b" ]] || ln -s "$f" "$NOJQ_BIN/$b" 2>/dev/null
+        done
+    done
+}
+make_nojq_path
+trap '[[ -n "$NOJQ_BIN" ]] && rm -rf "$NOJQ_BIN"' EXIT
+
 # throwaway repo whose HEAD~1 diff is exactly the listed files
 make_gitrepo() { # <dir> <file...>
     local dir=$1; shift
@@ -89,7 +109,9 @@ test_mem "mem: MemAvailable absent → MemTotal fallback"        - 4194304 2048 
 run_diff() { # <repo> <memfile> <bindir> -> sets OUT / RC
     local repo=$1 mem=$2 bin=$3
     RC=0
-    OUT=$(cd "$repo" && WEK_IN_CI=1 MEMINFO_FILE="$mem" PATH="$bin:$PATH" \
+    # Stub dir first (cmake/nproc), then a jq-less mirror of the real PATH: these
+    # paths must reach fast-skip / build without jq (see make_nojq_path).
+    OUT=$(cd "$repo" && WEK_IN_CI=1 MEMINFO_FILE="$mem" PATH="$bin:$NOJQ_BIN" \
           "$MUTATION" --diff-only 2>&1) || RC=$?
 }
 

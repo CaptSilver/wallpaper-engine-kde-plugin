@@ -103,11 +103,6 @@ else
 fi
 dbox() { "${DBOX_PREFIX[@]}" bash -lc "$*"; }
 
-# ── Tool preflight ────────────────────────────────────────────────────────────
-if ! command -v jq >/dev/null; then
-    fail "jq not found on host — install with 'sudo dnf install jq' (or your distro equivalent)"
-fi
-
 # ── Determine target list (BEFORE builds so we skip unneeded ones) ───────────
 # ALL_TARGETS lists every instrumented binary present in tests/CMakeLists.txt's
 # MUTATION_TESTING blocks PLUS the single submodule target (backend_scene_tests,
@@ -246,6 +241,14 @@ if [[ -z "$RUNNER" || ! -x "$RUNNER" ]]; then
     exit 77
 fi
 ok "runner: $RUNNER"
+
+# jq parses Mull's Elements/IDE report into the shared survivor schema below.
+# Checked here rather than up top on purpose: the fast-skip (unmapped diff →
+# exit 0) and the no-runner exit above never touch jq, so they must not require
+# it — the Fedora CI unit-test image ships without jq.
+if ! command -v jq >/dev/null; then
+    fail "jq not found on host — install with 'sudo dnf install jq' (or your distro equivalent)"
+fi
 
 # ── Run Mull, collect Elements JSON, normalise to a shared survivor schema ───
 # Mull 0.31+ supports `--reporters Elements` which emits Mutation Testing Elements

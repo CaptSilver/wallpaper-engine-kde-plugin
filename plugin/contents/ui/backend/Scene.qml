@@ -191,6 +191,21 @@ Item{
         }
     }
 
+    // Force QML to call update() on the SceneViewer at the target FPS.
+    // The C++ engine renders frames into a shared texture via its own
+    // FrameTimer, but the QML render thread only copies that texture to
+    // the swapchain when the item is marked dirty. Without this timer,
+    // QML throttles updatePaintNode to ~11fps (90ms intervals) even when
+    // the engine runs at 30-60fps, causing visible stutter on Wayland.
+    // See: https://github.com/captsilver/wallpaper-engine-kde-plugin/issues/24
+    Timer {
+        id: renderForceTimer
+        interval: Math.max(1, Math.floor(1000 / Math.max(1, background.fps)))
+        repeat: true
+        running: background.ok
+        onTriggered: player.update()
+    }
+
     Component.onCompleted: {
         background.nowBackend = 'scene';
     }

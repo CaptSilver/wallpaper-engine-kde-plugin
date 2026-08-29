@@ -91,8 +91,43 @@ and this repo tags `v1.4`. Append the package name to the webhook URL so tag pus
 https://copr.fedorainfracloud.org/webhooks/github/<id>/<uuid>/wallpaper-engine-kde-plugin-qt6/
 ```
 
-Enable a chroot per Fedora release you want to serve. `fedora-44-x86_64` is what current Bazzite
-needs; `fedora-42` has been retired.
+Enable a chroot per release you want to serve. `fedora-44-x86_64` is what current Bazzite needs;
+`fedora-42` has been retired. `opensuse-tumbleweed-x86_64` and `mageia-10-x86_64` also build — see
+below.
+
+## Building for openSUSE and Mageia
+
+The spec builds on Fedora, openSUSE Tumbleweed and Mageia 10 from one source. Two things make that
+work.
+
+**Dependencies are capabilities, not package names.** The three distros agree on almost nothing —
+Fedora's `lz4-devel` is `liblz4-devel` on openSUSE and `lib64lz4-devel` on Mageia — but they all
+generate the same `cmake()` and `pkgconfig()` capabilities from the `.cmake` and `.pc` files they
+ship. Asking for `pkgconfig(liblz4)` resolves correctly everywhere, which collapses what would
+otherwise be three parallel dependency lists. Only runtime `Requires` still need `%if` branches,
+because those name things rpm cannot derive from `DT_NEEDED`: the Plasma shell and the QML import
+modules.
+
+**Never put a bare `%macro` in a spec comment.** rpm expands macros inside comments, and Mageia
+defines `%check` as a *two-line* macro — so a comment mentioning it leaks its second line into the
+preamble and the spec dies with `error: line 18: Unknown tag` before any dependency is considered.
+Write `%%check` in prose. This cost a full afternoon to find; it fails nowhere else.
+
+Verifying a spec change against all three without touching COPR:
+
+```sh
+cat rpm/wek.spec | podman run --rm -i registry.opensuse.org/opensuse/tumbleweed:latest sh -c \
+    'cat > /tmp/w.spec; zypper -n install rpm-build >/dev/null 2>&1; rpmspec -q --srpm /tmp/w.spec'
+
+cat rpm/wek.spec | podman run --rm -i docker.io/library/mageia:10 sh -c \
+    'cat > /tmp/w.spec; dnf -y install rpm-build >/dev/null 2>&1; rpmspec -q --srpm /tmp/w.spec'
+```
+
+Pipe the spec in rather than bind-mounting the repo: on an SELinux host a `:Z` mount relabels your
+working tree.
+
+Use the `:10` tag for Mageia, not `:cauldron` — Cauldron has moved on to Mageia 11, so it would
+test something the COPR chroot isn't.
 
 ## How COPR builds this
 

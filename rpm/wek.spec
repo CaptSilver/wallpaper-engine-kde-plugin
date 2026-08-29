@@ -11,44 +11,93 @@ URL:     https://github.com/captsilver/wallpaper-engine-kde-plugin
 # this spec stays parseable on its own (`rpmspec -q`, `dnf builddep`).
 #
 # The tarball must carry the recursed submodules: src/backend_scene has seven
-# of its own, and the %files licence rules below read third_party/*/LICENSE
+# of its own, and the %%files licence rules below read third_party/*/LICENSE
 # straight out of the tree.
 Source0: %{name}-%{version}.tar.gz
 
-# Optional %check section (display-free + bus-free unit tests).  Opt in with
+# Optional %%check section (display-free + bus-free unit tests).  Opt in with
 # `rpmbuild --with check`; the fast-path build is unchanged.
 %bcond_with check
 
-BuildRequires: cmake extra-cmake-modules clang
-BuildRequires: vulkan-headers
-BuildRequires: vulkan-loader-devel
-BuildRequires: plasma-workspace-devel libplasma-devel plasma-activities-devel
-BuildRequires: kf6-kcoreaddons-devel
-BuildRequires: kf6-kpackage-devel
-BuildRequires: kf6-kconfig-devel
-BuildRequires: kf6-knotifications-devel
-BuildRequires: kf6-kcrash-devel
-BuildRequires: kf6-kglobalaccel-devel
-BuildRequires: kf6-kxmlgui-devel
-BuildRequires: kf6-ki18n-devel
-BuildRequires: lz4-devel
-BuildRequires: mpv-devel
+# Dependencies are declared as cmake()/pkgconfig() capabilities rather than
+# package names.  The three distros this builds for share almost no names for
+# the same libraries -- lz4-devel on Fedora is liblz4-devel on openSUSE and
+# lib64lz4-devel on Mageia -- but they all generate the same capabilities from
+# the .cmake and .pc files they ship.  Capabilities are what let one spec serve
+# every chroot without a thicket of %%if branches.
+BuildRequires: cmake
+BuildRequires: extra-cmake-modules
+BuildRequires: clang
+BuildRequires: cmake(VulkanHeaders)
+BuildRequires: cmake(VulkanLoader)
+BuildRequires: cmake(Plasma)
+BuildRequires: cmake(PlasmaActivities)
+BuildRequires: cmake(KF6CoreAddons)
+BuildRequires: cmake(KF6Package)
+BuildRequires: cmake(KF6Config)
+BuildRequires: cmake(KF6Notifications)
+BuildRequires: cmake(KF6Crash)
+BuildRequires: cmake(KF6GlobalAccel)
+BuildRequires: cmake(KF6XmlGui)
+BuildRequires: cmake(KF6I18n)
+BuildRequires: cmake(Qt6Core)
+BuildRequires: cmake(Qt6DBus)
+BuildRequires: cmake(Qt6Network)
+BuildRequires: cmake(Qt6Gui)
+BuildRequires: cmake(Qt6Quick)
+BuildRequires: cmake(Qt6Qml)
+BuildRequires: cmake(Qt6WebChannel)
+# src/CMakeLists.txt asks for both WebEngine components, and openSUSE splits
+# WebEngine into per-module packages, so request each capability separately.
+BuildRequires: cmake(Qt6WebEngineCore)
+BuildRequires: cmake(Qt6WebEngineQuick)
+BuildRequires: pkgconfig(liblz4)
+BuildRequires: pkgconfig(mpv)
+BuildRequires: pkgconfig(freetype2)
+BuildRequires: pkgconfig(libpulse)
+# EGL/GL/GBM drive the hardware video-texture decoder.  pkg_check_modules treats
+# them as optional, so leaving them undeclared yields a quietly degraded package
+# at a zero exit status instead of a build failure.  On openSUSE they arrive
+# transitively through mpv.pc, which is not something to depend on.
+BuildRequires: pkgconfig(gl)
+BuildRequires: pkgconfig(egl)
+BuildRequires: pkgconfig(gbm)
+
+%if 0%{?fedora}
+# src/backend_mpv/CMakeLists.txt reads Qt6Gui_PRIVATE_INCLUDE_DIRS.  Only Fedora
+# splits the private headers into their own package; openSUSE and Mageia ship
+# them inside the ordinary Qt6 devel packages.
 BuildRequires: qt6-qtbase-private-devel
-BuildRequires: qt6-qtwebchannel-devel
-BuildRequires: qt6-qtwebengine-devel
-BuildRequires: freetype-devel
-BuildRequires: pulseaudio-libs-devel
+%endif
 
 %if %{with check}
-BuildRequires: qt6-qtbase-devel
-BuildRequires: qt6-qtdeclarative-devel
+BuildRequires: cmake(Qt6Test)
+BuildRequires: cmake(Qt6QuickTest)
 BuildRequires: nodejs
 %endif
 
+# rpm derives the library dependencies from the plugin's DT_NEEDED entries, so
+# what it cannot see is what gets named here: the Plasma shell that hosts the
+# wallpaper, and the QML import modules loaded by name at runtime.
+%if 0%{?suse_version}
+Requires: plasma6-workspace
+Requires: qt6-webchannel-imports
+Recommends: gstreamer-plugins-libav
+Recommends: qt6-webengine-imports
+%else
+%if 0%{?mageia}
+Requires: plasma-workspace
+Recommends: gstreamer1.0-libav
+Recommends: lib64qt6webenginequick6
+%else
 Requires: plasma-workspace
 Requires: mpv-libs
 Requires: lz4
 Requires: qt6-qtwebchannel
+# Not a linkage dependency and not source-visible: dropping it breaks
+# rpm-ostree install on Bazzite. Install-time validated, so leave it be.
+# No equivalent failure has been seen on openSUSE or Mageia, so it stays
+# Fedora-only rather than being copied across on faith.
 Requires: glew
 Requires: kf6-knotifications
 Requires: kf6-kcrash
@@ -56,6 +105,8 @@ Requires: kf6-kglobalaccel
 Requires: kf6-ki18n
 Recommends: gstreamer1-libav
 Recommends: qt6-qtwebengine
+%endif
+%endif
 Suggests: pipewire-pulseaudio
 Suggests: vulkan-tools
 
@@ -99,9 +150,9 @@ ctest --test-dir _build/tests \
 %files
 # The project's LICENSE + every vendored third-party license is installed by
 # cmake under ${_datadir}/wek/licenses/.  Listing the directory once via
-# %license captures the project LICENSE (at wek/licenses/LICENSE) AND each
+# %%license captures the project LICENSE (at wek/licenses/LICENSE) AND each
 # per-library subdir AND THIRD_PARTY_LICENSES.md.  A previous standalone
-# `%license LICENSE` line tried to also stage the project license at the
+# `%%license LICENSE` line tried to also stage the project license at the
 # distro-standard /usr/share/licenses/<pkg>/LICENSE path, but cmake doesn't
 # install there — rpmbuild then failed to find the file.  The wek/licenses
 # tree is the single source of truth.

@@ -80,16 +80,30 @@ copr-cli add-package-scm wallpaper-engine-kde-plugin \
 ```
 
 Then take the webhook URL from the project's Settings → Integrations page and add it to the GitHub
-repo as a webhook (content type `application/json`, push and tag events). No GitHub Actions job is
+repo as a webhook (content type `application/json`, push events). No GitHub Actions job is
 involved — the webhook is a push notification, not CI, so `tools/scripts/preflight.sh` stays the
 quality gate.
 
-One catch on tags: COPR parses the pushed tag as `PKGNAME-VERSION` to work out what to rebuild,
-and this repo tags `v1.4`. Append the package name to the webhook URL so tag pushes resolve:
+Append the package name to the webhook URL:
 
 ```
 https://copr.fedorainfracloud.org/webhooks/github/<id>/<uuid>/wallpaper-engine-kde-plugin-qt6/
 ```
+
+COPR decides which package a ref belongs to by parsing a tag as `PKGNAME-VERSION`, and `v1.4` gives
+it nothing to match on, so the name in the URL is what lets a tag resolve at all. Necessary but not
+sufficient, though: **a push-only hook never fires on tags in the first place.** COPR reads
+`ref_type` off the payload, GitHub sets that field only on its *create* event, and a tag arriving
+as a push carries no `ref_type` — it falls through to the branch path and fails to match `main`. So
+cutting a release means pushing the tag and then starting the build by hand:
+
+```sh
+copr-cli build-package wallpaper-engine-kde-plugin --name wallpaper-engine-kde-plugin-qt6
+```
+
+That builds `main`, `git describe --exact-match` finds the tag on HEAD, and the version comes out
+plain. Subscribing to `create` events too would make tag pushes build on their own, at the cost of
+building every tag anyone pushes.
 
 Enable a chroot per release you want to serve. `fedora-44-x86_64` is what current Bazzite needs;
 `fedora-42` has been retired. `opensuse-tumbleweed-x86_64` and `mageia-10-x86_64` also build — see
@@ -155,8 +169,23 @@ The count is not decoration. The usual Fedora form `1.4^YYYYMMDDgit<hash>` sorts
 by hash, so roughly half the time a newer commit compares *lower* and dnf refuses the upgrade as a
 downgrade. `^` marks a post-release, so a snapshot sorts above `1.4` and below `1.5`.
 
-Version, release and the changelog date are written into the spec as literals before rpmbuild sees
-it. The SRPM stores the spec verbatim and mock re-parses it later on a builder with no git checkout
-and a different clock, so anything left as `%(...)` gets evaluated in the wrong place at the wrong
-time. Watch for this if you edit the spec: when rpm dislikes a changelog date it discards the
-entire changelog and still exits 0. `make-srpm.sh` asserts `CHANGELOGTIME` survived.
+**Tag and bump `VERSION` in the same commit.** The two numbers come from different places —
+snapshots read the `VERSION` file, releases read the tag — and nothing keeps them in step. Tag
+`v1.5` while `VERSION` still says `1.4`, and every snapshot after it sorts *below* the release: dnf
+pins everyone to `1.5` and never offers a snapshot again. `make-srpm.sh` refuses to build that
+rather than let you publish it. `VERSION` equal to the newest tag is the healthy state, not a fault
+— `1.4^…` sorts above `1.4`, so a snapshot lands just past the release exactly as intended.
+
+Version and release are written into the spec as literals before rpmbuild sees it. The SRPM stores
+the spec verbatim and mock re-parses it later on a builder with no git checkout and a different
+clock, so anything left as `%(...)` gets evaluated in the wrong place at the wrong time. `%{?dist}`
+is the one deliberate exception: it names the chroot, so only the builder can expand it.
+
+Two rpm habits worth knowing before you touch any of this. It never fails a build over a changelog
+it dislikes — a date it cannot parse costs you every entry, an out-of-order one costs you
+everything from the offender down, and either way it exits 0. The generated entry is *prepended*,
+so the curated release history below it still ships; `make-srpm.sh` then asserts that entry
+actually survived, because asking merely whether *a* changelog exists walks straight past the
+second case. And rebuilding an unchanged commit yields a byte-identical EVR, which dnf reads as
+"already have that" — so republishing a commit after a dependency bump in the chroot needs
+`--release 2`, or nobody ever receives it.

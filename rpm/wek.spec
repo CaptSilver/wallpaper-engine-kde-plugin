@@ -54,6 +54,7 @@ BuildRequires: cmake(Qt6WebEngineQuick)
 BuildRequires: pkgconfig(liblz4)
 BuildRequires: pkgconfig(mpv)
 BuildRequires: pkgconfig(freetype2)
+BuildRequires: pkgconfig(fontconfig)
 BuildRequires: pkgconfig(libpulse)
 # EGL/GL/GBM drive the hardware video-texture decoder.  pkg_check_modules treats
 # them as optional, so leaving them undeclared yields a quietly degraded package

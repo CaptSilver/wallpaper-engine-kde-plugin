@@ -161,7 +161,7 @@ DEPS_FEDORA=(
     qt6-qtwebengine-devel
 
     # native libs
-    lz4-devel mpv-devel freetype-devel glfw-devel
+    lz4-devel mpv-devel freetype-devel fontconfig-devel glfw-devel
 
     # sanitizer runtimes (libasan.so.8 lives only inside distrobox per CLAUDE.md).
     # libtsan is what the --tsan leg links against.

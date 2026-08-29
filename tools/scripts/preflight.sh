@@ -130,8 +130,12 @@ fail() { printf '\n%sFAIL:%s %s\n' "$RED" "$RESET" "$*" >&2; exit 1; }
 CONTAINER_NAME="fedora"
 CONTAINER_IMAGE="registry.fedoraproject.org/fedora-toolbox:latest"
 DEPS_FEDORA=(
-    # core toolchain (clang-tools-extra provides clang-format for the lint gate)
-    clang clang-tools-extra cmake extra-cmake-modules ninja-build pkgconf-pkg-config git nodejs gdb
+    # core toolchain (clang-tools-extra provides clang-format for the lint gate).
+    # llvm is NOT pulled in by clang: with CC=clang, cmake picks llvm-ar/llvm-ranlib
+    # to archive static libs, and the coverage leg needs llvm-cov/llvm-profdata.
+    # Without it a freshly created box dies at the first static library with
+    # "llvm-ar: No such file or directory" (exit 127).
+    clang clang-tools-extra llvm cmake extra-cmake-modules ninja-build pkgconf-pkg-config git nodejs gdb
 
     # Vulkan (headers + loader devel for cmake's FindVulkan, validation + tools for debug)
     vulkan-headers vulkan-loader-devel vulkan-validation-layers vulkan-tools
@@ -144,18 +148,24 @@ DEPS_FEDORA=(
     # catalogs).  Without their -devel siblings the parent plugin .so cannot
     # configure, which breaks the scoped -Werror gate below.
     kf6-knotifications-devel kf6-kcrash-devel kf6-ki18n-devel
-    # Optional but used by src/CMakeLists.txt when present (WekShortcuts):
-    kf6-kglobalaccel-devel
+    # Optional but used by src/CMakeLists.txt when present (WekShortcuts).  The
+    # guard needs GlobalAccel AND CoreAddons AND XmlGui, so dropping kxmlgui
+    # silently compiles WekShortcuts.cpp out and the gate still passes.
+    kf6-kglobalaccel-devel kf6-kxmlgui-devel
 
     # Qt 6
     qt6-qtbase-devel qt6-qtbase-private-devel
     qt6-qtdeclarative-devel qt6-qtwebchannel-devel qt6-qtwebsockets-devel
+    # src/CMakeLists.txt marks WebEngineCore/WebEngineQuick REQUIRED, so the
+    # parent plugin cannot even configure without this.
+    qt6-qtwebengine-devel
 
     # native libs
     lz4-devel mpv-devel freetype-devel glfw-devel
 
-    # sanitizer runtimes (libasan.so.8 lives only inside distrobox per CLAUDE.md)
-    libasan libubsan
+    # sanitizer runtimes (libasan.so.8 lives only inside distrobox per CLAUDE.md).
+    # libtsan is what the --tsan leg links against.
+    libasan libubsan libtsan
 
     # JSON parsing for opt-in coverage + mutation legs (baseline diff)
     jq

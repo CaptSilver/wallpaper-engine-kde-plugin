@@ -4,6 +4,10 @@ CMakeFiles
 CMakeScripts
 Testing
 Makefile
+# ...but the bare 'Makefile' rule above matches at any depth, and COPR's srpm
+# entry point is .copr/Makefile. Without this it never gets committed and the
+# COPR build fails looking for it.
+!.copr/Makefile
 cmake_install.cmake
 install_manifest.txt
 compile_commands.json

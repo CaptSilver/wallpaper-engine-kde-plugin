@@ -1,51 +1,127 @@
-## Building an RPM (Fedora / rpm-ostree / Bazzite)
+## RPM packaging
 
-Building an RPM is the recommended approach for immutable systems (Bazzite, Silverblue, etc.)
-where layered packages survive OS updates.
+The package is `wallpaper-engine-kde-plugin-qt6`. Two ways to get it: install from COPR, or
+build it yourself.
 
-### Prerequisites: RPM Fusion + ffmpeg
+## Install from COPR
+
+Replace `captsilver666` with the COPR account hosting the build.
+
+### Bazzite / Silverblue / any rpm-ostree host
 
 ```sh
-sudo dnf install -y \
-    https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm \
-    https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
-
-sudo dnf swap -y ffmpeg-free ffmpeg --allowerasing
-sudo dnf install -y ffmpeg-devel --allowerasing
+sudo dnf5 copr enable captsilver666/wallpaper-engine-kde-plugin
+sudo rpm-ostree install wallpaper-engine-kde-plugin-qt6
+systemctl reboot
 ```
 
-### Build steps
+Install **by package name**, never from a downloaded `.rpm` file. `rpm-ostree install ./foo.rpm`
+pins that exact file forever and will never pick up a newer build — packages layered by name get
+re-resolved from the repo on every `rpm-ostree upgrade`.
+
+To pick up new builds without doing it by hand:
+
+```sh
+sudo sed -i 's/^AutomaticUpdatePolicy=.*/AutomaticUpdatePolicy=stage/' /etc/rpm-ostreed.conf
+sudo rpm-ostree reload
+sudo systemctl enable --now rpm-ostreed-automatic.timer
+```
+
+New builds then download and stage into the next deployment; they go live on reboot. Note that
+`uupd` and `bootc upgrade` will **not** refresh a layered RPM — they only fetch the base image.
+Only `rpm-ostree upgrade` re-resolves layered packages.
+
+### Standard Fedora
+
+```sh
+sudo dnf copr enable captsilver666/wallpaper-engine-kde-plugin
+sudo dnf install wallpaper-engine-kde-plugin-qt6
+```
+
+## Build it yourself
 
 ```sh
 git clone https://github.com/captsilver/wallpaper-engine-kde-plugin.git
 cd wallpaper-engine-kde-plugin
-
-# Install all build dependencies declared in the spec
 sudo dnf builddep ./rpm/wek.spec
 
-# Initialise submodules
-git submodule update --init --force --recursive
+# Packs the recursive submodule tarball and stamps the version into the spec.
+tools/scripts/make-srpm.sh --outdir /tmp/srpm
 
-# Use tmpfs to speed up the build and avoid wearing disk
-sudo mount -t tmpfs tmpfs ~/rpmbuild/BUILD
-
-rpmbuild --define="commit $(git rev-parse HEAD)" \
-    --define="reporoot $(pwd)" \
-    --define="glslang_ver 11.8.0" \
-    --undefine=_disable_source_fetch \
-    -ba ./rpm/wek.spec
-
-sudo umount ~/rpmbuild/BUILD
+rpmbuild --define='_topdir /tmp/rpmbuild' --rebuild /tmp/srpm/*.src.rpm
 ```
 
-### Install
+`tools/scripts/build-packages.sh` wraps both steps and runs them in the Fedora distrobox.
 
-Standard Fedora:
+tar reads the working tree rather than HEAD, so a build from a dirty checkout gets `.dirty`
+appended to its version — the package should not claim to be a commit it isn't. COPR always builds
+a fresh clone and never sees this.
+
+You do not need to init submodules first — `make-srpm.sh` does it, recursively, every time. That
+is deliberate: `git checkout` never updates submodule worktrees, so a stale checkout would
+otherwise pack sources from the wrong commit without complaining.
+
+## Setting up the COPR project
+
+One-time, with an API token from <https://copr.fedorainfracloud.org/api/> saved to
+`~/.config/copr`:
+
 ```sh
-sudo dnf install ~/rpmbuild/RPMS/x86_64/wallpaper-engine-kde-plugin-qt6-*.rpm
+copr-cli create wallpaper-engine-kde-plugin --chroot fedora-44-x86_64
+
+copr-cli add-package-scm wallpaper-engine-kde-plugin \
+    --name wallpaper-engine-kde-plugin-qt6 \
+    --clone-url https://github.com/CaptSilver/wallpaper-engine-kde-plugin.git \
+    --commit main \
+    --spec rpm/wek.spec \
+    --type git \
+    --method make_srpm \
+    --webhook-rebuild on
 ```
 
-rpm-ostree / Bazzite:
-```sh
-rpm-ostree install ~/rpmbuild/RPMS/x86_64/wallpaper-engine-kde-plugin-qt6-*.rpm
+Then take the webhook URL from the project's Settings → Integrations page and add it to the GitHub
+repo as a webhook (content type `application/json`, push and tag events). No GitHub Actions job is
+involved — the webhook is a push notification, not CI, so `tools/scripts/preflight.sh` stays the
+quality gate.
+
+One catch on tags: COPR parses the pushed tag as `PKGNAME-VERSION` to work out what to rebuild,
+and this repo tags `v1.4`. Append the package name to the webhook URL so tag pushes resolve:
+
 ```
+https://copr.fedorainfracloud.org/webhooks/github/<id>/<uuid>/wallpaper-engine-kde-plugin-qt6/
+```
+
+Enable a chroot per Fedora release you want to serve. `fedora-44-x86_64` is what current Bazzite
+needs; `fedora-42` has been retired.
+
+## How COPR builds this
+
+COPR uses the SCM source type with `--method make_srpm`, which runs `.copr/Makefile` as root in a
+mock chroot **with network** — the only stage that has any. That matters because the tree carries
+four levels of submodules (`src/backend_scene` has seven of its own, one on gitlab.com, and
+rapidcheck/SPIRV-Reflect pull more below that), and `%prep`/`%build` are offline. All of it has to
+be inside the tarball before the build starts.
+
+Two things not to rely on:
+
+- COPR's clone is `--recursive`, but the shallow-clone retry silently drops that flag.
+- The checkout COPR runs after cloning does not refresh submodule worktrees, so building a tag
+  whose gitlink differs from the default branch gets stale sources with no error.
+
+`make-srpm.sh` re-runs `git submodule update --init --force --recursive` itself rather than trust
+either one.
+
+### Versioning
+
+Tagged commits build as the plain version (`v1.5` → `1.5`). Everything else gets a post-release
+snapshot: `1.4^20260712.10.g5c9328e` — base, commit date, **commit count**, short hash.
+
+The count is not decoration. The usual Fedora form `1.4^YYYYMMDDgit<hash>` sorts same-day commits
+by hash, so roughly half the time a newer commit compares *lower* and dnf refuses the upgrade as a
+downgrade. `^` marks a post-release, so a snapshot sorts above `1.4` and below `1.5`.
+
+Version, release and the changelog date are written into the spec as literals before rpmbuild sees
+it. The SRPM stores the spec verbatim and mock re-parses it later on a builder with no git checkout
+and a different clock, so anything left as `%(...)` gets evaluated in the wrong place at the wrong
+time. Watch for this if you edit the spec: when rpm dislikes a changelog date it discards the
+entire changelog and still exits 0. `make-srpm.sh` asserts `CHANGELOGTIME` survived.

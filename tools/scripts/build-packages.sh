@@ -268,20 +268,18 @@ build_fedora() {
     [[ -f src/backend_scene/CMakeLists.txt ]] \
         || fail "src/backend_scene missing — run 'git submodule update --init --recursive' first"
 
-    local commit
-    commit="$(git rev-parse HEAD)"
-
+    # Build through the SRPM rather than against the checkout in place, so a
+    # local RPM build exercises the same generator COPR's make_srpm step runs.
     distrobox enter "$FEDORA_BOX" -- bash -lc "
         set -euo pipefail
         TOP=/tmp/rpmbuild
         mkdir -p \$TOP/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
         rm -f \$TOP/RPMS/x86_64/wallpaper-engine-kde-plugin-qt6-*.rpm
+        cd '$REPO_ROOT'
+        tools/scripts/make-srpm.sh --outdir \$TOP/SRPMS
         rpmbuild \\
             --define='_topdir '\$TOP \\
-            --define='commit $commit' \\
-            --define='reporoot $REPO_ROOT' \\
-            --undefine=_disable_source_fetch \\
-            -ba '$REPO_ROOT/rpm/wek.spec'
+            --rebuild \$TOP/SRPMS/wallpaper-engine-kde-plugin-qt6-*.src.rpm
     " || fail "rpmbuild failed"
 
     step "Copy RPM to \$HOME"

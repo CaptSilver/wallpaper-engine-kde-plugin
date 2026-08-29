@@ -1,12 +1,19 @@
 Name:    wallpaper-engine-kde-plugin-qt6
-Version: %(cat %{reporoot}/VERSION 2>/dev/null | tr -d '[:space:]')
+Version: 1.4
 Release: 1%{?dist}
 Summary: A KDE wallpaper plugin integrating Wallpaper Engine (Plasma 6)
 
 License: GPL-2.0-only
 URL:     https://github.com/captsilver/wallpaper-engine-kde-plugin
 
-# Built from a live git checkout.
+# Built from a source tarball.  tools/scripts/make-srpm.sh produces it and
+# stamps the real Version above -- the value in-tree is only the base, so that
+# this spec stays parseable on its own (`rpmspec -q`, `dnf builddep`).
+#
+# The tarball must carry the recursed submodules: src/backend_scene has seven
+# of its own, and the %files licence rules below read third_party/*/LICENSE
+# straight out of the tree.
+Source0: %{name}-%{version}.tar.gz
 
 # Optional %check section (display-free + bus-free unit tests).  Opt in with
 # `rpmbuild --with check`; the fast-path build is unchanged.
@@ -14,19 +21,21 @@ URL:     https://github.com/captsilver/wallpaper-engine-kde-plugin
 
 BuildRequires: cmake extra-cmake-modules clang
 BuildRequires: vulkan-headers
+BuildRequires: vulkan-loader-devel
 BuildRequires: plasma-workspace-devel libplasma-devel plasma-activities-devel
-BuildRequires: kf6-plasma-devel
 BuildRequires: kf6-kcoreaddons-devel
 BuildRequires: kf6-kpackage-devel
 BuildRequires: kf6-kconfig-devel
 BuildRequires: kf6-knotifications-devel
 BuildRequires: kf6-kcrash-devel
 BuildRequires: kf6-kglobalaccel-devel
+BuildRequires: kf6-kxmlgui-devel
 BuildRequires: kf6-ki18n-devel
 BuildRequires: lz4-devel
-BuildRequires: mpv-libs-devel
+BuildRequires: mpv-devel
 BuildRequires: qt6-qtbase-private-devel
 BuildRequires: qt6-qtwebchannel-devel
+BuildRequires: qt6-qtwebengine-devel
 BuildRequires: freetype-devel
 BuildRequires: pulseaudio-libs-devel
 
@@ -47,14 +56,11 @@ Requires: kf6-kglobalaccel
 Requires: kf6-ki18n
 Recommends: gstreamer1-libav
 Recommends: qt6-qtwebengine
-Suggests: pipewire-pulse
+Suggests: pipewire-pulseaudio
 Suggests: vulkan-tools
 
 %global _enable_debug_package 0
 %global debug_package %{nil}
-
-%{?commit:%global shortcommit %(c=%{commit}; echo ${c:0:7})}
-%{!?commit:%global shortcommit unknown}
 
 %description
 A wallpaper plugin integrating Wallpaper Engine into KDE Plasma 6 wallpaper
@@ -63,21 +69,19 @@ settings. This is the RainyPixel fork with native C++ file operations
 support.
 
 %prep
-# No-op: building directly from the git checkout at %{reporoot}
-# Ensure submodules are initialised before calling wallpaper.sh:
-#   git submodule update --init --force --recursive
+%autosetup -n %{name}-%{version}
 
 %build
 export CC=clang
 export CXX=clang++
-cmake -B %{_builddir}/wek-build \
-      -S %{reporoot} \
+cmake -B _build \
+      -S . \
       -DCMAKE_BUILD_TYPE=Release \
       %{?with_check:-DBUILD_TESTS=ON}
-cmake --build %{_builddir}/wek-build -- %{?_smp_mflags}
+cmake --build _build -- %{?_smp_mflags}
 
 %install
-DESTDIR=%{buildroot} cmake --install %{_builddir}/wek-build \
+DESTDIR=%{buildroot} cmake --install _build \
       --prefix %{_prefix}
 
 %check
@@ -87,7 +91,7 @@ DESTDIR=%{buildroot} cmake --install %{_builddir}/wek-build \
 # tests/CMakeLists.txt; D-Bus-needing suites are labelled DBUS_NEEDED.  Both
 # excluded here; the full-environment suite is covered by the local preflight
 # gate on the developer side.
-ctest --test-dir %{_builddir}/wek-build/tests \
+ctest --test-dir _build/tests \
       --output-on-failure \
       --label-exclude 'DISPLAY_NEEDED|DBUS_NEEDED'
 %endif
@@ -124,9 +128,6 @@ ctest --test-dir %{_builddir}/wek-build/tests \
 %{_datadir}/knotifications6/wek.notifyrc
 
 %changelog
-* %(date +'%a %b %d %Y') packager - %{version}-%{release}.git%{shortcommit}
-- Snapshot build from commit %{shortcommit} on %(date +'%Y-%m-%d %H:%M %Z')
-
 * Sat Jul 11 2026 packager - 1.4-1
 - Wallpaper playlists: editor with ordered and shuffle playback, per-monitor scope
 - Many scene-rendering fixes: puppet rigs/attachments, scripted clocks and text,

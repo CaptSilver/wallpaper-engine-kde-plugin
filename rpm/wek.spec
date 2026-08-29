@@ -165,11 +165,10 @@ ctest --test-dir _build/tests \
 %dir %{_libdir}/qt6/qml/com/github
 %dir %{_libdir}/qt6/qml/com/github/captsilver
 %{_libdir}/qt6/qml/com/github/captsilver/wallpaperEngineKde/
-# Plasma wallpaper packages (captsilver primary + catsout shim).
+# Plasma wallpaper package.
 %dir %{_datadir}/plasma
 %dir %{_datadir}/plasma/wallpapers
 %{_datadir}/plasma/wallpapers/com.github.captsilver.wallpaperEngineKde/
-%{_datadir}/plasma/wallpapers/com.github.catsout.wallpaperEngineKde/
 # Migration script + /usr/bin symlink.
 %dir %{_datadir}/wek
 %{_datadir}/wek/scripts/

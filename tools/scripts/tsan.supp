@@ -17,7 +17,11 @@
 # QMetaType / QObject / QJSEngine one-time lazy init touched from the Qt event
 # machinery (scenescript_tests instantiates QJSEngine + SceneTimerBridge).
 called_from_lib:libQt6Core
-called_from_lib:libQt6Qml
+# Qt split libQt6QmlMeta out of libQt6Qml, so the bare substring now matches
+# two loaded libraries and TSAN rejects an ambiguous called_from_lib outright
+# (it aborts before running a single test).  Name both exactly.
+called_from_lib:libQt6Qml.so.6
+called_from_lib:libQt6QmlMeta.so.6
 called_from_lib:libQt6Gui
 race:QMetaType
 race:QtPrivate::

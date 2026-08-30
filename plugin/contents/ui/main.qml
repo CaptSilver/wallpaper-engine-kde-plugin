@@ -27,12 +27,12 @@ Rectangle {
     // Swapchain present-mode policy (0=Auto / 1=Fifo / 2=FifoRelaxed / 3=Mailbox / 4=Immediate).
     // Pumped to backend/Scene.qml -> SceneViewer.presentMode -> SceneWallpaper.
     property int    presentMode: wallpaper.configuration.PresentMode
-    // Output refresh rate in Hz, sampled from Window.screen.refreshRate.  Auto
-    // policy uses this against `fps` to pick MAILBOX / FIFO_RELAXED / FIFO.
-    // Window.screen is null until the plasmoid is mapped; fall back to 60 then.
-    property int    outputRefreshHz: Window.screen
-                                     ? Math.round(Window.screen.refreshRate)
-                                     : 60
+    // Display refresh in millihertz (59.94Hz -> 59940) — the engine needs the
+    // fraction to pace frames on the true display grid.  Window.screen is
+    // null until the plasmoid is mapped; 0 = unknown.
+    property int    outputRefreshMillihertz: Window.screen
+                                             ? Math.round(Window.screen.refreshRate * 1000)
+                                             : 0
 
     property bool   randomizeWallpaper: wallpaper.configuration.RandomizeWallpaper
     property bool   noRandomWhilePaused: wallpaper.configuration.NoRandomWhilePaused

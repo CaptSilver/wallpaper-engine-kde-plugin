@@ -33,10 +33,12 @@ race:g_private_get
 race:g_slice
 
 # ── libstdc++ runtime ────────────────────────────────────────────────────────
-# std::atomic<std::shared_ptr<T>> is implemented with a sharded spinlock/mutex
-# table in libstdc++; its internal bookkeeping can surface as benign reports.
-# Also covers libstdc++'s own lazy locale/facet init.
-called_from_lib:libstdc++
+# Never add `called_from_lib:libstdc++` here.  A called_from_lib match makes
+# TSAN skip the body of every pthread interceptor whose caller PC is in that
+# library (MustIgnoreInterceptor -> return REAL(func)).  condition_variable::
+# wait() is out-of-line in libstdc++.so, so the pthread_cond_wait interceptor
+# never records the unlock; TSAN keeps thinking the waiting thread still owns
+# the mutex and flags the next lock from any other thread as "double lock".
 race:__gnu_cxx::
 
 # ── dynamic loader / C runtime ────────────────────────────────────────────────

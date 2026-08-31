@@ -24,7 +24,7 @@ Item {
     property string postprocessingOverride: ""  // wallpaper-default when empty
     property bool   systemAudioCapture: false
     property int    presentMode:    0    // Swapchain present-mode policy (Auto=0)
-    property int    outputRefreshMillihertz: 60000  // millihertz (59.94Hz -> 59940)
+    property int    outputRefreshMillihertz: 0      // 0 = no screen rate yet; C++ fills it from QScreen
     property real   nativeAspectRatio:  0  // 0 = scene not loaded yet (real type's sentinel)
 
     signal firstFrame()

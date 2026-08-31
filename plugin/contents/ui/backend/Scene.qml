@@ -100,7 +100,6 @@ Item{
         // SceneWallpaper.  The refresh feeds frame pacing; the policy only
         // matters on surface builds (standalone viewer).
         presentMode: background.presentMode
-        outputRefreshMillihertz: background.outputRefreshMillihertz
         muted: background.mute
         speed: background.speed
         assets: sceneItem.assets

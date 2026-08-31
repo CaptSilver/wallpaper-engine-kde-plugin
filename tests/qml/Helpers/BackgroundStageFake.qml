@@ -17,7 +17,6 @@ Rectangle {
     property real   speed:              1.0
     property int    fps:                30
     property int    presentMode:        0       // Auto (matches main.xml default)
-    property int    outputRefreshMillihertz: 60000  // millihertz (59.94Hz -> 59940); 0 = unmapped
     property bool   hdrOutput:          false
     property string postProcessing:     ""
     property bool   systemAudioCapture: false

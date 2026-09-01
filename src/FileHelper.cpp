@@ -1,4 +1,5 @@
 #include "FileHelper.hpp"
+#include "CachePaths.hpp"
 #include <QFile>
 #include <QDir>
 #include <QDirIterator>
@@ -32,6 +33,14 @@ namespace
 // an exact match or a child separated by '/'.
 static bool isUnderRoot(const QString& canon, const QString& root) {
     return canon == root || canon.startsWith(root + QLatin1Char('/'));
+}
+
+// Same containment rule minus the exact-match arm. Every destructive cache
+// entry point uses this one: the guard root is the whole user cache
+// directory, so accepting an exact match would let a stray cache_path of
+// "~/.cache" wipe every other application's cache too.
+static bool isStrictlyUnderRoot(const QString& canon, const QString& root) {
+    return ! root.isEmpty() && canon.startsWith(root + QLatin1Char('/'));
 }
 
 // True iff `canon` is under any root in `roots`. Empty canon never matches
@@ -304,7 +313,17 @@ void FileHelper::requestReadFile(const QString& path) {
     // readFile; this gets the work off the GUI thread without bypassing any of
     // the gates the sync readFile enforces. m_pool waitForDone() in the dtor
     // keeps `this` alive until in-flight lambdas finish.
-    m_pool.start([this, path]() {
+    //
+    // The allowlist is snapshotted here, on the calling thread — the worker must
+    // never touch m_readRoots. QML rewrites that set on every settings change
+    // (clearReadRoots() then one addReadRoot() per entry) while a library scan's
+    // worth of jobs is still queued, so a worker reading the member would iterate
+    // a QSet the GUI thread is rehashing or has already freed. The copy is a
+    // refcount bump, not a deep copy — QSet is implicitly shared. It also fixes
+    // the semantics: a job is judged by the allowlist in force when it was
+    // queued, so changing the Steam library mid-scan no longer retroactively
+    // refuses reads already in flight.
+    m_pool.start([this, path, roots = m_readRoots]() {
         QByteArray contents;
         bool       ok = false;
 
@@ -316,7 +335,7 @@ void FileHelper::requestReadFile(const QString& path) {
         // Canonicalise; non-existent paths canonicalise to empty string.
         const QString canon = QFileInfo(native).canonicalFilePath();
 
-        const bool allowlistOk = m_readRoots.isEmpty() ? true : isUnderAnyRoot(canon, m_readRoots);
+        const bool allowlistOk = roots.isEmpty() ? true : isUnderAnyRoot(canon, roots);
         if (! allowlistOk) {
             qWarning() << "FileHelper::requestReadFile refused path outside allowed roots:" << path
                        << "(canon:" << canon << ")";
@@ -471,46 +490,28 @@ void FileHelper::resetWallpaperConfig(const QString& id) {
     QFile::remove(filePath);
 }
 
-bool FileHelper::clearCacheDir(const QString& path) {
-    if (path.isEmpty()) return false;
-    // Safety belt: refuse anything outside QStandardPaths::CacheLocation.
-    // Strip file:// if present and resolve symlinks to defeat path tricks.
-    QString native = path;
-    if (native.startsWith("file://")) native = native.mid(7);
-    const QString cacheRoot =
-        QFileInfo(QStandardPaths::writableLocation(QStandardPaths::CacheLocation))
-            .canonicalFilePath();
-    if (cacheRoot.isEmpty()) return false;
-    // Path may not exist (nothing to clear) — canonicalize what we have:
-    // existing → its own canonical path; missing → walk up to the first
-    // existing ancestor and confirm it's under cacheRoot, then treat the
-    // child as a no-op success.
-    QString canon = QFileInfo(native).canonicalFilePath();
-    if (canon.isEmpty()) {
-        // Path doesn't exist. Confirm the parent (or first existing
-        // ancestor) is under cacheRoot — if so, "nothing to clear" is a
-        // successful no-op.
-        QFileInfo fi(native);
-        QDir      parent = fi.dir();
-        while (! parent.exists() && parent.cdUp()) { /* walk up */
-        }
-        const QString parentCanon = QFileInfo(parent.absolutePath()).canonicalFilePath();
-        if (parentCanon.isEmpty() || ! isUnderRoot(parentCanon, cacheRoot)) {
-            qWarning() << "FileHelper::clearCacheDir refused missing path "
-                          "outside cache root:"
-                       << path;
-            return false;
-        }
-        return true; // nothing to clear
-    }
-    if (! isUnderRoot(canon, cacheRoot)) {
-        qWarning() << "FileHelper::clearCacheDir refused path outside cache root:" << path;
+namespace
+{
+// Deepest directory nesting clearCacheDir will descend. The renderer cache is
+// two or three levels (<cache>/<sceneId>/spvsNN); anything approaching this is
+// a mistake or an attempt to blow the stack of a .so living inside
+// plasmashell, so stop and say so rather than recursing into it.
+constexpr int kMaxCacheDepth = 32;
+
+// Remove the contents of `dirPath`, recursively, keeping anything
+// isPreservedCacheFile() flags as user state plus any directory that still
+// holds one. `cacheRoot` anchors the symlink-escape and TOCTOU re-checks at
+// every level, not just the top. Sets `keptSomething` when a preserved file
+// survived below `dirPath`. Returns false on the first hard failure.
+bool clearCacheContents(const QString& dirPath, const QString& cacheRoot, bool& keptSomething,
+                        int depth = 0) {
+    if (depth > kMaxCacheDepth) {
+        qWarning() << "FileHelper::clearCacheDir refused to descend past" << kMaxCacheDepth
+                   << "levels at" << dirPath;
         return false;
     }
-    QDir dir(canon);
-    if (! dir.exists()) return true; // nothing to clear
-    // Remove the directory contents but keep the directory itself so the
-    // caller's binding to it (e.g. plugin_info.cache_path) stays valid.
+    QDir dir(dirPath);
+    if (! dir.exists()) return true;
     const QFileInfoList entries =
         dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden);
     for (const QFileInfo& fi : entries) {
@@ -546,12 +547,21 @@ bool FileHelper::clearCacheDir(const QString& path) {
                            << fi.absoluteFilePath();
                 return false;
             }
-            QDir sub(fi.absoluteFilePath());
-            if (! sub.removeRecursively()) {
+            bool keptInside = false;
+            if (! clearCacheContents(entryCanon, cacheRoot, keptInside, depth + 1)) return false;
+            if (keptInside) {
+                keptSomething = true;
+                continue; // the directory still holds user state
+            }
+            if (! dir.rmdir(fi.fileName())) {
                 qWarning() << "FileHelper::clearCacheDir failed on" << fi.absoluteFilePath();
                 return false;
             }
         } else {
+            if (cache_paths::isPreservedCacheFile(fi.fileName())) {
+                keptSomething = true;
+                continue;
+            }
             if (! QFile::remove(fi.absoluteFilePath())) {
                 qWarning() << "FileHelper::clearCacheDir failed on" << fi.absoluteFilePath();
                 return false;
@@ -559,6 +569,52 @@ bool FileHelper::clearCacheDir(const QString& path) {
         }
     }
     return true;
+}
+} // namespace
+
+bool FileHelper::clearCacheDir(const QString& path) {
+    if (path.isEmpty()) return false;
+    // Safety belt: refuse anything that is not a strict descendant of the
+    // user cache root. Strip file:// if present and resolve symlinks to
+    // defeat path tricks.
+    QString native = path;
+    if (native.startsWith("file://")) native = native.mid(7);
+    const QString cacheRoot = cache_paths::userCacheRoot();
+    if (cacheRoot.isEmpty()) return false;
+    // Path may not exist (nothing to clear) — canonicalize what we have:
+    // existing → its own canonical path; missing → walk up to the first
+    // existing ancestor and confirm it's under cacheRoot, then treat the
+    // child as a no-op success.
+    QString canon = QFileInfo(native).canonicalFilePath();
+    if (canon.isEmpty()) {
+        // Path doesn't exist. Confirm the parent (or first existing
+        // ancestor) is under cacheRoot — if so, "nothing to clear" is a
+        // successful no-op. The ancestor may BE the root: the missing child
+        // is then still a strict descendant, and this branch deletes nothing
+        // either way.
+        QFileInfo fi(native);
+        QDir      parent = fi.dir();
+        while (! parent.exists() && parent.cdUp()) { /* walk up */
+        }
+        const QString parentCanon = QFileInfo(parent.absolutePath()).canonicalFilePath();
+        if (parentCanon.isEmpty() || ! isUnderRoot(parentCanon, cacheRoot)) {
+            qWarning() << "FileHelper::clearCacheDir refused missing path "
+                          "outside cache root:"
+                       << path;
+            return false;
+        }
+        return true; // nothing to clear
+    }
+    if (! isStrictlyUnderRoot(canon, cacheRoot)) {
+        qWarning() << "FileHelper::clearCacheDir refused path outside cache root:" << path;
+        return false;
+    }
+    QDir dir(canon);
+    if (! dir.exists()) return true; // nothing to clear
+    // Remove the directory contents but keep the directory itself so the
+    // caller's binding to it (e.g. plugin_info.cache_path) stays valid.
+    bool kept = false;
+    return clearCacheContents(canon, cacheRoot, kept);
 }
 
 QVariantList FileHelper::readActiveBindings(const QString& id) {
@@ -677,63 +733,74 @@ QVariantList FileHelper::scanVideoFolder(const QString& path) {
 
 namespace
 {
-// True iff `src` resolves under any of the seeded roots OR exists as a real
-// file. Used by pruneOrphanThumbnails: a thumbnail "lives" while its source
-// remains visible to the plugin (either canonically under a workshop dir or
-// directly accessible at the recorded path). Empty roots => only the
-// file-exists check matters.
-bool sourceStillLive(const QString& src, const QSet<QString>& canonRoots) {
+// True iff a thumbnail's source is still worth keeping a thumbnail for. Used
+// by pruneOrphanThumbnails.
+//
+// `roots` are CLEANED, not canonicalised — canonicalising drops the roots
+// that matter most here, because a root on an unplugged drive canonicalises
+// to an empty string and vanishes from the set. Which is why this comparison
+// is textual.
+bool sourceStillLive(const QString& src, const QSet<QString>& roots) {
     if (src.isEmpty()) return false;
-    // First the cheap path-existence test — covers Videos-tab sources that
-    // are absolute symlinks outside any seeded root.
+    // The cheap test first — also covers Videos-tab sources that are absolute
+    // symlinks outside any seeded root.
     if (QFileInfo::exists(src)) return true;
-    // Otherwise see if it canonically lands under one of the seeded roots
-    // (workshop/myprojects/defaultprojects/video-folder). canonicalFilePath
-    // returns empty if the file is missing, so this branch covers the
-    // "seeded root exists but the file was deleted" case AS A MISS — meaning
-    // we treat it as an orphan, which matches expectations: a deleted source
-    // file under a still-mounted workshop dir is gone for good.
-    const QString canon = QFileInfo(src).canonicalFilePath();
-    if (canon.isEmpty()) return false;
-    return isUnderAnyRoot(canon, canonRoots);
+    const QString clean = QDir::cleanPath(src);
+    for (const QString& root : roots) {
+        if (! isUnderRoot(clean, root)) continue;
+        // The source is gone but its root is recorded. Keep the thumbnail iff
+        // that root is not currently visible (drive unplugged, Steam library
+        // unmounted) — the source may well come back. Root present and file
+        // gone means the user deleted the wallpaper: orphan.
+        return ! QFileInfo::exists(root);
+    }
+    return false;
 }
 } // namespace
+
+QString FileHelper::videoThumbDir(const QString& cacheRoot) {
+    if (cacheRoot.isEmpty()) return {};
+    QString native = cacheRoot;
+    if (native.startsWith("file://")) native = native.mid(7);
+    while (native.size() > 1 && native.endsWith(QLatin1Char('/'))) native.chop(1);
+    return native + QStringLiteral("/video-thumbs");
+}
 
 qint64 FileHelper::pruneOrphanThumbnails(const QString&     cacheRoot,
                                          const QStringList& installedWallpaperDirs,
                                          const QStringList& videoFolderPaths) {
     if (cacheRoot.isEmpty()) return 0;
-    // Safety belt: refuse anything outside QStandardPaths::CacheLocation.
-    // Mirrors clearCacheDir.
+    // Safety belt: refuse anything that is not a strict descendant of the
+    // user cache root. Mirrors clearCacheDir.
     QString native = cacheRoot;
     if (native.startsWith("file://")) native = native.mid(7);
-    const QString cacheRootCanon =
-        QFileInfo(QStandardPaths::writableLocation(QStandardPaths::CacheLocation))
-            .canonicalFilePath();
+    const QString cacheRootCanon = cache_paths::userCacheRoot();
     if (cacheRootCanon.isEmpty()) return 0;
     const QString canon = QFileInfo(native).canonicalFilePath();
     if (canon.isEmpty()) return 0; // dir doesn't exist => nothing to do
-    if (! isUnderRoot(canon, cacheRootCanon)) {
+    if (! isStrictlyUnderRoot(canon, cacheRootCanon)) {
         qWarning() << "FileHelper::pruneOrphanThumbnails refused path outside cache root:"
                    << cacheRoot;
         return 0;
     }
 
-    // Build canonicalised root set from installedWallpaperDirs + videoFolderPaths.
-    // Each entry is canonicalised on insert; non-existent paths are dropped.
-    QSet<QString> canonRoots;
+    // Root set from installedWallpaperDirs + videoFolderPaths. Cleaned, NOT
+    // canonicalised: a root on an unplugged drive canonicalises to an empty
+    // string, and dropping it here is what made the unmounted-library case
+    // reap thumbnails it should have kept.
+    QSet<QString> roots;
     auto          addRoot = [&](const QString& p) {
         if (p.isEmpty()) return;
         QString s = p;
         if (s.startsWith("file://")) s = s.mid(7);
-        const QString c = QFileInfo(s).canonicalFilePath();
-        if (! c.isEmpty()) canonRoots.insert(c);
+        roots.insert(QDir::cleanPath(s));
     };
     for (const QString& p : installedWallpaperDirs) addRoot(p);
     for (const QString& p : videoFolderPaths) addRoot(p);
 
     qint64 freed = 0;
-    QDir   dir(canon);
+    // Callers hand over the cache ROOT; the thumbnails are one level down.
+    QDir dir(videoThumbDir(canon));
     if (! dir.exists()) return 0;
     // Walk top-level files only — video-thumbs is a flat dir of <hash>.jpg.
     const QFileInfoList entries =
@@ -754,7 +821,7 @@ qint64 FileHelper::pruneOrphanThumbnails(const QString&     cacheRoot,
         mf.close();
         if (doc.isNull() || ! doc.isObject()) continue;
         const QString src = doc.object().value("src").toString();
-        if (sourceStillLive(src, canonRoots)) continue;
+        if (sourceStillLive(src, roots)) continue;
 
         // Orphan — drop the .meta and its companion .jpg (if any).
         const QString jpgPath  = metaPath.left(metaPath.size() - 5) + QStringLiteral(".jpg");
@@ -767,11 +834,9 @@ qint64 FileHelper::pruneOrphanThumbnails(const QString&     cacheRoot,
     return freed;
 }
 
-qint64 FileHelper::enforceCacheQuotaForce(const QStringList& roots, qint64 quotaBytes) {
+qint64 FileHelper::sweepCacheQuota(const QStringList& roots, qint64 quotaBytes) {
     if (quotaBytes <= 0) return 0; // 0 = unlimited
-    const QString cacheRootCanon =
-        QFileInfo(QStandardPaths::writableLocation(QStandardPaths::CacheLocation))
-            .canonicalFilePath();
+    const QString cacheRootCanon = cache_paths::userCacheRoot();
     if (cacheRootCanon.isEmpty()) return 0;
 
     // Collect every regular file under each root, with its atime + size.
@@ -788,7 +853,7 @@ qint64 FileHelper::enforceCacheQuotaForce(const QStringList& roots, qint64 quota
         if (native.startsWith("file://")) native = native.mid(7);
         const QString canon = QFileInfo(native).canonicalFilePath();
         if (canon.isEmpty()) continue;
-        if (! isUnderRoot(canon, cacheRootCanon)) {
+        if (! isStrictlyUnderRoot(canon, cacheRootCanon)) {
             qWarning() << "FileHelper::enforceCacheQuota refused root outside cache:" << root;
             continue;
         }
@@ -796,7 +861,17 @@ qint64 FileHelper::enforceCacheQuotaForce(const QStringList& roots, qint64 quota
         while (it.hasNext()) {
             const QString   fp = it.next();
             const QFileInfo fi(fp);
-            Entry           e;
+            // Per-entry containment re-check, matching clearCacheDir and
+            // pruneOrphanThumbnails. An entry whose real target sits outside
+            // the cache — a symlink, a bind mount — is not our storage: don't
+            // count its bytes and don't delete it.
+            const QString entryCanon = fi.canonicalFilePath();
+            if (entryCanon.isEmpty() || ! isUnderRoot(entryCanon, cacheRootCanon)) {
+                qWarning() << "FileHelper::enforceCacheQuota refused entry outside cache root:"
+                           << fi.absoluteFilePath();
+                continue;
+            }
+            Entry e;
             e.path = fi.absoluteFilePath();
             // Prefer atime (recent reads bump it on relatime mounts); fall
             // back to mtime when atime <= mtime (a heuristic for noatime
@@ -806,15 +881,14 @@ qint64 FileHelper::enforceCacheQuotaForce(const QStringList& roots, qint64 quota
             e.atime            = (atime > mtime) ? atime : mtime;
             e.size             = fi.size();
             total += e.size;
+            // Persistent state counts toward the footprint the user asked us
+            // to cap, but it is never a candidate: SceneScript localStorage is
+            // the wallpaper's save data and nothing regenerates it.
+            if (cache_paths::isPreservedCacheFile(e.path)) continue;
             all.append(e);
         }
     }
-    if (total <= quotaBytes) {
-        // Under quota — no eviction needed. Don't touch m_lastGcBytesFreed
-        // (preserve the previous freed value so the UI keeps showing the
-        // most recent activity rather than flickering back to 0).
-        return 0;
-    }
+    if (total <= quotaBytes) return 0; // under quota — no eviction needed
 
     // Sort oldest-first by atime; delete until under cap.
     std::sort(all.begin(), all.end(), [](const Entry& a, const Entry& b) {
@@ -851,21 +925,58 @@ qint64 FileHelper::enforceCacheQuotaForce(const QStringList& roots, qint64 quota
             }
         }
     }
+    return freed;
+}
 
+qint64 FileHelper::enforceCacheQuotaForce(const QStringList& roots, qint64 quotaBytes) {
+    const qint64 freed = sweepCacheQuota(roots, quotaBytes);
+    // Arm the throttle on every completed walk, not just the ones that
+    // evicted: "one run per minute" is about the cost of the walk, and the
+    // under-quota case is the common one.
     m_lastEnforceMs = QDateTime::currentMSecsSinceEpoch();
-    if (freed != m_lastGcBytesFreed) {
+    // Leave m_lastGcBytesFreed alone on a no-op run so the UI keeps showing
+    // the most recent real activity instead of flickering back to 0.
+    if (freed > 0 && freed != m_lastGcBytesFreed) {
         m_lastGcBytesFreed = freed;
         emit lastGcBytesFreedChanged();
     }
     return freed;
 }
 
+void FileHelper::requestCacheGc(const QString& cacheRoot, const QStringList& installedWallpaperDirs,
+                                const QStringList& videoFolderPaths, qint64 quotaBytes) {
+    if (cacheRoot.isEmpty()) return;
+    // Throttle here, on the calling (GUI) thread, so a burst of wallpaper
+    // switches can't queue one full tree walk per switch.
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (m_lastEnforceMs != 0 && (now - m_lastEnforceMs) < kGcCooldownMs) return;
+    // Both halves are pure walks over the filesystem — no instance state —
+    // so they are safe on a pool thread. The bookkeeping and the signal
+    // marshal back to the GUI thread. m_pool is per-instance and the dtor
+    // waitForDone()s it, so `this` outlives the job.
+    m_pool.start([this, cacheRoot, installedWallpaperDirs, videoFolderPaths, quotaBytes]() {
+        const qint64 pruned =
+            pruneOrphanThumbnails(cacheRoot, installedWallpaperDirs, videoFolderPaths);
+        const qint64 evicted = sweepCacheQuota({ cacheRoot }, quotaBytes);
+        QMetaObject::invokeMethod(
+            this,
+            [this, pruned, evicted]() {
+                m_lastEnforceMs = QDateTime::currentMSecsSinceEpoch();
+                if (evicted > 0 && evicted != m_lastGcBytesFreed) {
+                    m_lastGcBytesFreed = evicted;
+                    emit lastGcBytesFreedChanged();
+                }
+                emit cacheGcFinished(pruned, evicted);
+            },
+            Qt::QueuedConnection);
+    });
+}
+
 qint64 FileHelper::enforceCacheQuota(const QStringList& roots, qint64 quotaBytes) {
-    // Throttle: skip if a successful run completed within the last 60 s.
-    // The "Run cache GC now" button calls enforceCacheQuotaForce to bypass.
-    const qint64 now      = QDateTime::currentMSecsSinceEpoch();
-    const qint64 cooldown = 60'000;
-    if (m_lastEnforceMs != 0 && (now - m_lastEnforceMs) < cooldown) {
+    // Throttle: skip if a run completed within the last minute. The "Run
+    // cache GC now" button calls enforceCacheQuotaForce to bypass.
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (m_lastEnforceMs != 0 && (now - m_lastEnforceMs) < kGcCooldownMs) {
         return m_lastGcBytesFreed; // Report previous, no work this call.
     }
     return enforceCacheQuotaForce(roots, quotaBytes);

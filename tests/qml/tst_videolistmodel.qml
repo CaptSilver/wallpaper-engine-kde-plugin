@@ -23,6 +23,11 @@ TestCase {
         function generate_thumbnail(videoPath, outPath, atSeconds) {
             return Promise.resolve(outPath);
         }
+        // Mirrors Pyext.video_thumb_dir -> FileHelper::videoThumbDir; the
+        // model asks C++ for the layout instead of spelling it out.
+        function video_thumb_dir(cacheRoot) {
+            return cacheRoot.replace(/\/+$/, "") + "/video-thumbs";
+        }
     }
 
     Component {

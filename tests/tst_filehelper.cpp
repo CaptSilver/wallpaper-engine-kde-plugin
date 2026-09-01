@@ -7,6 +7,7 @@
 
 #include <QtTest>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -14,9 +15,11 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
+#include <QThread>
 #include <QVariantList>
 #include <QVariantMap>
 
+#include "CachePaths.hpp"
 #include "FileHelper.hpp"
 #include "TestSandbox.h"
 
@@ -34,6 +37,28 @@ private:
         if (! f.open(QIODevice::WriteOnly)) return false;
         f.write(QByteArray(size, fill));
         return true;
+    }
+
+    // Fill `dir` with empty files until one synchronous getDirSize walk costs at
+    // least `minMs`. Used to park every pool thread inside a long job so a later
+    // dispatch is provably still queued. A hard-coded file count would quietly
+    // stop being slow enough on a faster box and turn a deterministic test into
+    // a coin flip; this calibrates against the machine it runs on. Returns false
+    // if the entry cap is hit without getting slow enough, so the caller skips
+    // rather than proceeding on a broken assumption.
+    static bool makeSlowWalkDir(FileHelper& helper, const QString& dir, int minMs) {
+        int made = 0;
+        while (made < 40000) {
+            for (int i = 0; i < 4000; ++i, ++made) {
+                QFile f(dir + QStringLiteral("/e%1").arg(made));
+                if (! f.open(QIODevice::WriteOnly)) return false;
+            }
+            QElapsedTimer t;
+            t.start();
+            helper.getDirSize(dir, 0); // synchronous — runs here, not on the pool
+            if (t.elapsed() >= minMs) return true;
+        }
+        return false;
     }
 
 private slots:
@@ -497,6 +522,115 @@ private slots:
         for (int i = 0; i < N; ++i) {
             QCOMPARE(spy.at(i).at(2).toBool(), true);
             QCOMPARE(spy.at(i).at(1).toByteArray().size(), qint64(1024));
+        }
+    }
+
+    void requestReadFile_usesAllowlistSnapshotTakenAtDispatch() {
+        // A settings change rewrites the allowlist (clearReadRoots() then a
+        // fresh addReadRoot() per entry) while a library scan's worth of read
+        // jobs is still queued. Each queued job must be judged by the allowlist
+        // that was in force when it was dispatched, not by whatever the set
+        // happens to hold when a pool thread finally picks the job up.
+        //
+        // Determinism comes from parking every pool thread in a long dirSize
+        // walk first: the probes below cannot start until those drain, which
+        // takes milliseconds, while the allowlist rewrite on this thread is two
+        // calls and one realpath(). So the probes are guaranteed to still be
+        // queued when the set changes underneath them.
+        QTemporaryDir tdFiles, tdOther, tdBusy;
+        QVERIFY(tdFiles.isValid());
+        QVERIFY(tdOther.isValid());
+        QVERIFY(tdBusy.isValid());
+
+        FileHelper helper;
+        if (! makeSlowWalkDir(helper, tdBusy.path(), 5))
+            QSKIP("cannot make a slow enough walk dir on this filesystem");
+
+        const int      kProbes = 16;
+        QList<QString> probes;
+        for (int i = 0; i < kProbes; ++i) {
+            const QString p = tdFiles.filePath(QStringLiteral("p%1.json").arg(i));
+            QVERIFY(writeBytes(p, 64));
+            probes.append(p);
+        }
+
+        helper.addReadRoot(tdFiles.path());
+        QSignalSpy spy(&helper, &FileHelper::fileReadReady);
+
+        // Occupy every pool thread. requestDirSize shares m_pool but emits
+        // dirSizeReady, so these never land in the fileReadReady spy.
+        const int blockers = qMax(QThread::idealThreadCount(), 4) * 2;
+        for (int i = 0; i < blockers; ++i) helper.requestDirSize(tdBusy.path(), 0);
+
+        // Queued behind the blockers — none of these can have started yet.
+        for (const QString& p : probes) helper.requestReadFile(p);
+
+        // The settings change, exactly as QML performs it.
+        helper.clearReadRoots();
+        helper.addReadRoot(tdOther.path());
+
+        QTRY_COMPARE_WITH_TIMEOUT(spy.count(), kProbes, 60000);
+        for (int i = 0; i < spy.count(); ++i) {
+            QVERIFY2(spy.at(i).at(2).toBool(),
+                     "a queued read was judged against the post-dispatch allowlist");
+            // Contents too, so ok==true can't be satisfied by an empty read.
+            QCOMPARE(spy.at(i).at(1).toByteArray().size(), qint64(64));
+        }
+    }
+
+    void requestReadFile_allowlistChurnDuringDrainIsRaceFree() {
+        // Memory-safety pin, not a behaviour test. Here the GUI thread and the
+        // pool workers are genuinely inside the QSet at the same time: unfixed,
+        // clearReadRoots() drops the last reference and frees the hash's span
+        // array while a worker is walking it, so ASAN reports a
+        // heap-use-after-free under isUnderAnyRoot — on the span itself or on a
+        // QString element copied out of it, depending on where the worker got
+        // caught. Functionally it can pass even unfixed — a
+        // worker that happens to observe the transient empty set takes the
+        // permissive branch and still returns the bytes — so its value is that
+        // it drives the freed-node walk, not that it asserts. Don't
+        // "simplify" it into the batch test.
+        //
+        // The churn is interleaved with the dispatch, not run after it: 400
+        // jobs dispatch in a couple of milliseconds and a wide pool drains
+        // them inside that window, so a trailing-only churn loop overlaps
+        // nothing but the tail. Repeated rounds because thread scheduling is
+        // not reproducible.
+        QTemporaryDir td;
+        QVERIFY(td.isValid());
+        const int      N = 400;
+        QList<QString> paths;
+        for (int i = 0; i < N; ++i) {
+            const QString p = td.filePath(QStringLiteral("c%1.json").arg(i));
+            QVERIFY(writeBytes(p, 1024));
+            paths.append(p);
+        }
+
+        for (int round = 0; round < 5; ++round) {
+            FileHelper helper;
+            helper.addReadRoot(td.path());
+            QSignalSpy spy(&helper, &FileHelper::fileReadReady);
+
+            for (int i = 0; i < N; ++i) {
+                helper.requestReadFile(paths.at(i));
+                if (i % 8 == 7) {
+                    helper.clearReadRoots();
+                    helper.addReadRoot(td.path());
+                }
+            }
+            for (int i = 0; i < 200; ++i) {
+                helper.clearReadRoots();
+                helper.addReadRoot(td.path());
+            }
+
+            QTRY_COMPARE_WITH_TIMEOUT(spy.count(), N, 30000);
+            // A dispatch never lands between a clear() and its paired
+            // addReadRoot() — both run on this thread — so every snapshot is
+            // the seeded root and every read must succeed.
+            for (int i = 0; i < N; ++i) {
+                QCOMPARE(spy.at(i).at(2).toBool(), true);
+                QCOMPARE(spy.at(i).at(1).toByteArray().size(), qint64(1024));
+            }
         }
     }
 
@@ -1418,6 +1552,22 @@ private slots:
         return QFileInfo(raw).canonicalFilePath();
     }
 
+    // The shape production actually passes. The renderer builds its cache dir
+    // straight from $XDG_CACHE_HOME with no application-name segment, so
+    // plugin_info.cache_path is a SIBLING of the host application's
+    // QStandardPaths::CacheLocation, never a child of it. Every pre-existing
+    // cache case below builds its fixture from CacheLocation — the same
+    // expression the guard used — so none of them ever saw this geometry.
+    // mkpath the generic root first: canonicalFilePath() on a directory that
+    // doesn't exist yet returns an empty string.
+    static QString rendererCacheFixture() {
+        const QString generic =
+            QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation);
+        if (generic.isEmpty()) return QString();
+        QDir().mkpath(generic);
+        return wekde::cache_paths::rendererCacheDir();
+    }
+
     void clearCacheDir_acceptsPathInsideCacheRoot() {
         const QString root = cacheRootCanonical();
         QDir().mkpath(root); // ensure the cache root exists for canonicalization
@@ -1468,7 +1618,14 @@ private slots:
     // delete its contents — data loss outside the cache. The fix requires an
     // exact match or a child separated by '/'.
     void clearCacheDir_refusesSiblingPrefixOfCacheRoot() {
-        const QString root = cacheRootCanonical();
+        // Rooted at the guard's own root, not CacheLocation: CacheLocation is
+        // now a child of it, so "<CacheLocation>-sibling" would be *inside* the
+        // guard root and this case would assert the opposite of its name.
+        const QString generic =
+            QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation);
+        QVERIFY(! generic.isEmpty());
+        QDir().mkpath(generic);
+        const QString root = QFileInfo(generic).canonicalFilePath();
         QVERIFY(! root.isEmpty());
         // A real dir OUTSIDE the canonical root but sharing its name prefix.
         const QString sibling = root + "-sibling";
@@ -1489,9 +1646,10 @@ private slots:
         QDir(sibling).removeRecursively();
     }
 
-    // The exact-match arm of the F15 predicate must remain reachable: the
-    // cache root itself is the live binding target (plugin_info.cache_path)
-    // and clearing its own contents is the normal case.
+    // A strict child of the guard root is accepted. This used to double as the
+    // "clear the live binding target" case, but plugin_info.cache_path is
+    // <user cache>/wescene-renderer now — see
+    // clearCacheDir_acceptsRendererCacheDirBesideHostAppCache for that.
     void clearCacheDir_acceptsCacheRootItself() {
         const QString root = cacheRootCanonical();
         QVERIFY(! root.isEmpty());
@@ -1682,11 +1840,12 @@ private slots:
     // candidates. Entries without a sidecar are kept (backwards-safe for
     // pre-feature caches).
     void pruneOrphanThumbnails_removesOrphansKeepsLive() {
-        // Place the cache under QStandardPaths::CacheLocation so the
-        // isUnderRoot belt accepts it.
+        // Callers hand over the cache ROOT; the thumbnails live one level down
+        // in video-thumbs/, which is where the walk has to look.
         const QString cacheRoot =
             QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/wekde-test-prune-A";
-        QDir().mkpath(cacheRoot);
+        const QString thumbDir = cacheRoot + "/video-thumbs";
+        QDir().mkpath(thumbDir);
         struct Cleanup {
             QString path;
             ~Cleanup() { QDir(path).removeRecursively(); }
@@ -1702,46 +1861,47 @@ private slots:
         lf.close();
 
         // Orphan entry: abc.jpg + abc.meta pointing at a deleted file.
-        QVERIFY(writeBytes(cacheRoot + "/abc.jpg", 1024));
-        QFile am(cacheRoot + "/abc.meta");
+        QVERIFY(writeBytes(thumbDir + "/abc.jpg", 1024));
+        QFile am(thumbDir + "/abc.meta");
         QVERIFY(am.open(QIODevice::WriteOnly));
         am.write(QJsonDocument(QJsonObject { { "src", "/nonexistent.mp4" } })
                      .toJson(QJsonDocument::Compact));
         am.close();
 
         // Live entry: def.jpg + def.meta pointing at the touched real file.
-        QVERIFY(writeBytes(cacheRoot + "/def.jpg", 2048));
-        QFile dm(cacheRoot + "/def.meta");
+        QVERIFY(writeBytes(thumbDir + "/def.jpg", 2048));
+        QFile dm(thumbDir + "/def.meta");
         QVERIFY(dm.open(QIODevice::WriteOnly));
         dm.write(QJsonDocument(QJsonObject { { "src", liveSrc } }).toJson(QJsonDocument::Compact));
         dm.close();
 
         // No-sidecar entry: kept (backwards-safe).
-        QVERIFY(writeBytes(cacheRoot + "/nosc.jpg", 512));
+        QVERIFY(writeBytes(thumbDir + "/nosc.jpg", 512));
 
         FileHelper fh;
         const auto freed = fh.pruneOrphanThumbnails(cacheRoot, {}, { realDir.path() });
         QVERIFY(freed > 0);
-        QVERIFY(! QFile::exists(cacheRoot + "/abc.jpg"));
-        QVERIFY(! QFile::exists(cacheRoot + "/abc.meta"));
-        QVERIFY(QFile::exists(cacheRoot + "/def.jpg"));
-        QVERIFY(QFile::exists(cacheRoot + "/def.meta"));
-        QVERIFY(QFile::exists(cacheRoot + "/nosc.jpg")); // backwards-safe
+        QVERIFY(! QFile::exists(thumbDir + "/abc.jpg"));
+        QVERIFY(! QFile::exists(thumbDir + "/abc.meta"));
+        QVERIFY(QFile::exists(thumbDir + "/def.jpg"));
+        QVERIFY(QFile::exists(thumbDir + "/def.meta"));
+        QVERIFY(QFile::exists(thumbDir + "/nosc.jpg")); // backwards-safe
     }
 
     void pruneOrphanThumbnails_skipsEntriesWithoutSidecar() {
         const QString cacheRoot =
             QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/wekde-test-prune-B";
-        QDir().mkpath(cacheRoot);
+        const QString thumbDir = cacheRoot + "/video-thumbs";
+        QDir().mkpath(thumbDir);
         struct Cleanup {
             QString p;
             ~Cleanup() { QDir(p).removeRecursively(); }
         } cu { cacheRoot };
 
-        QVERIFY(writeBytes(cacheRoot + "/legacy.jpg", 256));
+        QVERIFY(writeBytes(thumbDir + "/legacy.jpg", 256));
         FileHelper fh;
         QCOMPARE(fh.pruneOrphanThumbnails(cacheRoot, {}, {}), qint64 { 0 });
-        QVERIFY(QFile::exists(cacheRoot + "/legacy.jpg"));
+        QVERIFY(QFile::exists(thumbDir + "/legacy.jpg"));
     }
 
     void pruneOrphanThumbnails_refusesPathOutsideCacheRoot() {
@@ -1752,35 +1912,68 @@ private slots:
         QCOMPARE(fh.pruneOrphanThumbnails("/tmp", {}, {}), qint64 { 0 });
     }
 
-    void pruneOrphanThumbnails_keepsEntryWhenSrcUnderRoot() {
+    // The seeded root IS mounted and the source under it is gone: that source
+    // is not coming back, so the thumbnail is an orphan. (The old version of
+    // this case created the file it claimed was missing, so it only ever
+    // exercised the exists() short-circuit and proved nothing about roots.)
+    void pruneOrphanThumbnails_reapsWhenRootPresentButSrcDeleted() {
         const QString cacheRoot =
             QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/wekde-test-prune-C";
-        QDir().mkpath(cacheRoot);
+        const QString thumbDir = cacheRoot + "/video-thumbs";
+        QDir().mkpath(thumbDir);
         QTemporaryDir wsRoot;
         QVERIFY(wsRoot.isValid());
-        // Source path is under wsRoot but the FILE itself doesn't exist.
-        // Our liveness check should still keep it because the canonical
-        // path lies under the seeded root (Steam not mounted yet => keep).
         struct Cleanup {
             QString p;
             ~Cleanup() { QDir(p).removeRecursively(); }
         } cu { cacheRoot };
 
         const QString src = wsRoot.path() + "/sub/preview.mp4";
-        QDir().mkpath(QFileInfo(src).absolutePath());
-        QFile f(src);
-        QVERIFY(f.open(QIODevice::WriteOnly));
-        f.close();
+        QVERIFY(! QFileInfo::exists(src));
 
-        QVERIFY(writeBytes(cacheRoot + "/keep.jpg", 100));
-        QFile m(cacheRoot + "/keep.meta");
+        QVERIFY(writeBytes(thumbDir + "/keep.jpg", 100));
+        QFile m(thumbDir + "/keep.meta");
         QVERIFY(m.open(QIODevice::WriteOnly));
         m.write(QJsonDocument(QJsonObject { { "src", src } }).toJson(QJsonDocument::Compact));
         m.close();
 
         FileHelper fh;
-        QCOMPARE(fh.pruneOrphanThumbnails(cacheRoot, { wsRoot.path() }, {}), qint64 { 0 });
-        QVERIFY(QFile::exists(cacheRoot + "/keep.jpg"));
+        QVERIFY(fh.pruneOrphanThumbnails(cacheRoot, { wsRoot.path() }, {}) > 0);
+        QVERIFY(! QFile::exists(thumbDir + "/keep.jpg"));
+        QVERIFY(! QFile::exists(thumbDir + "/keep.meta"));
+    }
+
+    // Same shape, but the seeded root itself is gone (Steam library on an
+    // unplugged drive / unmounted share). Nothing can be judged an orphan
+    // while the root it lived under is invisible — keep the thumbnail.
+    void pruneOrphanThumbnails_keepsThumbWhenSourceRootIsUnmounted() {
+        const QString cacheRoot =
+            QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/wekde-test-prune-D";
+        const QString thumbDir = cacheRoot + "/video-thumbs";
+        QDir().mkpath(thumbDir);
+        struct Cleanup {
+            QString p;
+            ~Cleanup() { QDir(p).removeRecursively(); }
+        } cu { cacheRoot };
+
+        QString wsRootPath;
+        {
+            QTemporaryDir wsRoot;
+            QVERIFY(wsRoot.isValid());
+            wsRootPath = wsRoot.path();
+        }
+        QVERIFY(! QFileInfo::exists(wsRootPath)); // "drive unplugged"
+        const QString src = wsRootPath + "/431960/3662790108/clip.mp4";
+
+        QVERIFY(writeBytes(thumbDir + "/keep.jpg", 100));
+        QFile m(thumbDir + "/keep.meta");
+        QVERIFY(m.open(QIODevice::WriteOnly));
+        m.write(QJsonDocument(QJsonObject { { "src", src } }).toJson(QJsonDocument::Compact));
+        m.close();
+
+        FileHelper fh;
+        QCOMPARE(fh.pruneOrphanThumbnails(cacheRoot, { wsRootPath }, {}), qint64 { 0 });
+        QVERIFY(QFile::exists(thumbDir + "/keep.jpg"));
     }
 
     // ── enforceCacheQuota (LRU eviction) ─────────────────────────────────────
@@ -1922,6 +2115,376 @@ private slots:
         // /tmp is outside QStandardPaths::CacheLocation; nothing freed.
         QCOMPARE(fh.enforceCacheQuotaForce({ outside.path() }, 1), qint64 { 0 });
         QVERIFY(QFile::exists(outside.path() + "/x.jpg"));
+    }
+
+    // ── cache guards against the geometry production actually passes ─────────
+    //
+    // plugin_info.cache_path is <user cache>/wescene-renderer. Everything
+    // below builds its fixture there instead of under CacheLocation, so a
+    // guard that only ever accepted its own root formula fails these.
+
+    // Tripwire. If this ever goes green-by-accident because the fixture moved
+    // inside CacheLocation, every case in this block becomes tautological
+    // again — exactly the state this suite was in before.
+    void cacheGuard_rendererCacheIsSiblingNotChildOfAppCache() {
+        const QString fixture = rendererCacheFixture();
+        QVERIFY(! fixture.isEmpty());
+        const QString appCache = cacheRootCanonical();
+        QVERIFY(! appCache.isEmpty());
+        QVERIFY2(! fixture.startsWith(appCache + "/"),
+                 "fixture is inside CacheLocation — the guard cases below prove nothing");
+        QVERIFY2(fixture != appCache, "fixture IS CacheLocation");
+    }
+
+    // Pin the plugin's path formula against the renderer's own. These are the
+    // two expressions that drifted apart: Qt's GenericCacheLocation and
+    // platform::GetCachePath's raw $XDG_CACHE_HOME rule must land on the same
+    // directory. Nothing here deletes anything — the env swap exists only so
+    // the comparison runs against a directory we own.
+    void cacheGuard_matchesTheRendererOwnCachePathFormula() {
+        struct ModeGuard {
+            QByteArray prevXdg;
+            bool       hadXdg;
+            ~ModeGuard() {
+                if (hadXdg)
+                    qputenv("XDG_CACHE_HOME", prevXdg);
+                else
+                    qunsetenv("XDG_CACHE_HOME");
+                QStandardPaths::setTestModeEnabled(true);
+            }
+        } guard { qgetenv("XDG_CACHE_HOME"), qEnvironmentVariableIsSet("XDG_CACHE_HOME") };
+
+        QTemporaryDir xdg;
+        QVERIFY(xdg.isValid());
+        const QString xdgCanon = QFileInfo(xdg.path()).canonicalFilePath();
+        QVERIFY(! xdgCanon.isEmpty());
+        // Point the environment at our own dir BEFORE leaving test mode, so
+        // neither formula can ever resolve to the developer's real cache.
+        qputenv("XDG_CACHE_HOME", xdgCanon.toLocal8Bit());
+        QStandardPaths::setTestModeEnabled(false);
+
+        const QString fromRenderer = QString::fromStdString(
+            wallpaper::platform::GetCachePath(wallpaper::platform::kRendererCacheDir).string());
+        const QString fromPlugin = wekde::cache_paths::rendererCacheDir();
+        QCOMPARE(fromPlugin, fromRenderer);
+    }
+
+    void clearCacheDir_acceptsRendererCacheDirBesideHostAppCache() {
+        const QString fixture = rendererCacheFixture();
+        QVERIFY(! fixture.isEmpty());
+        QDir().mkpath(fixture + "/3662790108/spvs01");
+        struct Cleanup {
+            QString p;
+            ~Cleanup() { QDir(p).removeRecursively(); }
+        } cu { fixture };
+        const QString spv = fixture + "/3662790108/spvs01/abc.spvs";
+        QVERIFY(writeBytes(spv, 4096));
+
+        FileHelper fh;
+        QCOMPARE(fh.clearCacheDir(fixture), true);
+        QVERIFY(! QFile::exists(spv));
+        // The dir itself survives so plugin_info.cache_path stays valid.
+        QVERIFY(QFileInfo(fixture).exists());
+    }
+
+    // The guard root widened to the whole user cache, and isUnderRoot accepts
+    // an exact match — so without a strict-descendant clause a stray
+    // cache_path of "~/.cache" would wipe every application's cache.
+    void clearCacheDir_refusesUserCacheRootItself() {
+        const QString generic =
+            QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation);
+        QVERIFY(! generic.isEmpty());
+        QDir().mkpath(generic);
+        const QString root = QFileInfo(generic).canonicalFilePath();
+        QVERIFY(! root.isEmpty());
+        const QString victim = root + "/wek-guard-victim.txt";
+        QVERIFY(writeBytes(victim, 32));
+
+        FileHelper fh;
+        QCOMPARE(fh.clearCacheDir(root), false);
+        QVERIFY(QFile::exists(victim));
+        QFile::remove(victim);
+    }
+
+    // "Clear shader cache" must not take the user's save data with it.
+    // SceneScript localStorage lives under the same root and is never
+    // regenerated.
+    void clearCacheDir_keepsLocalStorageJson() {
+        const QString fixture = rendererCacheFixture();
+        QVERIFY(! fixture.isEmpty());
+        QDir().mkpath(fixture + "/3662790108/spvs01");
+        struct Cleanup {
+            QString p;
+            ~Cleanup() { QDir(p).removeRecursively(); }
+        } cu { fixture };
+        const QString global   = fixture + "/localstorage_global.json";
+        const QString perScene = fixture + "/3662790108/localstorage.json";
+        const QString spv      = fixture + "/3662790108/spvs01/abc.spvs";
+        QVERIFY(writeBytes(global, 128));
+        QVERIFY(writeBytes(perScene, 128));
+        QVERIFY(writeBytes(spv, 4096));
+
+        FileHelper fh;
+        QCOMPARE(fh.clearCacheDir(fixture), true);
+        QVERIFY(! QFile::exists(spv));
+        QVERIFY2(QFile::exists(global), "localstorage_global.json was deleted by clearCacheDir");
+        QVERIFY2(QFile::exists(perScene),
+                 "<sceneId>/localstorage.json was deleted by clearCacheDir");
+    }
+
+    // The plugin .so is dlopen'd into plasmashell; an unbounded recursion here
+    // takes the whole desktop shell down with it.
+    void clearCacheDir_refusesPathologicallyDeepTree() {
+        const QString fixture = rendererCacheFixture();
+        QVERIFY(! fixture.isEmpty());
+        struct Cleanup {
+            QString p;
+            ~Cleanup() { QDir(p).removeRecursively(); }
+        } cu { fixture };
+        QString deep = fixture;
+        for (int i = 0; i < 40; ++i) deep += QStringLiteral("/d");
+        QVERIFY(QDir().mkpath(deep));
+
+        FileHelper fh;
+        QCOMPARE(fh.clearCacheDir(fixture), false);
+    }
+
+    // main.qml hands over the cache ROOT; the thumbnails are one level down.
+    // Deriving the subdirectory in C++ is what keeps the writer
+    // (VideoListModel) and the reaper on one definition.
+    void videoThumbDir_derivesFromCacheRootAndStripsFileUri() {
+        QCOMPARE(FileHelper::videoThumbDir("/home/u/.cache/wescene-renderer"),
+                 QStringLiteral("/home/u/.cache/wescene-renderer/video-thumbs"));
+        QCOMPARE(FileHelper::videoThumbDir("file:///home/u/.cache/wescene-renderer"),
+                 QStringLiteral("/home/u/.cache/wescene-renderer/video-thumbs"));
+        QCOMPARE(FileHelper::videoThumbDir("/home/u/.cache/wescene-renderer/"),
+                 QStringLiteral("/home/u/.cache/wescene-renderer/video-thumbs"));
+        QCOMPARE(FileHelper::videoThumbDir(""), QString());
+    }
+
+    void pruneOrphanThumbnails_derivesVideoThumbsFromCacheRoot() {
+        const QString fixture = rendererCacheFixture();
+        QVERIFY(! fixture.isEmpty());
+        const QString thumbDir = fixture + "/video-thumbs";
+        QDir().mkpath(thumbDir);
+        struct Cleanup {
+            QString p;
+            ~Cleanup() { QDir(p).removeRecursively(); }
+        } cu { fixture };
+
+        QTemporaryDir realDir;
+        QVERIFY(realDir.isValid());
+        const QString liveSrc = realDir.path() + "/clip.mp4";
+        QVERIFY(writeBytes(liveSrc, 8));
+
+        QVERIFY(writeBytes(thumbDir + "/abc.jpg", 1024));
+        QFile am(thumbDir + "/abc.meta");
+        QVERIFY(am.open(QIODevice::WriteOnly));
+        am.write(QJsonDocument(QJsonObject { { "src", "/nonexistent.mp4" } })
+                     .toJson(QJsonDocument::Compact));
+        am.close();
+
+        QVERIFY(writeBytes(thumbDir + "/def.jpg", 2048));
+        QFile dm(thumbDir + "/def.meta");
+        QVERIFY(dm.open(QIODevice::WriteOnly));
+        dm.write(QJsonDocument(QJsonObject { { "src", liveSrc } }).toJson(QJsonDocument::Compact));
+        dm.close();
+
+        FileHelper fh;
+        // The CACHE ROOT, exactly as main.qml passes it.
+        QVERIFY(fh.pruneOrphanThumbnails(fixture, {}, { realDir.path() }) > 0);
+        QVERIFY(! QFile::exists(thumbDir + "/abc.jpg"));
+        QVERIFY(! QFile::exists(thumbDir + "/abc.meta"));
+        QVERIFY(QFile::exists(thumbDir + "/def.jpg"));
+    }
+
+    void enforceCacheQuota_evictsInsideRendererCacheDir() {
+        const QString fixture = rendererCacheFixture();
+        QVERIFY(! fixture.isEmpty());
+        const QString thumbDir = fixture + "/video-thumbs";
+        QDir().mkpath(thumbDir);
+        struct Cleanup {
+            QString p;
+            ~Cleanup() { QDir(p).removeRecursively(); }
+        } cu { fixture };
+
+        QVERIFY(writeBytes(thumbDir + "/oldF.jpg", 1024 * 1024));
+        QVERIFY(writeBytes(thumbDir + "/newF.jpg", 1024 * 1024));
+        // Eviction keys on max(atime, mtime), so both have to move back.
+        QFile of(thumbDir + "/oldF.jpg");
+        QVERIFY(of.open(QIODevice::ReadWrite));
+        QVERIFY(
+            of.setFileTime(QDateTime::currentDateTime().addDays(-7), QFile::FileModificationTime));
+        QVERIFY(of.setFileTime(QDateTime::currentDateTime().addDays(-7), QFile::FileAccessTime));
+        of.close();
+
+        FileHelper   fh;
+        const qint64 freed =
+            fh.enforceCacheQuotaForce({ fixture }, static_cast<qint64>(1.5 * 1024 * 1024));
+        QVERIFY(freed >= 1024 * 1024);
+        QVERIFY(! QFile::exists(thumbDir + "/oldF.jpg"));
+        QVERIFY(QFile::exists(thumbDir + "/newF.jpg"));
+    }
+
+    // The headline data-loss case. The LRU walk sees localstorage_global.json
+    // as just another old file; once the guard lets the walk run at all, the
+    // first time a user crosses the quota their SceneScript state goes.
+    void enforceCacheQuota_keepsLocalStorageJson() {
+        const QString fixture = rendererCacheFixture();
+        QVERIFY(! fixture.isEmpty());
+        QDir().mkpath(fixture + "/3662790108/spvs01");
+        struct Cleanup {
+            QString p;
+            ~Cleanup() { QDir(p).removeRecursively(); }
+        } cu { fixture };
+
+        const QString global   = fixture + "/localstorage_global.json";
+        const QString perScene = fixture + "/3662790108/localstorage.json";
+        const QString spv      = fixture + "/3662790108/spvs01/x.spvs";
+        QVERIFY(writeBytes(global, 1024 * 1024));
+        QVERIFY(writeBytes(perScene, 1024 * 1024));
+        QVERIFY(writeBytes(spv, 1024 * 1024));
+        // Make the two localstorage files the OLDEST entries, i.e. the ones a
+        // plain LRU sweep reaches for first.
+        for (const QString& p : { global, perScene }) {
+            QFile f(p);
+            QVERIFY(f.open(QIODevice::ReadWrite));
+            QVERIFY(f.setFileTime(QDateTime::currentDateTime().addDays(-7),
+                                  QFile::FileModificationTime));
+            QVERIFY(f.setFileTime(QDateTime::currentDateTime().addDays(-7), QFile::FileAccessTime));
+            f.close();
+        }
+
+        FileHelper fh;
+        fh.enforceCacheQuotaForce({ fixture }, static_cast<qint64>(1.5 * 1024 * 1024));
+        QVERIFY2(QFile::exists(global), "LRU eviction deleted localstorage_global.json");
+        QVERIFY2(QFile::exists(perScene), "LRU eviction deleted <sceneId>/localstorage.json");
+        // And it still did its job on the regenerable entry.
+        QVERIFY(! QFile::exists(spv));
+    }
+
+#ifndef Q_OS_WIN
+    // clearCacheDir and pruneOrphanThumbnails both re-canonicalise every entry
+    // before touching it; the quota walk did not. An entry whose real target is
+    // outside the cache is not cache — don't count its bytes and don't delete
+    // it.
+    void enforceCacheQuota_skipsEntryEscapingCacheRoot() {
+        const QString fixture = rendererCacheFixture();
+        QVERIFY(! fixture.isEmpty());
+        QDir().mkpath(fixture);
+        struct Cleanup {
+            QString p;
+            ~Cleanup() { QDir(p).removeRecursively(); }
+        } cu { fixture };
+
+        QTemporaryDir outside;
+        QVERIFY(outside.isValid());
+        const QString target = outside.path() + "/precious.jpg";
+        QVERIFY(writeBytes(target, 2 * 1024 * 1024));
+        {
+            QFile f(target);
+            QVERIFY(f.open(QIODevice::ReadWrite));
+            // Oldest thing in sight: a plain LRU sweep evicts it first.
+            QVERIFY(f.setFileTime(QDateTime::currentDateTime().addDays(-30),
+                                  QFile::FileModificationTime));
+            QVERIFY(
+                f.setFileTime(QDateTime::currentDateTime().addDays(-30), QFile::FileAccessTime));
+            f.close();
+        }
+        const QString link = fixture + "/escape.jpg";
+        QVERIFY(QFile::link(target, link));
+        QVERIFY(writeBytes(fixture + "/local.jpg", 1024 * 1024));
+
+        FileHelper fh;
+        fh.enforceCacheQuotaForce({ fixture }, 1024);
+        QVERIFY2(QFileInfo(link).isSymLink(), "the escaping entry was unlinked by the quota walk");
+        QVERIFY(QFile::exists(target));
+        // The genuine cache entry is still fair game.
+        QVERIFY(! QFile::exists(fixture + "/local.jpg"));
+    }
+#endif
+
+    // ── requestCacheGc — the startup pass must not run on the caller's thread ─
+    //
+    // main.qml fires this from Component.onCompleted, which is plasmashell's
+    // GUI thread. A synchronous stat walk of a populated shader cache stalls
+    // the whole shell at every login.
+    void requestCacheGc_runsOnThePoolNotTheCallingThread() {
+        const QString fixture = rendererCacheFixture();
+        QVERIFY(! fixture.isEmpty());
+        const QString thumbDir = fixture + "/video-thumbs";
+        QDir().mkpath(thumbDir);
+        struct Cleanup {
+            QString p;
+            ~Cleanup() { QDir(p).removeRecursively(); }
+        } cu { fixture };
+
+        QVERIFY(writeBytes(thumbDir + "/abc.jpg", 1024));
+        QFile am(thumbDir + "/abc.meta");
+        QVERIFY(am.open(QIODevice::WriteOnly));
+        am.write(QJsonDocument(QJsonObject { { "src", "/nonexistent.mp4" } })
+                     .toJson(QJsonDocument::Compact));
+        am.close();
+
+        FileHelper    fh;
+        QTemporaryDir busy;
+        QVERIFY(busy.isValid());
+        if (! makeSlowWalkDir(fh, busy.path(), 5))
+            QSKIP("cannot make a slow enough walk dir on this filesystem");
+
+        QSignalSpy spy(&fh, &FileHelper::cacheGcFinished);
+        // Park every pool thread in a long job, so a GC dispatched now
+        // provably cannot have started yet.
+        const int blockers = qMax(QThread::idealThreadCount(), 4) * 2;
+        for (int i = 0; i < blockers; ++i) fh.requestDirSize(busy.path(), 0);
+
+        fh.requestCacheGc(fixture, {}, {}, 0);
+        QCOMPARE(spy.count(), 0);
+        QVERIFY2(QFile::exists(thumbDir + "/abc.jpg"),
+                 "requestCacheGc did the walk on the calling thread");
+
+        QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 60000);
+        QVERIFY(! QFile::exists(thumbDir + "/abc.jpg"));
+        QVERIFY(spy.at(0).at(0).toLongLong() > 0); // pruned bytes
+    }
+
+    void requestCacheGc_reportsPrunedAndEvictedBytesSeparately() {
+        const QString fixture = rendererCacheFixture();
+        QVERIFY(! fixture.isEmpty());
+        const QString thumbDir = fixture + "/video-thumbs";
+        QDir().mkpath(thumbDir);
+        struct Cleanup {
+            QString p;
+            ~Cleanup() { QDir(p).removeRecursively(); }
+        } cu { fixture };
+
+        // One orphan thumbnail (prune) plus an aged 1 MiB blob (quota).
+        QVERIFY(writeBytes(thumbDir + "/abc.jpg", 4096));
+        QFile am(thumbDir + "/abc.meta");
+        QVERIFY(am.open(QIODevice::WriteOnly));
+        am.write(QJsonDocument(QJsonObject { { "src", "/nonexistent.mp4" } })
+                     .toJson(QJsonDocument::Compact));
+        am.close();
+        QVERIFY(writeBytes(fixture + "/old.spvs", 1024 * 1024));
+        QFile of(fixture + "/old.spvs");
+        QVERIFY(of.open(QIODevice::ReadWrite));
+        QVERIFY(
+            of.setFileTime(QDateTime::currentDateTime().addDays(-7), QFile::FileModificationTime));
+        QVERIFY(of.setFileTime(QDateTime::currentDateTime().addDays(-7), QFile::FileAccessTime));
+        of.close();
+        QVERIFY(writeBytes(fixture + "/new.spvs", 1024 * 1024));
+        const qint64 orphanBytes =
+            QFileInfo(thumbDir + "/abc.jpg").size() + QFileInfo(thumbDir + "/abc.meta").size();
+
+        FileHelper fh;
+        QSignalSpy spy(&fh, &FileHelper::cacheGcFinished);
+        fh.requestCacheGc(fixture, {}, {}, static_cast<qint64>(1.5 * 1024 * 1024));
+        QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 60000);
+        QCOMPARE(spy.at(0).at(0).toLongLong(), orphanBytes); // jpg + sidecar
+        QVERIFY(spy.at(0).at(1).toLongLong() >= 1024 * 1024);
+        QVERIFY(! QFile::exists(fixture + "/old.spvs"));
+        QVERIFY(QFile::exists(fixture + "/new.spvs"));
+        QCOMPARE(fh.lastGcBytesFreed(), spy.at(0).at(1).toLongLong());
     }
 
     // ── generateThumbnail sidecar emission ───────────────────────────────────

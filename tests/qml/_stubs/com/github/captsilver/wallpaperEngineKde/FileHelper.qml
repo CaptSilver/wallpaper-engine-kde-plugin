@@ -1,6 +1,6 @@
 // Test stub — see tests/qml/_stubs/README.md for contract.
 // Real source: src/FileHelper.hpp + src/FileHelper.cpp
-// Last contract review: 2026-05-27
+// Last contract review: 2026-09-01
 
 // Test stub for the C++ FileHelper QML type. Methods return canned values
 // or empty objects so production code can run through happy paths in tests.
@@ -16,6 +16,7 @@ QtObject {
     signal dirSizeReady(string path, real bytes)
     signal fileReadReady(string path, var contents, bool ok)
     signal wallpaperDirChanged(string path)
+    signal cacheGcFinished(real prunedBytes, real evictedBytes)
 
     // ── test recorders (test-only stub) ──────────────────────────────────
     property int  readFileCount:              0
@@ -125,6 +126,10 @@ QtObject {
     property var  lastSeenVersionId:          undefined
     property int  pruneOrphanThumbnailsCount: 0
     property int  enforceCacheQuotaCount:     0
+    property int  requestCacheGcCount:        0
+    property var  lastPruneOrphanThumbnailsArgs: ({})
+    property var  lastEnforceCacheQuotaArgs:     ({})
+    property var  lastRequestCacheGcArgs:        ({})
 
     function readWorkshopManifest(steamLibraryPath) {
         readWorkshopManifestCount += 1;
@@ -144,17 +149,40 @@ QtObject {
         lastSeenVersionId = id;
         return 0;
     }
-    function pruneOrphanThumbnails(cacheRoot, manifestIds) {
+    function videoThumbDir(cacheRoot) {
+        if (!cacheRoot) return "";
+        const native = cacheRoot.indexOf("file://") === 0 ? cacheRoot.substring(7) : cacheRoot;
+        return native.replace(/\/+$/, "") + "/video-thumbs";
+    }
+    function pruneOrphanThumbnails(cacheRoot, installedWallpaperDirs, videoFolderPaths) {
         pruneOrphanThumbnailsCount += 1;
+        lastPruneOrphanThumbnailsArgs = {
+            cacheRoot: cacheRoot,
+            installedDirs: installedWallpaperDirs,
+            videoDirs: videoFolderPaths
+        };
         return 0;
     }
     function enforceCacheQuota(roots, quotaBytes) {
         enforceCacheQuotaCount += 1;
+        lastEnforceCacheQuotaArgs = { roots: roots, quotaBytes: quotaBytes };
         return 0;
     }
     function enforceCacheQuotaForce(roots, quotaBytes) {
         enforceCacheQuotaCount += 1;
+        lastEnforceCacheQuotaArgs = { roots: roots, quotaBytes: quotaBytes };
         return 0;
+    }
+    // Asynchronous in production (QThreadPool + a queued cacheGcFinished);
+    // the stub only records, so tests assert on the arguments.
+    function requestCacheGc(cacheRoot, installedWallpaperDirs, videoFolderPaths, quotaBytes) {
+        requestCacheGcCount += 1;
+        lastRequestCacheGcArgs = {
+            cacheRoot: cacheRoot,
+            installedDirs: installedWallpaperDirs,
+            videoDirs: videoFolderPaths,
+            quotaBytes: quotaBytes
+        };
     }
 
     // Last GC bytes-freed status — exposed to the SettingPage Text binding

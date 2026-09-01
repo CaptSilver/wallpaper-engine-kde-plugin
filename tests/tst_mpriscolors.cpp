@@ -16,7 +16,17 @@
 #include <QTcpSocket>
 #include <QPointer>
 #include <QUrl>
+#include <QElapsedTimer>
+#include <QSemaphore>
+#include <QTemporaryDir>
+#include <QFile>
 #include "MprisMonitor.hpp"
+
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <chrono>
+#include <thread>
 
 class TestMprisColors : public QObject {
     Q_OBJECT
@@ -76,6 +86,8 @@ private slots:
     void processArtUrl_localFile_emitsThumbnailAsync();
     void processArtUrl_localFileMissing_emitsFalseAsync();
     void processArtUrl_supersededLocalDecode_dropsStaleResult();
+    void processArtUrl_dtorDrainsInflightDecode();
+    void processArtUrl_destroyedMonitorGetsNoLateCallback();
     void handleNameOwnerChanged_nonMprisName_ignored();
     void handleNameOwnerChanged_mprisNameAppears_entersConnectBranch();
     void handlePropsChanged_metadataHttpArtUrl_createsRequest();
@@ -400,6 +412,81 @@ template<class... Args>
 static bool invokeSlot(QObject* obj, const char* name, Args... args) {
     return QMetaObject::invokeMethod(obj, name, Qt::DirectConnection, args...);
 }
+
+// A cover-art file whose decode we can hold open for as long as we like.
+// QImage reading a FIFO blocks first in open() until a writer shows up, then in
+// read() until bytes arrive, so the writer thread below decides exactly how long
+// the decode stays in flight. Without that handle, "destroy the monitor while
+// its album-art decode is running" is a race that reproduces once in a hundred
+// runs; with it, the moment of destruction is chosen, not hoped for.
+class BlockingCoverFifo {
+public:
+    // holdMs = how long the decode stays parked after it opens the file.
+    BlockingCoverFifo(const QString& path, int holdMs)
+        : m_path(path), m_encoded(QFile::encodeName(path)), m_holdMs(holdMs) {
+        if (::mkfifo(m_encoded.constData(), 0600) != 0) return;
+        QImage cover(16, 16, QImage::Format_RGB32);
+        cover.fill(Qt::magenta);
+        QBuffer buf(&m_png);
+        if (! buf.open(QIODevice::WriteOnly)) return;
+        if (! cover.save(&buf, "PNG")) return;
+        buf.close();
+        m_valid  = true;
+        m_writer = std::thread([this] {
+            // Returns the instant the decoder opens the read end: our "the
+            // decode has started" edge.
+            const int fd = ::open(m_encoded.constData(), O_WRONLY);
+            m_started.release();
+            if (fd < 0) return;
+            std::this_thread::sleep_for(std::chrono::milliseconds(m_holdMs));
+            const char* p    = m_png.constData();
+            qint64      left = m_png.size();
+            while (left > 0) {
+                const ssize_t n = ::write(fd, p, size_t(left));
+                if (n <= 0) break;
+                p += n;
+                left -= n;
+            }
+            ::close(fd); // EOF: the decode can now finish
+            m_fed.release();
+        });
+    }
+
+    ~BlockingCoverFifo() {
+        if (! m_writer.joinable()) return;
+        if (m_sawStart) {
+            m_writer.join();
+            return;
+        }
+        // Nothing ever opened the FIFO, so the writer is still parked in
+        // open(). A non-blocking read open lets it through; without this the
+        // join would hang the whole runner on a failed setup.
+        const int rfd = ::open(m_encoded.constData(), O_RDONLY | O_NONBLOCK);
+        m_writer.join();
+        if (rfd >= 0) ::close(rfd);
+    }
+
+    BlockingCoverFifo(const BlockingCoverFifo&)            = delete;
+    BlockingCoverFifo& operator=(const BlockingCoverFifo&) = delete;
+
+    bool    isValid() const { return m_valid; }
+    QString url() const { return QUrl::fromLocalFile(m_path).toString(); }
+    bool    waitForDecodeStart(int ms) {
+        m_sawStart = m_started.tryAcquire(1, ms);
+        return m_sawStart;
+    }
+    bool waitForBytesFed(int ms) { return m_fed.tryAcquire(1, ms); }
+
+private:
+    QString     m_path;
+    QByteArray  m_encoded;
+    QByteArray  m_png;
+    int         m_holdMs;
+    bool        m_valid { false };
+    bool        m_sawStart { false };
+    QSemaphore  m_started, m_fed;
+    std::thread m_writer;
+};
 
 void TestMprisColors::handlePropsChanged_wrongInterface_noSignals() {
     MprisMonitor m;
@@ -1460,6 +1547,67 @@ void TestMprisColors::processArtUrl_supersededLocalDecode_dropsStaleResult() {
     // when the emit landed in 5ms.
     QTRY_VERIFY_WITH_TIMEOUT(spy.count() >= 1 && spy.last().at(0).toBool(), 5000);
     QCOMPARE(spy.last().at(1).toList().size(), 15);
+}
+
+// The album-art decode runs off the GUI thread holding a raw pointer to the
+// monitor and calls back into it. Destroying the monitor must not leave that
+// work running: whatever executor the decode uses, ~MprisMonitor has to join it
+// before the object's storage goes away. Plasma tears the Scene item — and this
+// child — down on wallpaper-type switch, screen unplug and `plasmashell
+// --replace`, and this .so is dlopen'd into plasmashell, so a stale callback
+// takes the desktop down with it.
+//
+// The FIFO parks the decode for a known interval, so "did the destructor wait?"
+// is a plain measurement instead of a race. This case says nothing about WHICH
+// executor runs the decode; it only requires that destruction joins it.
+void TestMprisColors::processArtUrl_dtorDrainsInflightDecode() {
+    QTemporaryDir td;
+    QVERIFY(td.isValid());
+    constexpr int     kHoldMs = 300;
+    BlockingCoverFifo cover(td.filePath("cover"), kHoldMs);
+    QVERIFY(cover.isValid());
+
+    QElapsedTimer dtorClock;
+    {
+        MprisMonitor m;
+        m.processArtUrl(cover.url());
+        QVERIFY2(cover.waitForDecodeStart(5000), "album-art decode never started");
+        dtorClock.start(); // last statement in scope, so it times ~MprisMonitor
+    }
+    const qint64 dtorMs = dtorClock.elapsed();
+
+    QVERIFY2(dtorMs >= kHoldMs / 3,
+             qPrintable(QStringLiteral("~MprisMonitor returned after %1 ms while the album-art "
+                                       "decode was still parked for %2 ms — the destructor did "
+                                       "not drain its own background work")
+                            .arg(dtorMs)
+                            .arg(kHoldMs)));
+}
+
+// Companion to the drain test, and the one that states the general contract:
+// once the monitor is gone, nothing may reach into it. Silent on glibc in a
+// plain build — the freed bytes are still readable, exactly like its sibling in
+// tst_filehelper — so the red only shows under
+// `tools/scripts/preflight.sh --sanitize=address,undefined`. The drain test
+// above is what keeps the default gate honest.
+void TestMprisColors::processArtUrl_destroyedMonitorGetsNoLateCallback() {
+    QTemporaryDir td;
+    QVERIFY(td.isValid());
+    BlockingCoverFifo cover(td.filePath("cover"), 300);
+    QVERIFY(cover.isValid());
+
+    {
+        MprisMonitor m;
+        m.processArtUrl(cover.url());
+        QVERIFY2(cover.waitForDecodeStart(5000), "album-art decode never started");
+    } // ~MprisMonitor must not leave a decode holding this object
+
+    // Load-bearing, not tidy-up. A stale QMetaObject::invokeMethod() does its
+    // pointer chasing inside uninstrumented libQt6Core, where the sanitizer
+    // cannot see it; the report only appears once the queued call is delivered
+    // and the completion functor reads m_artGeneration off the dead object.
+    QVERIFY(cover.waitForBytesFed(5000));
+    QTest::qWait(300); // spins the event loop: any stale queued call lands here
 }
 
 // Reconnecting to a different MPRIS player whose first reply happens to

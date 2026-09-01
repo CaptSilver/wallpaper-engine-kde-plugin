@@ -433,4 +433,77 @@ TestCase {
         verify(fakeVolumeSpy.count      >= 1);
         verify(fakeSpeedSpy.count       >= 1);
     }
+
+    // ── startup cache GC ──────────────────────────────────────────────────
+    // The GC block in Component.onCompleted was written against config.qml's
+    // scope and pasted into the wallpaper item, where `plugin_info` does not
+    // resolve; a `typeof plugin_info !== 'undefined'` test turned the
+    // ReferenceError into a silent skip, so the pass never ran on a desktop.
+
+    // Walk down to the Pyext instance — it is an id inside `background`, not
+    // a property, so it is only reachable through the object tree.
+    function _findPyext(bg) {
+        const buckets = [bg.children || [], bg.data || []];
+        for (const b of buckets) {
+            for (let i = 0; i < b.length; i++) {
+                const c = b[i];
+                if (c && typeof c.request_cache_gc === "function") return c;
+            }
+        }
+        return null;
+    }
+
+    function test_startupCacheGc_pluginInfoIsInScope() {
+        const bg = _findBackground();
+        if (!bg) { verify(loadError !== ""); return; }
+        verify(bg.plugin_info !== undefined && bg.plugin_info !== null,
+                "main.qml has no plugin_info — the startup cache GC never runs");
+    }
+
+    function test_runCacheGc_dispatchesAsyncWithFlatInstalledDirs() {
+        const bg = _findBackground();
+        if (!bg) { verify(loadError !== ""); return; }
+        const pyext = _findPyext(bg);
+        verify(pyext !== null, "no Pyext exposing request_cache_gc under background");
+        const fh = pyext.helper;
+        verify(fh !== null && fh !== undefined, "Pyext.helper is not exposed");
+
+        bg.plugin_info.cache_path = "file:///tmp/wek-qmltest/wescene-renderer";
+        bg.cacheQuotaMB = 500;
+        fh.requestCacheGcCount = 0;
+        fh.pruneOrphanThumbnailsCount = 0;
+        fh.enforceCacheQuotaCount = 0;
+
+        bg.runCacheGc();
+
+        compare(fh.requestCacheGcCount, 1);
+        const args = fh.lastRequestCacheGcArgs;
+        compare(args.cacheRoot, "/tmp/wek-qmltest/wescene-renderer");
+        compare(args.quotaBytes, 500 * 1024 * 1024);
+        // Common.getProjectDirs is deliberately ragged — element 0 is the
+        // case-variant workshop group. Handed to a QStringList parameter
+        // as-is, QML comma-joins that nested array into one bogus path and
+        // the four workshop roots never reach the pruner.
+        verify(args.installedDirs.length >= 6);
+        for (let i = 0; i < args.installedDirs.length; i++)
+            verify(typeof args.installedDirs[i] === "string",
+                    "installedDirs[" + i + "] is not a string — the ragged array leaked");
+
+        // The synchronous entry points stall plasmashell's GUI thread on a
+        // full cache walk; startup must not use them.
+        compare(fh.pruneOrphanThumbnailsCount, 0);
+        compare(fh.enforceCacheQuotaCount, 0);
+    }
+
+    function test_runCacheGc_noopsWithoutCachePath() {
+        const bg = _findBackground();
+        if (!bg) { verify(loadError !== ""); return; }
+        const pyext = _findPyext(bg);
+        if (!pyext) return;
+        const fh = pyext.helper;
+        bg.plugin_info.cache_path = "";
+        fh.requestCacheGcCount = 0;
+        bg.runCacheGc();
+        compare(fh.requestCacheGcCount, 0);
+    }
 }

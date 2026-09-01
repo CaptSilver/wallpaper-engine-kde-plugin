@@ -100,6 +100,17 @@ MprisMonitor::MprisMonitor(QQuickItem* parent)
     // invokeShortcut / invokePlayer (the vast majority) avoid the 1Hz
     // poll + persistent PropertiesChanged subscription. ensureEngaged()
     // takes care of the lazy hook-up when needed.
+    m_pool.setMaxThreadCount(1);
+}
+
+MprisMonitor::~MprisMonitor() {
+    // Drop anything not yet started, then block until the running album-art
+    // decode finishes, so no pool lambda can call back into this QObject after
+    // it is destroyed. clear() keeps the worst case to one in-progress decode
+    // rather than the whole queue: this runs on the compositor thread during
+    // teardown.
+    m_pool.clear();
+    m_pool.waitForDone();
 }
 
 void MprisMonitor::ensureEngaged() {
@@ -403,7 +414,7 @@ void MprisMonitor::processArtUrl(const QString& artUrl) {
     case MprisArtUrlKind::LocalFile: {
         const QString localPath = QUrl(artUrl).toLocalFile();
         const quint64 gen       = ++m_artGeneration;
-        QThreadPool::globalInstance()->start([this, localPath, gen]() {
+        m_pool.start([this, localPath, gen]() {
             QImage img(localPath); // decode off the compositor thread
             if (img.isNull()) {
                 QMetaObject::invokeMethod(

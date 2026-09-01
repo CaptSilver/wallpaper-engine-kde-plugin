@@ -34,6 +34,8 @@ public:
     QString collectPluginEnvForTest() { return collectPluginEnv(); }
     QString collectRedactedCfgForTest() { return collectRedactedCfg(); }
     QString collectGpuInfoForTest() { return collectGpuInfo(); }
+    QString collectCacheManifestForTest() { return collectCacheManifest(); }
+    QString collectPipelineDiagForTest() { return collectPipelineDiag(); }
 
 private:
     QString collectJournal();

@@ -51,8 +51,11 @@ Item {
 
     function _thumbPathFor(workshopid) {
         const root_ = _localCacheRoot();
-        if (! root_) return "";
-        return root_ + "/video-thumbs/" + workshopid.slice(6) + ".jpg";
+        if (! root_ || ! pyext) return "";
+        // Ask the C++ side where thumbnails go. The orphan-GC reaps that
+        // directory; spelling the layout out here too is how the writer and
+        // the reaper ended up pointed at different places.
+        return pyext.video_thumb_dir(root_) + "/" + workshopid.slice(6) + ".jpg";
     }
 
     function refresh() {

@@ -37,7 +37,9 @@ public:
     // (default-installed plugin with no settings configured keeps today's
     // behaviour). The 64 MiB size cap applies in BOTH modes — pathological
     // inputs (a wallpaper symlink to /dev/zero via FUSE) are refused
-    // regardless.
+    // regardless. Call these from the GUI thread only: a requestReadFile job
+    // already in flight keeps the allowlist it was dispatched with, so a
+    // settings change never retroactively refuses an in-flight read.
     Q_INVOKABLE void addReadRoot(const QString& path);
     Q_INVOKABLE void clearReadRoots();
 
@@ -77,12 +79,13 @@ public:
     // Asynchronous readFile: dispatches the canonicalise + allowlist + read off
     // the GUI thread on the per-instance QThreadPool and emits
     // fileReadReady(path, contents, ok) on the GUI thread. Mirrors
-    // requestDirSize. ALL allowlist + size-cap checks run inside the worker
-    // thread (canonicalisation needs syscalls — not safe on GUI thread); the
-    // async path does NOT bypass the gate. The path delivered in the signal is
-    // the path the caller passed (NOT the canonical one), so QML-side waiter
-    // maps keyed by the originally-requested path work without an extra
-    // round-trip.
+    // requestDirSize. The allowlist is snapshotted on the CALLING thread at
+    // dispatch; canonicalisation, the allowlist test and the size cap all run
+    // inside the worker (canonicalisation needs syscalls — not safe on the GUI
+    // thread). The async path does NOT bypass the gate. The path delivered in
+    // the signal is the path the caller passed (NOT the canonical one), so
+    // QML-side waiter maps keyed by the originally-requested path work without
+    // an extra round-trip.
     Q_INVOKABLE void requestReadFile(const QString& path);
 
     // Wallpaper directory watcher. Lazy-constructs a QFileSystemWatcher and
@@ -101,33 +104,58 @@ public:
     // don't accumulate.
     Q_INVOKABLE void unwatchAllWallpaperDirs();
 
-    // Recursively remove the contents of a directory under the user's cache
-    // root (QStandardPaths::CacheLocation). Refuses paths outside the cache
-    // root — a safety belt against a stray "/" or "/home/<user>" landing
-    // in `path` via a misconfigured plugin_info.cache_path. Returns true on
-    // success (directory now empty or didn't exist), false on permission
-    // error or path-outside-cache violation.
+    // Recursively remove the contents of a directory that is a strict
+    // descendant of the user's cache root (wekde::cache_paths::userCacheRoot)
+    // — a safety belt against a stray "/" or "/home/<user>" landing in `path`
+    // via a misconfigured plugin_info.cache_path. Files that are user state
+    // rather than cache (SceneScript localStorage) are kept, along with any
+    // directory still holding one. Returns true on success (directory now
+    // empty of cache or didn't exist), false on permission error or
+    // path-outside-cache violation.
     Q_INVOKABLE bool clearCacheDir(const QString& path);
 
-    // Walk `cacheRoot` (a video-thumbs directory) and drop any <hash>.jpg
-    // whose <hash>.meta sidecar references a source path that no longer
-    // resolves under any of the seeded roots AND no longer exists on disk.
-    // Entries without sidecars are KEPT (backwards-safe — pre-feature
-    // cache survives). Returns bytes freed. Same isUnderRoot symlink-escape
-    // safety as clearCacheDir.
+    // <cacheRoot>/video-thumbs — where generated video thumbnails and their
+    // .meta sidecars live. The QML writer and the C++ reaper used to each
+    // spell this layout out; this is the one definition. Strips a leading
+    // file:// and any trailing slash. Empty in, empty out.
+    Q_INVOKABLE static QString videoThumbDir(const QString& cacheRoot);
+
+    // Take the cache ROOT (plugin_info.cache_path), walk its video-thumbs
+    // subdirectory, and drop any <hash>.jpg whose <hash>.meta sidecar
+    // references a source that is gone for good. "Gone for good" means the
+    // file does not exist AND, if it sits under one of the seeded roots, that
+    // root is currently visible — a thumbnail whose Steam library is
+    // unplugged is kept. Entries without sidecars are KEPT (backwards-safe —
+    // pre-feature cache survives). Returns bytes freed. Same isUnderRoot
+    // symlink-escape safety as clearCacheDir.
     Q_INVOKABLE qint64 pruneOrphanThumbnails(const QString&     cacheRoot,
                                              const QStringList& installedWallpaperDirs,
                                              const QStringList& videoFolderPaths);
 
     // Recursively walk each root, sum bytes; if over `quotaBytes`, delete
     // oldest entries (by atime, mtime fallback) until under the cap. Drops
-    // matching .meta sidecars alongside their .jpg. Throttled to one run
-    // per minute (use the *Force overload to skip the throttle for manual
-    // "Run cache GC now" button). quotaBytes == 0 means unlimited (no-op).
-    // Returns bytes freed (0 if no-op).
+    // matching .meta sidecars alongside their .jpg. Persistent state
+    // (SceneScript localStorage) counts toward the total but is never
+    // evicted. Throttled to one run per minute (use the *Force overload to
+    // skip the throttle for the manual "Run cache GC now" button).
+    // quotaBytes == 0 means unlimited (no-op). Returns bytes freed (0 if
+    // no-op). Both run on the CALLING thread — from QML prefer
+    // requestCacheGc().
     Q_INVOKABLE qint64 enforceCacheQuota(const QStringList& roots, qint64 quotaBytes);
     Q_INVOKABLE qint64 enforceCacheQuotaForce(const QStringList& roots, qint64 quotaBytes);
     qint64             lastGcBytesFreed() const { return m_lastGcBytesFreed; }
+
+    // Startup cache pass — orphan-thumbnail prune followed by LRU quota
+    // eviction — dispatched on the thread pool, reporting via
+    // cacheGcFinished. The wallpaper item fires this from
+    // Component.onCompleted, i.e. on plasmashell's GUI thread: a populated
+    // shader cache is hundreds of directories, and stat-walking it inline
+    // stalls the whole shell at every login. Throttled to one pass per
+    // minute; a throttled call returns without dispatching and without
+    // emitting. quotaBytes == 0 skips the eviction half.
+    Q_INVOKABLE void requestCacheGc(const QString&     cacheRoot,
+                                    const QStringList& installedWallpaperDirs,
+                                    const QStringList& videoFolderPaths, qint64 quotaBytes);
 
     // Atomic JSON write: encode `doc` to UTF-8, write to <path>.tmp, flush,
     // then rename(2) to `path`. Returns false on any failure; the temp file
@@ -171,7 +199,14 @@ signals:
     // that was added/removed — QFileSystemWatcher doesn't expose that).
     void wallpaperDirChanged(const QString& path);
 
+    // Emitted on the GUI thread when a requestCacheGc pass finishes.
+    void cacheGcFinished(qint64 prunedBytes, qint64 evictedBytes);
+
 private:
+    // The quota sweep with no instance state, so a pool worker can run it.
+    // enforceCacheQuotaForce is this plus the m_lastGcBytesFreed bookkeeping.
+    static qint64 sweepCacheQuota(const QStringList& roots, qint64 quotaBytes);
+
     QString configDir() const;
     QString wallpaperConfigDir() const;
     QString wallpaperConfigFile(const QString& id) const;
@@ -189,6 +224,8 @@ private:
 
     // Canonicalised allowlist; seeded from QML via addReadRoot. Empty
     // => permissive (back-compat). See readFile body for the check.
+    // Mutated on the GUI thread only; pool workers get a snapshot taken at
+    // dispatch and never read this member.
     QSet<QString> m_readRoots;
 
     // Lazy-constructed QFileSystemWatcher for wallpaper directories. Parented
@@ -200,8 +237,12 @@ private:
     // freed" readout.
     qint64 m_lastGcBytesFreed { 0 };
 
-    // Monotonic timestamp (msecs since epoch) of the last successful
-    // enforceCacheQuota run; the throttle skips runs called < 60 s after.
+    // Cooldown shared by enforceCacheQuota and requestCacheGc. The cost being
+    // throttled is the tree walk, not the deletion.
+    static constexpr qint64 kGcCooldownMs = 60'000;
+
+    // Monotonic timestamp (msecs since epoch) of the last completed cache
+    // walk; the throttle skips runs called < kGcCooldownMs after.
     // qint64{0} sentinel = never ran (always allow first run).
     qint64 m_lastEnforceMs { 0 };
 };

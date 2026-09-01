@@ -33,6 +33,9 @@ Rectangle {
     property bool   animatedPreview: wallpaper.configuration.AnimatedPreview
     property bool   mpvStats: wallpaper.configuration.MpvStats
 
+    property string videoFolderPath: wallpaper.configuration.VideoFolderPath
+    property int    cacheQuotaMB: wallpaper.configuration.CacheQuotaMB
+
     property bool   pauseOnBatPower: wallpaper.configuration.PauseOnBatPower
     property int    pauseBatPercent: wallpaper.configuration.PauseBatPercent
     property bool   hdrOutput: wallpaper.configuration.HdrOutput
@@ -320,6 +323,12 @@ Rectangle {
             (background.pauseBatPercent !== 0 && st_battery_has && st_battery_percent < background.pauseBatPercent)
     }
 
+    // The wallpaper item needs its own PluginInfo: config.qml declares one for
+    // the settings dialog, but that is a different QML scope entirely, so the
+    // startup cache pass here had nothing to resolve `plugin_info` against.
+    PluginInfo { id: pluginInfo }
+    readonly property var plugin_info: pluginInfo
+
     Pyext {
         id: pyext
         // Seed every settings-driven readfile root. Re-binds whenever any
@@ -329,8 +338,8 @@ Rectangle {
             var roots = [];
             if (background.steamlibrary)
                 roots.push(Common.urlNative(background.steamlibrary));
-            if (wallpaper.configuration.VideoFolderPath)
-                roots.push(Common.urlNative(wallpaper.configuration.VideoFolderPath));
+            if (background.videoFolderPath)
+                roots.push(Common.urlNative(background.videoFolderPath));
             return roots;
         }
     }
@@ -342,7 +351,7 @@ Rectangle {
     // branch is dialog-only.
     VideoListModel {
         id: runtimeVideoListModel
-        folderPath: wallpaper.configuration.VideoFolderPath
+        folderPath: background.videoFolderPath
         pyext: pyext
     }
     WallpaperListModel {
@@ -676,6 +685,36 @@ Rectangle {
         else backendLoader.item.pause();
     }
 
+    // Cache GC pass — best-effort, dispatched onto a worker thread inside
+    // FileHelper. A populated shader cache is hundreds of directories, and
+    // this runs on plasmashell's GUI thread.
+    //   1. Orphan-GC over the video-thumbs cache: drop entries whose source
+    //      .mp4 no longer resolves under the installed-wallpaper or
+    //      video-folder roots. Sidecars (.meta) anchor each thumbnail to its
+    //      source so we can do this safely; entries without a sidecar
+    //      (pre-feature cache) are kept.
+    //   2. LRU eviction across the renderer cache to keep the on-disk
+    //      footprint under cfg_CacheQuotaMB (default 500 MB). Throttled
+    //      inside FileHelper to one pass per minute so frequent wallpaper
+    //      switches don't churn the disk.
+    function runCacheGc() {
+        if (!plugin_info || !plugin_info.cache_path) return;
+        const cacheRoot = Common.urlNative(plugin_info.cache_path);
+        // getProjectDirs is deliberately ragged — element 0 is the
+        // case-variant workshop group WallpaperListModel falls back through.
+        // Passed to a QStringList as-is, QML comma-joins that nested array
+        // into one bogus path and the workshop roots never arrive, so flatten
+        // here at the boundary rather than changing the shared helper.
+        // concat, not flat: QML's V4 engine has no Array.prototype.flat.
+        const installed = Common.getProjectDirs(background.steamlibrary)
+                                .reduce((acc, el) => acc.concat(el), []);
+        const videoDirs = background.videoFolderPath
+                        ? [Common.urlNative(background.videoFolderPath)]
+                        : [];
+        pyext.request_cache_gc(cacheRoot, installed, videoDirs,
+                               (background.cacheQuotaMB || 0) * 1024 * 1024);
+    }
+
     Component.onCompleted: {
         // hasLib capability probe — see the property declaration above for
         // why this lives here instead of as a binding.
@@ -695,28 +734,7 @@ Rectangle {
         // empty steamlibrary just sets the marker and returns.
         MigrationHelper.seedLastSeenVersions(Common.urlNative(background.steamlibrary));
 
-        // Cache GC pass — best-effort, never blocks the desktop.
-        //   1. Orphan-GC over video-thumbs cache: drop entries whose source
-        //      .mp4 no longer resolves under the installed-wallpaper or
-        //      video-folder roots. Sidecars (.meta) anchor each thumbnail to
-        //      its source so we can do this safely; entries without a sidecar
-        //      (pre-feature cache) are kept.
-        //   2. LRU eviction across the renderer cache + video-thumbs to keep
-        //      the on-disk footprint under cfg_CacheQuotaMB (default 500 MB).
-        //      Throttled inside FileHelper to one run per minute so frequent
-        //      wallpaper switches don't churn the disk.
-        if (typeof plugin_info !== 'undefined' && plugin_info && plugin_info.cache_path) {
-            const thumbDir = Common.urlNative(plugin_info.cache_path);
-            const installed = Common.getProjectDirs(background.steamlibrary);
-            const videoDirs = [];
-            if (wallpaper.configuration.VideoFolderPath)
-                videoDirs.push(Common.urlNative(wallpaper.configuration.VideoFolderPath));
-            pyext.prune_orphan_thumbnails(thumbDir, installed, videoDirs);
-            const quotaMB = wallpaper.configuration.CacheQuotaMB || 0;
-            if (quotaMB > 0) {
-                pyext.enforce_cache_quota([thumbDir], quotaMB * 1024 * 1024);
-            }
-        }
+        runCacheGc();
 
         // load first backend
         applySource();

@@ -10,6 +10,7 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <QNetworkAccessManager>
+#include <QThreadPool>
 
 // Forward declaration in the global namespace so the friend declaration
 // inside wekde::MprisMonitor (below) refers to the global ::TestMprisColors
@@ -80,6 +81,7 @@ class MprisMonitor : public QQuickItem {
 
 public:
     MprisMonitor(QQuickItem* parent = nullptr);
+    ~MprisMonitor() override;
 
     // Invoke a method on the currently-tracked player's MPRIS2 Player
     // interface.  Safe no-op when no player is connected.  Used by Scene.qml
@@ -191,6 +193,22 @@ private:
     bool    m_scanFoundPlaying { false };
 
     QNetworkAccessManager m_nam;
+
+    // Per-instance pool so the destructor can drain it and guarantee no decode
+    // lambda reaches back into this QObject (which it does via
+    // QMetaObject::invokeMethod) after the object is gone. Plasma destroys the
+    // Scene item — and this child — on wallpaper-type switch, screen unplug and
+    // `plasmashell --replace`; the process-global pool offers no handle to wait
+    // on, and this .so is dlopen'd into plasmashell, so a stale callback takes
+    // the desktop down with it.
+    //
+    // Declared last on purpose: members destruct in reverse declaration order,
+    // so ~QThreadPool (which itself waits for running tasks) still drains
+    // before m_nam and the rest even if the explicit destructor ever goes
+    // away. Capped at one thread — m_artGeneration already serialises
+    // results, so a second concurrent decode would buy nothing, and one
+    // idle-expiring thread per monitor keeps the multi-monitor cost flat.
+    QThreadPool m_pool;
 };
 
 } // namespace wekde

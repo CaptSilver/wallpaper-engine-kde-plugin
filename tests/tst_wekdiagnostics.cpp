@@ -98,6 +98,51 @@ WallpaperWorkShopId=1234567
         QVERIFY(true);
     }
 
+    // The manifest used to walk QStandardPaths::CacheLocation +
+    // "/wallpaper-scene-renderer" — which is where saveBundle wrote its
+    // tarballs, and is not where either renderer cache lives. Every shipped
+    // bug report's "cache manifest" therefore described the previous bug
+    // report. Two properties: it must see the real scene cache, and it must
+    // never see the bundle directory.
+    void testCacheManifestListsRendererCacheNotBundleDir() {
+        const auto generic = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation);
+        QVERIFY(! generic.isEmpty());
+        QVERIFY(QDir().mkpath(generic + QStringLiteral("/wescene-renderer")));
+        {
+            QFile f(generic + QStringLiteral("/wescene-renderer/scene.spvs"));
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write("spv");
+        }
+
+        WekDiagnostics diag;
+        const auto     bundlePath = diag.saveBundle();
+        QVERIFY2(! bundlePath.isEmpty(),
+                 qPrintable(QStringLiteral("saveBundle failed: ") + diag.lastError()));
+        const auto manifest = diag.collectCacheManifestForTest();
+        QVERIFY2(manifest.contains(QStringLiteral("scene.spvs")), qPrintable(manifest));
+        QVERIFY2(! manifest.contains(QStringLiteral("diag-")),
+                 qPrintable(QStringLiteral("manifest lists the bundle dir: ") + manifest));
+        QFile::remove(bundlePath);
+    }
+
+    // The pipeline diagnostic dump is written by the renderer next to its
+    // pipeline cache — $XDG_CACHE_HOME/wallpaper-scene-renderer — not under
+    // the host application's CacheLocation.
+    void testPipelineDiagReadsRendererPipelineCacheDir() {
+        const auto generic = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation);
+        QVERIFY(QDir().mkpath(generic + QStringLiteral("/wallpaper-scene-renderer")));
+        {
+            QFile f(generic + QStringLiteral("/wallpaper-scene-renderer/pipeline-diag.txt"));
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write("PIPELINE-DIAG-MARKER");
+        }
+        qputenv("WEKDE_PIPELINE_DIAG", "1");
+        WekDiagnostics diag;
+        const auto     dump = diag.collectPipelineDiagForTest();
+        qunsetenv("WEKDE_PIPELINE_DIAG");
+        QVERIFY2(dump.contains(QStringLiteral("PIPELINE-DIAG-MARKER")), qPrintable(dump));
+    }
+
     void testGpuInfoNonCrashing() {
         // The lspci / lsmod shell-outs may be missing in a stripped
         // distrobox.  Per spec the collector returns a placeholder string;

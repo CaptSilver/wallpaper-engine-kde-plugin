@@ -30,7 +30,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DEFAULT_WORKSHOP="$HOME/.steam/steam/steamapps/workshop/content/431960"
 DEFAULT_ASSETS="$HOME/.steam/steam/steamapps/common/wallpaper_engine/assets"
 DEFAULT_VIEWER="$REPO_ROOT/src/backend_scene/standalone_view/build-release/sceneviewer-script"
-DEFAULT_CACHE_DIR="$HOME/.cache/wescene-renderer"
+# Same rule the renderer uses (platform::GetCachePath): XDG_CACHE_HOME wins.
+DEFAULT_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/wescene-renderer"
 DEFAULT_RUNTIME=10
 DEFAULT_RESOLUTION="1280x720"
 DEFAULT_FPS=30
@@ -48,13 +49,13 @@ Run options (subcommand `run` and `rerun`):
   --viewer PATH          sceneviewer-script binary.
                          (default: src/backend_scene/standalone_view/build-release/sceneviewer-script)
   --cache-dir DIR        wescene-renderer cache base (used by --wipe-cache).
-                         (default: $HOME/.cache/wescene-renderer)
+                         (default: ${XDG_CACHE_HOME:-$HOME/.cache}/wescene-renderer)
   --runtime SECS         Seconds the wallpaper runs before SIGTERM. (default: 10)
   --timeout-offset SECS  Extra seconds before SIGKILL after SIGTERM. (default: 4)
   --resolution WxH       Render resolution. (default: 1280x720)
   --fps N                Target FPS. (default: 30)
   --out DIR              Output directory. (default: /tmp/wp-audit-<timestamp>)
-  --wipe-cache           Delete ~/.cache/wescene-renderer/<id> before each
+  --wipe-cache           Delete <cache-dir>/<id> before each
                          wallpaper. Use this when validating shader-transform
                          changes — the SPV cache key is computed BEFORE
                          FixImplicitConversions, so cached results otherwise

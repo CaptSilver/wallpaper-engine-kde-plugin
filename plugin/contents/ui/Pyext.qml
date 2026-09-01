@@ -125,8 +125,10 @@ Item {
     function watch_wallpaper_dir(path)    { fileHelper.watchWallpaperDir(path); }
     function unwatch_all_wallpaper_dirs() { fileHelper.unwatchAllWallpaperDirs(); }
 
-    // Cache GC + quota helpers (GAP-8). Synchronous on C++ side — small dirs;
-    // future async dispatch via QThreadPool is straightforward if needed.
+    // Cache GC + quota helpers. These three are SYNCHRONOUS on the C++ side —
+    // a full recursive stat walk of the cache tree on the calling thread. Fine
+    // from the settings dialog, not from the wallpaper item: use
+    // request_cache_gc there.
     function prune_orphan_thumbnails(cacheRoot, installedDirs, videoDirs) {
         return fileHelper.pruneOrphanThumbnails(cacheRoot, installedDirs || [], videoDirs || []);
     }
@@ -135,6 +137,15 @@ Item {
     }
     function enforce_cache_quota_force(roots, quotaBytes) {
         return fileHelper.enforceCacheQuotaForce(roots || [], quotaBytes);
+    }
+    // Orphan prune + quota eviction in one pass, dispatched onto FileHelper's
+    // thread pool. Fire-and-forget; results arrive on helper.cacheGcFinished.
+    function request_cache_gc(cacheRoot, installedDirs, videoDirs, quotaBytes) {
+        fileHelper.requestCacheGc(cacheRoot, installedDirs || [], videoDirs || [], quotaBytes);
+    }
+    // <cacheRoot>/video-thumbs, as the C++ side computes it.
+    function video_thumb_dir(cacheRoot) {
+        return fileHelper.videoThumbDir(cacheRoot);
     }
     // Steam Workshop manifest helpers (GAP-9). Synchronous reads; the .acf
     // is ~tens of KB for a few hundred items.

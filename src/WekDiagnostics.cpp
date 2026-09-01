@@ -1,4 +1,5 @@
 #include "WekDiagnostics.hpp"
+#include "CachePaths.hpp"
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -19,8 +20,7 @@ namespace wekde
 WekDiagnostics::WekDiagnostics(QObject* parent): QObject(parent) {}
 
 QString WekDiagnostics::saveBundle() {
-    const auto cacheRoot = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
-    QDir       dir(cacheRoot + QStringLiteral("/wallpaper-scene-renderer"));
+    QDir dir(cache_paths::diagnosticsDir());
     if (! dir.exists()) {
         if (! dir.mkpath(QStringLiteral("."))) {
             m_lastError = QStringLiteral("Failed to create cache dir: %1").arg(dir.absolutePath());
@@ -163,8 +163,7 @@ QString WekDiagnostics::collectRedactedCfg() {
 }
 
 QString WekDiagnostics::collectCacheManifest() {
-    const auto cacheRoot = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) +
-                           QStringLiteral("/wallpaper-scene-renderer");
+    const auto cacheRoot = cache_paths::rendererCacheDir();
     QDir       d(cacheRoot);
     if (! d.exists()) return QStringLiteral("No renderer cache directory at %1").arg(cacheRoot);
 
@@ -190,8 +189,7 @@ QString WekDiagnostics::collectPipelineDiag() {
     // pipeline diagnostic dump if the user reproduced the issue with the
     // env var set; otherwise omitted from the bundle.
     if (qEnvironmentVariable("WEKDE_PIPELINE_DIAG").trimmed() != QLatin1String("1")) return {};
-    const auto cacheRoot = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) +
-                           QStringLiteral("/wallpaper-scene-renderer/pipeline-diag.txt");
+    const auto cacheRoot = cache_paths::pipelineCacheDir() + QStringLiteral("/pipeline-diag.txt");
     QFile      f(cacheRoot);
     if (! f.open(QIODevice::ReadOnly))
         return QStringLiteral("WEKDE_PIPELINE_DIAG=1 set but no pipeline-diag.txt at %1")

@@ -740,6 +740,21 @@ fi
 
 [[ "$MODE" == "lint" ]] && { printf '\n%sLint passed.%s\n' "$GREEN" "$RESET"; exit 0; }
 
+# ── 1b. Mutation-gate self-test ───────────────────────────────────────────────
+# The mutation leg decides whether a push is allowed, and it once spent months
+# reporting a verdict it had never computed.  This checks the gate's own
+# decisions against a stub runner in a synthetic tree -- seconds, no Mull, no
+# build -- so a gate that has stopped measuring fails here loudly instead of
+# further down as a plausible-looking warning.
+step "Mutation-gate self-test"
+if [[ -x tools/scripts/tests/test-mutation-gate.sh ]]; then
+    if ! tools/scripts/tests/test-mutation-gate.sh; then
+        fail "mutation gate self-test failed — the gate's pass/fail logic is broken, fix it before trusting any mutation result"
+    fi
+else
+    warn "tools/scripts/tests/test-mutation-gate.sh missing or not executable — skipping"
+fi
+
 # ── 2. Build submodule (with tests) ───────────────────────────────────────────
 # Only force -G Ninja on fresh dirs; otherwise reuse the existing generator so
 # we don't fight with manual build dirs the user already configured.

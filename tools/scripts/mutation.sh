@@ -188,6 +188,16 @@ for t in "${TARGETS[@]}"; do
     esac
 done
 
+# Testability seam, and useful when you know the instrumented binaries are
+# current: skip straight to mutating what is already built.  The gate's self-test
+# (tools/scripts/tests/test-mutation-gate.sh) relies on it to run against a
+# synthetic tree in seconds instead of configuring cmake.
+if [[ "${MUTATION_SKIP_BUILD:-0}" == "1" ]]; then
+    warn "MUTATION_SKIP_BUILD=1 — mutating the binaries already in $BUILD / $BUILD_SUB"
+    NEED_PARENT=0
+    NEED_SUB=0
+fi
+
 if [[ "$NEED_PARENT" == "1" ]]; then
     step "Configure + build parent tests with -DMUTATION_TESTING=ON"
     # Fresh build dir keeps coverage / mutation flag combinations from clashing.
@@ -355,6 +365,11 @@ for t in "${TARGETS[@]}"; do
     if MULL_CONFIG="$(mull_config_for "$t")" && [[ -n "$MULL_CONFIG" ]]; then
         export MULL_CONFIG
         ok "mull config: $MULL_CONFIG"
+    elif [[ "$t" == "backend_scene_tests" ]]; then
+        # Without the config Mull mutates third_party and the test sources too:
+        # twice the mutants, and a baseline full of entries for code we do not
+        # own.  Refuse rather than quietly produce a different measurement.
+        fail "src/backend_scene/mull.yml not found — refusing to mutate $t unfiltered"
     else
         unset MULL_CONFIG
     fi
@@ -449,6 +464,24 @@ jq -s '
 ' "$OUT_DIR"/*/survivors.json > "$OUT_DIR/all.json"
 COUNT=$(jq '.survivors | length' "$OUT_DIR/all.json")
 ok "aggregated $COUNT surviving mutant(s)"
+
+# Handing Mull a config and having it honour one are different things, and the
+# only externally visible difference is which paths show up in the results.  The
+# submodule config excludes third_party and the test sources, so a survivor from
+# either means mull.yml was never read -- the defect that had this gate mutating
+# doctest.h and its own tests while still reporting a tidy verdict.  Checked in
+# every mode, because a refresh that ran unfiltered would bake the noise into the
+# baseline and make the next run look clean.
+STRAY="$(jq -r '
+  .survivors[]
+  | select(.file | test("src/backend_scene/(third_party|src/Test)/"))
+  | "  \(.file):\(.line) [\(.mutator)]"
+' "$OUT_DIR/all.json" | head -10 || true)"
+if [[ -n "$STRAY" ]]; then
+    warn "survivors from paths src/backend_scene/mull.yml excludes:"
+    printf '%s\n' "$STRAY" >&2
+    fail "excluded paths were mutated — Mull did not read its config (MULL_CONFIG did not reach it)"
+fi
 
 # ── Refresh-or-diff ───────────────────────────────────────────────────────────
 if [[ "$MODE" == "refresh" ]]; then

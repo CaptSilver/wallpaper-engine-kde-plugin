@@ -31,8 +31,12 @@
 # binary fetched into build/impl-mutation*/_mull/usr/bin/.
 #
 # Wired into the default preflight gate via `tools/scripts/mutation.sh --diff-only --strict`
-# (typical run 1-10 min depending on touched files; 0 min when no mapped sources changed).
-# Full run ~10-20 min across parent + submodule; use the diff-only mode for the gate.
+# (minutes, scaling with how many mutable lines the branch touched; 0 min when no
+# mapped sources changed).  A full run is hours, not minutes: backend_scene_tests
+# alone holds ~3700 mutants once third_party and the test sources are excluded,
+# and every one of them re-runs the whole ~31s suite.  Budget for that before
+# invoking this without --diff-only, and see mull_config_for() for why the
+# diff scoping is load-bearing rather than a nicety.
 #
 # Exit codes: 0=clean / 1=new survivors / 2=arg error / 77=runner or build unavailable.
 set -euo pipefail
@@ -265,6 +269,11 @@ if ! grep -qE '\bElements\b' <<<"$PROBE_OUT"; then
 fi
 
 ANY_BIN=0
+# Distinct from ANY_BIN: a binary can exist, run, and still yield no report
+# (Mull treats a timed-out warmup as fatal).  Without this the aggregate globs
+# nothing, jq errors, and the run reports a survivor diff computed from no data
+# -- which reads as a regression instead of a broken measurement.
+ANY_REPORT=0
 # MOC ignore regex (jq test()) — Qt's autogen tree is constant churn and not
 # first-party code; mutants in moc_*.cpp / *.moc / *_autogen/ paths are noise.
 MOC_IGNORE='_autogen/|/moc_|\.moc$'
@@ -275,9 +284,14 @@ MOC_IGNORE='_autogen/|/moc_|\.moc$'
 #
 # Timeouts are a two-knob system:
 #   --timeout: hard ceiling per test run (warmup + every mutant); applies even
-#     when Mull's baseline*10 logic would compute a lower number.  Set high
-#     enough for backend_scene_tests (the submodule has many doctest cases;
-#     baseline is ~8s and existing src/backend_scene/mull.yml uses 60s).
+#     when Mull's baseline*10 logic would compute a lower number.  This has to
+#     fit a whole *instrumented* run of the slowest target, because Mull's
+#     warmup run is subject to it too -- and a warmup that times out is fatal
+#     to Mull, so the run produces no report at all rather than a partial one.
+#     backend_scene_tests is the binding constraint: ~31s uninstrumented and
+#     appreciably slower under Mull, and it grows with every added doctest.
+#     Keep real headroom here; the cost of a generous ceiling is only paid by a
+#     mutant that genuinely hangs.
 #   --minimum-timeout: floor for the computed per-mutant timeout
 #     (Mull picks max(baseline*10, minimum-timeout)).  Keeps fast parent tests
 #     from getting too aggressive a deadline (a 100ms tst_plugininfo would
@@ -291,9 +305,43 @@ MOC_IGNORE='_autogen/|/moc_|\.moc$'
 # MULL_WORKER_MB is the per-worker RSS budget; an explicit MULL_WORKERS wins.
 MULL_WORKERS="${MULL_WORKERS:-$(mem_bounded_jobs "${MULL_WORKER_MB:-2048}")}"
 [[ "$MULL_WORKERS" -lt 1 ]] && MULL_WORKERS=1
-MULL_TIMEOUT_MS="${MULL_TIMEOUT_MS:-60000}"
+MULL_TIMEOUT_MS="${MULL_TIMEOUT_MS:-300000}"
 MULL_MIN_TIMEOUT_MS="${MULL_MIN_TIMEOUT_MS:-5000}"
 ok "mull parallelism: $MULL_WORKERS workers (RAM-bounded, cap nproc), build -j$MULL_BUILD_JOBS, ${MULL_TIMEOUT_MS}ms ceiling / ${MULL_MIN_TIMEOUT_MS}ms floor"
+# Mull looks for its config as ./mull.yml, or wherever $MULL_CONFIG points.  We
+# run the runner from the superproject root and build from build/impl-mutation-sub,
+# and neither holds one -- so src/backend_scene/mull.yml has never been read, and
+# every run logged "Mull cannot find config (mull.yml). Using some defaults."
+# Its excludePaths matter a lot: unfiltered, backend_scene_tests carries 7324
+# mutants, 22% of them inside third_party (doctest.h, nlohmann) and 28% in the
+# test sources themselves.  Reading the config drops that to 3688.
+#
+# In diff mode we also hand Mull its own incremental filter, which is what makes
+# --diff-only mean "mutants on lines this branch touched" instead of merely
+# "targets this branch touched".  Without it, any submodule change ran all 7324
+# mutants, each costing a full run of the ~31s suite -- about seven hours.
+#
+# Parent targets deliberately keep today's behaviour: tests/mull.yml declares a
+# narrower `mutators` list than the committed baseline was recorded with, so
+# adopting it would quietly shrink the mutant set.  That needs a baseline
+# refresh and a decision of its own.
+mull_config_for() {
+    local t="$1" src root ref cfg
+    [[ "$t" == "backend_scene_tests" ]] || { printf ''; return; }
+    src="$PWD/src/backend_scene/mull.yml"
+    root="$PWD/src/backend_scene"
+    [[ -f "$src" ]] || { printf ''; return; }
+    if [[ "$MODE" != "diff" ]]; then printf '%s' "$src"; return; fi
+    # Diff base, resolved inside the submodule -- it has its own history, so the
+    # parent's range says nothing about which submodule lines changed.
+    ref="$(git -C "$root" rev-parse --verify --quiet origin/main 2>/dev/null || true)"
+    [[ -z "$ref" ]] && ref="$(git -C "$root" rev-parse --verify --quiet HEAD~1 2>/dev/null || true)"
+    [[ -z "$ref" ]] && { printf '%s' "$src"; return; }
+    cfg="$OUT_DIR/mull-$t.yml"
+    { cat "$src"; printf '\ngitProjectRoot: %s\ngitDiffRef: %s\n' "$root" "$ref"; } > "$cfg"
+    printf '%s' "$cfg"
+}
+
 for t in "${TARGETS[@]}"; do
     bin="$(bin_path "$t")"
     if [[ ! -x "$bin" ]]; then
@@ -304,6 +352,12 @@ for t in "${TARGETS[@]}"; do
     target_dir="$OUT_DIR/$t"
     mkdir -p "$target_dir"
     step "mutating $t ($bin)"
+    if MULL_CONFIG="$(mull_config_for "$t")" && [[ -n "$MULL_CONFIG" ]]; then
+        export MULL_CONFIG
+        ok "mull config: $MULL_CONFIG"
+    else
+        unset MULL_CONFIG
+    fi
     # Strip whatever absolute prefix lands the path at the repo root so the
     # baseline survives different checkout locations and the Bazzite
     # /home <-> /var/home symlink (distrobox sees /home, host pwd lands at
@@ -333,6 +387,7 @@ for t in "${TARGETS[@]}"; do
             warn "no Elements report for $t — skipping in aggregate"
             continue
         fi
+        ANY_REPORT=1
         # Normalise Elements: .files{path => {mutants: [{id, mutatorName, location.start.line, status}]}}
         # MOC ignore applied here so the baseline never accumulates Qt autogen noise.
         jq --arg leaf "$repo_leaf" --arg moc "$MOC_IGNORE" '
@@ -351,6 +406,15 @@ for t in "${TARGETS[@]}"; do
                   --timeout "$MULL_TIMEOUT_MS" \
                   --minimum-timeout "$MULL_MIN_TIMEOUT_MS" \
                   --reporters IDE "$bin" 2>&1 | tee "$out" | tail -8 || true
+        # The IDE reporter has no missing-file tell: jq turns an empty log into
+        # an empty survivor list, which reads as a clean run.  A fatal Mull
+        # error (a timed-out warmup being the usual one) must not surface as
+        # "no new survivors".
+        if [[ ! -s "$out" ]] || grep -q 'treated as fatal errors' "$out"; then
+            warn "Mull failed before reporting for $t — skipping in aggregate"
+            continue
+        fi
+        ANY_REPORT=1
         jq -nR --arg leaf "$repo_leaf" --arg moc "$MOC_IGNORE" '
           [inputs
            | capture("(?<file>[^:]+):(?<line>[0-9]+):.*\\s(?<mutator>cxx_[a-z_]+|negate_cond)\\s+Survived")
@@ -364,6 +428,15 @@ done
 
 if [[ "$ANY_BIN" == "0" ]]; then
     fail "no mutation-instrumented binaries found in $BUILD/ or $BUILD_SUB/ — did MUTATION_TESTING configure correctly?"
+fi
+
+# Every target ran and none reported.  Exit 78 rather than diffing an empty
+# aggregate against the baseline: "we could not measure" and "the code got
+# worse" deserve different answers, and only the second should ever block.
+if [[ "$ANY_REPORT" == "0" ]]; then
+    warn "no target produced a mutation report — the survivor diff would be meaningless"
+    warn "usual cause: the instrumented warmup run exceeded ${MULL_TIMEOUT_MS}ms (raise MULL_TIMEOUT_MS)"
+    exit 78
 fi
 
 # ── Aggregate + dedupe survivors across targets ───────────────────────────────
@@ -401,7 +474,11 @@ NEW=$(jq -s '
 N=$(jq 'length' <<<"$NEW")
 if [[ "$N" -gt 0 ]]; then
     warn "$N new surviving mutant(s):"
-    jq -r '.[] | "  \(.file):\(.line) [\(.mutator)]"' <<<"$NEW" | head -25
+    # `|| true`: head closes the pipe at 25 lines, jq takes SIGPIPE, and under
+    # `set -euo pipefail` that killed the script with 141 before it could reach
+    # its own verdict below -- so a strict run reported a signal instead of the
+    # survivor failure it had just computed.
+    jq -r '.[] | "  \(.file):\(.line) [\(.mutator)]"' <<<"$NEW" | head -25 || true
     if [[ "$STRICT" == "1" ]]; then
         fail "$N new surviving mutant(s) — review and either fix code or run --refresh-baseline"
     fi

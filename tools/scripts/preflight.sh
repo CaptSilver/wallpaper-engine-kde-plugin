@@ -957,6 +957,10 @@ if [[ "$MODE" == "full" ]]; then
     case "$mrc" in
         0)  ok "mutation gate: no new surviving mutants vs baseline" ;;
         77) ok "mutation gate skipped (Mull runner/build unavailable)" ;;
+        78) warn "mutation gate produced no measurement (see above) — no survivor diff was possible"
+            if [[ "${MUTATION_FATAL:-0}" == "1" ]]; then
+                fail "mutation gate could not measure — fix the run rather than treating it as a pass"
+            fi ;;
         *)  if [[ "${MUTATION_FATAL:-0}" == "1" ]]; then
                 fail "mutation gate: new surviving mutant(s) — fix tests or run 'tools/scripts/mutation.sh --refresh-baseline'"
             fi

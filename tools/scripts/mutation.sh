@@ -313,8 +313,26 @@ MOC_IGNORE='_autogen/|/moc_|\.moc$'
 # parallel runs of an *instrumented* binary, so peak RSS is workers × per-binary
 # RSS.  32 concurrent instrumented backend_scene_tests is what OOM'd 30 GB boxes.
 # MULL_WORKER_MB is the per-worker RSS budget; an explicit MULL_WORKERS wins.
-MULL_WORKERS="${MULL_WORKERS:-$(mem_bounded_jobs "${MULL_WORKER_MB:-2048}")}"
+# 768 MB is measured, not guessed: `/usr/bin/time -v` on the instrumented
+# backend_scene_tests peaks at 411 MB (the 64 MiB-JSON cap tests dominate it).
+MULL_WORKERS="${MULL_WORKERS:-$(mem_bounded_jobs "${MULL_WORKER_MB:-768}")}"
 [[ "$MULL_WORKERS" -lt 1 ]] && MULL_WORKERS=1
+
+# Free RAM is the wrong boundary here, so cap concurrency separately.
+# mem_bounded_jobs bounds on host MemAvailable, but on a systemd desktop the
+# thing that actually stops this run is systemd-oomd watching *memory pressure*
+# per slice: it kills the whole slice at >80% pressure for 20s, and it does that
+# long before free memory runs out.  Mutation testing is unusually good at
+# provoking it -- re-exec'ing a ~150 MB instrumented binary once per mutant,
+# thousands of times, N at a time, is sustained reclaim activity by
+# construction.  Measured on a 30 GB workstation: 10 workers drove the slice
+# from 1.9 GB to 17.1 GB and got the session killed, twice, with free RAM still
+# showing 20 GB available.  Raise it only if you can watch
+# /proc/pressure/memory stay low for the whole run.
+MULL_MAX_WORKERS="${MULL_MAX_WORKERS:-6}"
+if (( MULL_WORKERS > MULL_MAX_WORKERS )); then
+    MULL_WORKERS="$MULL_MAX_WORKERS"
+fi
 MULL_TIMEOUT_MS="${MULL_TIMEOUT_MS:-300000}"
 MULL_MIN_TIMEOUT_MS="${MULL_MIN_TIMEOUT_MS:-5000}"
 ok "mull parallelism: $MULL_WORKERS workers (RAM-bounded, cap nproc), build -j$MULL_BUILD_JOBS, ${MULL_TIMEOUT_MS}ms ceiling / ${MULL_MIN_TIMEOUT_MS}ms floor"

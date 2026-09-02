@@ -349,15 +349,22 @@ ok "mull parallelism: $MULL_WORKERS workers (RAM-bounded, cap nproc), build -j$M
 # "targets this branch touched".  Without it, any submodule change ran all 7324
 # mutants, each costing a full run of the ~31s suite -- about seven hours.
 #
-# Parent targets deliberately keep today's behaviour: tests/mull.yml declares a
-# narrower `mutators` list than the committed baseline was recorded with, so
-# adopting it would quietly shrink the mutant set.  That needs a baseline
-# refresh and a decision of its own.
+# Both configs are excludePaths-only where it matters, so wiring them changes
+# which paths get mutated, not which mutators run.  Parent binaries need this as
+# much as the submodule one: they link submodule sources, so unconfigured they
+# mutate kissfft and vog/sha1.
 mull_config_for() {
     local t="$1" src root ref cfg
-    [[ "$t" == "backend_scene_tests" ]] || { printf ''; return; }
-    src="$PWD/src/backend_scene/mull.yml"
-    root="$PWD/src/backend_scene"
+    if [[ "$t" == "backend_scene_tests" ]]; then
+        src="$PWD/src/backend_scene/mull.yml"
+        root="$PWD/src/backend_scene"
+    else
+        # Parent binaries link submodule sources, so they need the exclusions
+        # just as much: without a config they mutate kissfft and vog/sha1, which
+        # is where ~98 of the committed baseline's entries came from.
+        src="$PWD/tests/mull.yml"
+        root="$PWD"
+    fi
     [[ -f "$src" ]] || { printf ''; return; }
     if [[ "$MODE" != "diff" ]]; then printf '%s' "$src"; return; fi
     # Diff base, resolved inside the submodule -- it has its own history, so the
@@ -383,13 +390,12 @@ for t in "${TARGETS[@]}"; do
     if MULL_CONFIG="$(mull_config_for "$t")" && [[ -n "$MULL_CONFIG" ]]; then
         export MULL_CONFIG
         ok "mull config: $MULL_CONFIG"
-    elif [[ "$t" == "backend_scene_tests" ]]; then
-        # Without the config Mull mutates third_party and the test sources too:
-        # twice the mutants, and a baseline full of entries for code we do not
-        # own.  Refuse rather than quietly produce a different measurement.
-        fail "src/backend_scene/mull.yml not found — refusing to mutate $t unfiltered"
     else
-        unset MULL_CONFIG
+        # Without a config Mull mutates third_party and the test sources too:
+        # far more mutants, and a baseline full of entries for code we neither
+        # own nor test.  Refuse rather than quietly produce a different
+        # measurement that still looks like a clean run.
+        fail "no mull.yml resolved for $t — refusing to mutate it unfiltered"
     fi
     # Strip whatever absolute prefix lands the path at the repo root so the
     # baseline survives different checkout locations and the Bazzite

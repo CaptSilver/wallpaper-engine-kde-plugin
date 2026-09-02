@@ -1,19 +1,24 @@
-mutators:
-  - cxx_add_to_sub
-  - cxx_sub_to_add
-  - cxx_mul_to_div
-  - cxx_div_to_mul
-  - cxx_assign_const
-  - cxx_init_const
-  - cxx_remove_void_call
-  - cxx_lt_to_le
-  - cxx_le_to_lt
-  - cxx_gt_to_ge
-  - cxx_ge_to_gt
-  - cxx_eq_to_ne
-  - cxx_ne_to_eq
-  - cxx_logical_and_to_or
-  - cxx_logical_or_to_and
-  - negate_cond
-
-timeout: 5000
+# Mull configuration for the parent test binaries (tests/tst_*).
+#
+# Reached only because tools/scripts/mutation.sh exports MULL_CONFIG; Mull
+# otherwise looks for ./mull.yml in the working directory, which is the
+# superproject root, and silently proceeds with defaults.
+#
+# excludePaths is the whole point of this file.  The parent test binaries link
+# submodule sources, so without it Mull mutates vendored code -- kissfft and
+# vog/sha1 alone contributed ~98 survivors to the committed baseline, none of
+# which describe code this project owns or tests.
+#
+# Deliberately no `mutators:` key.  An earlier version pinned a narrower list
+# than the recorded baseline was measured with, and since the file never
+# reached Mull the two silently disagreed; leaving it unset keeps Mull's
+# defaults, which is what the baseline actually reflects.  No `timeout:` key
+# either -- Mull marks it deprecated and mutation.sh passes --timeout
+# explicitly, so having both invites them to drift apart.
+excludePaths:
+  - .*/third_party/.*
+  - .*/src/Test/.*
+  - .*/nlohmann/.*
+  - .*/Eigen/.*
+  - .*/doctest/.*
+  - .*/kissfft/.*

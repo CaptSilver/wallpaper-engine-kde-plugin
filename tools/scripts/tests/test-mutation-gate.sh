@@ -81,7 +81,10 @@ make_root() {
     printf '#!/bin/sh\nexit 0\n' > "$root/build/impl-mutation-sub/src/Test/backend_scene_tests"
     chmod +x "$root/build/impl-mutation/tst_filehelper" \
              "$root/build/impl-mutation-sub/src/Test/backend_scene_tests"
+    # Both configs, because every target now resolves one and the gate refuses
+    # to mutate a target it cannot configure.
     cp "$REAL_ROOT/src/backend_scene/mull.yml" "$root/src/backend_scene/mull.yml"
+    cp "$REAL_ROOT/tests/mull.yml" "$root/tests/mull.yml"
     printf '{"survivors":[]}\n' > "$root/tests/.mull-baseline.json"
     printf '%s' "$root"
 }

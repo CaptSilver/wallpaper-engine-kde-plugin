@@ -69,9 +69,22 @@ bin_path() {
 MODE="full"
 TARGET=""
 STRICT=1
+# Chunked-sweep support.  A full sweep of backend_scene_tests is ~3700 mutants
+# that each re-run the whole suite -- many hours, on a desktop that will not
+# stay quiet that long.  These let a caller slice it into independently
+# restartable pieces whose reports accumulate side by side in $OUT_DIR, so an
+# interruption costs one chunk instead of the whole run.  See mutation-sweep.sh.
+INCLUDE_PATHS=""     # comma-separated regexes -> Mull includePaths
+OUT_SUFFIX=""        # per-run report subdir suffix, keeps chunks from colliding
+WIPE_OUT=1           # 0 keeps earlier chunks' reports in place
+AGGREGATE_ONLY=0     # skip build+mutate, just aggregate what is already there
 while (( $# )); do
     case "$1" in
         --diff-only)        MODE="diff"; shift ;;
+        --include-paths)    INCLUDE_PATHS="$2"; shift 2 ;;
+        --out-suffix)       OUT_SUFFIX="$2"; shift 2 ;;
+        --no-wipe)          WIPE_OUT=0; shift ;;
+        --aggregate-only)   AGGREGATE_ONLY=1; shift ;;
         --refresh-baseline) MODE="refresh"; shift ;;
         --target)           TARGET="$2"; shift 2 ;;
         --strict)           STRICT=1; shift ;;
@@ -82,6 +95,13 @@ while (( $# )); do
         *) echo "unknown arg: $1" >&2; exit 2 ;;
     esac
 done
+
+# Aggregating an existing set of chunk reports means doing none of the work that
+# produced them: no build, no wipe, no runner.
+if [[ "$AGGREGATE_ONLY" == "1" ]]; then
+    WIPE_OUT=0
+    MUTATION_SKIP_BUILD=1
+fi
 
 # ── Output helpers ────────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then
@@ -250,7 +270,7 @@ if [[ -z "$RUNNER" ]]; then
                   | head -1 || true)
     fi
 fi
-if [[ -z "$RUNNER" || ! -x "$RUNNER" ]]; then
+if [[ -z "$RUNNER" || ! -x "$RUNNER" ]] && [[ "$AGGREGATE_ONLY" != "1" ]]; then
     warn "mull-runner unavailable — rebuild with -DMUTATION_TESTING=ON or install Mull"
     exit 77
 fi
@@ -269,11 +289,12 @@ fi
 # JSON (`.files[<path>].mutants[]` with `id` / `mutatorName` / `location.start.line`
 # / `status`).  Per-target reports land under $OUT_DIR/<target>/ and aggregate
 # into all-survivors.json keyed by file+line+mutator.
-rm -rf "$OUT_DIR"
+[[ "$WIPE_OUT" == "1" ]] && rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
-PROBE_OUT="$("$RUNNER" --help 2>&1 || true)"
+PROBE_OUT=""
+[[ "$AGGREGATE_ONLY" != "1" ]] && PROBE_OUT="$("$RUNNER" --help 2>&1 || true)"
 USE_ELEMENTS=1
-if ! grep -qE '\bElements\b' <<<"$PROBE_OUT"; then
+if [[ "$AGGREGATE_ONLY" != "1" ]] && ! grep -qE '\bElements\b' <<<"$PROBE_OUT"; then
     USE_ELEMENTS=0
     warn "Mull --reporters=Elements unavailable; falling back to IDE-reporter parsing"
 fi
@@ -366,17 +387,33 @@ mull_config_for() {
         root="$PWD"
     fi
     [[ -f "$src" ]] || { printf ''; return; }
-    if [[ "$MODE" != "diff" ]]; then printf '%s' "$src"; return; fi
+    # A chunked sweep needs its own derived config even outside diff mode, so
+    # build one whenever includePaths are in play.
+    if [[ "$MODE" != "diff" && -z "$INCLUDE_PATHS" ]]; then printf '%s' "$src"; return; fi
     # Diff base, resolved inside the submodule -- it has its own history, so the
     # parent's range says nothing about which submodule lines changed.
-    ref="$(git -C "$root" rev-parse --verify --quiet origin/main 2>/dev/null || true)"
-    [[ -z "$ref" ]] && ref="$(git -C "$root" rev-parse --verify --quiet HEAD~1 2>/dev/null || true)"
-    [[ -z "$ref" ]] && { printf '%s' "$src"; return; }
-    cfg="$OUT_DIR/mull-$t.yml"
-    { cat "$src"; printf '\ngitProjectRoot: %s\ngitDiffRef: %s\n' "$root" "$ref"; } > "$cfg"
+    ref=""
+    [[ "$MODE" == "diff" ]] && ref="$(git -C "$root" rev-parse --verify --quiet origin/main 2>/dev/null || true)"
+    if [[ "$MODE" == "diff" ]]; then
+        [[ -z "$ref" ]] && ref="$(git -C "$root" rev-parse --verify --quiet HEAD~1 2>/dev/null || true)"
+        [[ -z "$ref" ]] && { printf '%s' "$src"; return; }
+    fi
+    cfg="$OUT_DIR/mull-$t${OUT_SUFFIX:+-$OUT_SUFFIX}.yml"
+    {
+        cat "$src"
+        if [[ -n "$INCLUDE_PATHS" ]]; then
+            # includePaths narrows the sweep to one chunk's files.  Mull ANDs it
+            # with excludePaths, so the vendored/test exclusions still hold.
+            printf '\nincludePaths:\n'
+            local IFS=,
+            for re in $INCLUDE_PATHS; do printf '  - %s\n' "$re"; done
+        fi
+        [[ "$MODE" == "diff" ]] && printf 'gitProjectRoot: %s\ngitDiffRef: %s\n' "$root" "$ref"
+    } > "$cfg"
     printf '%s' "$cfg"
 }
 
+[[ "$AGGREGATE_ONLY" == "1" ]] && TARGETS=()
 for t in "${TARGETS[@]}"; do
     bin="$(bin_path "$t")"
     if [[ ! -x "$bin" ]]; then
@@ -384,7 +421,7 @@ for t in "${TARGETS[@]}"; do
         continue
     fi
     ANY_BIN=1
-    target_dir="$OUT_DIR/$t"
+    target_dir="$OUT_DIR/$t${OUT_SUFFIX:+-$OUT_SUFFIX}"
     mkdir -p "$target_dir"
     step "mutating $t ($bin)"
     if MULL_CONFIG="$(mull_config_for "$t")" && [[ -n "$MULL_CONFIG" ]]; then
@@ -464,6 +501,15 @@ for t in "${TARGETS[@]}"; do
         ' < "$out" > "$target_dir/survivors.json"
     fi
 done
+
+if [[ "$AGGREGATE_ONLY" == "1" ]]; then
+    if ! compgen -G "$OUT_DIR/*/survivors.json" >/dev/null; then
+        fail "--aggregate-only: no chunk reports under $OUT_DIR — nothing to aggregate"
+    fi
+    ANY_BIN=1
+    ANY_REPORT=1
+    ok "aggregating existing reports: $(compgen -G "$OUT_DIR/*/survivors.json" | wc -l) chunk(s)"
+fi
 
 if [[ "$ANY_BIN" == "0" ]]; then
     fail "no mutation-instrumented binaries found in $BUILD/ or $BUILD_SUB/ — did MUTATION_TESTING configure correctly?"

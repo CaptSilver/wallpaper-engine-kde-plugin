@@ -16,7 +16,6 @@ import org.kde.plasma.components 3.0 as PlasmaComponents
 // for kcm gridview
 import org.kde.kcmutils as KCM
 import org.kde.kirigami 2.6 as Kirigami
-import org.kde.kquickcontrolsaddons 2.0
 
 RowLayout {
     id: wallpaperPageRoot

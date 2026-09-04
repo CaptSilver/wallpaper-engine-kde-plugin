@@ -80,18 +80,35 @@ BuildRequires: nodejs
 # rpm derives the library dependencies from the plugin's DT_NEEDED entries, so
 # what it cannot see is what gets named here: the Plasma shell that hosts the
 # wallpaper, and the QML import modules loaded by name at runtime.
+#
+# main.qml instantiates WindowModel and PowerSource unconditionally and both wrap
+# Plasma5Support.DataSource, so a missing plasma5support means the root item never
+# creates and the desktop draws no wallpaper at all.  It reaches the machine
+# anyway today, but only because plasma-workspace requires the `plasmashell`
+# capability that plasma-desktop happens to provide -- not a chain worth betting
+# the whole plugin on.  QtMultimedia is the video-backend fallback (main.xml
+# defaults VideoBackend to Mpv), so it stays weak.
 %if 0%{?suse_version}
 Requires: plasma6-workspace
+Requires: plasma5support6
 Requires: qt6-webchannel-imports
 Recommends: gstreamer-plugins-libav
+Recommends: qt6-multimedia-imports
 Recommends: qt6-webengine-imports
 %else
 %if 0%{?mageia}
 Requires: plasma-workspace
+Requires: plasma5support
+Requires: qtwebchannel6
 Recommends: gstreamer1.0-libav
-Recommends: lib64qt6webenginequick6
+Recommends: qtmultimedia6
+# The QtWebEngine QML import lives in qtwebengine6.  lib64qt6webenginequick6 is
+# only libQt6WebEngineQuick.so.6, and the dependency runs module -> library, so
+# naming the library gets you no import.
+Recommends: qtwebengine6
 %else
 Requires: plasma-workspace
+Requires: plasma5support
 Requires: mpv-libs
 Requires: lz4
 Requires: qt6-qtwebchannel
@@ -105,6 +122,7 @@ Requires: kf6-kcrash
 Requires: kf6-kglobalaccel
 Requires: kf6-ki18n
 Recommends: gstreamer1-libav
+Recommends: qt6-qtmultimedia
 Recommends: qt6-qtwebengine
 %endif
 %endif

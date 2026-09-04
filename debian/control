@@ -38,6 +38,14 @@ Rules-Requires-Root: no
 
 Package: wallpaper-engine-kde-plugin
 Architecture: any
+# The qml6-module-* entries below are QML imports resolved by name at runtime:
+# dpkg-shlibdeps cannot see them, and Debian ships every QML module as its own
+# binary package.  plasma5support backs WindowModel and PowerSource, which
+# main.qml instantiates unconditionally, so without it the root item fails to
+# create and the desktop draws no wallpaper at all.  QtWebChannel backs the web
+# wallpaper bridge.  QtMultimedia (video-backend fallback) and QtWebEngine (web
+# backend) are optional at runtime, hence Recommends.  There is no `qt6-webengine`
+# binary package in Debian -- the QML module is qml6-module-qtwebengine.
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
@@ -46,9 +54,12 @@ Depends:
  libkf6crash6,
  libkf6globalaccel6,
  libkf6i18n6,
+ qml6-module-org-kde-plasma-plasma5support,
+ qml6-module-qtwebchannel,
 Recommends:
  gstreamer1.0-libav,
- qt6-webengine,
+ qml6-module-qtmultimedia,
+ qml6-module-qtwebengine,
  vulkan-tools,
 Suggests:
  pipewire-pulse,

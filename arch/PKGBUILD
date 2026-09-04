@@ -25,6 +25,11 @@ license=('GPL-2.0-only')
 # wallpaper UI, mpv for video, freetype2 / libpulse for the scene renderer).
 depends=(
     'plasma-workspace'
+    # QML import resolved by name at runtime, so nothing derives it from the .so.
+    # main.qml instantiates WindowModel and PowerSource unconditionally and both
+    # wrap Plasma5Support.DataSource — without it the root item never creates and
+    # the desktop draws no wallpaper.
+    'plasma5support'
     'libplasma'
     'plasma-activities'
     'kconfig'
@@ -59,6 +64,7 @@ makedepends=(
 
 optdepends=(
     'gst-libav: extra GStreamer codecs for video wallpapers'
+    'qt6-multimedia: QtMultimedia video backend (the fallback when mpv is absent)'
     'pipewire-pulse: PipeWire-backed PulseAudio (system audio capture)'
     'vulkan-tools: vulkaninfo / Vulkan diagnostics'
 )

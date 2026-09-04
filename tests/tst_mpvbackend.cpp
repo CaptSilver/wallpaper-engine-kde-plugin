@@ -16,6 +16,7 @@
 #include <QtTest>
 #include <QGuiApplication>
 #include <QSignalSpy>
+#include <QDir>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QUrl>
@@ -379,8 +380,11 @@ void TestMpvBackend::firstFrame_afterSourceFlip_emitsExactlyOnce() {
     // A real on-disk file so the `loadfile` command is accepted (mpv queues
     // the load asynchronously and returns success regardless of decodability),
     // which is what flips m_first_frame to false inside setSource.
-    // No leading path => Qt6 uses QStandardPaths::TempLocation automatically.
-    QTemporaryFile file(QStringLiteral("wekde-mpv-firstframeXXXXXX.mp4"));
+    // The template must be absolute: a relative one resolves against the
+    // process's working directory, not the temp dir, so a run that dies before
+    // the destructor (a killed mutant, a crashing case) leaves the file behind
+    // in whatever directory the suite was launched from -- the repo, usually.
+    QTemporaryFile file(QDir::temp().filePath(QStringLiteral("wekde-mpv-firstframeXXXXXX.mp4")));
     QVERIFY(file.open());
     file.write(QByteArrayLiteral("\x00\x00\x00\x18"
                                  "ftypmp42"));
@@ -559,7 +563,7 @@ void TestMpvBackend::setSource_validFixture_doesNotEmitSourceLoadFailed() {
     auto obj = makeObject();
     obj->initCallback();
 
-    QTemporaryFile file(QStringLiteral("wekde-mpv-okXXXXXX.mp4"));
+    QTemporaryFile file(QDir::temp().filePath(QStringLiteral("wekde-mpv-okXXXXXX.mp4")));
     QVERIFY(file.open());
     file.write(QByteArrayLiteral("\x00\x00\x00\x18"
                                  "ftypmp42"));

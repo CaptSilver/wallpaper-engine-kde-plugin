@@ -755,52 +755,52 @@
     },
     {
       "file": "src/PlaylistManager.cpp",
-      "line": 355,
+      "line": 361,
       "mutator": "cxx_le_to_lt"
     },
     {
       "file": "src/PlaylistManager.cpp",
-      "line": 373,
+      "line": 379,
       "mutator": "cxx_gt_to_ge"
     },
     {
       "file": "src/PlaylistManager.cpp",
-      "line": 373,
+      "line": 379,
       "mutator": "cxx_gt_to_le"
     },
     {
       "file": "src/PlaylistManager.cpp",
-      "line": 382,
+      "line": 388,
       "mutator": "cxx_mul_to_div"
     },
     {
       "file": "src/PlaylistManager.cpp",
-      "line": 388,
+      "line": 394,
       "mutator": "cxx_gt_to_ge"
     },
     {
       "file": "src/PlaylistManager.cpp",
-      "line": 475,
+      "line": 505,
       "mutator": "cxx_gt_to_ge"
     },
     {
       "file": "src/PlaylistManager.cpp",
-      "line": 510,
+      "line": 552,
       "mutator": "cxx_sub_to_add"
     },
     {
       "file": "src/PlaylistManager.cpp",
-      "line": 512,
+      "line": 554,
       "mutator": "cxx_sub_to_add"
     },
     {
       "file": "src/PlaylistManager.cpp",
-      "line": 517,
+      "line": 559,
       "mutator": "cxx_lt_to_ge"
     },
     {
       "file": "src/PlaylistManager.cpp",
-      "line": 517,
+      "line": 559,
       "mutator": "cxx_lt_to_le"
     },
     {
@@ -880,22 +880,22 @@
     },
     {
       "file": "src/backend_mpv/MpvBackend.cpp",
-      "line": 376,
+      "line": 383,
       "mutator": "cxx_eq_to_ne"
     },
     {
       "file": "src/backend_mpv/MpvBackend.cpp",
-      "line": 377,
+      "line": 384,
       "mutator": "cxx_ge_to_gt"
     },
     {
       "file": "src/backend_mpv/MpvBackend.cpp",
-      "line": 377,
+      "line": 384,
       "mutator": "cxx_ge_to_lt"
     },
     {
       "file": "src/backend_mpv/MpvBackend.cpp",
-      "line": 472,
+      "line": 479,
       "mutator": "cxx_ne_to_eq"
     },
     {

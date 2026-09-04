@@ -1,5 +1,5 @@
 {
-  "_accepted_equivalent": "src/backend_scene/src/WPShaderParser.cpp:1150 (cxx_gt_to_ge, cxx_gt_to_le) is `if (s_memoCompiles > 0)`, and it guards nothing but a LOG_INFO summary. Both mutants only change whether that line is emitted, so no assertion can distinguish them without capturing log output, and contorting a test to do so would pin the logging rather than the behaviour. Accepted deliberately. The two sibling survivors that WERE killed (the include-depth bound at :117 and the memo compile counter) are the ones that described real behaviour.  src/backend_scene/src/WPParticleParser.cpp:955 (cxx_gt_to_ge) is the angularmovement drag gate `if (drag > 0.0f)`. `>=` only changes which branch is taken when drag is exactly zero, and there the guarded body computes factor = max(0.0, 1.0 - 0*blend*dt) = 1.0, so MutiplyAngularVelocity(p, 1.0) is the identity on every float value. The only way that factor could come out as anything but 1.0 at drag==0 is a non-finite blend factor or step, and in exactly those cases the operator's own AngularAccelerate(p, force * blend, dt) two lines earlier has already driven angularVelocity to NaN, which absorbs both *1.0 and *0.0 -- so the branch cannot be observed from the outside either way. A non-finite step is not reachable regardless: ParticleSystem clamps frameTime with kMaxParticleFrameTime. Verified empirically as well -- with the mutation applied by hand the whole 3235-case backend_scene_tests suite passes unchanged. The two sibling cxx_mul_to_div mutants on the next line describe real behaviour (blended angular drag) and were killed with tests rather than accepted here.  ||  src/PlaylistManager.cpp:505 (cxx_gt_to_ge) is `const bool forward = delta > 0;`, and the line above it returns on `delta == 0` (`if (m_activeId.isEmpty() || delta == 0) return;`). delta is a plain int, unmodified between the two lines, so at :505 the precondition delta != 0 holds and `> 0` and `>= 0` agree for every reachable value -- they differ only at 0. Every downstream branch is driven solely by `forward`, so nothing can observe the difference. Accepted deliberately.",
+  "_accepted_equivalent": "src/backend_scene/src/WPShaderParser.cpp:1150 (cxx_gt_to_ge, cxx_gt_to_le) is `if (s_memoCompiles > 0)`, and it guards nothing but a LOG_INFO summary. Both mutants only change whether that line is emitted, so no assertion can distinguish them without capturing log output, and contorting a test to do so would pin the logging rather than the behaviour. Accepted deliberately. The two sibling survivors that WERE killed (the include-depth bound at :117 and the memo compile counter) are the ones that described real behaviour.  src/backend_scene/src/WPParticleParser.cpp:955 (cxx_gt_to_ge) is the angularmovement drag gate `if (drag > 0.0f)`. `>=` only changes which branch is taken when drag is exactly zero, and there the guarded body computes factor = max(0.0, 1.0 - 0*blend*dt) = 1.0, so MutiplyAngularVelocity(p, 1.0) is the identity on every float value. The only way that factor could come out as anything but 1.0 at drag==0 is a non-finite blend factor or step, and in exactly those cases the operator's own AngularAccelerate(p, force * blend, dt) two lines earlier has already driven angularVelocity to NaN, which absorbs both *1.0 and *0.0 -- so the branch cannot be observed from the outside either way. A non-finite step is not reachable regardless: ParticleSystem clamps frameTime with kMaxParticleFrameTime. Verified empirically as well -- with the mutation applied by hand the whole 3235-case backend_scene_tests suite passes unchanged. The two sibling cxx_mul_to_div mutants on the next line describe real behaviour (blended angular drag) and were killed with tests rather than accepted here.  ||  src/PlaylistManager.cpp:505 (cxx_gt_to_ge) is `const bool forward = delta > 0;`, and the line above it returns on `delta == 0` (`if (m_activeId.isEmpty() || delta == 0) return;`). delta is a plain int, unmodified between the two lines, so at :505 the precondition delta != 0 holds and `> 0` and `>= 0` agree for every reachable value -- they differ only at 0. Every downstream branch is driven solely by `forward`, so nothing can observe the difference. Accepted deliberately.  ||  src/backend_scene/src/VulkanRender/SkyboxPass.cpp:326 (cxx_ne_to_eq) and :334 (cxx_eq_to_ne) are inside SkyboxPass::execute(), which backend_scene_tests never calls -- proven by inserting std::abort() as the function's first statement and watching the whole suite still pass 3257/3257 with exit 0. They survive because the code does not run, not because the behaviour is unpinned, and reaching them needs a live VkDevice plus a compiled render pass, pipeline, mapped dyn_buf, recording command buffer and the push-descriptor extension. Deliberately NOT lifted into a device-free helper: `res != VK_SUCCESS` is the Vulkan API contract, not project policy, and it appears at 42 sites in src/. Extracting this one would create a function whose body is the mutated expression, so the test would restate the wrapper's definition; the mutant would die only because the line moved into a covered translation unit while the branch still never executes.",
   "_comment": "Surviving mutants accepted as baseline. Run tools/scripts/mutation.sh --refresh-baseline to update; new entries in a non-refresh run fail the gate.",
   "_scope": "Measured from the parent test binaries only. backend_scene_tests is NOT represented: its instrumented warmup takes ~91s and Mull's ceiling was 60s from 2026-06-06 until 2026-09-01, so that target has never once produced a report. The src/backend_scene/ entries here come from parent binaries linking submodule sources (Audio, Utils), not from that target. A future full submodule sweep will therefore surface a large batch of survivors that are first measurements, not regressions -- refresh the baseline from that run rather than treating them as new.  Since 2026-09-04 the parent's own tests/ directory is excluded in tests/mull.yml: Mull had been mutating the test sources themselves and 163 of the entries here sat in tests/*.cpp, which say nothing about the product. Those entries were pruned when the exclude landed.",
   "survivors": [
@@ -735,72 +735,62 @@
     },
     {
       "file": "src/PlaylistManager.cpp",
-      "line": 290,
+      "line": 448,
       "mutator": "cxx_ge_to_gt"
     },
     {
       "file": "src/PlaylistManager.cpp",
-      "line": 305,
+      "line": 463,
       "mutator": "cxx_ge_to_gt"
     },
     {
       "file": "src/PlaylistManager.cpp",
-      "line": 306,
+      "line": 464,
       "mutator": "cxx_ge_to_gt"
     },
     {
       "file": "src/PlaylistManager.cpp",
-      "line": 344,
+      "line": 519,
       "mutator": "cxx_le_to_lt"
     },
     {
       "file": "src/PlaylistManager.cpp",
-      "line": 361,
-      "mutator": "cxx_le_to_lt"
-    },
-    {
-      "file": "src/PlaylistManager.cpp",
-      "line": 379,
+      "line": 537,
       "mutator": "cxx_gt_to_ge"
     },
     {
       "file": "src/PlaylistManager.cpp",
-      "line": 379,
+      "line": 537,
       "mutator": "cxx_gt_to_le"
     },
     {
       "file": "src/PlaylistManager.cpp",
-      "line": 388,
-      "mutator": "cxx_mul_to_div"
-    },
-    {
-      "file": "src/PlaylistManager.cpp",
-      "line": 394,
-      "mutator": "cxx_gt_to_ge"
-    },
-    {
-      "file": "src/PlaylistManager.cpp",
-      "line": 505,
-      "mutator": "cxx_gt_to_ge"
-    },
-    {
-      "file": "src/PlaylistManager.cpp",
       "line": 552,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/PlaylistManager.cpp",
+      "line": 663,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/PlaylistManager.cpp",
+      "line": 710,
       "mutator": "cxx_sub_to_add"
     },
     {
       "file": "src/PlaylistManager.cpp",
-      "line": 554,
+      "line": 712,
       "mutator": "cxx_sub_to_add"
     },
     {
       "file": "src/PlaylistManager.cpp",
-      "line": 559,
+      "line": 717,
       "mutator": "cxx_lt_to_ge"
     },
     {
       "file": "src/PlaylistManager.cpp",
-      "line": 559,
+      "line": 717,
       "mutator": "cxx_lt_to_le"
     },
     {
@@ -1577,6 +1567,16 @@
       "file": "src/backend_scene/src/Utils/SceneProfiler.cpp",
       "line": 104,
       "mutator": "cxx_div_to_mul"
+    },
+    {
+      "file": "src/backend_scene/src/VulkanRender/SkyboxPass.cpp",
+      "line": 326,
+      "mutator": "cxx_ne_to_eq"
+    },
+    {
+      "file": "src/backend_scene/src/VulkanRender/SkyboxPass.cpp",
+      "line": 334,
+      "mutator": "cxx_eq_to_ne"
     },
     {
       "file": "src/backend_scene/src/WPParticleParser.cpp",

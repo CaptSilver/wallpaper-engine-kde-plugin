@@ -437,6 +437,75 @@ TestCase {
         ctrl.activePlaylistIdRead = "";
     }
 
+    // ── manual navigation (Next / Previous) ──────────────────────────────
+    // Both are user gestures, so they go through the manager's manual-step
+    // API. The skip path is reserved for items that fail to resolve: it
+    // spends a budget that switches the playlist off after eight misses,
+    // which a user browsing their playlist must never hit.
+    function test_next_stepsTheManagerForward() {
+        const mgr = ctrl.manager;
+        mgr.stepByCount = 0;
+        mgr.skipCurrentCount = 0;
+        ctrl.next();
+        compare(mgr.stepByCount, 1);
+        compare(mgr.lastStepByDelta, 1);
+        compare(mgr.skipCurrentCount, 0, "Next must not spend the skip budget");
+    }
+
+    function test_previous_stepsTheManagerBackward() {
+        const mgr = ctrl.manager;
+        mgr.stepByCount = 0;
+        mgr.skipCurrentCount = 0;
+        ctrl.previous();
+        compare(mgr.stepByCount, 1);
+        compare(mgr.lastStepByDelta, -1, "Previous must step back, not forward");
+        compare(mgr.skipCurrentCount, 0, "Previous must not spend the skip budget");
+    }
+
+    // Filtered Library has no stored item list, so "back" means re-serving
+    // what was on screen before the last pick.
+    function test_filteredPrevious_reservesTheItemBeforeTheCurrentOne() {
+        const mgr = ctrl.manager;
+        ctrl._serveFilteredPick();
+        const first = mgr.lastAcceptPickArg;
+        ctrl._serveFilteredPick();
+        const second = mgr.lastAcceptPickArg;
+        verify(first !== second);
+
+        mgr.requestFilteredPreviousPick();
+        compare(mgr.lastAcceptPickArg, first,
+                "going back must replay the previous pick, not roll a new one");
+
+        // A second back-step keeps walking the history, and once it runs out
+        // the controller falls back to a fresh pick rather than going silent.
+        mgr.lastAcceptPickArg = undefined;
+        mgr.requestFilteredPreviousPick();
+        verify(mgr.lastAcceptPickArg !== undefined);
+        verify(mgr.lastAcceptPickArg !== "");
+    }
+
+    // Leaving the Filtered Library drops the history along with the shuffle
+    // index — the next filter set is a different list of wallpapers.
+    function test_filteredPrevious_historyClearsOnPlaylistChange() {
+        const mgr = ctrl.manager;
+        ctrl._serveFilteredPick();
+        ctrl._serveFilteredPick();
+
+        verify(ctrl._filteredHistory.length > 0);
+
+        mgr.activePlaylistId = "__filtered_library__";
+        ctrl.activePlaylistIdRead = "user-playlist";
+        compare(ctrl._filteredHistory.length, 0);
+
+        // With no history left, back-stepping still serves something.
+        mgr.lastAcceptPickArg = undefined;
+        mgr.requestFilteredPreviousPick();
+        verify(mgr.lastAcceptPickArg !== undefined);
+        verify(mgr.lastAcceptPickArg !== "");
+
+        ctrl.activePlaylistIdRead = "";
+    }
+
     // ── Manager → parent: mgr.activePlaylistId / currentItemIndex changes ──
     // The PlaylistManager stub exposes these as plain QML properties, so
     // assigning to them from a test fires the change-signal that the

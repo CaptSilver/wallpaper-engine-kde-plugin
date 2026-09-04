@@ -21,10 +21,10 @@ class PlaylistManager : public QObject {
     Q_PROPERTY(QString activePlaylistId READ activePlaylistId WRITE setActivePlaylistId NOTIFY
                    activePlaylistIdChanged)
     Q_PROPERTY(int currentItemIndex READ currentItemIndex NOTIFY currentItemIndexChanged)
-    // Editor mode: when true, activate/deactivate/onTimerTick/acceptPick skip
-    // the tick + arm-timer path. The mgr still tracks m_activeId for UI
-    // display + still does CRUD + persist normally — but it does NOT drive
-    // wallpaper switches. The runtime mgr (editorMode=false) is the sole
+    // Editor mode: when true, activate/deactivate/onTimerTick/acceptPick/
+    // skipCurrent/stepBy skip the tick + arm-timer path. The mgr still tracks
+    // m_activeId for UI display + still does CRUD + persist normally — but it
+    // does NOT drive wallpaper switches. The runtime mgr (editorMode=false) is the sole
     // owner of the playback cycle. Without this gate, the dialog's mgr and
     // the runtime mgr both arm independent timers on the same playlist and
     // race to write CurrentItemIndex + pick different shuffle indices.
@@ -65,6 +65,12 @@ public:
     Q_INVOKABLE bool activate(const QString& id);
     Q_INVOKABLE void deactivate();
     Q_INVOKABLE void skipCurrent();
+    // Manual navigation (the Next / Previous shortcuts and their D-Bus
+    // methods). delta > 0 moves forward, delta < 0 moves back; magnitude is
+    // ignored, one press is one item. Deliberately NOT skipCurrent: that one
+    // is the resolve-failure path and spends a budget that shuts the playlist
+    // down after 8 misses, which a user hammering Next must never trigger.
+    Q_INVOKABLE void stepBy(int delta);
     Q_INVOKABLE void acceptPick(const QString& workshopId); // for Filtered Library
     Q_INVOKABLE void pauseTicks();
     Q_INVOKABLE void resumeTicks();
@@ -129,6 +135,10 @@ signals:
     void editorModeChanged();
     void tick(const QString& workshopId);
     void requestFilteredPick();
+    // Filtered Library only: serve the previously served pick instead of a
+    // fresh one. The item list lives in QML (the live filtered model), so the
+    // play history that makes "back" meaningful has to live there too.
+    void requestFilteredPreviousPick();
     void activationFailed(const QString& id);
     void persistFailed(const QString& reason);
     // Fired after every successful persist() to disk. Editor-mode mgrs use
@@ -159,6 +169,7 @@ private:
     void pruneStaleItemsModels();
     void armTimerForCurrent();
     int  advanceSequential(int currentIdx, int size) const;
+    int  retreatSequential(int currentIdx, int size) const;
 
     QVector<Playlist>   m_playlists;
     QHash<QString, int> m_indexById;

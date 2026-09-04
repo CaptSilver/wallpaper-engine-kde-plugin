@@ -386,6 +386,135 @@ private slots:
         QCOMPARE(mgr.activePlaylistId(), id);
     }
 
+    // ── manual navigation (Next / Previous) ───────────────────────────────────
+    // Manual steps are a user gesture, not a resolve failure: hammering Next
+    // must never spend the consecutive-skip budget that exists to shut down a
+    // playlist whose items can't be loaded.
+    void manualStepForwardNeverDeactivatesThePlaylist() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString          id = mgr.createPlaylist("X");
+        for (int i = 0; i < 5; ++i) mgr.addItem(id, QString("W%1").arg(i));
+        QVERIFY(mgr.activate(id));
+        QSignalSpy tickSpy(&mgr, &wekde::PlaylistManager::tick);
+        QSignalSpy failSpy(&mgr, &wekde::PlaylistManager::activationFailed);
+
+        for (int i = 0; i < 9; ++i) mgr.stepBy(1);
+
+        QCOMPARE(mgr.activePlaylistId(), id);
+        QCOMPARE(failSpy.count(), 0);
+        QCOMPARE(tickSpy.count(), 9);
+    }
+
+    // A manual step is not evidence that a broken item became loadable, so it
+    // must leave the resolve-failure budget exactly where it was.
+    void manualStepLeavesResolveFailureBudgetIntact() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString          id = mgr.createPlaylist("X");
+        for (int i = 0; i < 5; ++i) mgr.addItem(id, QString("W%1").arg(i));
+        QVERIFY(mgr.activate(id));
+        QSignalSpy failSpy(&mgr, &wekde::PlaylistManager::activationFailed);
+
+        for (int i = 0; i < 8; ++i) mgr.skipCurrent(); // budget fully spent
+        mgr.stepBy(1);                                 // must neither spend nor refund
+        QCOMPARE(mgr.activePlaylistId(), id);          // spending it here would bail
+        mgr.skipCurrent();                             // one over the budget → bail
+
+        QCOMPARE(mgr.activePlaylistId(), QString(""));
+        QCOMPARE(failSpy.count(), 1);
+    }
+
+    void manualStepBackwardWalksSequentialPlaylistInReverse() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString          id = mgr.createPlaylist("X");
+        mgr.addItem(id, "A");
+        mgr.addItem(id, "B");
+        mgr.addItem(id, "C");
+        QVERIFY(mgr.activate(id)); // ticks "A" at index 0
+        QSignalSpy spy(&mgr, &wekde::PlaylistManager::tick);
+
+        mgr.stepBy(-1); // wraps to the tail
+        QCOMPARE(mgr.currentItemIndex(), 2);
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.takeFirst().first().toString(), QString("C"));
+
+        mgr.stepBy(-1);
+        QCOMPARE(mgr.currentItemIndex(), 1);
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.takeFirst().first().toString(), QString("B"));
+    }
+
+    // The Filtered Library has no item list of its own — QML owns the picks —
+    // so a manual step has to ask QML for one instead of quietly doing nothing.
+    void manualStepOnFilteredLibraryAsksQmlForAPick() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        QVERIFY(mgr.activate(wekde::kFilteredLibraryId));
+        mgr.acceptPick("workshop-1");
+
+        QSignalSpy nextSpy(&mgr, &wekde::PlaylistManager::requestFilteredPick);
+        QSignalSpy prevSpy(&mgr, &wekde::PlaylistManager::requestFilteredPreviousPick);
+
+        mgr.stepBy(1);
+        QCOMPARE(nextSpy.count(), 1);
+        QCOMPARE(prevSpy.count(), 0);
+
+        mgr.stepBy(-1);
+        QCOMPARE(prevSpy.count(), 1);
+        QCOMPARE(nextSpy.count(), 1); // backward must not also request a forward pick
+    }
+
+    // Same invariant from the other direction: the dialog's manager must not
+    // switch the desktop wallpaper when an item fails to resolve either.
+    void skipIsInertInEditorMode() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString          id = mgr.createPlaylist("X");
+        mgr.addItem(id, "A");
+        mgr.addItem(id, "B");
+        mgr.setEditorMode(true);
+        QVERIFY(mgr.activate(id));
+        QSignalSpy spy(&mgr, &wekde::PlaylistManager::tick);
+
+        mgr.skipCurrent();
+
+        QCOMPARE(spy.count(), 0);
+        QCOMPARE(mgr.currentItemIndex(), 0);
+    }
+
+    // The editor-mode manager is a UI shadow; only the runtime one drives the
+    // wallpaper. A stray Next from the dialog must not tick.
+    void manualStepIsInertInEditorMode() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString          id = mgr.createPlaylist("X");
+        mgr.addItem(id, "A");
+        mgr.addItem(id, "B");
+        mgr.setEditorMode(true);
+        QVERIFY(mgr.activate(id));
+        QSignalSpy spy(&mgr, &wekde::PlaylistManager::tick);
+
+        mgr.stepBy(1);
+        mgr.stepBy(-1);
+
+        QCOMPARE(spy.count(), 0);
+        QCOMPARE(mgr.currentItemIndex(), 0);
+    }
+
     // ── migration + pause/resume ──────────────────────────────────────────────
     void migrationFiresOnFirstRunWithRandomizeOn() {
         QTemporaryDir d;

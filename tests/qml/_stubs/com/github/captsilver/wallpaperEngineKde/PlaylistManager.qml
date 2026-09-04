@@ -1,6 +1,6 @@
 // Test stub — see tests/qml/_stubs/README.md for contract.
 // Real source: src/PlaylistManager.hpp + src/PlaylistManager.cpp
-// Last contract review: 2026-05-27
+// Last contract review: 2026-09-04
 
 // Stub of wekde::PlaylistManager for QML tests. Doesn't persist anything;
 // just satisfies the import + the Q_INVOKABLE / Q_PROPERTY surface area
@@ -17,6 +17,7 @@ QtObject {
 
     signal tick(string workshopId)
     signal requestFilteredPick()
+    signal requestFilteredPreviousPick()
     signal activationFailed(string id)
     signal persistFailed(string reason)
     signal persisted()
@@ -42,6 +43,8 @@ QtObject {
     property var  lastActivateId:         undefined
     property int  deactivateCount:        0
     property int  skipCurrentCount:       0
+    property int  stepByCount:            0
+    property var  lastStepByDelta:        undefined
     property int  acceptPickCount:        0
     property var  lastAcceptPickArg:      undefined
     property int  pauseTicksCount:        0
@@ -129,6 +132,7 @@ QtObject {
         activePlaylistId = "";
     }
     function skipCurrent() { skipCurrentCount += 1; }
+    function stepBy(delta) { stepByCount += 1; lastStepByDelta = delta; }
     function acceptPick(workshopId) { acceptPickCount += 1; lastAcceptPickArg = workshopId; }
     function pauseTicks() { pauseTicksCount += 1; }
     function resumeTicks() { resumeTicksCount += 1; }

@@ -1,7 +1,8 @@
 // Bridges PlaylistManager tick events to wallpaper.configuration changes.
 // Resolves workshop_id → wallpaper item via the parent's wpListModel /
 // videoListModel; calls PlaylistManager.skipCurrent() on miss; serves
-// PlaylistManager.requestFilteredPick by sampling the live filtered model.
+// PlaylistManager.requestFilteredPick / requestFilteredPreviousPick by
+// sampling the live filtered model.
 //
 // Owns the migration step: on first run with RandomizeWallpaper=true and
 // no ActivePlaylistId set, activates the built-in Filtered Library.
@@ -73,6 +74,7 @@ Item {
         editorMode: root.editorMode
         onTick: function(workshopId) { root._applyWorkshopId(workshopId); }
         onRequestFilteredPick: { root._serveFilteredPick(); }
+        onRequestFilteredPreviousPick: { root._servePreviousFilteredPick(); }
         onPersistFailed: function(reason) { console.warn("[playlist] persist failed:", reason); }
         onActivationFailed: function(id) {
             console.warn("[playlist] activation failed:", id);
@@ -112,17 +114,15 @@ Item {
     // QML's metatype lookup; the C++ adapter renames as needed.
 
     function next() {
-        // Advance the playlist by one step.  acceptPick("") on no-items is
-        // handled inside _serveFilteredPick.
-        mgr.skipCurrent();
+        // stepBy, not skipCurrent: the skip path is for items that fail to
+        // resolve and spends a budget that switches the playlist off after
+        // eight misses.  acceptPick("") on no-items is handled inside
+        // _serveFilteredPick.
+        mgr.stepBy(1);
     }
 
     function previous() {
-        // PlaylistManager has no public "go-back" API today — wrap with the
-        // same skip path so the D-Bus contract remains complete and a future
-        // implementation can fill it in.  Logs a hint for telemetry.
-        console.info("[playlist] previous() — not implemented; advancing");
-        mgr.skipCurrent();
+        mgr.stepBy(-1);
     }
 
     function pause() {
@@ -309,6 +309,30 @@ Item {
     // state across activations of (possibly different) filter sets.
     property int _lastFilteredPickIdx: -1
 
+    // Workshop ids served for the Filtered Library, oldest first, so the
+    // Previous shortcut has something to go back to — the library has no
+    // stored item order of its own, only a random walk over the live
+    // filtered model.  Bounded: a session that runs for weeks must not grow
+    // this without limit, and nobody back-steps 32 wallpapers.
+    readonly property int _filteredHistoryMax: 32
+    property var _filteredHistory: []
+
+    function _pushFilteredHistory(workshopId) {
+        const h = root._filteredHistory;
+        h.push(workshopId);
+        while (h.length > root._filteredHistoryMax) h.shift();
+        root._filteredHistory = h; // reassign so the change is notified
+    }
+
+    function _filteredIndexOf(workshopId) {
+        const m = (root.wpListModel && root.wpListModel.model)
+                ? root.wpListModel.model : null;
+        if (!m) return -1;
+        for (let i = 0; i < m.count; ++i)
+            if (m.get(i).workshopid === workshopId) return i;
+        return -1;
+    }
+
     function _serveFilteredPick() {
         if (!root.wpListModel || !root.wpListModel.model) {
             mgr.acceptPick("");
@@ -323,7 +347,24 @@ Item {
         const idx = mgr.pickShuffle(root._lastFilteredPickIdx, m.count);
         const safeIdx = Math.max(0, Math.min(idx, m.count - 1));
         root._lastFilteredPickIdx = safeIdx;
-        mgr.acceptPick(m.get(safeIdx).workshopid);
+        const wid = m.get(safeIdx).workshopid;
+        root._pushFilteredHistory(wid);
+        mgr.acceptPick(wid);
+    }
+
+    function _servePreviousFilteredPick() {
+        const h = root._filteredHistory;
+        // Nothing was served before the current wallpaper (fresh session, or
+        // the history ran out): serve a new pick rather than leaving the
+        // shortcut dead.
+        if (h.length < 2) { root._serveFilteredPick(); return; }
+        h.pop(); // drop what is on screen now
+        const wid = h[h.length - 1];
+        root._filteredHistory = h;
+        // Keep the no-immediate-repeat guard in step with what we re-served,
+        // so the next forward pick doesn't hand back the same wallpaper.
+        root._lastFilteredPickIdx = root._filteredIndexOf(wid);
+        mgr.acceptPick(wid);
     }
 
     // Pause hook
@@ -360,6 +401,7 @@ Item {
         // playlist must not carry a stale prior index against a possibly-
         // different model.
         root._lastFilteredPickIdx = -1;
+        root._filteredHistory = [];
         if (root.activePlaylistIdRead === "") {
             mgr.deactivate();
         } else {

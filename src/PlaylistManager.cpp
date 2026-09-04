@@ -345,6 +345,12 @@ int PlaylistManager::advanceSequential(int cur, int size) const {
     return (cur + 1) % size;
 }
 
+int PlaylistManager::retreatSequential(int cur, int size) const {
+    if (size <= 0) return 0;
+    // Double modulo keeps the result non-negative when cur is 0 (wrap to tail).
+    return ((cur - 1) % size + size) % size;
+}
+
 int PlaylistManager::pickShuffle(int cur, int size) {
     // Production default: route through the global thread-local RNG.
     // Behaviour is identical to the pre-refactor body.
@@ -471,6 +477,7 @@ void PlaylistManager::onTimerTick() {
 }
 
 void PlaylistManager::skipCurrent() {
+    if (m_editorMode) return; // editor never ticks; same invariant as onTimerTick
     if (m_activeId.isEmpty() || m_activeId == kFilteredLibraryId) return;
     if (++m_consecutiveSkips > kMaxConsecutiveSkips) {
         // Deactivate rather than silently wedging — the user sees the
@@ -490,6 +497,41 @@ void PlaylistManager::skipCurrent() {
     emit currentItemIndexChanged();
     emit tick(pl->items[m_currentIndex].workshopId);
     armTimerForCurrent();
+}
+
+void PlaylistManager::stepBy(int delta) {
+    if (m_editorMode) return; // the dialog's mgr never drives the wallpaper
+    if (m_activeId.isEmpty() || delta == 0) return;
+    const bool forward = delta > 0;
+    if (m_activeId == kFilteredLibraryId) {
+        // No item list on this side: QML owns the live filtered model, so it
+        // serves the pick (and the history that makes "back" mean anything).
+        if (forward)
+            emit requestFilteredPick();
+        else
+            emit requestFilteredPreviousPick();
+        return;
+    }
+    auto* pl = findPlaylist(m_activeId);
+    if (! pl || pl->items.isEmpty()) return;
+    if (forward) {
+        // Forward matches what the timer would have done, so a press and a
+        // tick land on the same item.
+        m_currentIndex = (pl->mode == PlaylistMode::Shuffle)
+                             ? pickShuffle(m_currentIndex, pl->items.size())
+                             : advanceSequential(m_currentIndex, pl->items.size());
+    } else {
+        // Shuffle keeps no play history, so back-stepping walks the stored
+        // list order in reverse for both modes: a repeatable move the user can
+        // undo, rather than another random wallpaper.
+        m_currentIndex = retreatSequential(m_currentIndex, pl->items.size());
+    }
+    // Deliberately not touching m_consecutiveSkips: the budget belongs to the
+    // resolve-failure path, and a user gesture is neither a failure nor proof
+    // that a previously-broken item became loadable.
+    emit currentItemIndexChanged();
+    emit tick(pl->items[m_currentIndex].workshopId);
+    armTimerForCurrent(); // restart the countdown from the manual move
 }
 
 void PlaylistManager::acceptPick(const QString& workshopId) {

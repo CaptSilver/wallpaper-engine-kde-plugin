@@ -18,6 +18,12 @@
 excludePaths:
   - .*/third_party/.*
   - .*/src/Test/.*
+  # The parent's own test sources.  The submodule's suite dir above was
+  # excluded from the start but this one was missed, so Mull was mutating the
+  # tests themselves -- 163 of the 481 baselined survivors sat in tests/*.cpp.
+  # A mutated assertion either breaks its test or does nothing; neither says
+  # anything about the product, so every one of those entries was noise.
+  - .*/tests/.*
   - .*/nlohmann/.*
   - .*/Eigen/.*
   - .*/doctest/.*

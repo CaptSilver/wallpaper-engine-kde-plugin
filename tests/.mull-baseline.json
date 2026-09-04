@@ -1,2412 +1,1597 @@
 {
- "_accepted_equivalent": "src/backend_scene/src/WPShaderParser.cpp:1150 (cxx_gt_to_ge, cxx_gt_to_le) is `if (s_memoCompiles > 0)`, and it guards nothing but a LOG_INFO summary. Both mutants only change whether that line is emitted, so no assertion can distinguish them without capturing log output, and contorting a test to do so would pin the logging rather than the behaviour. Accepted deliberately. The two sibling survivors that WERE killed (the include-depth bound at :117 and the memo compile counter) are the ones that described real behaviour.  src/backend_scene/src/WPParticleParser.cpp:955 (cxx_gt_to_ge) is the angularmovement drag gate `if (drag > 0.0f)`. `>=` only changes which branch is taken when drag is exactly zero, and there the guarded body computes factor = max(0.0, 1.0 - 0*blend*dt) = 1.0, so MutiplyAngularVelocity(p, 1.0) is the identity on every float value. The only way that factor could come out as anything but 1.0 at drag==0 is a non-finite blend factor or step, and in exactly those cases the operator's own AngularAccelerate(p, force * blend, dt) two lines earlier has already driven angularVelocity to NaN, which absorbs both *1.0 and *0.0 -- so the branch cannot be observed from the outside either way. A non-finite step is not reachable regardless: ParticleSystem clamps frameTime with kMaxParticleFrameTime. Verified empirically as well -- with the mutation applied by hand the whole 3235-case backend_scene_tests suite passes unchanged. The two sibling cxx_mul_to_div mutants on the next line describe real behaviour (blended angular drag) and were killed with tests rather than accepted here.",
- "_comment": "Surviving mutants accepted as baseline. Run tools/scripts/mutation.sh --refresh-baseline to update; new entries in a non-refresh run fail the gate.",
- "_scope": "Measured from the parent test binaries only. backend_scene_tests is NOT represented: its instrumented warmup takes ~91s and Mull's ceiling was 60s from 2026-06-06 until 2026-09-01, so that target has never once produced a report. The src/backend_scene/ entries here come from parent binaries linking submodule sources (Audio, Utils), not from that target. A future full submodule sweep will therefore surface a large batch of survivors that are first measurements, not regressions -- refresh the baseline from that run rather than treating them as new.",
- "survivors": [
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 63,
-   "mutator": "cxx_sub_to_add"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 91,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 91,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 94,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 94,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 94,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 100,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 100,
-   "mutator": "cxx_ge_to_lt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 101,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 101,
-   "mutator": "cxx_ge_to_lt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 101,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 101,
-   "mutator": "cxx_gt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 101,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 101,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 104,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 104,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 104,
-   "mutator": "cxx_ge_to_lt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 106,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 165,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 165,
-   "mutator": "cxx_gt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 246,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 246,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 250,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 250,
-   "mutator": "cxx_ge_to_lt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 252,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 252,
-   "mutator": "cxx_ge_to_lt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 253,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 253,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 253,
-   "mutator": "cxx_ge_to_lt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 277,
-   "mutator": "cxx_le_to_gt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 277,
-   "mutator": "cxx_le_to_lt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 278,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 282,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 282,
-   "mutator": "cxx_gt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 286,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 287,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 287,
-   "mutator": "cxx_gt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 346,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 346,
-   "mutator": "cxx_gt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 351,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 508,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 508,
-   "mutator": "cxx_gt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 551,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 639,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 639,
-   "mutator": "cxx_gt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 765,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 765,
-   "mutator": "cxx_gt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 827,
-   "mutator": "cxx_sub_to_add"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 832,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 838,
-   "mutator": "cxx_le_to_gt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 838,
-   "mutator": "cxx_le_to_lt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 881,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 881,
-   "mutator": "cxx_gt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 891,
-   "mutator": "cxx_le_to_gt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 891,
-   "mutator": "cxx_le_to_lt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 895,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 895,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 899,
-   "mutator": "cxx_le_to_gt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 899,
-   "mutator": "cxx_le_to_lt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 918,
-   "mutator": "cxx_sub_to_add"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 939,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 939,
-   "mutator": "cxx_gt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 939,
-   "mutator": "cxx_ne_to_eq"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 952,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 952,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 952,
-   "mutator": "cxx_ne_to_eq"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 952,
-   "mutator": "cxx_sub_to_add"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 965,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 965,
-   "mutator": "cxx_gt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 965,
-   "mutator": "cxx_ne_to_eq"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 979,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 979,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 979,
-   "mutator": "cxx_ne_to_eq"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 979,
-   "mutator": "cxx_sub_to_add"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1007,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1007,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1011,
-   "mutator": "cxx_le_to_gt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1011,
-   "mutator": "cxx_le_to_lt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1012,
-   "mutator": "cxx_pre_inc_to_pre_dec"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1013,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1013,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1013,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1014,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1015,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1015,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1015,
-   "mutator": "cxx_pre_inc_to_pre_dec"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1024,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1024,
-   "mutator": "cxx_ge_to_lt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1025,
-   "mutator": "cxx_pre_inc_to_pre_dec"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1027,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1027,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1028,
-   "mutator": "cxx_post_inc_to_post_dec"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1030,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1030,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1031,
-   "mutator": "cxx_post_inc_to_post_dec"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1054,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1054,
-   "mutator": "cxx_ge_to_lt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1059,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1059,
-   "mutator": "cxx_ge_to_lt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1066,
-   "mutator": "cxx_pre_inc_to_pre_dec"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1070,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1070,
-   "mutator": "cxx_ge_to_lt"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1071,
-   "mutator": "cxx_pre_inc_to_pre_dec"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1082,
-   "mutator": "cxx_ne_to_eq"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1161,
-   "mutator": "cxx_ne_to_eq"
-  },
-  {
-   "file": "src/FileHelper.cpp",
-   "line": 1174,
-   "mutator": "cxx_ne_to_eq"
-  },
-  {
-   "file": "src/MigrationHelper.cpp",
-   "line": 50,
-   "mutator": "cxx_pre_inc_to_pre_dec"
-  },
-  {
-   "file": "src/MigrationHelper.cpp",
-   "line": 185,
-   "mutator": "cxx_pre_inc_to_pre_dec"
-  },
-  {
-   "file": "src/MouseGrabber.cpp",
-   "line": 127,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "src/MouseGrabber.cpp",
-   "line": 127,
-   "mutator": "cxx_pre_inc_to_pre_dec"
-  },
-  {
-   "file": "src/MouseGrabber.cpp",
-   "line": 127,
-   "mutator": "cxx_rem_to_div"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 145,
-   "mutator": "cxx_pre_inc_to_pre_dec"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 158,
-   "mutator": "cxx_ne_to_eq"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 173,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 184,
-   "mutator": "cxx_ne_to_eq"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 196,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 197,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 197,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 204,
-   "mutator": "cxx_le_to_gt"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 204,
-   "mutator": "cxx_le_to_lt"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 269,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 343,
-   "mutator": "cxx_div_to_mul"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 416,
-   "mutator": "cxx_pre_inc_to_pre_dec"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 486,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 487,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 492,
-   "mutator": "cxx_div_to_mul"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 492,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 492,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 492,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 495,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 496,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 496,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 497,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 507,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 531,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 532,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 533,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 539,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 542,
-   "mutator": "cxx_sub_to_add"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 543,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "src/MprisMonitor.cpp",
-   "line": 544,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/PlaylistItemsModel.cpp",
-   "line": 22,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/PlaylistItemsModel.cpp",
-   "line": 22,
-   "mutator": "cxx_ge_to_lt"
-  },
-  {
-   "file": "src/PlaylistItemsModel.cpp",
-   "line": 22,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/PlaylistItemsModel.cpp",
-   "line": 22,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/PlaylistItemsModel.cpp",
-   "line": 52,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/PlaylistManager.cpp",
-   "line": 290,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/PlaylistManager.cpp",
-   "line": 305,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/PlaylistManager.cpp",
-   "line": 306,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/PlaylistManager.cpp",
-   "line": 344,
-   "mutator": "cxx_le_to_lt"
-  },
-  {
-   "file": "src/PlaylistManager.cpp",
-   "line": 355,
-   "mutator": "cxx_le_to_lt"
-  },
-  {
-   "file": "src/PlaylistManager.cpp",
-   "line": 373,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/PlaylistManager.cpp",
-   "line": 373,
-   "mutator": "cxx_gt_to_le"
-  },
-  {
-   "file": "src/PlaylistManager.cpp",
-   "line": 382,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "src/PlaylistManager.cpp",
-   "line": 388,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/PlaylistManager.cpp",
-   "line": 475,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/PlaylistManager.cpp",
-   "line": 510,
-   "mutator": "cxx_sub_to_add"
-  },
-  {
-   "file": "src/PlaylistManager.cpp",
-   "line": 512,
-   "mutator": "cxx_sub_to_add"
-  },
-  {
-   "file": "src/PlaylistManager.cpp",
-   "line": 517,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/PlaylistManager.cpp",
-   "line": 517,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/PlaylistsModel.cpp",
-   "line": 18,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/PlaylistsModel.cpp",
-   "line": 18,
-   "mutator": "cxx_ge_to_lt"
-  },
-  {
-   "file": "src/PlaylistsModel.cpp",
-   "line": 18,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/PlaylistsModel.cpp",
-   "line": 18,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/PlaylistsModel.cpp",
-   "line": 58,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/PlaylistsModel.cpp",
-   "line": 58,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/PlaylistsModel.cpp",
-   "line": 58,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/PlaylistsModel.cpp",
-   "line": 70,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/PlaylistsModel.cpp",
-   "line": 70,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/WebAudioBridge.cpp",
-   "line": 94,
-   "mutator": "cxx_le_to_gt"
-  },
-  {
-   "file": "src/WebAudioBridge.cpp",
-   "line": 94,
-   "mutator": "cxx_le_to_lt"
-  },
-  {
-   "file": "src/WebUrlInterceptor.cpp",
-   "line": 18,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "src/backend_mpv/MpvBackend.cpp",
-   "line": 179,
-   "mutator": "cxx_ne_to_eq"
-  },
-  {
-   "file": "src/backend_mpv/MpvBackend.cpp",
-   "line": 184,
-   "mutator": "cxx_ne_to_eq"
-  },
-  {
-   "file": "src/backend_mpv/MpvBackend.cpp",
-   "line": 189,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "src/backend_mpv/MpvBackend.cpp",
-   "line": 376,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "src/backend_mpv/MpvBackend.cpp",
-   "line": 377,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/backend_mpv/MpvBackend.cpp",
-   "line": 377,
-   "mutator": "cxx_ge_to_lt"
-  },
-  {
-   "file": "src/backend_mpv/MpvBackend.cpp",
-   "line": 472,
-   "mutator": "cxx_ne_to_eq"
-  },
-  {
-   "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-   "line": 38,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-   "line": 38,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-   "line": 69,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-   "line": 69,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-   "line": 76,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-   "line": 76,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-   "line": 76,
-   "mutator": "cxx_post_inc_to_post_dec"
-  },
-  {
-   "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-   "line": 78,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-   "line": 80,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-   "line": 93,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-   "line": 93,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-   "line": 101,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-   "line": 101,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-   "line": 101,
-   "mutator": "cxx_post_inc_to_post_dec"
-  },
-  {
-   "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-   "line": 103,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-   "line": 105,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-   "line": 118,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-   "line": 118,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-   "line": 124,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-   "line": 124,
-   "mutator": "cxx_gt_to_le"
-  },
-  {
-   "file": "src/backend_mpv/qthelper.hpp",
-   "line": 57,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/backend_mpv/qthelper.hpp",
-   "line": 57,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/backend_mpv/qthelper.hpp",
-   "line": 57,
-   "mutator": "cxx_post_inc_to_post_dec"
-  },
-  {
-   "file": "src/backend_mpv/qthelper.hpp",
-   "line": 63,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/backend_mpv/qthelper.hpp",
-   "line": 97,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/backend_mpv/qthelper.hpp",
-   "line": 138,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/backend_mpv/qthelper.hpp",
-   "line": 138,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/backend_mpv/qthelper.hpp",
-   "line": 138,
-   "mutator": "cxx_post_inc_to_post_dec"
-  },
-  {
-   "file": "src/backend_mpv/qthelper.hpp",
-   "line": 160,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/backend_mpv/qthelper.hpp",
-   "line": 302,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 61,
-   "mutator": "cxx_div_to_mul"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 61,
-   "mutator": "cxx_sub_to_add"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 73,
-   "mutator": "cxx_div_to_mul"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 76,
-   "mutator": "cxx_le_to_gt"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 76,
-   "mutator": "cxx_le_to_lt"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 76,
-   "mutator": "cxx_post_inc_to_post_dec"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 77,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 77,
-   "mutator": "cxx_div_to_mul"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 77,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 77,
-   "mutator": "cxx_sub_to_add"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 79,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 79,
-   "mutator": "cxx_div_to_mul"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 80,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 80,
-   "mutator": "cxx_ge_to_lt"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 84,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 84,
-   "mutator": "cxx_post_inc_to_post_dec"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 85,
-   "mutator": "cxx_le_to_gt"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 85,
-   "mutator": "cxx_le_to_lt"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 86,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 87,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 87,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 174,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 175,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 175,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 175,
-   "mutator": "cxx_post_inc_to_post_dec"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 176,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 193,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 193,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 195,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 195,
-   "mutator": "cxx_rem_to_div"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 197,
-   "mutator": "cxx_post_inc_to_post_dec"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 205,
-   "mutator": "cxx_post_inc_to_post_dec"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 220,
-   "mutator": "cxx_post_inc_to_post_dec"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 223,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 223,
-   "mutator": "cxx_le_to_gt"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 223,
-   "mutator": "cxx_le_to_lt"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 224,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 224,
-   "mutator": "cxx_gt_to_le"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 226,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 226,
-   "mutator": "cxx_post_inc_to_post_dec"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 230,
-   "mutator": "cxx_sub_to_add"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 240,
-   "mutator": "cxx_div_to_mul"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 240,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 241,
-   "mutator": "cxx_div_to_mul"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 241,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 244,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 244,
-   "mutator": "cxx_ge_to_lt"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 247,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 249,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 249,
-   "mutator": "cxx_ge_to_lt"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 252,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 268,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 268,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 268,
-   "mutator": "cxx_post_inc_to_post_dec"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 272,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 272,
-   "mutator": "cxx_gt_to_le"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 281,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 281,
-   "mutator": "cxx_post_inc_to_post_dec"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 282,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 282,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 283,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 283,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 287,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 287,
-   "mutator": "cxx_post_inc_to_post_dec"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 288,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 288,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 289,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 289,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 317,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 319,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 319,
-   "mutator": "cxx_ge_to_lt"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 320,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 321,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 323,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 325,
-   "mutator": "cxx_rem_to_div"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 326,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 326,
-   "mutator": "cxx_rem_to_div"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 350,
-   "mutator": "cxx_sub_to_add"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 351,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 357,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 360,
-   "mutator": "cxx_post_inc_to_post_dec"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 370,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 370,
-   "mutator": "cxx_ge_to_lt"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 390,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 392,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
-   "line": 394,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioBus.cpp",
-   "line": 43,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioBus.cpp",
-   "line": 134,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioBus.cpp",
-   "line": 134,
-   "mutator": "cxx_gt_to_le"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioBus.cpp",
-   "line": 135,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioBus.cpp",
-   "line": 137,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioBus.cpp",
-   "line": 137,
-   "mutator": "cxx_gt_to_le"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioBus.cpp",
-   "line": 138,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioBus.cpp",
-   "line": 164,
-   "mutator": "cxx_pre_inc_to_pre_dec"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioBus.cpp",
-   "line": 173,
-   "mutator": "cxx_pre_inc_to_pre_dec"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioBus.cpp",
-   "line": 226,
-   "mutator": "cxx_pre_inc_to_pre_dec"
-  },
-  {
-   "file": "src/backend_scene/src/Audio/AudioBus.cpp",
-   "line": 227,
-   "mutator": "cxx_pre_inc_to_pre_dec"
-  },
-  {
-   "file": "src/backend_scene/src/Utils/SceneProfiler.cpp",
-   "line": 65,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "src/backend_scene/src/Utils/SceneProfiler.cpp",
-   "line": 80,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/backend_scene/src/Utils/SceneProfiler.cpp",
-   "line": 80,
-   "mutator": "cxx_gt_to_le"
-  },
-  {
-   "file": "src/backend_scene/src/Utils/SceneProfiler.cpp",
-   "line": 99,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "src/backend_scene/src/Utils/SceneProfiler.cpp",
-   "line": 100,
-   "mutator": "cxx_div_to_mul"
-  },
-  {
-   "file": "src/backend_scene/src/Utils/SceneProfiler.cpp",
-   "line": 101,
-   "mutator": "cxx_div_to_mul"
-  },
-  {
-   "file": "src/backend_scene/src/Utils/SceneProfiler.cpp",
-   "line": 102,
-   "mutator": "cxx_div_to_mul"
-  },
-  {
-   "file": "src/backend_scene/src/Utils/SceneProfiler.cpp",
-   "line": 103,
-   "mutator": "cxx_div_to_mul"
-  },
-  {
-   "file": "src/backend_scene/src/Utils/SceneProfiler.cpp",
-   "line": 104,
-   "mutator": "cxx_div_to_mul"
-  },
-  {
-   "file": "src/backend_scene/src/WPParticleParser.cpp",
-   "line": 955,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/backend_scene/src/WPShaderParser.cpp",
-   "line": 1150,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "src/backend_scene/src/WPShaderParser.cpp",
-   "line": 1150,
-   "mutator": "cxx_gt_to_le"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 51,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 51,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 52,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 52,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 52,
-   "mutator": "cxx_pre_inc_to_pre_dec"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 59,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 59,
-   "mutator": "cxx_ge_to_lt"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 109,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 109,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 323,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 425,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 425,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 522,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 562,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 563,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 563,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 573,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 603,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 609,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 609,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 616,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 616,
-   "mutator": "cxx_rem_to_div"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 621,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 621,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 630,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 703,
-   "mutator": "cxx_le_to_lt"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 776,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 1203,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 1207,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 1225,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 1227,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 1247,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 1386,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 1883,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 1941,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 2245,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 2295,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 2438,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 2439,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 2439,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_filehelper.cpp",
-   "line": 2448,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 174,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 175,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 176,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 182,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 183,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 184,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 191,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 192,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 193,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 195,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 196,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 197,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 204,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 205,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 206,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 212,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 212,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 213,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 213,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 214,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 214,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 222,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 222,
-   "mutator": "cxx_sub_to_add"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 223,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 234,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 234,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 235,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 235,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 235,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 235,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 237,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 239,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 247,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 253,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 259,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 260,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 261,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 261,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 265,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 265,
-   "mutator": "cxx_sub_to_add"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 266,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 275,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 284,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 440,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 444,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 444,
-   "mutator": "cxx_gt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 446,
-   "mutator": "cxx_le_to_gt"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 446,
-   "mutator": "cxx_le_to_lt"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 466,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 466,
-   "mutator": "cxx_ge_to_lt"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 753,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 1008,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 1009,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 1010,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 1138,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 1467,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpriscolors.cpp",
-   "line": 1579,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "tests/tst_mpvbackend.cpp",
-   "line": 180,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "tests/tst_mpvbackend.cpp",
-   "line": 378,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "tests/tst_mpvbackend.cpp",
-   "line": 443,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpvbackend.cpp",
-   "line": 443,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpvbackend.cpp",
-   "line": 450,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpvbackend.cpp",
-   "line": 479,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_mpvbackend.cpp",
-   "line": 479,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_mpvbackend.cpp",
-   "line": 552,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 234,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 351,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 355,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 374,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 378,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 378,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 385,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 385,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 755,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 755,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 792,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 792,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 800,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 802,
-   "mutator": "cxx_pre_inc_to_pre_dec"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 818,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 818,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 825,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 846,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 846,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 858,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 858,
-   "mutator": "cxx_pre_inc_to_pre_dec"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 862,
-   "mutator": "cxx_eq_to_ne"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 1114,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 1121,
-   "mutator": "cxx_add_to_sub"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 1121,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 1244,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_playlist_manager.cpp",
-   "line": 1265,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_plugininfo.cpp",
-   "line": 30,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "tests/tst_plugininfo.cpp",
-   "line": 59,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "tests/tst_plugininfo.cpp",
-   "line": 71,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "tests/tst_safewallpaperbridge.cpp",
-   "line": 113,
-   "mutator": "cxx_div_to_mul"
-  },
-  {
-   "file": "tests/tst_safewallpaperbridge.cpp",
-   "line": 113,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_safewallpaperbridge.cpp",
-   "line": 113,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_safewallpaperbridge.cpp",
-   "line": 130,
-   "mutator": "cxx_lt_to_ge"
-  },
-  {
-   "file": "tests/tst_safewallpaperbridge.cpp",
-   "line": 135,
-   "mutator": "cxx_pre_inc_to_pre_dec"
-  },
-  {
-   "file": "tests/tst_screensavermonitor.cpp",
-   "line": 116,
-   "mutator": "cxx_ne_to_eq"
-  },
-  {
-   "file": "tests/tst_thumbnail_grabber.cpp",
-   "line": 77,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_thumbnail_grabber.cpp",
-   "line": 80,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_thumbnail_grabber.cpp",
-   "line": 81,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_thumbnail_grabber.cpp",
-   "line": 140,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_thumbnail_grabber.cpp",
-   "line": 186,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_thumbnail_grabber.cpp",
-   "line": 205,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_thumbnail_grabber.cpp",
-   "line": 227,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_thumbnail_grabber.cpp",
-   "line": 246,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_thumbnail_grabber.cpp",
-   "line": 288,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_ttyswitchmonitor.cpp",
-   "line": 118,
-   "mutator": "cxx_ne_to_eq"
-  },
-  {
-   "file": "tests/tst_webaudio.cpp",
-   "line": 45,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "tests/tst_webaudio.cpp",
-   "line": 46,
-   "mutator": "cxx_lt_to_le"
-  },
-  {
-   "file": "tests/tst_webaudio.cpp",
-   "line": 47,
-   "mutator": "cxx_div_to_mul"
-  },
-  {
-   "file": "tests/tst_webaudio.cpp",
-   "line": 48,
-   "mutator": "cxx_mul_to_div"
-  },
-  {
-   "file": "tests/tst_webaudio.cpp",
-   "line": 83,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "tests/tst_webaudio.cpp",
-   "line": 84,
-   "mutator": "cxx_le_to_lt"
-  },
-  {
-   "file": "tests/tst_webaudio.cpp",
-   "line": 85,
-   "mutator": "cxx_gt_to_ge"
-  },
-  {
-   "file": "tests/tst_webaudio.cpp",
-   "line": 100,
-   "mutator": "cxx_div_to_mul"
-  },
-  {
-   "file": "tests/tst_webaudio.cpp",
-   "line": 132,
-   "mutator": "cxx_ge_to_gt"
-  },
-  {
-   "file": "tests/tst_webaudio.cpp",
-   "line": 132,
-   "mutator": "cxx_le_to_lt"
-  },
-  {
-   "file": "tests/tst_webaudio.cpp",
-   "line": 189,
-   "mutator": "cxx_gt_to_ge"
-  }
- ]
+  "_accepted_equivalent": "src/backend_scene/src/WPShaderParser.cpp:1150 (cxx_gt_to_ge, cxx_gt_to_le) is `if (s_memoCompiles > 0)`, and it guards nothing but a LOG_INFO summary. Both mutants only change whether that line is emitted, so no assertion can distinguish them without capturing log output, and contorting a test to do so would pin the logging rather than the behaviour. Accepted deliberately. The two sibling survivors that WERE killed (the include-depth bound at :117 and the memo compile counter) are the ones that described real behaviour.  src/backend_scene/src/WPParticleParser.cpp:955 (cxx_gt_to_ge) is the angularmovement drag gate `if (drag > 0.0f)`. `>=` only changes which branch is taken when drag is exactly zero, and there the guarded body computes factor = max(0.0, 1.0 - 0*blend*dt) = 1.0, so MutiplyAngularVelocity(p, 1.0) is the identity on every float value. The only way that factor could come out as anything but 1.0 at drag==0 is a non-finite blend factor or step, and in exactly those cases the operator's own AngularAccelerate(p, force * blend, dt) two lines earlier has already driven angularVelocity to NaN, which absorbs both *1.0 and *0.0 -- so the branch cannot be observed from the outside either way. A non-finite step is not reachable regardless: ParticleSystem clamps frameTime with kMaxParticleFrameTime. Verified empirically as well -- with the mutation applied by hand the whole 3235-case backend_scene_tests suite passes unchanged. The two sibling cxx_mul_to_div mutants on the next line describe real behaviour (blended angular drag) and were killed with tests rather than accepted here.  ||  src/PlaylistManager.cpp:505 (cxx_gt_to_ge) is `const bool forward = delta > 0;`, and the line above it returns on `delta == 0` (`if (m_activeId.isEmpty() || delta == 0) return;`). delta is a plain int, unmodified between the two lines, so at :505 the precondition delta != 0 holds and `> 0` and `>= 0` agree for every reachable value -- they differ only at 0. Every downstream branch is driven solely by `forward`, so nothing can observe the difference. Accepted deliberately.",
+  "_comment": "Surviving mutants accepted as baseline. Run tools/scripts/mutation.sh --refresh-baseline to update; new entries in a non-refresh run fail the gate.",
+  "_scope": "Measured from the parent test binaries only. backend_scene_tests is NOT represented: its instrumented warmup takes ~91s and Mull's ceiling was 60s from 2026-06-06 until 2026-09-01, so that target has never once produced a report. The src/backend_scene/ entries here come from parent binaries linking submodule sources (Audio, Utils), not from that target. A future full submodule sweep will therefore surface a large batch of survivors that are first measurements, not regressions -- refresh the baseline from that run rather than treating them as new.  Since 2026-09-04 the parent's own tests/ directory is excluded in tests/mull.yml: Mull had been mutating the test sources themselves and 163 of the entries here sat in tests/*.cpp, which say nothing about the product. Those entries were pruned when the exclude landed.",
+  "survivors": [
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 63,
+      "mutator": "cxx_sub_to_add"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 91,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 91,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 94,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 94,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 94,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 100,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 100,
+      "mutator": "cxx_ge_to_lt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 101,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 101,
+      "mutator": "cxx_ge_to_lt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 101,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 101,
+      "mutator": "cxx_gt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 101,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 101,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 104,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 104,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 104,
+      "mutator": "cxx_ge_to_lt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 106,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 165,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 165,
+      "mutator": "cxx_gt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 246,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 246,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 250,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 250,
+      "mutator": "cxx_ge_to_lt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 252,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 252,
+      "mutator": "cxx_ge_to_lt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 253,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 253,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 253,
+      "mutator": "cxx_ge_to_lt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 277,
+      "mutator": "cxx_le_to_gt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 277,
+      "mutator": "cxx_le_to_lt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 278,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 282,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 282,
+      "mutator": "cxx_gt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 286,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 287,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 287,
+      "mutator": "cxx_gt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 346,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 346,
+      "mutator": "cxx_gt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 351,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 508,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 508,
+      "mutator": "cxx_gt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 551,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 639,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 639,
+      "mutator": "cxx_gt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 765,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 765,
+      "mutator": "cxx_gt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 827,
+      "mutator": "cxx_sub_to_add"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 832,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 838,
+      "mutator": "cxx_le_to_gt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 838,
+      "mutator": "cxx_le_to_lt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 881,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 881,
+      "mutator": "cxx_gt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 891,
+      "mutator": "cxx_le_to_gt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 891,
+      "mutator": "cxx_le_to_lt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 895,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 895,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 899,
+      "mutator": "cxx_le_to_gt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 899,
+      "mutator": "cxx_le_to_lt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 918,
+      "mutator": "cxx_sub_to_add"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 939,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 939,
+      "mutator": "cxx_gt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 939,
+      "mutator": "cxx_ne_to_eq"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 952,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 952,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 952,
+      "mutator": "cxx_ne_to_eq"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 952,
+      "mutator": "cxx_sub_to_add"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 965,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 965,
+      "mutator": "cxx_gt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 965,
+      "mutator": "cxx_ne_to_eq"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 979,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 979,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 979,
+      "mutator": "cxx_ne_to_eq"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 979,
+      "mutator": "cxx_sub_to_add"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1007,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1007,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1011,
+      "mutator": "cxx_le_to_gt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1011,
+      "mutator": "cxx_le_to_lt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1012,
+      "mutator": "cxx_pre_inc_to_pre_dec"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1013,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1013,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1013,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1014,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1015,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1015,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1015,
+      "mutator": "cxx_pre_inc_to_pre_dec"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1024,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1024,
+      "mutator": "cxx_ge_to_lt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1025,
+      "mutator": "cxx_pre_inc_to_pre_dec"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1027,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1027,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1028,
+      "mutator": "cxx_post_inc_to_post_dec"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1030,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1030,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1031,
+      "mutator": "cxx_post_inc_to_post_dec"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1054,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1054,
+      "mutator": "cxx_ge_to_lt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1059,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1059,
+      "mutator": "cxx_ge_to_lt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1066,
+      "mutator": "cxx_pre_inc_to_pre_dec"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1070,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1070,
+      "mutator": "cxx_ge_to_lt"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1071,
+      "mutator": "cxx_pre_inc_to_pre_dec"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1082,
+      "mutator": "cxx_ne_to_eq"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1161,
+      "mutator": "cxx_ne_to_eq"
+    },
+    {
+      "file": "src/FileHelper.cpp",
+      "line": 1174,
+      "mutator": "cxx_ne_to_eq"
+    },
+    {
+      "file": "src/MigrationHelper.cpp",
+      "line": 50,
+      "mutator": "cxx_pre_inc_to_pre_dec"
+    },
+    {
+      "file": "src/MigrationHelper.cpp",
+      "line": 185,
+      "mutator": "cxx_pre_inc_to_pre_dec"
+    },
+    {
+      "file": "src/MouseGrabber.cpp",
+      "line": 127,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "src/MouseGrabber.cpp",
+      "line": 127,
+      "mutator": "cxx_pre_inc_to_pre_dec"
+    },
+    {
+      "file": "src/MouseGrabber.cpp",
+      "line": 127,
+      "mutator": "cxx_rem_to_div"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 145,
+      "mutator": "cxx_pre_inc_to_pre_dec"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 158,
+      "mutator": "cxx_ne_to_eq"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 173,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 184,
+      "mutator": "cxx_ne_to_eq"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 196,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 197,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 197,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 204,
+      "mutator": "cxx_le_to_gt"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 204,
+      "mutator": "cxx_le_to_lt"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 269,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 343,
+      "mutator": "cxx_div_to_mul"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 416,
+      "mutator": "cxx_pre_inc_to_pre_dec"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 486,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 487,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 492,
+      "mutator": "cxx_div_to_mul"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 492,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 492,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 492,
+      "mutator": "cxx_mul_to_div"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 495,
+      "mutator": "cxx_mul_to_div"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 496,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 496,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 497,
+      "mutator": "cxx_mul_to_div"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 507,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 531,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 532,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 533,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 539,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 542,
+      "mutator": "cxx_sub_to_add"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 543,
+      "mutator": "cxx_mul_to_div"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 544,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/PlaylistItemsModel.cpp",
+      "line": 22,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/PlaylistItemsModel.cpp",
+      "line": 22,
+      "mutator": "cxx_ge_to_lt"
+    },
+    {
+      "file": "src/PlaylistItemsModel.cpp",
+      "line": 22,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/PlaylistItemsModel.cpp",
+      "line": 22,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/PlaylistItemsModel.cpp",
+      "line": 52,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/PlaylistManager.cpp",
+      "line": 290,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/PlaylistManager.cpp",
+      "line": 305,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/PlaylistManager.cpp",
+      "line": 306,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/PlaylistManager.cpp",
+      "line": 344,
+      "mutator": "cxx_le_to_lt"
+    },
+    {
+      "file": "src/PlaylistManager.cpp",
+      "line": 355,
+      "mutator": "cxx_le_to_lt"
+    },
+    {
+      "file": "src/PlaylistManager.cpp",
+      "line": 373,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/PlaylistManager.cpp",
+      "line": 373,
+      "mutator": "cxx_gt_to_le"
+    },
+    {
+      "file": "src/PlaylistManager.cpp",
+      "line": 382,
+      "mutator": "cxx_mul_to_div"
+    },
+    {
+      "file": "src/PlaylistManager.cpp",
+      "line": 388,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/PlaylistManager.cpp",
+      "line": 475,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/PlaylistManager.cpp",
+      "line": 510,
+      "mutator": "cxx_sub_to_add"
+    },
+    {
+      "file": "src/PlaylistManager.cpp",
+      "line": 512,
+      "mutator": "cxx_sub_to_add"
+    },
+    {
+      "file": "src/PlaylistManager.cpp",
+      "line": 517,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/PlaylistManager.cpp",
+      "line": 517,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/PlaylistsModel.cpp",
+      "line": 18,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/PlaylistsModel.cpp",
+      "line": 18,
+      "mutator": "cxx_ge_to_lt"
+    },
+    {
+      "file": "src/PlaylistsModel.cpp",
+      "line": 18,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/PlaylistsModel.cpp",
+      "line": 18,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/PlaylistsModel.cpp",
+      "line": 58,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/PlaylistsModel.cpp",
+      "line": 58,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/PlaylistsModel.cpp",
+      "line": 58,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/PlaylistsModel.cpp",
+      "line": 70,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/PlaylistsModel.cpp",
+      "line": 70,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/WebAudioBridge.cpp",
+      "line": 94,
+      "mutator": "cxx_le_to_gt"
+    },
+    {
+      "file": "src/WebAudioBridge.cpp",
+      "line": 94,
+      "mutator": "cxx_le_to_lt"
+    },
+    {
+      "file": "src/WebUrlInterceptor.cpp",
+      "line": 18,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "src/backend_mpv/MpvBackend.cpp",
+      "line": 179,
+      "mutator": "cxx_ne_to_eq"
+    },
+    {
+      "file": "src/backend_mpv/MpvBackend.cpp",
+      "line": 184,
+      "mutator": "cxx_ne_to_eq"
+    },
+    {
+      "file": "src/backend_mpv/MpvBackend.cpp",
+      "line": 189,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "src/backend_mpv/MpvBackend.cpp",
+      "line": 376,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "src/backend_mpv/MpvBackend.cpp",
+      "line": 377,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/backend_mpv/MpvBackend.cpp",
+      "line": 377,
+      "mutator": "cxx_ge_to_lt"
+    },
+    {
+      "file": "src/backend_mpv/MpvBackend.cpp",
+      "line": 472,
+      "mutator": "cxx_ne_to_eq"
+    },
+    {
+      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
+      "line": 38,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
+      "line": 38,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
+      "line": 69,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
+      "line": 69,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
+      "line": 76,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
+      "line": 76,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
+      "line": 76,
+      "mutator": "cxx_post_inc_to_post_dec"
+    },
+    {
+      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
+      "line": 78,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
+      "line": 80,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
+      "line": 93,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
+      "line": 93,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
+      "line": 101,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
+      "line": 101,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
+      "line": 101,
+      "mutator": "cxx_post_inc_to_post_dec"
+    },
+    {
+      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
+      "line": 103,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
+      "line": 105,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
+      "line": 118,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
+      "line": 118,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
+      "line": 124,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
+      "line": 124,
+      "mutator": "cxx_gt_to_le"
+    },
+    {
+      "file": "src/backend_mpv/qthelper.hpp",
+      "line": 57,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/backend_mpv/qthelper.hpp",
+      "line": 57,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/backend_mpv/qthelper.hpp",
+      "line": 57,
+      "mutator": "cxx_post_inc_to_post_dec"
+    },
+    {
+      "file": "src/backend_mpv/qthelper.hpp",
+      "line": 63,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/backend_mpv/qthelper.hpp",
+      "line": 97,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/backend_mpv/qthelper.hpp",
+      "line": 138,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/backend_mpv/qthelper.hpp",
+      "line": 138,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/backend_mpv/qthelper.hpp",
+      "line": 138,
+      "mutator": "cxx_post_inc_to_post_dec"
+    },
+    {
+      "file": "src/backend_mpv/qthelper.hpp",
+      "line": 160,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/backend_mpv/qthelper.hpp",
+      "line": 302,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 61,
+      "mutator": "cxx_div_to_mul"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 61,
+      "mutator": "cxx_sub_to_add"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 73,
+      "mutator": "cxx_div_to_mul"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 76,
+      "mutator": "cxx_le_to_gt"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 76,
+      "mutator": "cxx_le_to_lt"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 76,
+      "mutator": "cxx_post_inc_to_post_dec"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 77,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 77,
+      "mutator": "cxx_div_to_mul"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 77,
+      "mutator": "cxx_mul_to_div"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 77,
+      "mutator": "cxx_sub_to_add"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 79,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 79,
+      "mutator": "cxx_div_to_mul"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 80,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 80,
+      "mutator": "cxx_ge_to_lt"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 84,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 84,
+      "mutator": "cxx_post_inc_to_post_dec"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 85,
+      "mutator": "cxx_le_to_gt"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 85,
+      "mutator": "cxx_le_to_lt"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 86,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 87,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 87,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 174,
+      "mutator": "cxx_mul_to_div"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 175,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 175,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 175,
+      "mutator": "cxx_post_inc_to_post_dec"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 176,
+      "mutator": "cxx_mul_to_div"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 193,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 193,
+      "mutator": "cxx_mul_to_div"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 195,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 195,
+      "mutator": "cxx_rem_to_div"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 197,
+      "mutator": "cxx_post_inc_to_post_dec"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 205,
+      "mutator": "cxx_post_inc_to_post_dec"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 220,
+      "mutator": "cxx_post_inc_to_post_dec"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 223,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 223,
+      "mutator": "cxx_le_to_gt"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 223,
+      "mutator": "cxx_le_to_lt"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 224,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 224,
+      "mutator": "cxx_gt_to_le"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 226,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 226,
+      "mutator": "cxx_post_inc_to_post_dec"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 230,
+      "mutator": "cxx_sub_to_add"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 240,
+      "mutator": "cxx_div_to_mul"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 240,
+      "mutator": "cxx_mul_to_div"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 241,
+      "mutator": "cxx_div_to_mul"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 241,
+      "mutator": "cxx_mul_to_div"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 244,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 244,
+      "mutator": "cxx_ge_to_lt"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 247,
+      "mutator": "cxx_mul_to_div"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 249,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 249,
+      "mutator": "cxx_ge_to_lt"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 252,
+      "mutator": "cxx_mul_to_div"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 268,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 268,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 268,
+      "mutator": "cxx_post_inc_to_post_dec"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 272,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 272,
+      "mutator": "cxx_gt_to_le"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 281,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 281,
+      "mutator": "cxx_post_inc_to_post_dec"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 282,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 282,
+      "mutator": "cxx_mul_to_div"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 283,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 283,
+      "mutator": "cxx_mul_to_div"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 287,
+      "mutator": "cxx_lt_to_ge"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 287,
+      "mutator": "cxx_post_inc_to_post_dec"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 288,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 288,
+      "mutator": "cxx_mul_to_div"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 289,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 289,
+      "mutator": "cxx_mul_to_div"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 317,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 319,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 319,
+      "mutator": "cxx_ge_to_lt"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 320,
+      "mutator": "cxx_mul_to_div"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 321,
+      "mutator": "cxx_mul_to_div"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 323,
+      "mutator": "cxx_mul_to_div"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 325,
+      "mutator": "cxx_rem_to_div"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 326,
+      "mutator": "cxx_add_to_sub"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 326,
+      "mutator": "cxx_rem_to_div"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 350,
+      "mutator": "cxx_sub_to_add"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 351,
+      "mutator": "cxx_lt_to_le"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 357,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 360,
+      "mutator": "cxx_post_inc_to_post_dec"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 370,
+      "mutator": "cxx_ge_to_gt"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 370,
+      "mutator": "cxx_ge_to_lt"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 390,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 392,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioAnalyzer.cpp",
+      "line": 394,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioBus.cpp",
+      "line": 43,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioBus.cpp",
+      "line": 134,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioBus.cpp",
+      "line": 134,
+      "mutator": "cxx_gt_to_le"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioBus.cpp",
+      "line": 135,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioBus.cpp",
+      "line": 137,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioBus.cpp",
+      "line": 137,
+      "mutator": "cxx_gt_to_le"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioBus.cpp",
+      "line": 138,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioBus.cpp",
+      "line": 164,
+      "mutator": "cxx_pre_inc_to_pre_dec"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioBus.cpp",
+      "line": 173,
+      "mutator": "cxx_pre_inc_to_pre_dec"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioBus.cpp",
+      "line": 226,
+      "mutator": "cxx_pre_inc_to_pre_dec"
+    },
+    {
+      "file": "src/backend_scene/src/Audio/AudioBus.cpp",
+      "line": 227,
+      "mutator": "cxx_pre_inc_to_pre_dec"
+    },
+    {
+      "file": "src/backend_scene/src/Utils/SceneProfiler.cpp",
+      "line": 65,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "src/backend_scene/src/Utils/SceneProfiler.cpp",
+      "line": 80,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/backend_scene/src/Utils/SceneProfiler.cpp",
+      "line": 80,
+      "mutator": "cxx_gt_to_le"
+    },
+    {
+      "file": "src/backend_scene/src/Utils/SceneProfiler.cpp",
+      "line": 99,
+      "mutator": "cxx_eq_to_ne"
+    },
+    {
+      "file": "src/backend_scene/src/Utils/SceneProfiler.cpp",
+      "line": 100,
+      "mutator": "cxx_div_to_mul"
+    },
+    {
+      "file": "src/backend_scene/src/Utils/SceneProfiler.cpp",
+      "line": 101,
+      "mutator": "cxx_div_to_mul"
+    },
+    {
+      "file": "src/backend_scene/src/Utils/SceneProfiler.cpp",
+      "line": 102,
+      "mutator": "cxx_div_to_mul"
+    },
+    {
+      "file": "src/backend_scene/src/Utils/SceneProfiler.cpp",
+      "line": 103,
+      "mutator": "cxx_div_to_mul"
+    },
+    {
+      "file": "src/backend_scene/src/Utils/SceneProfiler.cpp",
+      "line": 104,
+      "mutator": "cxx_div_to_mul"
+    },
+    {
+      "file": "src/backend_scene/src/WPParticleParser.cpp",
+      "line": 955,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/backend_scene/src/WPShaderParser.cpp",
+      "line": 1150,
+      "mutator": "cxx_gt_to_ge"
+    },
+    {
+      "file": "src/backend_scene/src/WPShaderParser.cpp",
+      "line": 1150,
+      "mutator": "cxx_gt_to_le"
+    }
+  ]
 }

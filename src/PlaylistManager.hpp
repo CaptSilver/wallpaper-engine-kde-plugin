@@ -102,6 +102,14 @@ public:
     // assertions call this instead of waiting on QTRY_VERIFY_WITH_TIMEOUT.
     void flushPersistForTest() { flushPersist(); }
 
+    // Pure sequential step pickers, siblings of pickShuffle below: index in,
+    // index out, no state touched. Every caller checks items.isEmpty() first,
+    // so the `size <= 0` guards inside are defence in depth -- they are what
+    // stops `% size` dividing by zero if a future caller forgets, which is
+    // exactly the case reachable only by calling these directly.
+    int advanceSequential(int currentIdx, int size) const;
+    int retreatSequential(int currentIdx, int size) const;
+
     // Pure shuffle picker: returns an index in [0, size) that is NOT equal
     // to `currentIdx`, with one re-pick fallback and a deterministic
     // force-different last-resort. Q_INVOKABLE so the QML controller
@@ -168,8 +176,6 @@ private:
     // then queued for deferred delete. Called by reload() after load().
     void pruneStaleItemsModels();
     void armTimerForCurrent();
-    int  advanceSequential(int currentIdx, int size) const;
-    int  retreatSequential(int currentIdx, int size) const;
 
     QVector<Playlist>   m_playlists;
     QHash<QString, int> m_indexById;

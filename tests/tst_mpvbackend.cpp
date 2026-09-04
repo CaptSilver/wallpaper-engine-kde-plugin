@@ -135,11 +135,41 @@ private slots:
     // Teardown must not park a thread on the mpv core.
     void beginShutdown_quitsCoreWithoutWaitingOnIt();
     void beginShutdown_neverInitializedCore_doesNotWarn();
+    void beginShutdown_healthyCore_doesNotWarn();
+    void beginShutdown_quitRejectedByChokedCore_warns();
 };
 
 namespace
 {
 std::unique_ptr<MpvObject> makeObject() { return std::make_unique<MpvObject>(nullptr); }
+
+// Records Qt warnings for as long as it is in scope so a test can assert that a
+// path stayed quiet, or that it spoke up. Qt's message handler is a bare
+// function pointer with nowhere to hang state, so the sink has to be static;
+// RAII puts the previous handler back even when an assertion returns early.
+class WarningCapture {
+public:
+    WarningCapture() {
+        s_warnings.clear();
+        m_prev = qInstallMessageHandler(&WarningCapture::sink);
+    }
+    ~WarningCapture() { qInstallMessageHandler(m_prev); }
+    WarningCapture(const WarningCapture&)            = delete;
+    WarningCapture& operator=(const WarningCapture&) = delete;
+
+    bool    sawAny() const { return ! s_warnings.isEmpty(); }
+    bool    saw(const QString& needle) const { return ! s_warnings.filter(needle).isEmpty(); }
+    QString text() const { return s_warnings.join(QLatin1Char('\n')); }
+
+private:
+    static void sink(QtMsgType type, const QMessageLogContext&, const QString& msg) {
+        if (type == QtWarningMsg) s_warnings.append(msg);
+    }
+
+    static inline QStringList s_warnings {};
+
+    QtMessageHandler m_prev { nullptr };
+};
 } // namespace
 
 void TestMpvBackend::initialState_defaultsAreSensible() {
@@ -645,18 +675,55 @@ void TestMpvBackend::beginShutdown_quitsCoreWithoutWaitingOnIt() {
 // already said so loudly and there is no core to wind down. Teardown must stay
 // quiet rather than blaming the quit for a failure that happened at startup.
 void TestMpvBackend::beginShutdown_neverInitializedCore_doesNotWarn() {
-    static bool sawWarning = false;
-    sawWarning             = false;
-    auto* prev = qInstallMessageHandler([](QtMsgType t, const QMessageLogContext&, const QString&) {
-        if (t == QtWarningMsg) sawWarning = true;
-    });
+    WarningCapture warnings;
     {
         mpv::MpvHandle handle(mpv_create()); // deliberately never initialized
         QVERIFY(handle.handle != nullptr);
         handle.beginShutdown();
     }
-    qInstallMessageHandler(prev);
-    QVERIFY(! sawWarning);
+    QVERIFY2(! warnings.sawAny(), qPrintable(warnings.text()));
+}
+
+// The quit that a live core accepts is the ordinary case, and it must pass
+// without a word: mpv answers a queued "quit" with 0, and reporting a healthy
+// teardown as a rejection would send anyone chasing the "desktop freezes on
+// wallpaper change" report at the one path that did not cause it.
+void TestMpvBackend::beginShutdown_healthyCore_doesNotWarn() {
+    WarningCapture warnings;
+    mpv::MpvHandle handle(mpv_create());
+    QVERIFY(handle.handle != nullptr);
+    mpv_set_option_string(handle.handle, "terminal", "no");
+    mpv_set_option_string(handle.handle, "config", "no");
+    QCOMPARE(mpv_initialize(handle.handle), 0);
+
+    handle.beginShutdown();
+    QVERIFY2(! warnings.sawAny(), qPrintable(warnings.text()));
+}
+
+// The other side of that check: a quit the core genuinely refuses has to be
+// reported. A client that never drains mpv_wait_event() overflows its own event
+// ringbuffer, after which mpv rejects every further async request — so the quit
+// never reaches the core and teardown silently falls back to blocking inside
+// mpv_terminate_destroy on the render thread, freezing every plasmashell window
+// with it. Swallowing that leaves the freeze with no trace in the journal.
+void TestMpvBackend::beginShutdown_quitRejectedByChokedCore_warns() {
+    mpv::MpvHandle handle(mpv_create());
+    QVERIFY(handle.handle != nullptr);
+    mpv_set_option_string(handle.handle, "terminal", "no");
+    mpv_set_option_string(handle.handle, "config", "no");
+    QCOMPARE(mpv_initialize(handle.handle), 0);
+
+    // Choke the client: each async request reserves a reply slot, and nothing
+    // here ever collects one. The bound is well past mpv's queue size so the
+    // loop stops on the refusal rather than on running out of iterations.
+    int rc = 0;
+    for (int i = 0; i < 20000 && rc == 0; ++i)
+        rc = mpv_get_property_async(handle.handle, 1, "volume", MPV_FORMAT_DOUBLE);
+    QCOMPARE(rc, MPV_ERROR_EVENT_QUEUE_FULL);
+
+    WarningCapture warnings;
+    handle.beginShutdown();
+    QVERIFY2(warnings.saw(QStringLiteral("async quit rejected")), qPrintable(warnings.text()));
 }
 
 QTEST_MAIN(TestMpvBackend)

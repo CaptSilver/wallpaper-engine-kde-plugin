@@ -452,6 +452,32 @@ private slots:
         QCOMPARE(spy.takeFirst().first().toString(), QString("B"));
     }
 
+    // A Sequential playlist must step through the stored order on Next, not
+    // take the shuffle pick. A single step can't tell the two apart — a random
+    // pick can legitimately land on the next index — so walk two full cycles:
+    // the shuffle picker reproducing that exact order does not happen.
+    void forwardStepInSequentialModeWalksTheStoredOrder() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager mgr;
+        const QString          id = mgr.createPlaylist("X");
+        const QStringList      order { "A", "B", "C", "D", "E", "F" };
+        for (const auto& w : order) mgr.addItem(id, w);
+        QVERIFY(mgr.setMode(id, wekde::PlaylistMode::Sequential));
+        QVERIFY(mgr.activate(id)); // ticks "A" at index 0
+        QSignalSpy spy(&mgr, &wekde::PlaylistManager::tick);
+
+        const int n = static_cast<int>(order.size());
+        for (int step = 1; step <= 2 * n; ++step) {
+            mgr.stepBy(1);
+            const int expected = step % n;
+            QCOMPARE(mgr.currentItemIndex(), expected);
+            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.takeFirst().first().toString(), order[expected]);
+        }
+    }
+
     // The Filtered Library has no item list of its own — QML owns the picks —
     // so a manual step has to ask QML for one instead of quietly doing nothing.
     void manualStepOnFilteredLibraryAsksQmlForAPick() {
@@ -996,6 +1022,24 @@ private slots:
             }
         }
         QFAIL("Could not find a seed exercising the force-different branch within 10000 attempts");
+    }
+
+    // An empty list has no next index, so the helper answers 0 instead of
+    // falling through to `% size` and dividing by zero. Every production
+    // caller checks items.isEmpty() first, so this guard is only ever reached
+    // from here — without a direct call it is untested and free to rot.
+    void advanceSequentialReturnsZeroForAnEmptyList() {
+        wekde::PlaylistManager mgr;
+        QCOMPARE(mgr.advanceSequential(0, 0), 0);
+        QCOMPARE(mgr.advanceSequential(4, 0), 0); // answer is 0 whatever cur was
+    }
+
+    // Same guard on the backward helper, where the fall-through is worse: the
+    // double modulo that keeps the result non-negative divides by size twice.
+    void retreatSequentialReturnsZeroForAnEmptyList() {
+        wekde::PlaylistManager mgr;
+        QCOMPARE(mgr.retreatSequential(0, 0), 0);
+        QCOMPARE(mgr.retreatSequential(4, 0), 0);
     }
 
     // ── PlaylistsModel + PlaylistItemsModel direct tests ────────────────────

@@ -53,6 +53,41 @@ QList<qreal> makeSineStereo(int frames, double freqHz, double sampleRate) {
     }
     return out;
 }
+
+std::vector<float> toFloats(const QList<qreal>& pcm) {
+    std::vector<float> out;
+    out.reserve(size_t(pcm.size()));
+    for (qreal v : pcm) out.push_back(float(v));
+    return out;
+}
+
+// ctest runs this binary with WEK_TEST_AUDIO_NULL_CAPTURE=1, which makes the
+// bus pretend the monitor source opened.  A case that needs the real
+// "no system capture" path unsets it for its own duration; the inert
+// AudioCapture stub above then makes the open fail the way a machine with no
+// PulseAudio/PipeWire monitor does.  The bus latches the mode when it creates
+// the singleton analyzer, so the bus has to be torn down on both edges.
+class NoSystemCaptureEnv {
+public:
+    NoSystemCaptureEnv(): m_saved(qgetenv("WEK_TEST_AUDIO_NULL_CAPTURE")) {
+        qunsetenv("WEK_TEST_AUDIO_NULL_CAPTURE");
+        wallpaper::audio::AudioBus::TEST_resetForNextCase();
+    }
+    ~NoSystemCaptureEnv() {
+        wallpaper::audio::AudioBus::TEST_resetForNextCase();
+        // Put back exactly what was there — setting a value the process never
+        // had would silently change the mode for every later case.
+        if (m_saved.isEmpty())
+            qunsetenv("WEK_TEST_AUDIO_NULL_CAPTURE");
+        else
+            qputenv("WEK_TEST_AUDIO_NULL_CAPTURE", m_saved);
+    }
+    NoSystemCaptureEnv(const NoSystemCaptureEnv&)            = delete;
+    NoSystemCaptureEnv& operator=(const NoSystemCaptureEnv&) = delete;
+
+private:
+    const QByteArray m_saved;
+};
 } // namespace
 
 class WebAudioTest : public QObject {
@@ -68,10 +103,7 @@ private slots:
 
     void encodeBuffer_returns128FloatsAfterProcess() {
         wallpaper::audio::AudioAnalyzer a;
-        auto                            pcm = makeSineStereo(FFT_SIZE * 2, 440.0, 48000.0);
-        std::vector<float>              floats;
-        floats.reserve(pcm.size());
-        for (qreal v : pcm) floats.push_back(float(v));
+        auto floats = toFloats(makeSineStereo(FFT_SIZE * 2, 440.0, 48000.0));
         a.FeedPcm(floats.data(), uint32_t(floats.size() / 2), 2);
         a.Process();
         QVERIFY(a.HasData());
@@ -95,10 +127,7 @@ private slots:
     // heap boxes.
     void encodeBuffer_returnsQListOfDoubles_notQVariantList() {
         wallpaper::audio::AudioAnalyzer a;
-        auto                            pcm = makeSineStereo(FFT_SIZE * 2, 440.0, 48000.0);
-        std::vector<float>              floats;
-        floats.reserve(pcm.size());
-        for (qreal v : pcm) floats.push_back(float(v));
+        auto floats = toFloats(makeSineStereo(FFT_SIZE * 2, 440.0, 48000.0));
         a.FeedPcm(floats.data(), uint32_t(floats.size() / 2), 2);
         a.Process();
         QVERIFY(a.HasData());
@@ -218,6 +247,35 @@ private slots:
 
         analyzer.reset();
         wallpaper::audio::AudioBus::TEST_resetForNextCase();
+    }
+
+    // Capture being down at load time is not permanent: PipeWire may still be
+    // coming up at login, the only sink may be a Bluetooth one that connects
+    // later, and a scene wallpaper on another screen can feed the same
+    // singleton analyzer from its playback tap.  A bridge that started blind
+    // must therefore keep polling (and keep its spectrum lease, or the bus
+    // never runs the FFT) so the wallpaper goes audio-reactive when audio
+    // finally arrives instead of staying flat until plasmashell restarts.
+    void enabledWithoutSystemCapture_stillEmitsOnceSharedAnalyzerGainsData() {
+        NoSystemCaptureEnv realCapture;
+
+        wekde::WebAudioBridge bridge;
+        QSignalSpy            spy(&bridge, &wekde::WebAudioBridge::audioBuffer);
+        bridge.setEnabled(true);
+        QVERIFY(! wallpaper::audio::AudioBus::HasSystemCapture());
+
+        // Stand in for the other producer: another subscriber feeds the shared
+        // singleton the bridge is sampling.
+        auto analyzer = wallpaper::audio::AudioBus::Acquire(false);
+        QVERIFY(analyzer);
+        auto pcm = toFloats(makeSineStereo(FFT_SIZE * 2, 440.0, 48000.0));
+        analyzer->FeedPcm(pcm.data(), uint32_t(pcm.size() / 2), 2);
+
+        QVERIFY(spy.wait(4000));
+        QCOMPARE(spy.first().first().value<QList<double>>().size(), 128);
+
+        bridge.setEnabled(false);
+        analyzer.reset();
     }
 
     void feedTestPcm_refusesToTouchTheSharedBusAnalyzer() {

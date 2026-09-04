@@ -39,24 +39,33 @@ void WebAudioBridge::start() {
     // the same PulseAudio monitor stream + FFT pipeline; otherwise the
     // bus opens one on our behalf.  Acquire returns a valid analyzer
     // even when capture-init fails (no .monitor source / PulseAudio
-    // missing) — the timer will still run but the spectrum stays empty,
-    // matching the pre-bus qWarning fall-through path.
+    // missing) — the timer still runs, the spectrum is just empty until
+    // something feeds the analyzer.
     m_analyzer = wallpaper::audio::AudioBus::Acquire(/*wantSystemCapture=*/true);
-    // Declare ourselves a spectrum reader so the bus thread actually runs the
-    // FFT; without this the timer would sample an all-zero spectrum whenever
-    // no scene wallpaper happens to want audio too.
-    m_spectrum_lease = wallpaper::audio::AudioBus::AcquireSpectrumConsumer();
     if (! m_analyzer) {
+        // Nothing to sample now or later, so don't take a spectrum lease
+        // either — the bus thread would be running the FFT for a reader
+        // that never looks.
         qWarning() << "WebAudioBridge: AudioBus::Acquire returned null; "
                       "audio-reactive web wallpapers will receive no spectrum data";
         m_timer.stop();
         return;
     }
+    // Declare ourselves a spectrum reader so the bus thread actually runs the
+    // FFT; without this the timer would sample an all-zero spectrum whenever
+    // no scene wallpaper happens to want audio too.
+    m_spectrum_lease = wallpaper::audio::AudioBus::AcquireSpectrumConsumer();
     if (! wallpaper::audio::AudioBus::HasSystemCapture()) {
-        qWarning() << "WebAudioBridge: system audio capture unavailable; "
-                      "audio-reactive web wallpapers will receive no spectrum data";
-        m_timer.stop();
-        return;
+        // Down right now is not down for good: PipeWire may still be starting
+        // at login, the only sink may be a Bluetooth one that connects later,
+        // and a scene wallpaper on another screen can feed this very same
+        // singleton analyzer from its playback tap.  So keep polling instead
+        // of giving up — an empty tick costs one early-out in encodeBuffer,
+        // whereas returning here leaves the wallpaper flat until plasmashell
+        // restarts, with nothing to re-arm it.
+        qWarning() << "WebAudioBridge: system audio capture unavailable; audio-reactive "
+                      "web wallpapers stay flat until it comes up or another wallpaper "
+                      "feeds the shared analyzer";
     }
     m_timer.start();
 }

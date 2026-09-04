@@ -15,7 +15,7 @@ namespace wekde
 // Forwards system audio (PulseAudio/PipeWire .monitor source) FFT spectrum
 // into web wallpapers.  Web backends use QtWebEngine + QWebChannel and can't
 // reach the scene-side AudioAnalyzer that scene wallpapers tap; this bridge
-// runs an independent capture + analyzer pair while a web wallpaper is
+// subscribes to the process-singleton AudioBus while a web wallpaper is
 // active, emitting a 128-element QList<double> (64 left bands followed by 64
 // right bands, values 0..1) at ~30Hz. Qt6 auto-converts QList<numeric> to a
 // JS Array at the QML signal-handler boundary (contiguous primitive storage,

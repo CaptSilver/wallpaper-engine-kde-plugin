@@ -107,6 +107,32 @@ TestCase {
             typeof c.readWallpaperConfigCount === "number");
     }
 
+    // The RowLayout root of WallpaperPage. It owns activeConfig — the single
+    // shared read of the selected wallpaper's saved config that both option
+    // groups bind to.
+    function _findWallpaperPageRoot() {
+        return _firstByPredicate(c => typeof c.activeWorkshopid === "string" &&
+                                       typeof c.activeConfig !== "undefined" &&
+                                       typeof c.cfg_ActivePlaylistId === "string");
+    }
+
+    // Select a wallpaper the way the grid does: park `cfg` on the FileHelper
+    // stub so the page-root read answers with it, then flip wpmodel and let
+    // the promise settle. Callers must restore _wallpaperConfigReturns.
+    function _selectWallpaper(rc, fh, id, cfg) {
+        fh._wallpaperConfigReturns = cfg;
+        const before = fh.readWallpaperConfigCount;
+        rc.wpmodel = { workshopid: id, path: "/x", title: "", type: "",
+                       tags: [], playlists: [], favor: false, contentrating: "" };
+        asyncUtil.awaitBinding(this, fh, "readWallpaperConfigCount", before + 1);
+        asyncUtil.pumpMicrotasks(this);
+    }
+
+    function _findRightContent() {
+        return _firstByPredicate(c => typeof c.wpmodel !== "undefined" &&
+                                       typeof c.image_size === "number");
+    }
+
     // SignalSpies — declared as children of the TestCase so lifetimes
     // stay clean across cases. `target` is set per-test in the body.
     SignalSpy { id: rightClickSpy; signalName: "itemRightClicked" }
@@ -156,6 +182,72 @@ TestCase {
         compare(cfg.cfg_PerOptChanged, beforePerOpt + 1);
     }
 
+    // reset_wallpaper_config deletes the whole per-wallpaper file, user
+    // properties included, so the user-properties panel must drop its pending
+    // edits with it. Otherwise it keeps showing values that are no longer
+    // saved and the next edit writes them straight back.
+    function test_rightOpts_resetAlsoDropsStaleUserPropertyEdits() {
+        const ro = _findRightOpts();
+        if (!ro) return;
+        const upg = _findUserPropsGroup();
+        verify(upg !== null);
+        const fh = _findFileHelper();
+        verify(fh !== null);
+        const rc = _findRightContent();
+        verify(rc !== null);
+
+        const savedReturns = fh._wallpaperConfigReturns;
+        try {
+            _selectWallpaper(rc, fh, "wek_opt_wipe", {});
+            upg.savePropChange("gone", 5);
+            compare(upg.getPropValue("gone", -1), 5);
+
+            ro.reset_config();
+            compare(upg.getPropValue("gone", -1), -1,
+                    "a wiped wallpaper config must leave no user property behind");
+
+            upg.savePropChange("fresh", 1);
+            const written = fh.lastWriteWallpaperConfigArgs.cfg.user_props;
+            verify(!written.hasOwnProperty("gone"),
+                   "a wiped property must not reappear in the next write");
+        } finally {
+            fh._wallpaperConfigReturns = savedReturns;
+        }
+    }
+
+    // Resetting the scene options must not sever right_opts.config from the
+    // page-root read. The option Repeater rebuilds its delegates only on a
+    // configChanged notify, so a severed binding freezes the panel on the
+    // wallpaper that was selected when Reset was pressed.
+    function test_rightOpts_resetKeepsOptionsFollowingTheSelectedWallpaper() {
+        const ro = _findRightOpts();
+        if (!ro) return;
+        const fh = _findFileHelper();
+        verify(fh !== null);
+        const rc = _findRightContent();
+        verify(rc !== null);
+        const rep = _firstByPredicate(c => typeof c.markModel === "boolean");
+        verify(rep !== null, "option Repeater (markModel) not found");
+
+        const savedReturns = fh._wallpaperConfigReturns;
+        try {
+            _selectWallpaper(rc, fh, "wek_opt_a", { display_mode: 2 });
+            compare(ro.get_config_val("display_mode"), 2,
+                    "the option panel must show the selected wallpaper's saved value");
+
+            ro.reset_config();
+            const markAfterReset = rep.markModel;
+
+            _selectWallpaper(rc, fh, "wek_opt_b", { display_mode: 1 });
+            compare(ro.get_config_val("display_mode"), 1,
+                    "after a reset the option panel must still follow the next selection");
+            verify(rep.markModel !== markAfterReset,
+                   "a selection change must still re-mark the option delegates");
+        } finally {
+            fh._wallpaperConfigReturns = savedReturns;
+        }
+    }
+
     function test_rightOpts_workshopidChanged_loadsConfig() {
         const ro = _findRightOpts();
         if (!ro) return;
@@ -189,8 +281,7 @@ TestCase {
         verify(fh !== null, "FileHelper stub unreachable");
 
         // right_content is the parent that owns wpmodel + image_size.
-        const rc = _firstByPredicate(c => typeof c.wpmodel !== "undefined" &&
-                                           typeof c.image_size === "number");
+        const rc = _findRightContent();
         verify(rc !== null, "right_content not found in tree");
 
         // KEYSTONE: exactly ONE read per workshopid flip. Pre-fix this was
@@ -217,8 +308,7 @@ TestCase {
     function test_dirSize_refreshOnWpmodelChange() {
         const fh = _findFileHelper();
         verify(fh !== null, "FileHelper stub unreachable");
-        const rc = _firstByPredicate(c => typeof c.wpmodel !== "undefined" &&
-                                           typeof c.image_size === "number");
+        const rc = _findRightContent();
         verify(rc !== null, "right_content not found in tree");
 
         const before = fh.requestDirSizeCount;
@@ -239,8 +329,7 @@ TestCase {
     function test_tagsList_rebuildsOnWpmodelChange() {
         const tagsLV = _firstByPredicate(c => typeof c.rebuildTags === "function");
         verify(tagsLV !== null, "tags ListView (with rebuildTags method) not found");
-        const rc = _firstByPredicate(c => typeof c.wpmodel !== "undefined" &&
-                                           typeof c.image_size === "number");
+        const rc = _findRightContent();
         verify(rc !== null);
 
         rc.wpmodel = { workshopid: "q7_tags", path: "/x",
@@ -281,8 +370,7 @@ TestCase {
         // Pin wpmodel so workshopid is non-empty — set_config's hot
         // path (write + cfg_PerOptChanged bump + the gated debugLog calls)
         // only runs on the non-empty-workshopid branch.
-        const rc = _firstByPredicate(c => typeof c.wpmodel !== "undefined" &&
-                                           typeof c.image_size === "number");
+        const rc = _findRightContent();
         verify(rc !== null);
         rc.wpmodel = { workshopid: "q7_logs", path: "/x",
                        title: "", type: "", tags: [], playlists: [],
@@ -350,28 +438,81 @@ TestCase {
     function test_userPropsGroup_getPropValue_picksFromPropConfig() {
         const upg = _findUserPropsGroup();
         if (!upg) return;
+        const root = _findWallpaperPageRoot();
+        verify(root !== null);
         upg.propChanges = {};
-        upg.propConfig = { user_props: { my_prop: 77 } };
+        // Feed the value in through the page-root config the group is bound
+        // to. Assigning propConfig directly would drop that binding and leave
+        // every later case in this file reading a frozen object.
+        root.activeConfig = { user_props: { my_prop: 77 } };
         compare(upg.getPropValue("my_prop", -1), 77);
+    }
+
+    // Resetting user properties must leave the panel following the page-root
+    // config read. If Reset assigns over propConfig it drops that binding, so
+    // the next wallpaper's saved properties never reach the panel — and since
+    // the on-disk write replaces the whole user_props object, the next edit
+    // saves only the key that moved and erases the rest.
+    function test_userPropsGroup_resetKeepsFollowingTheSelectedWallpaper() {
+        const upg = _findUserPropsGroup();
+        if (!upg) return;
+        const fh = _findFileHelper();
+        verify(fh !== null);
+        const rc = _findRightContent();
+        verify(rc !== null);
+
+        const savedReturns = fh._wallpaperConfigReturns;
+        try {
+            _selectWallpaper(rc, fh, "wek_reset_a", { user_props: { a_prop: 1 } });
+            compare(upg.getPropValue("a_prop", -1), 1,
+                    "the panel must show the selected wallpaper's saved properties");
+
+            upg.resetUserProps();
+
+            _selectWallpaper(rc, fh, "wek_reset_b",
+                             { user_props: { keep_me: 20, moved: 1 } });
+            compare(upg.getPropValue("keep_me", -1), 20,
+                    "after a reset the panel must still follow the next selection");
+
+            upg.savePropChange("moved", 2);
+            const written = fh.lastWriteWallpaperConfigArgs.cfg.user_props;
+            compare(written.moved, 2);
+            compare(written.keep_me, 20,
+                    "editing one property must carry the wallpaper's other saved " +
+                    "properties through the whole-object write");
+        } finally {
+            fh._wallpaperConfigReturns = savedReturns;
+        }
     }
 
     function test_userPropsGroup_resetUserProps_clearsState() {
         const upg = _findUserPropsGroup();
         if (!upg) return;
+        const root = _findWallpaperPageRoot();
+        verify(root !== null);
         const fh = _findFileHelper();
         verify(fh !== null);
-        // Seed propChanges so we can observe it being cleared.
+        // Seed propChanges so we can observe it being cleared, plus a saved
+        // scene option so we can observe it surviving — the disk write is a
+        // top-level merge, so only user_props is emptied.
         upg.propChanges = { seeded: 1 };
+        root.activeConfig = { display_mode: 2, user_props: { old_prop: 5 } };
         const beforeWrites = fh.writeWallpaperConfigCount;
         const beforePerOpt = cfg.cfg_PerOptChanged;
         upg.resetUserProps();
         // resetUserProps unconditionally clears propChanges, writes an empty
-        // user_props block, clears propConfig, and bumps cfg_PerOptChanged.
+        // user_props block, empties the saved properties the panel reads, and
+        // bumps cfg_PerOptChanged.
         compare(Object.keys(upg.propChanges).length, 0);
         compare(fh.writeWallpaperConfigCount, beforeWrites + 1);
         verify(fh.lastWriteWallpaperConfigArgs.cfg.user_props !== undefined,
                "resetUserProps must write a user_props key");
-        compare(Object.keys(upg.propConfig).length, 0);
+        compare(Object.keys(upg.propConfig.user_props).length, 0);
+        compare(upg.getPropValue("old_prop", -1), -1,
+                "a reset property must fall back to its project.json default");
+        compare(upg.propConfig.display_mode, 2,
+                "resetting user properties must leave the wallpaper's other " +
+                "saved options alone");
         compare(cfg.cfg_PerOptChanged, beforePerOpt + 1);
     }
 

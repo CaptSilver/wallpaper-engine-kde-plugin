@@ -834,7 +834,19 @@ RowLayout {
                     function reset_config() {
                         config_resets.add(workshopid);
                         delete config_changes[workshopid];
-                        config = {}
+                        // Clear the page-root config, not our own mirror of
+                        // it. Assigning `config` here drops its binding to
+                        // activeConfig, and the option Repeater below only
+                        // rebuilds on a configChanged notify — the panel would
+                        // stay frozen on this wallpaper for the rest of the
+                        // dialog session. reset_wallpaper_config deletes the
+                        // whole file, so an empty object is the true mirror.
+                        wallpaperPageRoot.activeConfig = {};
+                        // The file we are about to delete holds the user
+                        // properties too, so the sibling panel's pending edits
+                        // go with it — left behind they display as saved and
+                        // get written back on the next slider nudge.
+                        user_props_group.propChanges = {};
                         // Write reset to disk immediately
                         pyext.reset_wallpaper_config(workshopid);
                         cfg_PerOptChanged++;
@@ -1168,7 +1180,17 @@ RowLayout {
                         propChanges = {};
                         const resetConfig = { 'user_props': {} };
                         pyext.write_wallpaper_config(workshopid, resetConfig);
-                        propConfig = {};
+                        // Mirror the write into the page-root config rather
+                        // than assigning propConfig, which would drop its
+                        // binding to activeConfig: the next wallpaper's saved
+                        // properties would never arrive, and savePropChange
+                        // would then merge against the stale object and write
+                        // back a user_props holding only the key just edited,
+                        // erasing that wallpaper's other saved properties.
+                        // The disk write is a top-level merge, so the
+                        // wallpaper's non-user_props keys stay put here too.
+                        wallpaperPageRoot.activeConfig = Object.assign(
+                            {}, wallpaperPageRoot.activeConfig, resetConfig);
 
                         // Signal main.qml to reload config
                         cfg_PerOptChanged++;

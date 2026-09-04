@@ -1,11 +1,13 @@
 import QtQuick
 import QtTest
+import QtMultimedia
 
 import "../../plugin/contents/ui" as Plugin
 import "../../plugin/contents/ui/backend" as Backend
 import Helpers 1.0
 
 TestCase {
+    id: tc
     name: "Backend_QtMultimedia"
     width: 200; height: 100
     when: windowShown
@@ -28,25 +30,26 @@ TestCase {
         source: "stub://video.mp4"
     }
 
+    // Cases that need a backend with untouched playback state build their own
+    // instance — `qm` is shared and the first-frame announcement latches.
+    Component { id: qmComp; Backend.QtMultimedia { source: "stub://fresh.mp4" } }
+
     function test_backendNameSetByCompleted() {
         compare(background.nowBackend, "QtMultimedia");
     }
 
-    function test_play_pause_togglesPauseTimer() {
-        // play()  → pauseTimer.stop()  (QtMultimedia.qml:78-80)
-        // pause() → pauseTimer.start() (QtMultimedia.qml:82-85)
-        // The MediaPlayer stub has no play/pause recorder, so we observe
-        // the pauseTimer.running flag instead — it's flipped by both
-        // methods. (Stub gap: MediaPlayer.play/pause/stop bodies in
-        // tests/qml/_stubs/QtMultimedia/MediaPlayer.qml have no recorders;
-        // adding playCount/pauseCount there would let us also assert the
-        // direct player.play() side of play().)
+    // pause() only arms the 300ms fade-out timer; play() disarms it and starts
+    // the player straight away.
+    function test_play_pause_togglesPauseTimerAndPlayerState() {
         const timer = _findPauseTimer();
+        const player = _findPlayer();
         verify(timer !== null);
+        verify(player !== null);
         qm.pause();
         compare(timer.running, true);
         qm.play();
         compare(timer.running, false);
+        compare(player.playbackState, MediaPlayer.PlayingState);
     }
 
     function test_displayModeBranches() {
@@ -78,7 +81,7 @@ TestCase {
     // TestCase's loadInfoShow recorder captures the routed call.
     function test_playerErrorOccurred_routesToInfoShow() {
         const player = _findPlayer();
-        if (!player) return; // offscreen QPA may not realise MediaPlayer
+        verify(player !== null);
         const n = loadInfoShowCount;
         // MediaPlayer.errorOccurred(MediaPlayer.Error, string). Calling
         // the signal directly from JS coerces ints into the enum.
@@ -87,23 +90,58 @@ TestCase {
         verify(lastLoadInfoMsg.indexOf("stub failure") !== -1);
     }
 
-    function test_pauseTimer_triggeredFiresWithoutThrow_constructs() {
-        // Genuine "constructs" case — pauseTimer onTriggered calls
-        // player.pause() (QtMultimedia.qml:91-93), and the MediaPlayer
-        // stub has no pauseCount recorder so we cannot observe the
-        // forwarded call directly. Structurally assert that the timer
-        // exists with the documented interval (300ms) and that firing
-        // it executes without throwing. (Stub gap: adding
-        // pauseCount/playCount to tests/qml/_stubs/QtMultimedia/MediaPlayer.qml
-        // would let this assert player.pause() routed.)
+    // The 300ms delay lets the volume fade finish before the picture stops;
+    // when it expires the player really has to pause.
+    function test_pauseTimerExpiry_pausesThePlayer() {
         const timer = _findPauseTimer();
+        const player = _findPlayer();
         verify(timer !== null);
+        verify(player !== null);
         compare(timer.interval, 300);
+        player.play();
         timer.triggered();
+        compare(player.playbackState, MediaPlayer.PausedState);
     }
 
-    function _findPlayer() {
-        const buckets = [qm.children || [], qm.data || []];
+    // Every backend announces its first frame to main.qml; that emit is what
+    // stamps the loaded version and clears the "Updated" badge in the picker.
+    // QtMultimedia has no frame-level signal, so playback reaching PlayingState
+    // is the hook.
+    function test_playbackStarting_announcesFirstFrame() {
+        const item = qmComp.createObject(tc);
+        verify(item !== null);
+        const player = _findPlayer(item);
+        verify(player !== null);
+
+        background.firstFrameCount = 0;
+        background.lastFirstFrameName = undefined;
+        player.play();
+
+        compare(background.firstFrameCount, 1);
+        compare(background.lastFirstFrameName, "QtMultimedia");
+        item.destroy();
+    }
+
+    // Resuming after a pause is not a new first frame — re-announcing would
+    // re-stamp the version on every pause cycle for no reason.
+    function test_resumeAfterPause_doesNotReAnnounceFirstFrame() {
+        const item = qmComp.createObject(tc);
+        verify(item !== null);
+        const player = _findPlayer(item);
+        verify(player !== null);
+
+        background.firstFrameCount = 0;
+        player.play();
+        player.pause();
+        player.play();
+
+        compare(background.firstFrameCount, 1);
+        item.destroy();
+    }
+
+    function _findPlayer(root) {
+        root = root || qm;
+        const buckets = [root.children || [], root.data || []];
         for (const b of buckets) {
             for (let i = 0; i < b.length; i++) {
                 const p = b[i];

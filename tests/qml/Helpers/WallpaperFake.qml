@@ -18,7 +18,7 @@ Item {
 
     // `wallpaper.parent.screenGeometry` is read by WindowModel; ScreenRig (this
     // item's visual parent) supplies it. `accentColor` makes
-    // hasOwnProperty('accentColor') true so main.qml's onBackendFirstFrame path is
+    // hasOwnProperty('accentColor') true so main.qml's first-frame handler path is
     // exercised; QML exposes the auto `accentColorChanged()` as invokable.
     property color accentColor: "transparent"
 

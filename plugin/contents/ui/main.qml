@@ -185,14 +185,19 @@ Rectangle {
     property string wallpaperType
 
     signal sig_backendFirstFrame(string backname)
-    function onBackendFirstFrame(backname) {
-        console.error(`backend ${backname} first frame`);
+    // Declarative handler form on purpose: a `function onSig_backendFirstFrame()`
+    // in a plain object body is only a method — QML auto-connects the `on…:`
+    // binding, not a same-named function declaration (that shortcut exists only
+    // inside Connections).
+    onSig_backendFirstFrame: (backname) => {
+        console.log(`backend ${backname} first frame`);
         if (wallpaper.hasOwnProperty('accentColor'))
             wallpaper.accentColorChanged();
         // Record the manifest timestamp we loaded so the "Updated" badge
         // clears for this wallpaper. workshopManifest may be empty (Steam
-        // library not configured, malformed .acf) — record 0 in that case
-        // so the badge stays gone if the user later mounts a manifest.
+        // library not configured, malformed .acf); a 0 there is not a version
+        // we can be newer than, and last_seen_version 0 already reads as
+        // "never loaded" downstream, so writing it would only cost a disk hit.
         const wid = background.workshopid;
         if (wid && wpListModel.workshopManifest) {
             const ts = wpListModel.workshopManifest[wid] || 0;

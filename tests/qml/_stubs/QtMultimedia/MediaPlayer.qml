@@ -11,7 +11,16 @@ QtObject {
     property var    audioOutput:   null
     property int    loops:         0
 
-    function play()  {}
-    function pause() {}
-    function stop()  {}
+    // QMediaPlayer::errorOccurred(Error, QString). The backend routes it to the
+    // InfoShow overlay, so tests need to be able to fire it.
+    signal errorOccurred(int error, string errorString)
+
+    // Ordinals match QMediaPlayer::PlaybackState so production comparisons
+    // against MediaPlayer.PlayingState read the same here as on real Qt.
+    enum PlaybackState { StoppedState, PlayingState, PausedState }
+    property int    playbackState: MediaPlayer.StoppedState
+
+    function play()  { playbackState = MediaPlayer.PlayingState }
+    function pause() { playbackState = MediaPlayer.PausedState  }
+    function stop()  { playbackState = MediaPlayer.StoppedState }
 }

@@ -7,6 +7,10 @@ Item{
     anchors.fill: parent
     property alias source: player.source
     property int displayMode: background.displayMode
+    // Latch for the first-frame announcement below; a new clip gets a new
+    // announcement, a pause/resume cycle does not.
+    property bool announcedFirstFrame: false
+    onSourceChanged: announcedFirstFrame = false
     property var volumeFade: Common.createVolumeFade(
         videoItem, 
         Qt.binding(function() { return background.mute ? 0 : background.volume; }),
@@ -67,6 +71,18 @@ Item{
                 videoItem.parent.loadInfoShow(
                     "Video failed to load: " + (errorString || ("error " + error)));
             }
+        }
+        // The other three backends emit a real first-frame signal; main.qml
+        // needs the announcement to stamp the version it just displayed
+        // (that stamp is what clears the "Updated" badge). QtMultimedia has
+        // nothing frame-level to hook, so playback entering PlayingState is
+        // the closest honest equivalent — by then the decoder has handed the
+        // VideoOutput something to show.
+        function onPlaybackStateChanged() {
+            if (player.playbackState !== MediaPlayer.PlayingState) return;
+            if (videoItem.announcedFirstFrame) return;
+            videoItem.announcedFirstFrame = true;
+            background.sig_backendFirstFrame('QtMultimedia');
         }
     }
     Component.onCompleted:{

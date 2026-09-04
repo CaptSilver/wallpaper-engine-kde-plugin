@@ -98,4 +98,59 @@ TestCase {
         tryCompare(pc, "playlistsReloadSeqRead", 1);         // reload-seq watch path
         rig.destroy();
     }
+
+    // ── "Updated" badge: a backend's first frame stamps the loaded manifest ──
+    // The badge in the wallpaper picker lights when the Steam manifest
+    // timestamp is newer than the version we last displayed. The only thing
+    // that ever advances "last displayed" at runtime is a backend reaching its
+    // first frame, so if that emit does not reach main.qml the badge can never
+    // clear (and never appears for anything installed after first launch).
+    function _wpListModel(rig) {
+        return rig._find(rig.mainItem,
+                         o => typeof o.workshopManifest !== "undefined"
+                           && typeof o.changeWallpaper === "function");
+    }
+
+    function test_backendFirstFrame_recordsManifestTimestampAsSeen() {
+        failOnWarning(/wallpaper is not defined/);
+        const rig = rigComp.createObject(tc, { screenGeometry: Qt.rect(0, 0, 1920, 1080) });
+        tryVerify(() => rig.background() !== null, 2000);
+        tryVerify(() => rig.fileHelper() !== null, 2000);
+        rig.setConfig({ WallpaperWorkShopId: "987654" });
+
+        const model = _wpListModel(rig);
+        verify(model !== null, "main.qml exposes no WallpaperListModel");
+        model.workshopManifest = { "987654": 1712345678 };
+
+        const fh = rig.fileHelper();
+        fh.recordSeenVersionCount = 0;
+        rig.background().sig_backendFirstFrame("scene");
+
+        compare(fh.recordSeenVersionCount, 1);
+        compare(fh.lastRecordSeenVersionArgs.id, "987654");
+        compare(fh.lastRecordSeenVersionArgs.version, 1712345678);
+        rig.destroy();
+    }
+
+    // A wallpaper with no manifest entry (Steam library unset, malformed .acf)
+    // must not stamp a bogus 0 — that would mark it "seen at version 0" and
+    // permanently suppress the badge once a real manifest shows up.
+    function test_backendFirstFrame_withoutManifestEntry_recordsNothing() {
+        failOnWarning(/wallpaper is not defined/);
+        const rig = rigComp.createObject(tc, { screenGeometry: Qt.rect(0, 0, 1920, 1080) });
+        tryVerify(() => rig.background() !== null, 2000);
+        tryVerify(() => rig.fileHelper() !== null, 2000);
+        rig.setConfig({ WallpaperWorkShopId: "987654" });
+
+        const model = _wpListModel(rig);
+        verify(model !== null);
+        model.workshopManifest = {};
+
+        const fh = rig.fileHelper();
+        fh.recordSeenVersionCount = 0;
+        rig.background().sig_backendFirstFrame("scene");
+
+        compare(fh.recordSeenVersionCount, 0);
+        rig.destroy();
+    }
 }

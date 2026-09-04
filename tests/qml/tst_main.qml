@@ -204,14 +204,19 @@ TestCase {
         compare(typeof p, "string");
     }
 
-    function test_onBackendFirstFrame_constructs() {
-        const bg = _findBackground();
-        if (!bg) return;
-        // The handler calls `wallpaper.accentColorChanged()` after logging.
-        // Without a real Plasma `wallpaper` context, the inner call throws —
-        // assert the function is callable on `background`. Integration tests
-        // drive the routed wallpaper.accentColorChanged() effect end-to-end.
-        verify(typeof bg.onBackendFirstFrame === "function");
+    // main.qml both declares `sig_backendFirstFrame` and sinks it locally.
+    // Only the declarative `onSig_backendFirstFrame:` binding is auto-connected
+    // — a like-named `function on…()` in the object body is just an ordinary
+    // method, so every backend's emit would reach nothing and the "Updated"
+    // badge would never advance. Lock the binding form here; Main_Components
+    // drives the recorded-version effect end-to-end under a real `wallpaper`.
+    function test_backendFirstFrame_isBoundAsASignalHandler() {
+        const src = _mainQmlSource();
+        verify(/\bsignal\s+sig_backendFirstFrame\b/.test(src),
+               "main.qml no longer declares sig_backendFirstFrame");
+        verify(/^\s*onSig_backendFirstFrame\s*:/m.test(src),
+               "main.qml declares sig_backendFirstFrame but binds no "
+               + "onSig_backendFirstFrame handler — the first-frame emit is dropped");
     }
 
     // ── Walk all child timers + sub-objects and fire their handlers ──────────
@@ -345,6 +350,14 @@ TestCase {
         }
     }
 
+    function _mainQmlSource() {
+        const xhr = new XMLHttpRequest();
+        xhr.open("GET", Qt.resolvedUrl("../../plugin/contents/ui/main.qml"), false);
+        xhr.send(null);
+        compare(xhr.status, 200, "could not read main.qml source");
+        return xhr.responseText;
+    }
+
     // workshopid was historically `property string workshopid: { ... ; pyext.read_wallpaper_config(wid).then(...); return wid; }`
     // — a binding whose evaluation also dispatched an async pyext read whose
     // .then callback wrote curOpt as a side effect. That made re-evaluation
@@ -355,11 +368,7 @@ TestCase {
     // binding (no block body containing pyext.read_wallpaper_config), and an
     // `onWorkshopidChanged` handler MUST exist to do the async work.
     function test_workshopid_isPureBinding_noSideEffectInDecl() {
-        const xhr = new XMLHttpRequest();
-        xhr.open("GET", Qt.resolvedUrl("../../plugin/contents/ui/main.qml"), false);
-        xhr.send(null);
-        compare(xhr.status, 200, "could not read main.qml source");
-        const src = xhr.responseText;
+        const src = _mainQmlSource();
 
         // Locate the workshopid declaration. The line MUST be a pure binding
         // (everything after the colon is a single expression on the same

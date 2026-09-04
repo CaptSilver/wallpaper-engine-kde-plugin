@@ -268,7 +268,10 @@ KCM.GridView {
     }
 
     function toggleFavor(model, index) {
-        if (!index) index = view.currentIndex;
+        // Only the detail-pane star omits the index. Test for absence, not
+        // falsiness: index 0 is a real grid row, and rewriting it to
+        // currentIndex stars a different wallpaper than the one clicked.
+        if (index === undefined || index === null) index = view.currentIndex;
         if (!root.customConf) {
             // No favorites store wired up — emit a signal so the page may handle.
             root.favorToggled(model, index);

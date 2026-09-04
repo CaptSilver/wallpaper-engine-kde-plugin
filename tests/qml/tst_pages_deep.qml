@@ -598,24 +598,96 @@ TestCase {
         verify(gv.view.currentIndex >= -1);
     }
 
+    // ListModel stub standing in for WallpaperListModel.model: three rows plus
+    // the assignModel hook toggleFavor writes through, recording what it was
+    // handed so a test can pin which row actually received the flag.
+    function _makeFavorRecorderModel() {
+        return Qt.createQmlObject(
+            'import QtQuick; ListModel {\n' +
+            '    property int assignCount: 0\n' +
+            '    property int lastAssignIndex: -1\n' +
+            '    property var lastAssignValue: null\n' +
+            '    function assignModel(index, value) {\n' +
+            '        assignCount += 1; lastAssignIndex = index; lastAssignValue = value;\n' +
+            '    }\n' +
+            '    ListElement { workshopid: "a"; title: "A"; favor: false; preview: ""; type: "scene"; path: "" }\n' +
+            '    ListElement { workshopid: "b"; title: "B"; favor: false; preview: ""; type: "scene"; path: "" }\n' +
+            '    ListElement { workshopid: "c"; title: "C"; favor: false; preview: ""; type: "scene"; path: "" }\n' +
+            '}', tc, "tst_pages_deep_favorRecorderModel");
+    }
+
     function test_gridView_toggleFavor_addsAndRemoves() {
         const gv = _findGridView();
         if (!gv) return;
         // Write directly to gv.customConf — bypasses the cfg→picViewCom→gv
         // binding chain to keep the assertion independent of binding
         // propagation timing.
+        const wasConf = gv.customConf;
         const favorSet = new Set();
         gv.customConf = { favor: favorSet };
-        // favor=false → add to the set. toggleFavor may throw on
-        // view.model.assignModel (defaultModel has no assignModel) but
-        // the favor.add fires before that throw.
-        try { gv.toggleFavor({ workshopid: "x", favor: false }, 0); } catch (e) {}
+        const stub = _makeFavorRecorderModel();
+        gv.view.model = stub;
+        // favor=false → add to the set and flip the row's flag on.
+        gv.toggleFavor({ workshopid: "x", favor: false }, 0);
         verify(favorSet.has("x"),
                "toggleFavor(favor=false) must add the workshopid to the favor set");
+        compare(stub.lastAssignValue.favor, true,
+                "toggleFavor(favor=false) must write favor=true onto the row");
         // favor=true → remove from the set.
-        try { gv.toggleFavor({ workshopid: "x", favor: true }, 0); } catch (e) {}
+        gv.toggleFavor({ workshopid: "x", favor: true }, 0);
         verify(! favorSet.has("x"),
                "toggleFavor(favor=true) must remove the workshopid from the favor set");
+        compare(stub.lastAssignValue.favor, false,
+                "toggleFavor(favor=true) must write favor=false onto the row");
+        gv.backtoBegin();
+        stub.destroy();
+        gv.customConf = wasConf;
+    }
+
+    // Starring the first tile while another tile is current must flip the first
+    // tile's own flag. Treating the index as merely falsy rewrites the explicit
+    // 0 into view.currentIndex, which stars an unrelated wallpaper and leaves
+    // the favourites filter listing the wrong row.
+    function test_gridView_toggleFavor_firstTileKeepsItsOwnIndex() {
+        const gv = _findGridView();
+        if (!gv) return;
+        const wasConf = gv.customConf;
+        gv.customConf = { favor: new Set() };
+        const stub = _makeFavorRecorderModel();
+        gv.view.model = stub;
+        gv.view.currentIndex = 2;
+        compare(gv.view.currentIndex, 2,
+                "test setup: the current row must differ from the row being starred");
+
+        gv.toggleFavor({ workshopid: "a", favor: false }, 0);
+
+        compare(stub.assignCount, 1);
+        compare(stub.lastAssignIndex, 0,
+                "toggleFavor must flip the flag on the row it was handed, not on the current row");
+        gv.backtoBegin();
+        stub.destroy();
+        gv.customConf = wasConf;
+    }
+
+    // The detail-pane star button calls toggleFavor with no index at all; that
+    // caller still has to resolve to whichever row is current.
+    function test_gridView_toggleFavor_omittedIndexFallsBackToCurrent() {
+        const gv = _findGridView();
+        if (!gv) return;
+        const wasConf = gv.customConf;
+        gv.customConf = { favor: new Set() };
+        const stub = _makeFavorRecorderModel();
+        gv.view.model = stub;
+        gv.view.currentIndex = 2;
+
+        gv.toggleFavor({ workshopid: "c", favor: false });
+
+        compare(stub.assignCount, 1);
+        compare(stub.lastAssignIndex, 2,
+                "toggleFavor without an index must fall back to the current row");
+        gv.backtoBegin();
+        stub.destroy();
+        gv.customConf = wasConf;
     }
 
     // ── FolderDialog onAccepted ──────────────────────────────────────────────

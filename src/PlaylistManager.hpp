@@ -4,9 +4,13 @@
 #include <QString>
 #include <QVector>
 #include <QHash>
+#include <QStringList>
+#include <QByteArray>
+#include <QJsonObject>
 #include <QTimer>
 
 class QRandomGenerator;
+class QFileSystemWatcher;
 
 #include "Playlist.hpp"
 #include "PlaylistsModel.hpp"
@@ -78,9 +82,9 @@ public:
 
     // Re-read playlists.json from disk, preserving the active playlist + cycle
     // position when possible (clamped to new item count; cleared if the active
-    // playlist was deleted). Runtime ctrl calls this when the dialog bumps
-    // PlaylistsReloadSeq so user-edited intervals/items take effect without a
-    // plasmashell restart.
+    // playlist was deleted). Runs by itself whenever the file changes under us
+    // (see the watcher below); still exposed to QML because the runtime ctrl
+    // also calls it on a PlaylistsReloadSeq bump.
     Q_INVOKABLE void reload();
 
     // Items model accessor (cached per playlist id)
@@ -154,9 +158,51 @@ signals:
     void persisted();
 
 private:
-    QString configFilePath() const;
-    void    load();
-    bool    persist();
+    // Outcome of reading playlists.json. Every caller (load, the pre-write
+    // merge, the watcher) needs to tell "nothing there yet" apart from
+    // "unparseable" and "written by a newer version" before deciding what to
+    // do, so the read reports which one it hit instead of collapsing them all
+    // into an empty list.
+    enum class DiskStatus
+    {
+        Ok,
+        Missing,
+        Unreadable,
+        Corrupt,
+        TooNew
+    };
+    struct DiskRead {
+        DiskStatus        status  = DiskStatus::Missing;
+        int               version = 1;
+        QVector<Playlist> playlists;
+        QByteArray        raw; // exact bytes, for the self-write check
+        QString           error;
+    };
+
+    QString  configFilePath() const;
+    DiskRead readFromDisk() const;
+    void     load();
+    void     loadFrom(const DiskRead& disk);
+    bool     persist();
+    // Remember what we believe is on disk: the per-id serialized form (the
+    // common ancestor a merge needs) and the byte image (so the watcher can
+    // recognise our own write).
+    void captureDiskState(const QVector<Playlist>& pls, const QByteArray& raw);
+    // True when our in-memory list is byte-for-byte the file we last synced
+    // with, order included — i.e. we have nothing of our own to protect.
+    bool inSyncWithDiskState() const;
+    // Three-way merge of `theirs` (the file as it is now) against our list,
+    // using the remembered baseline as the common ancestor. Per playlist id:
+    // whoever changed it since the baseline wins, an edit outranks the other
+    // side's delete, and a delete only sticks if the other side left the
+    // playlist alone.
+    QVector<Playlist> mergeWithDisk(const QVector<Playlist>& theirs) const;
+    // Re-add the watch paths. atomicWriteJson replaces the file by rename(2),
+    // which drops the inotify watch on the old inode, so the directory is
+    // watched too and the file path re-added after every event.
+    void rearmFileWatch();
+    void onWatchedPathChanged();
+    void reloadFrom(const DiskRead& disk);
     // UI4.1: schedule a debounced persist() (250ms single-shot). Each CRUD
     // mutator calls this instead of persist() so drag-burst reorders collapse
     // to a single atomicWriteJson at the end of the burst.
@@ -194,6 +240,13 @@ private:
     // calls in tight succession) collapses to exactly one disk write.
     QTimer m_persistDebounceTimer;
     bool   m_persistPending = false;
+
+    // Snapshot of the file as we last read or wrote it. Used both as the
+    // merge ancestor and to ignore the watcher event our own write raises.
+    QHash<QString, QJsonObject> m_diskBaseline;
+    QStringList                 m_diskBaselineOrder;
+    QByteArray                  m_diskRaw;
+    QFileSystemWatcher*         m_watcher = nullptr;
 
     PlaylistsModel*                     m_listModel = nullptr;
     QHash<QString, PlaylistItemsModel*> m_itemsModels;

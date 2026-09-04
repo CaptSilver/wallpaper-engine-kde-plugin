@@ -13,6 +13,8 @@
 #include <QDateTime>
 #include <QLoggingCategory>
 #include <QRandomGenerator>
+#include <QFileSystemWatcher>
+#include <QSet>
 #include <algorithm>
 
 #include "FileHelper.hpp"
@@ -35,7 +37,22 @@ PlaylistManager::PlaylistManager(QObject* parent)
     m_persistDebounceTimer.setInterval(250);
     QObject::connect(
         &m_persistDebounceTimer, &QTimer::timeout, this, &PlaylistManager::flushPersist);
+
+    // playlists.json is one file shared by every manager on the box: both
+    // config dialogs (one per screen, per activity, plus the lock-screen
+    // appearance page) and every runtime instance. Watching it is what makes
+    // them converge — the PlaylistsReloadSeq counter the dialog bumps lives in
+    // the *wallpaper* config, so it is per-containment and never reaches
+    // another screen's runtime manager.
+    m_watcher = new QFileSystemWatcher(this);
+    QObject::connect(
+        m_watcher, &QFileSystemWatcher::fileChanged, this, &PlaylistManager::onWatchedPathChanged);
+    QObject::connect(m_watcher,
+                     &QFileSystemWatcher::directoryChanged,
+                     this,
+                     &PlaylistManager::onWatchedPathChanged);
     load();
+    rearmFileWatch();
 }
 
 // UI4.1: dtor flushes any pending debounced write so a mutation made within
@@ -48,72 +65,213 @@ QString PlaylistManager::configFilePath() const {
     return cfg + "/wekde/playlists.json";
 }
 
-void PlaylistManager::load() {
+PlaylistManager::DiskRead PlaylistManager::readFromDisk() const {
+    DiskRead      out;
     const QString path = configFilePath();
-    QFileInfo     fi(path);
-    if (! fi.exists()) {
-        QDir().mkpath(fi.absolutePath());
-        m_playlists.clear();
-        rebuildIndex();
-        persist(); // write fresh empty file (also satisfies migration trigger)
-        return;
+    QFile         f(path);
+    if (! f.exists()) {
+        out.status = DiskStatus::Missing;
+        return out;
     }
-    QFile f(path);
     if (! f.open(QIODevice::ReadOnly)) {
-        qCWarning(lcPlaylist) << "cannot read" << path;
-        return;
+        out.status = DiskStatus::Unreadable;
+        return out;
     }
-    const QByteArray bytes = f.readAll();
+    out.raw = f.readAll();
     f.close();
 
     QJsonParseError err {};
-    const auto      doc = QJsonDocument::fromJson(bytes, &err);
+    const auto      doc = QJsonDocument::fromJson(out.raw, &err);
     if (err.error != QJsonParseError::NoError || ! doc.isObject()) {
-        qCWarning(lcPlaylist) << "corrupt playlists.json:" << err.errorString();
+        out.status = DiskStatus::Corrupt;
+        out.error  = err.errorString();
+        return out;
+    }
+    const auto obj = doc.object();
+    out.version    = obj.value("version").toInt(1);
+    if (out.version > 1) {
+        out.status = DiskStatus::TooNew;
+        return out;
+    }
+    const auto arr = obj.value("playlists").toArray();
+    out.playlists.reserve(arr.size());
+    for (const auto& v : arr) out.playlists.append(playlistFromJson(v.toObject()));
+    out.status = DiskStatus::Ok;
+    return out;
+}
+
+void PlaylistManager::captureDiskState(const QVector<Playlist>& pls, const QByteArray& raw) {
+    m_diskBaseline.clear();
+    m_diskBaseline.reserve(pls.size());
+    m_diskBaselineOrder.clear();
+    m_diskBaselineOrder.reserve(pls.size());
+    for (const auto& pl : pls) {
+        m_diskBaseline.insert(pl.id, playlistToJson(pl));
+        m_diskBaselineOrder.append(pl.id);
+    }
+    m_diskRaw = raw;
+}
+
+bool PlaylistManager::inSyncWithDiskState() const {
+    if (m_playlists.size() != m_diskBaselineOrder.size()) return false;
+    for (int i = 0; i < m_playlists.size(); ++i) {
+        if (m_playlists[i].id != m_diskBaselineOrder[i]) return false;
+        if (playlistToJson(m_playlists[i]) != m_diskBaseline.value(m_playlists[i].id)) return false;
+    }
+    return true;
+}
+
+QVector<Playlist> PlaylistManager::mergeWithDisk(const QVector<Playlist>& theirs) const {
+    // We have nothing of our own to protect, so take their file verbatim —
+    // that also keeps a reorder they made, which the per-id walk below would
+    // flatten back to our order.
+    if (inSyncWithDiskState()) return theirs;
+
+    QHash<QString, const Playlist*> theirById;
+    theirById.reserve(theirs.size());
+    for (const auto& pl : theirs) theirById.insert(pl.id, &pl);
+
+    QVector<Playlist> merged;
+    merged.reserve(std::max(m_playlists.size(), theirs.size()));
+    QSet<QString> seen;
+
+    for (const auto& ours : m_playlists) {
+        seen.insert(ours.id);
+        const auto baseIt    = m_diskBaseline.constFind(ours.id);
+        const bool inBase    = baseIt != m_diskBaseline.constEnd();
+        const bool weChanged = ! inBase || *baseIt != playlistToJson(ours);
+        const auto theirIt   = theirById.constFind(ours.id);
+        if (theirIt == theirById.constEnd()) {
+            // Gone from the file. Honour their delete only if we have no edit
+            // of our own that it would take down with it.
+            if (inBase && ! weChanged) continue;
+            merged.append(ours);
+            continue;
+        }
+        merged.append(weChanged ? ours : **theirIt);
+    }
+    for (const auto& their : theirs) {
+        if (seen.contains(their.id)) continue;
+        const auto baseIt = m_diskBaseline.constFind(their.id);
+        if (baseIt == m_diskBaseline.constEnd()) {
+            merged.append(their); // they created it after our snapshot
+            continue;
+        }
+        // We deleted it; keep the delete unless they edited it meanwhile, in
+        // which case their edit outranks it (mirrors the branch above).
+        if (*baseIt != playlistToJson(their)) merged.append(their);
+    }
+    return merged;
+}
+
+void PlaylistManager::load() { loadFrom(readFromDisk()); }
+
+void PlaylistManager::loadFrom(const DiskRead& disk) {
+    const QString path = configFilePath();
+    switch (disk.status) {
+    case DiskStatus::Missing:
+        QDir().mkpath(QFileInfo(path).absolutePath());
+        m_playlists.clear();
+        captureDiskState({}, QByteArray());
+        rebuildIndex();
+        persist(); // write fresh empty file (also satisfies migration trigger)
+        return;
+    case DiskStatus::Unreadable: qCWarning(lcPlaylist) << "cannot read" << path; return;
+    case DiskStatus::Corrupt: {
+        qCWarning(lcPlaylist) << "corrupt playlists.json:" << disk.error;
         const QString aside =
             path + ".corrupt-" + QString::number(QDateTime::currentSecsSinceEpoch());
         QFile::rename(path, aside);
         m_playlists.clear();
+        captureDiskState({}, QByteArray());
         rebuildIndex();
         persist(); // write fresh defaults
         return;
     }
-    const auto obj     = doc.object();
-    const int  version = obj.value("version").toInt(1);
-    if (version > 1) {
-        qCWarning(lcPlaylist) << "playlists.json version" << version
+    case DiskStatus::TooNew:
+        qCWarning(lcPlaylist) << "playlists.json version" << disk.version
                               << "is newer than supported; falling back to defaults"
                               << "(file preserved on disk)";
         m_playlists.clear();
+        // Remember the bytes so persist() recognises the file it must not
+        // overwrite, but keep the merge ancestor empty: we cannot claim to
+        // understand playlists we did not parse.
+        m_diskBaseline.clear();
+        m_diskBaselineOrder.clear();
+        m_diskRaw = disk.raw;
         rebuildIndex();
         return; // no overwrite
+    case DiskStatus::Ok: break;
     }
-    m_playlists.clear();
-    const auto arr = obj.value("playlists").toArray();
-    m_playlists.reserve(arr.size());
-    for (const auto& v : arr) {
-        m_playlists.append(playlistFromJson(v.toObject()));
-    }
+    m_playlists = disk.playlists;
+    captureDiskState(m_playlists, disk.raw);
     rebuildIndex();
 }
 
 bool PlaylistManager::persist() {
+    const QString path = configFilePath();
+    QDir().mkpath(QFileInfo(path).absolutePath());
+
+    // Another manager may have rewritten the file since we last synced with
+    // it. Writing our snapshot wholesale would drop everything it added, with
+    // no error and nothing to recover from, so fold its version in first.
+    const DiskRead disk = readFromDisk();
+    if (disk.status == DiskStatus::TooNew) {
+        qCWarning(lcPlaylist) << "refusing to overwrite playlists.json version" << disk.version
+                              << "- it was written by a newer plugin";
+        emit persistFailed("playlists.json was written by a newer version");
+        return false;
+    }
+    if (disk.status == DiskStatus::Ok && disk.raw != m_diskRaw) {
+        const QVector<Playlist> merged = mergeWithDisk(disk.playlists);
+        m_playlists                    = merged;
+        rebuildIndex();
+        pruneStaleItemsModels();
+    }
+
     QJsonObject root;
     root["version"] = 1;
     QJsonArray arr;
     for (const auto& pl : m_playlists) arr.append(playlistToJson(pl));
     root["playlists"] = arr;
 
-    const QString path = configFilePath();
-    QDir().mkpath(QFileInfo(path).absolutePath());
+    const QJsonDocument doc(root);
     // Call the static directly — constructing a FileHelper here would mkpath
     // the unrelated wallpaper config dir as a ctor side effect.
-    if (! FileHelper::atomicWriteJson(path, QJsonDocument(root))) {
+    if (! FileHelper::atomicWriteJson(path, doc)) {
         emit persistFailed("write failed");
         return false;
     }
+    captureDiskState(m_playlists, doc.toJson(QJsonDocument::Indented));
+    rearmFileWatch();
     emit persisted();
     return true;
+}
+
+void PlaylistManager::rearmFileWatch() {
+    if (! m_watcher) return;
+    const QString path = configFilePath();
+    const QString dir  = QFileInfo(path).absolutePath();
+    if (! m_watcher->directories().contains(dir) && QFileInfo::exists(dir)) m_watcher->addPath(dir);
+    if (! m_watcher->files().contains(path) && QFileInfo::exists(path)) m_watcher->addPath(path);
+}
+
+void PlaylistManager::onWatchedPathChanged() {
+    rearmFileWatch();
+    const DiskRead disk = readFromDisk();
+    // Mid-replace (the target is briefly gone while the .tmp is renamed over
+    // it) or a file we must not interpret: leave our state alone. Notably we
+    // do NOT run load()'s corrupt-recovery here, which would rename a file
+    // another process is still writing out of the way.
+    if (disk.status != DiskStatus::Ok) return;
+    if (disk.raw == m_diskRaw) return; // our own write echoing back
+    if (m_persistPending) {
+        // We are sitting on an unwritten mutation. Flushing merges their
+        // change into ours instead of throwing one of the two away.
+        flushPersist();
+        return;
+    }
+    reloadFrom(disk);
 }
 
 // UI4.1: mark a write pending and (re)start the 250ms debounce. Calls in
@@ -592,11 +750,13 @@ void PlaylistManager::setEditorMode(bool on) {
     emit editorModeChanged();
 }
 
-void PlaylistManager::reload() {
+void PlaylistManager::reload() { reloadFrom(readFromDisk()); }
+
+void PlaylistManager::reloadFrom(const DiskRead& disk) {
     if (m_editorMode) {
         // Editor just needs the fresh data; no activation state to preserve.
         m_timer.stop();
-        load();
+        loadFrom(disk);
         pruneStaleItemsModels();
         return;
     }
@@ -608,7 +768,7 @@ void PlaylistManager::reload() {
     const bool    wasTimerActive  = m_timer.isActive();
 
     m_timer.stop();
-    load();
+    loadFrom(disk);
     pruneStaleItemsModels();
 
     if (savedActiveId.isEmpty()) return;

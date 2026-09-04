@@ -1932,6 +1932,167 @@ private slots:
         editorMgr.reload();
         QCOMPARE(editorMgr.playlists().first().intervalMin, 99);
     }
+
+    // Two editor dialogs open at once (two screens, two activities, or the
+    // desktop dialog plus the lock-screen appearance page) each hold their own
+    // in-memory copy of playlists.json. Whoever writes second must not rewrite
+    // the file from its own stale snapshot: a playlist the other one created
+    // after this manager loaded has to survive.
+    void writingFromAStaleSnapshotKeepsTheOtherEditorsNewPlaylist() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        const QString          path = setupConfigHome(d);
+        wekde::PlaylistManager a;
+        const QString          baseId = a.createPlaylist("Base");
+        a.flushPersistForTest();
+
+        // B loads the file as it stands now: one playlist, "Base".
+        wekde::PlaylistManager b;
+        QCOMPARE(b.playlists().size(), 1);
+
+        // A adds a playlist B's snapshot has never seen.
+        a.createPlaylist("Only in A");
+        a.flushPersistForTest();
+
+        // B mutates a different playlist and writes.
+        QVERIFY(b.renamePlaylist(baseId, "Base renamed"));
+        b.flushPersistForTest();
+
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        const auto arr = QJsonDocument::fromJson(f.readAll()).object().value("playlists").toArray();
+        f.close();
+        QStringList names;
+        for (const auto& v : arr) names << v.toObject().value("name").toString();
+        QVERIFY2(names.contains("Only in A"),
+                 qPrintable("on-disk playlists after B's write: " + names.join(", ")));
+        QVERIFY2(names.contains("Base renamed"),
+                 qPrintable("on-disk playlists after B's write: " + names.join(", ")));
+    }
+
+    // Nothing in production calls reload() on an editor-mode manager, so a
+    // manager has to notice a write it did not make on its own. The same watch
+    // is what carries an edit between screens: the reload counter the dialog
+    // bumps lives in the per-screen wallpaper config, so it never reaches
+    // another containment's manager.
+    void anOutOfBandWriteIsPickedUpWithoutAnExplicitReload() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager editorMgr;
+        editorMgr.setEditorMode(true);
+        const QString id = editorMgr.createPlaylist("Shared");
+        editorMgr.flushPersistForTest();
+        QCOMPARE(editorMgr.playlists().size(), 1);
+        QCOMPARE(editorMgr.playlists().first().intervalMin, 15);
+
+        {
+            wekde::PlaylistManager other;
+            other.setEditorMode(true);
+            QVERIFY(other.setIntervalMin(id, 99));
+            other.flushPersistForTest();
+        }
+        // Deliberately no editorMgr.reload() call.
+        QTRY_COMPARE_WITH_TIMEOUT(editorMgr.playlists().first().intervalMin, 99, 5000);
+    }
+
+    // load() leaves a playlists.json written by a newer plugin alone and falls
+    // back to an empty list, but the next edit made here used to write that
+    // empty list straight over it. A file we cannot parse must survive: the
+    // write fails loudly instead.
+    void anEditHereDoesNotOverwriteANewerVersionFile() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        const QString path = setupConfigHome(d);
+        QVERIFY(QDir().mkpath(QFileInfo(path).absolutePath()));
+        const QByteArray future =
+            R"({"version":7,"playlists":[{"id":"x","name":"From the future"}]})";
+        {
+            QFile f(path);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            QCOMPARE(f.write(future), static_cast<qint64>(future.size()));
+        }
+
+        wekde::PlaylistManager mgr;
+        QVERIFY(mgr.playlists().isEmpty()); // load refused to interpret it
+        QSignalSpy failed(&mgr, &wekde::PlaylistManager::persistFailed);
+
+        mgr.createPlaylist("Mine");
+        mgr.flushPersistForTest();
+
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        QCOMPARE(f.readAll(), future);
+        QCOMPARE(failed.count(), 1);
+    }
+
+    // Folding a concurrent writer's file in must not resurrect a playlist this
+    // manager deleted. Only the playlists that actually differ from the shared
+    // starting point get carried over — a plain union of the two lists would
+    // hand the user back the playlist they just removed.
+    void foldingInAConcurrentWriteKeepsALocalDeleteDeleted() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        const QString          path = setupConfigHome(d);
+        wekde::PlaylistManager a;
+        const QString          doomed = a.createPlaylist("Doomed");
+        const QString          keep   = a.createPlaylist("Keep");
+        a.flushPersistForTest();
+
+        wekde::PlaylistManager b;
+        QCOMPARE(b.playlists().size(), 2);
+
+        QVERIFY(b.deletePlaylist(doomed));
+        // A edits the other playlist and lands its write first.
+        QVERIFY(a.renamePlaylist(keep, "Keep renamed"));
+        a.flushPersistForTest();
+
+        b.flushPersistForTest();
+
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        const auto arr = QJsonDocument::fromJson(f.readAll()).object().value("playlists").toArray();
+        f.close();
+        QStringList names;
+        for (const auto& v : arr) names << v.toObject().value("name").toString();
+        QVERIFY2(! names.contains("Doomed"),
+                 qPrintable("on-disk playlists after B's write: " + names.join(", ")));
+        QVERIFY2(names.contains("Keep renamed"),
+                 qPrintable("on-disk playlists after B's write: " + names.join(", ")));
+        QCOMPARE(names.size(), 1);
+    }
+
+    // The multi-monitor case: a playlist cycling on one screen has to pick up
+    // an edit made from another screen's dialog. That dialog can only bump a
+    // counter in its own containment's wallpaper config, which never reaches
+    // here — so the running manager notices the file itself. And it folds the
+    // edit in rather than restarting: same active playlist, same slot.
+    void aRunningPlaylistPicksUpAnEditMadeFromAnotherScreen() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        setupConfigHome(d);
+        wekde::PlaylistManager runtime;
+        const QString          id = runtime.createPlaylist("Rotation");
+        runtime.addItem(id, "A");
+        runtime.addItem(id, "B");
+        runtime.addItem(id, "C");
+        runtime.flushPersistForTest();
+        QVERIFY(runtime.activate(id));
+        runtime.stepBy(1);
+        QCOMPARE(runtime.currentItemIndex(), 1);
+
+        {
+            wekde::PlaylistManager dialog;
+            dialog.setEditorMode(true);
+            QVERIFY(dialog.addItem(id, "D"));
+            dialog.flushPersistForTest();
+        }
+        // Deliberately no runtime.reload() call.
+        QTRY_COMPARE_WITH_TIMEOUT(
+            static_cast<int>(runtime.playlists().first().items.size()), 4, 5000);
+        QCOMPARE(runtime.activePlaylistId(), id);
+        QCOMPARE(runtime.currentItemIndex(), 1);
+    }
 };
 
 QTEST_GUILESS_MAIN(TstPlaylistManager)

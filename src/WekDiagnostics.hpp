@@ -1,6 +1,7 @@
 #pragma once
 #include <QObject>
 #include <QString>
+#include <QUrl>
 
 namespace wekde
 {
@@ -27,6 +28,12 @@ public:
     // Returns the absolute path to the created bundle, or empty string on
     // failure (with lastError() populated).
     Q_INVOKABLE QString saveBundle();
+
+    // Copies a bundle created by saveBundle() to the destination the user
+    // picked in the save-as dialog. Returns false with lastError()
+    // populated; clears lastError() on success.
+    Q_INVOKABLE bool exportBundle(const QString& srcPath, const QUrl& dest);
+
     Q_INVOKABLE QString lastError() const { return m_lastError; }
 
     // Test hooks — exposed for tst_wekdiagnostics; not part of the

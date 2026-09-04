@@ -4,6 +4,8 @@
 #include <QFileInfo>
 #include <QProcess>
 #include <QStandardPaths>
+#include <QTemporaryDir>
+#include <QUrl>
 #include "../src/WekDiagnostics.hpp"
 #include "TestSandbox.h"
 
@@ -141,6 +143,91 @@ WallpaperWorkShopId=1234567
         const auto     dump = diag.collectPipelineDiagForTest();
         qunsetenv("WEKDE_PIPELINE_DIAG");
         QVERIFY2(dump.contains(QStringLiteral("PIPELINE-DIAG-MARKER")), qPrintable(dump));
+    }
+
+    // The save-as picker hands back a QUrl; the bundle only reaches the
+    // user if that destination is actually written.
+    void testExportBundleWritesThePickedDestination() {
+        WekDiagnostics diag;
+        const auto     bundlePath = diag.saveBundle();
+        QVERIFY2(! bundlePath.isEmpty(),
+                 qPrintable(QStringLiteral("saveBundle failed: ") + diag.lastError()));
+
+        QTemporaryDir dest;
+        QVERIFY(dest.isValid());
+        const auto destPath = dest.filePath(QStringLiteral("picked.tar.gz"));
+
+        QVERIFY2(diag.exportBundle(bundlePath, QUrl::fromLocalFile(destPath)),
+                 qPrintable(QStringLiteral("exportBundle failed: ") + diag.lastError()));
+        QVERIFY(QFile::exists(destPath));
+        QCOMPARE(QFileInfo(destPath).size(), QFileInfo(bundlePath).size());
+        QVERIFY(diag.lastError().isEmpty());
+
+        QFile::remove(bundlePath);
+    }
+
+    // The picker pre-fills the bundle's own name, so answering "Replace" to
+    // the native overwrite prompt is the common case. QFile::copy refuses to
+    // clobber, so the destination has to be removed first.
+    void testExportBundleOverwritesAnExistingDestination() {
+        WekDiagnostics diag;
+        const auto     bundlePath = diag.saveBundle();
+        QVERIFY2(! bundlePath.isEmpty(),
+                 qPrintable(QStringLiteral("saveBundle failed: ") + diag.lastError()));
+
+        QTemporaryDir dest;
+        QVERIFY(dest.isValid());
+        const auto destPath = dest.filePath(QStringLiteral("picked.tar.gz"));
+        {
+            QFile stale(destPath);
+            QVERIFY(stale.open(QIODevice::WriteOnly));
+            stale.write("stale");
+        }
+
+        QVERIFY2(diag.exportBundle(bundlePath, QUrl::fromLocalFile(destPath)),
+                 qPrintable(QStringLiteral("exportBundle failed: ") + diag.lastError()));
+        QCOMPARE(QFileInfo(destPath).size(), QFileInfo(bundlePath).size());
+
+        QFile::remove(bundlePath);
+    }
+
+    void testExportBundleReportsUnwritableDestination() {
+        WekDiagnostics diag;
+        const auto     bundlePath = diag.saveBundle();
+        QVERIFY2(! bundlePath.isEmpty(),
+                 qPrintable(QStringLiteral("saveBundle failed: ") + diag.lastError()));
+
+        // Parent directory does not exist, so the copy cannot succeed for
+        // any uid — no root-vs-user divergence in the box.
+        const QUrl bad =
+            QUrl::fromLocalFile(QStringLiteral("/nonexistent-wek-export-dir/picked.tar.gz"));
+        QVERIFY(! diag.exportBundle(bundlePath, bad));
+        QVERIFY2(! diag.lastError().isEmpty(), "a failed export must leave a reason behind");
+
+        QFile::remove(bundlePath);
+    }
+
+    void testExportBundleRejectsNonLocalDestination() {
+        WekDiagnostics diag;
+        const auto     bundlePath = diag.saveBundle();
+        QVERIFY2(! bundlePath.isEmpty(),
+                 qPrintable(QStringLiteral("saveBundle failed: ") + diag.lastError()));
+
+        QVERIFY(
+            ! diag.exportBundle(bundlePath, QUrl(QStringLiteral("sftp://host/tmp/picked.tar.gz"))));
+        QVERIFY(! diag.lastError().isEmpty());
+
+        QFile::remove(bundlePath);
+    }
+
+    void testExportBundleReportsMissingSource() {
+        WekDiagnostics diag;
+        QTemporaryDir  dest;
+        QVERIFY(dest.isValid());
+        QVERIFY(
+            ! diag.exportBundle(QStringLiteral("/nonexistent-wek-bundle.tar.gz"),
+                                QUrl::fromLocalFile(dest.filePath(QStringLiteral("p.tar.gz")))));
+        QVERIFY(! diag.lastError().isEmpty());
     }
 
     void testGpuInfoNonCrashing() {

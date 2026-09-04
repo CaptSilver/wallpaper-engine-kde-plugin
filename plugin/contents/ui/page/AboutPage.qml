@@ -20,17 +20,37 @@ Flickable {
     Layout.fillWidth: true
     ScrollBar.vertical: ScrollBar { id: scrollbar }
 
-    // Diagnostic-bundle helpers — non-visual children of the Flickable so
-    // the OptionGroup below stays a clean list of OptionItem rows.  The
-    // WekDiagnostics QObject collects the bundle; FileDialog presents the
-    // save-as picker after a successful bundle create.
-    WekDiagnostics { id: diagnostics }
-    FileDialog {
-        id: saveBundleDialog
-        title: i18nc("@title:window save diagnostic bundle", "Save diagnostic bundle as...")
-        fileMode: FileDialog.SaveFile
-        nameFilters: [i18nc("@item:inlistbox file dialog name filter", "Tar gzip (*.tar.gz)")]
-    }
+    // Diagnostic-bundle helpers.  They go in `resources` rather than the
+    // Flickable's default property: Flickable reparents Items into its
+    // contentItem and drops non-Items into a bare QObject child list that
+    // never appears in data/children/resources, so anything declared the
+    // plain way here is unreachable from the item tree.  The WekDiagnostics
+    // QObject collects the bundle; FileDialog presents the save-as picker
+    // after a successful create.
+    resources: [
+        WekDiagnostics { id: diagnostics },
+        FileDialog {
+            id: saveBundleDialog
+            title: i18nc("@title:window save diagnostic bundle", "Save diagnostic bundle as...")
+            fileMode: FileDialog.SaveFile
+            nameFilters: [i18nc("@item:inlistbox file dialog name filter", "Tar gzip (*.tar.gz)")]
+            onAccepted: {
+                // The bundle already exists in the cache dir; picking a
+                // destination has to copy it there, or the user goes looking
+                // for a file that was never written.
+                if (diagnostics.exportBundle(diagnosticRow.bundlePath, selectedFile)) {
+                    diagnosticStatus.text = i18nc("@info diagnostic bundle saved, %1=destination path",
+                                                  "Saved to %1",
+                                                  Common.urlNative(selectedFile));
+                } else {
+                    console.warn("[wek-diag] Bundle export failed:", diagnostics.lastError());
+                    diagnosticStatus.text = i18nc("@info diagnostic bundle export failed, %1=reason",
+                                                  "Could not save bundle: %1",
+                                                  diagnostics.lastError());
+                }
+            }
+        }
+    ]
     //ScrollBar.horizontal: ScrollBar { }
 
     contentWidth: width - (scrollbar.visible ? scrollbar.width : 0)
@@ -165,26 +185,31 @@ Flickable {
         }
 
         OptionItem {
+            id: diagnosticRow
             text: i18nc("@label about page section diagnostic bundle", "Diagnostic bundle")
             text_color: Kirigami.Theme.textColor
             icon: '../../images/information-outline.svg'
 
+            // Where saveBundle() put the archive, kept until the save-as
+            // dialog comes back with a destination to copy it to.
+            property string bundlePath: ""
+
             actor: Button {
                 text: i18nc("@action:button save diagnostic bundle", "Save diagnostic bundle...")
                 onClicked: {
-                    const path = diagnostics.saveBundle();
-                    if (path) {
-                        // Open a save-as dialog so the user can move the bundle
-                        // out of the cache dir.  Default-selected name is the
-                        // bundle's filename.
-                        saveBundleDialog.currentFile = "file://" + path;
+                    diagnosticRow.bundlePath = diagnostics.saveBundle();
+                    if (diagnosticRow.bundlePath) {
+                        diagnosticStatus.text = "";
+                        // Pre-select the bundle's own filename so the picker
+                        // opens on it and the user only has to choose a folder.
+                        saveBundleDialog.selectedFile = "file://" + diagnosticRow.bundlePath;
                         saveBundleDialog.open();
                     } else {
                         console.warn("[wek-diag] Bundle creation failed:",
                                      diagnostics.lastError());
-                        // Once GAP-5 has fully landed the renderer surface
-                        // could fire notifier.backendUnavailable("Diagnostics",
-                        // lastError) here.
+                        diagnosticStatus.text = i18nc("@info diagnostic bundle creation failed, %1=reason",
+                                                      "Could not create bundle: %1",
+                                                      diagnostics.lastError());
                     }
                 }
             }
@@ -196,6 +221,17 @@ Flickable {
                     text: i18nc("@info diagnostic bundle help text", "Collects journal, GPU info, plugin environment, and redacted config into a single archive you can attach to a GitHub issue. Your home path is redacted to &lt;HOME&gt; before saving; review the bundle before posting publicly.")
                     wrapMode: Text.Wrap
                     textFormat: Text.RichText
+                }
+                Text {
+                    id: diagnosticStatus
+                    Layout.fillWidth: true
+                    color: Kirigami.Theme.textColor
+                    text: ""
+                    visible: text !== ""
+                    wrapMode: Text.Wrap
+                    // Plain text: the reasons carry filesystem paths and raw
+                    // tar stderr, which rich text would mangle.
+                    textFormat: Text.PlainText
                 }
             }
         }

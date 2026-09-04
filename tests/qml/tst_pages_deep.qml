@@ -1565,4 +1565,86 @@ TestCase {
                     "right_content.image_size (decode-clamp parity with WallpaperGrid)");
         }
     }
+
+    // ── AboutPage diagnostic bundle ───────────────────────────────────────
+    // The save-as dialog exists so the bundle can be moved somewhere the
+    // user can attach it from. Picking a destination has to actually write
+    // it there, and a bundle that never got created has to say so in the
+    // dialog rather than only in the journal.
+    function _findDiagnostics() {
+        return _firstByPredicate(c => c && typeof c.saveBundle === "function" &&
+                                      typeof c.exportBundle === "function");
+    }
+
+    // FileDialog carries selectedFile + nameFilters; FolderDialog carries
+    // selectedFolder instead, which keeps the two apart.
+    function _findSaveBundleDialog() {
+        return _firstByPredicate(c => c && typeof c.selectedFile !== "undefined" &&
+                                      typeof c.selectedFolder === "undefined" &&
+                                      typeof c.nameFilters !== "undefined" &&
+                                      typeof c.accepted === "function");
+    }
+
+    function _findSaveBundleButton() {
+        return _firstByPredicate(c => c && typeof c.clicked === "function" &&
+                                      typeof c.text === "string" &&
+                                      c.text.indexOf("Save diagnostic bundle") >= 0);
+    }
+
+    function test_aboutPageSaveBundle_acceptedWritesPickedDestination() {
+        if (!cfg) return;
+        const diag = _findDiagnostics();
+        verify(diag !== null, "WekDiagnostics unreachable from cfg tree");
+        const dlg = _findSaveBundleDialog();
+        verify(dlg !== null, "save-bundle FileDialog unreachable from cfg tree");
+        const btn = _findSaveBundleButton();
+        verify(btn !== null, "'Save diagnostic bundle...' button unreachable from cfg tree");
+
+        diag.nextBundlePath = "/tmp/wekde-bundle-under-test.tar.gz";
+        diag.nextLastError = "";
+        diag.exportSucceeds = true;
+        diag.exportBundleCallCount = 0;
+
+        btn.clicked();
+        verify(diag.saveBundleCallCount > 0, "the button must create a bundle");
+
+        // Emulate the user picking a different directory in the picker.
+        try { dlg.selectedFile = "file:///tmp/wekde-picked-elsewhere.tar.gz"; } catch (e) {}
+        dlg.accepted();
+
+        compare(diag.exportBundleCallCount, 1,
+                "accepting the save-as dialog must copy the bundle to the picked destination");
+        compare(diag.lastExportSrc, "/tmp/wekde-bundle-under-test.tar.gz",
+                "the export must use the path the bundle was actually created at");
+        compare(diag.lastExportDest, String(dlg.selectedFile),
+                "the export must use the destination the dialog came back with");
+        verify(diag.lastExportDest !== "file://" + diag.nextBundlePath,
+               "the export must follow the picked destination, not the pre-filled cache path");
+    }
+
+    function test_aboutPageSaveBundle_createFailureIsVisibleInTheDialog() {
+        if (!cfg) return;
+        const diag = _findDiagnostics();
+        verify(diag !== null, "WekDiagnostics unreachable from cfg tree");
+        const btn = _findSaveBundleButton();
+        verify(btn !== null, "'Save diagnostic bundle...' button unreachable from cfg tree");
+
+        const marker = "tar-is-missing-marker";
+        diag.nextBundlePath = "";
+        diag.nextLastError = marker;
+        btn.clicked();
+
+        // Qt.Test's TestCase item is never itself visible, so effective
+        // visibility can't be read here — the observable contract is the
+        // status text: populated on failure, cleared on the next success.
+        const shown = _firstByPredicate(c => c && typeof c.text === "string" &&
+                                             c.text.indexOf(marker) >= 0);
+        verify(shown !== null,
+               "a bundle that could not be created must report the reason in the dialog");
+
+        diag.nextBundlePath = "/tmp/wekde-stub-diag.tar.gz";
+        diag.nextLastError = "";
+        btn.clicked();
+        compare(shown.text, "", "a successful create must clear the previous failure message");
+    }
 }

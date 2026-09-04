@@ -52,6 +52,32 @@ QString WekDiagnostics::saveBundle() {
     return out;
 }
 
+bool WekDiagnostics::exportBundle(const QString& srcPath, const QUrl& dest) {
+    if (! dest.isLocalFile()) {
+        m_lastError = QStringLiteral("Destination is not a local file: %1").arg(dest.toString());
+        return false;
+    }
+    const auto destPath = dest.toLocalFile();
+    if (! QFile::exists(srcPath)) {
+        m_lastError = QStringLiteral("Bundle no longer exists: %1").arg(srcPath);
+        return false;
+    }
+    // The picker pre-fills the bundle's own filename, so the user routinely
+    // answers "Replace" to the native overwrite prompt — and QFile::copy
+    // refuses to clobber an existing file rather than overwriting it.
+    if (QFile::exists(destPath) && ! QFile::remove(destPath)) {
+        m_lastError = QStringLiteral("Could not replace existing file: %1").arg(destPath);
+        return false;
+    }
+    QFile src(srcPath);
+    if (! src.copy(destPath)) {
+        m_lastError = QStringLiteral("Could not write %1: %2").arg(destPath, src.errorString());
+        return false;
+    }
+    m_lastError.clear();
+    return true;
+}
+
 QString WekDiagnostics::collectJournal() {
     QProcess p;
     p.start(QStringLiteral("journalctl"),

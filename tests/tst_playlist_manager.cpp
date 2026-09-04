@@ -2093,6 +2093,89 @@ private slots:
         QCOMPARE(runtime.activePlaylistId(), id);
         QCOMPARE(runtime.currentItemIndex(), 1);
     }
+
+    // A write can be pending with nothing left to write: create a playlist,
+    // change your mind and delete it again inside the debounce window, and the
+    // list is back to exactly the file that was loaded. The flush that follows
+    // has no edit of its own to protect, so the other writer's file stands as
+    // it is — including the order it put the playlists in. Rewriting it into
+    // the order this manager happens to hold would undo their reorder with
+    // nothing gained.
+    void aPendingWriteWithNothingLeftToSaveKeepsTheOtherWritersOrder() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        const QString          path = setupConfigHome(d);
+        wekde::PlaylistManager a;
+        a.createPlaylist("One");
+        a.createPlaylist("Two");
+        a.flushPersistForTest();
+
+        wekde::PlaylistManager b;
+        QCOMPARE(b.playlists().size(), 2);
+
+        // Arms the debounced write without leaving any change behind it.
+        const QString scratch = b.createPlaylist("Scratch");
+        QVERIFY(b.deletePlaylist(scratch));
+        QCOMPARE(b.playlists().size(), 2);
+
+        // Another writer reorders the file b loaded.
+        QJsonObject root;
+        {
+            QFile f(path);
+            QVERIFY(f.open(QIODevice::ReadOnly));
+            root = QJsonDocument::fromJson(f.readAll()).object();
+        }
+        const QJsonArray arr = root.value("playlists").toArray();
+        QCOMPARE(arr.size(), 2);
+        QJsonArray flipped;
+        for (int i = arr.size() - 1; i >= 0; --i) flipped.append(arr.at(i));
+        root["playlists"] = flipped;
+        {
+            QFile f(path);
+            QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+            QVERIFY(f.write(QJsonDocument(root).toJson()) > 0);
+        }
+
+        b.flushPersistForTest();
+
+        QStringList names;
+        for (const auto& pl : b.playlists()) names << pl.name;
+        QCOMPARE(names, QStringList({ "Two", "One" }));
+    }
+
+    // Same fold-in as the case above, except the playlist deleted here is the
+    // last one, so what is left is still a prefix of the file that was loaded.
+    // A prefix match is not "nothing of ours to protect": the delete is ours,
+    // and taking the other writer's file verbatim would hand the playlist
+    // straight back to the user.
+    void foldingInAConcurrentWriteKeepsADeleteOfTheLastPlaylistDeleted() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        const QString          path = setupConfigHome(d);
+        wekde::PlaylistManager a;
+        const QString          keep   = a.createPlaylist("Keep");
+        const QString          doomed = a.createPlaylist("Doomed");
+        a.flushPersistForTest();
+
+        wekde::PlaylistManager b;
+        QCOMPARE(b.playlists().size(), 2);
+        QCOMPARE(b.playlists().last().id, doomed); // the delete below is the tail
+
+        QVERIFY(b.deletePlaylist(doomed));
+        // A edits the playlist b kept and lands its write first.
+        QVERIFY(a.renamePlaylist(keep, "Keep renamed"));
+        a.flushPersistForTest();
+
+        b.flushPersistForTest();
+
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        const auto arr = QJsonDocument::fromJson(f.readAll()).object().value("playlists").toArray();
+        f.close();
+        QStringList names;
+        for (const auto& v : arr) names << v.toObject().value("name").toString();
+        QCOMPARE(names, QStringList({ "Keep renamed" }));
+    }
 };
 
 QTEST_GUILESS_MAIN(TstPlaylistManager)

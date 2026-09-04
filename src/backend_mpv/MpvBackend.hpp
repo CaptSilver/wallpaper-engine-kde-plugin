@@ -25,6 +25,18 @@ struct MpvHandle {
     ~MpvHandle() { mpv_terminate_destroy(handle); }
     mpv_handle* handle;
 
+    // Start tearing the player down. Called on the GUI thread from ~MpvObject:
+    // detaches the wakeup callback, then asks the core to quit *without*
+    // waiting for it. The blocking half of the teardown, ~MpvHandle's
+    // mpv_terminate_destroy, runs on the Qt Quick render thread — the renderer
+    // holds the last shared_ptr ref and cleanupNodes deletes it there — while
+    // the GUI thread sits in polishAndSync, so anything it waits for freezes
+    // every window plasmashell owns, not just the wallpaper. Starting the quit
+    // here lets the core wind down alongside the QML destroy() delay, and
+    // client.h names this as *the* asynchronous-destruction path: run "quit",
+    // then react to MPV_EVENT_SHUTDOWN.
+    void beginShutdown();
+
     // Wakeup callback indirection. The callback runs on an arbitrary mpv
     // player thread; without this hop it would deref a destroyed MpvObject
     // (the .so is dlopen'd into plasmashell — a dangling postEvent would

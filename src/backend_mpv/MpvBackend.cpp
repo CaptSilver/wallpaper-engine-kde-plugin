@@ -323,10 +323,17 @@ public:
         // each other, so the order is behaviourally identical.
         : m_mpv(mpv.get()->handle), m_window(win), m_shared_mpv(mpv) {}
 
+    // Runs on the Qt Quick render thread, from cleanupNodes() with the GUI
+    // thread blocked in polishAndSync — so anything that waits on the mpv core
+    // here freezes every window plasmashell owns. render.h only permits the
+    // _async APIs on a render thread and warns that a render thread waiting on
+    // the core deadlocks until mpv breaks it with an internal timeout. Freeing
+    // the context is the one thing that MUST happen here (it needs the GL
+    // context current, and render.h requires it before the core is destroyed);
+    // that free already disables video, and ~MpvHandle quits the player, so
+    // there is nothing left for this thread to ask the core to do.
     virtual ~MpvRender() {
         _Q_DEBUG() << "destroyed";
-        mpv::qt::command(m_mpv, QVariantList { "stop" });
-
         if (m_mpv_context) mpv_render_context_free(m_mpv_context);
         m_mpv_context = nullptr;
     }
@@ -494,18 +501,39 @@ MpvObject::MpvObject(QQuickItem* parent)
     Q_EMIT initializedChanged();
 }
 
-MpvObject::~MpvObject() {
+void MpvHandle::beginShutdown() {
     // Tell libmpv to stop calling our wakeup (best-effort: doesn't block any
     // in-flight callback). Then take the wakeup_mutex to serialise against
     // any callback currently dispatching; clearing owner under that lock
-    // means no FUTURE wakeup can ever dispatch into this destroyed QObject.
+    // means no FUTURE wakeup can ever dispatch into the destroyed MpvObject.
     // The .so is dlopen'd into plasmashell — a dangling postEvent here
     // would crash the desktop.
-    if (m_mpv) mpv_set_wakeup_callback(m_mpv, nullptr, nullptr);
-    if (m_shared_mpv) {
-        QMutexLocker lock(&m_shared_mpv->wakeup_mutex);
-        m_shared_mpv->owner = nullptr;
+    if (handle) mpv_set_wakeup_callback(handle, nullptr, nullptr);
+    {
+        QMutexLocker lock(&wakeup_mutex);
+        owner = nullptr;
     }
+    // mpv_create() can fail; there is no core to wind down then, and the ctor
+    // has already warned that the video backend is unavailable.
+    if (! handle) return;
+
+    // Only the _async command variants are documented safe for a caller that
+    // must not wait on the core; the quit is fire-and-forget, so whoever ends
+    // up running mpv_terminate_destroy mostly finds the work already done.
+    const char* quit_cmd[] = { "quit", nullptr };
+    const int   rc         = mpv_command_async(handle, 0, quit_cmd);
+    // UNINITIALIZED just means mpv_initialize() never ran or failed — again
+    // already reported at construction, and nothing is running to quit.
+    if (rc < 0 && rc != MPV_ERROR_UNINITIALIZED) {
+        // Not fatal — ~MpvHandle still terminates the core — but it means the
+        // teardown fell back to the blocking path, which is what a report of
+        // "the desktop freezes when the wallpaper changes" would look like.
+        qCWarning(wekdeMpv) << "async quit rejected:" << mpv_error_string(rc);
+    }
+}
+
+MpvObject::~MpvObject() {
+    if (m_shared_mpv) m_shared_mpv->beginShutdown();
 }
 
 void MpvObject::checkAndEmitFirstFrame() {

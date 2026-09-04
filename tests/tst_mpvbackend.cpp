@@ -3,7 +3,12 @@
 //
 // These tests construct a real MpvObject (which spins up libmpv) but never
 // open a video file or build an OpenGL context, so the render path
-// (`createRenderer`, `renderFrame`) is intentionally out of scope.
+// (`createRenderer`, `renderFrame`) is intentionally out of scope. Renderer
+// *teardown* is out of reach too, not just out of scope: only Qt's scene graph
+// may destroy a QQuickFramebufferObject::Renderer (its destructor is
+// protected), so ~MpvRender needs a live render thread and is checked by hand
+// in plasmashell. What a test can reach is the GUI-thread half of teardown,
+// MpvHandle::beginShutdown().
 //
 // Run under QT_QPA_PLATFORM=offscreen so QGuiApplication can attach without
 // a display.
@@ -126,6 +131,10 @@ private slots:
     void muteChanged_emitsOnSetMute();
     void volumeChanged_emitsOnSetVolume();
     void logfileChanged_emitsOnSetLogfile();
+
+    // Teardown must not park a thread on the mpv core.
+    void beginShutdown_quitsCoreWithoutWaitingOnIt();
+    void beginShutdown_neverInitializedCore_doesNotWarn();
 };
 
 namespace
@@ -600,6 +609,54 @@ void TestMpvBackend::logfileChanged_emitsOnSetLogfile() {
     QCOMPARE(spy.count(), 1);
     obj->setLogfile(dir.filePath(QStringLiteral("wekde-mpv-other.log")));
     QCOMPARE(spy.count(), 2);
+}
+
+// Tearing a video wallpaper down must not park a thread on the mpv core.
+// ~MpvHandle's mpv_terminate_destroy runs on the Qt Quick render thread (the
+// renderer holds the last shared_ptr ref, and cleanupNodes deletes it there)
+// while the GUI thread is blocked in polishAndSync — so for its whole duration
+// every window plasmashell owns is frozen, not just the wallpaper. client.h
+// names the way out: run "quit" and react to MPV_EVENT_SHUTDOWN, which is what
+// beginShutdown does from the GUI thread so the core winds down concurrently
+// with the QML destroy() delay instead of under the render thread.
+void TestMpvBackend::beginShutdown_quitsCoreWithoutWaitingOnIt() {
+    mpv::MpvHandle handle(mpv_create());
+    QVERIFY(handle.handle != nullptr);
+    mpv_set_option_string(handle.handle, "terminal", "no");
+    mpv_set_option_string(handle.handle, "config", "no");
+    QCOMPARE(mpv_initialize(handle.handle), 0);
+
+    handle.beginShutdown();
+    QCOMPARE(handle.owner, nullptr);
+
+    // The core really is going away: it reports the shutdown on our still-live
+    // handle, before anything blocks in mpv_terminate_destroy.
+    bool          sawShutdown = false;
+    QElapsedTimer waited;
+    waited.start();
+    while (! sawShutdown && waited.elapsed() < 5000) {
+        mpv_event* ev = mpv_wait_event(handle.handle, 0.05);
+        if (ev->event_id == MPV_EVENT_SHUTDOWN) sawShutdown = true;
+    }
+    QVERIFY2(sawShutdown, "core never reported MPV_EVENT_SHUTDOWN after beginShutdown()");
+}
+
+// When mpv_create() succeeds but mpv_initialize() does not, the constructor has
+// already said so loudly and there is no core to wind down. Teardown must stay
+// quiet rather than blaming the quit for a failure that happened at startup.
+void TestMpvBackend::beginShutdown_neverInitializedCore_doesNotWarn() {
+    static bool sawWarning = false;
+    sawWarning             = false;
+    auto* prev = qInstallMessageHandler([](QtMsgType t, const QMessageLogContext&, const QString&) {
+        if (t == QtWarningMsg) sawWarning = true;
+    });
+    {
+        mpv::MpvHandle handle(mpv_create()); // deliberately never initialized
+        QVERIFY(handle.handle != nullptr);
+        handle.beginShutdown();
+    }
+    qInstallMessageHandler(prev);
+    QVERIFY(! sawWarning);
 }
 
 QTEST_MAIN(TestMpvBackend)

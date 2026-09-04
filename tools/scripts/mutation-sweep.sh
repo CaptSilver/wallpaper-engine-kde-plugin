@@ -18,8 +18,12 @@
 #   tools/scripts/mutation-sweep.sh --finish       # aggregate + write baseline now
 #   tools/scripts/mutation-sweep.sh --restart      # discard progress and start over
 #
-# Pressure, not free RAM, is what kills long runs here: keep MULL_MAX_WORKERS
-# where it is unless you are watching /proc/pressure/memory stay near zero.
+# Pressure, not free RAM, is what kills long runs here, so keep MULL_MAX_WORKERS
+# where it is.  If you do watch it, watch the right file: systemd-oomd acts on
+# the *cgroup's* memory.pressure, under
+#   /sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/…
+# and NOT the system-wide /proc/pressure/memory, which sat at 0.00 for the two
+# hours leading up to a kill.
 set -euo pipefail
 
 _SWEEP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -27,6 +31,28 @@ _SUPER=$(git rev-parse --show-superproject-working-tree 2>/dev/null || true)
 cd "${_SUPER:-$(git rev-parse --show-toplevel)}"
 
 MUTATION="$_SWEEP_DIR/mutation.sh"
+
+# Bound our own memory before doing anything else.
+#
+# Mutation testing runs deliberately broken code: a mutant that corrupts a size
+# or a loop bound allocates pathologically, and several of those at once take the
+# machine with them.  Observed twice -- once as a systemd-oomd pressure kill, once
+# as a kernel *global* OOM (`constraint=CONSTRAINT_NONE, global_oom`) that picked
+# the test binary as its victim and failed the whole session unit.  Neither was a
+# cgroup limit catching anything, because this slice has `memory.max = max`.
+#
+# Under a scope the kernel reclaims and then kills *inside* the scope, so a
+# runaway mutant dies alone and Mull records it as killed -- which is the correct
+# result for it anyway -- instead of the desktop losing an unrelated application.
+if [[ -z "${WEK_SWEEP_SCOPED:-}" ]] && command -v systemd-run >/dev/null 2>&1; then
+    export WEK_SWEEP_SCOPED=1
+    exec systemd-run --user --scope --quiet --collect \
+        --unit="wek-mutation-sweep-$$" \
+        -p MemoryHigh="${WEK_SWEEP_MEM_HIGH:-6G}" \
+        -p MemoryMax="${WEK_SWEEP_MEM_MAX:-8G}" \
+        -- "${BASH_SOURCE[0]}" "$@"
+fi
+
 BUILD="build/impl-mutation"
 BUILD_SUB="build/impl-mutation-sub"
 OUT_DIR="$BUILD/mull-out"
@@ -153,15 +179,29 @@ plan
 status
 
 # ── Run the parent targets once, so the baseline covers them too ─────────────
+# Each target is named explicitly.  Invoking mutation.sh with no --target leaves
+# it in full mode, whose target list includes backend_scene_tests -- so a step
+# meant to take ten minutes silently becomes the entire unchunked sweep, which
+# is the one thing this script exists to avoid.  The list comes from
+# --list-targets so it cannot drift from ALL_TARGETS.
 if ! is_done "parent"; then
-    step "Parent targets (fast, one pass)"
-    MUTATION_SKIP_BUILD=1 "$MUTATION" --no-strict --no-wipe --out-suffix parent >/dev/null 2>&1 || true
-    if compgen -G "$OUT_DIR/tst_*/survivors.json" >/dev/null \
-       || compgen -G "$OUT_DIR/tst_*-parent/survivors.json" >/dev/null; then
+    step "Parent targets (one pass each)"
+    mapfile -t PARENT_TARGETS < <("$MUTATION" --list-targets | grep -vxF "$SUB_TARGET")
+    [[ ${#PARENT_TARGETS[@]} -gt 0 ]] || fail "could not resolve the parent target list"
+    parent_ok=0
+    for pt in "${PARENT_TARGETS[@]}"; do
+        printf '    %s\n' "$pt"
+        # Logged, not discarded: sending this to /dev/null is what hid the run
+        # above going for two hours without banking anything.
+        MUTATION_SKIP_BUILD=1 "$MUTATION" --target "$pt" --no-strict --no-wipe \
+            >> "$SWEEP/parent.log" 2>&1 || true
+        [[ -s "$OUT_DIR/$pt/survivors.json" ]] && parent_ok=$((parent_ok + 1))
+    done
+    if [[ "$parent_ok" -gt 0 ]]; then
         echo parent >> "$DONE_FILE"
-        ok "parent targets measured"
+        ok "parent targets measured ($parent_ok of ${#PARENT_TARGETS[@]} reported)"
     else
-        warn "parent targets produced no report — continuing with the submodule sweep"
+        warn "no parent target reported — see $SWEEP/parent.log"
     fi
 fi
 

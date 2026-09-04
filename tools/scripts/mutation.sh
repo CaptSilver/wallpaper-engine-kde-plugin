@@ -78,6 +78,8 @@ INCLUDE_PATHS=""     # comma-separated regexes -> Mull includePaths
 OUT_SUFFIX=""        # per-run report subdir suffix, keeps chunks from colliding
 WIPE_OUT=1           # 0 keeps earlier chunks' reports in place
 AGGREGATE_ONLY=0     # skip build+mutate, just aggregate what is already there
+LIST_TARGETS=0       # print the target list and exit; keeps callers from
+                     # duplicating it and drifting out of step with ALL_TARGETS
 while (( $# )); do
     case "$1" in
         --diff-only)        MODE="diff"; shift ;;
@@ -85,6 +87,7 @@ while (( $# )); do
         --out-suffix)       OUT_SUFFIX="$2"; shift 2 ;;
         --no-wipe)          WIPE_OUT=0; shift ;;
         --aggregate-only)   AGGREGATE_ONLY=1; shift ;;
+        --list-targets)     LIST_TARGETS=1; shift ;;
         --refresh-baseline) MODE="refresh"; shift ;;
         --target)           TARGET="$2"; shift 2 ;;
         --strict)           STRICT=1; shift ;;
@@ -141,6 +144,11 @@ ALL_TARGETS=(
     tst_playlist_manager
     backend_scene_tests
 )
+if [[ "$LIST_TARGETS" == "1" ]]; then
+    printf '%s\n' "${ALL_TARGETS[@]}"
+    exit 0
+fi
+
 TARGETS=()
 if [[ -n "$TARGET" ]]; then
     TARGETS=("$TARGET")

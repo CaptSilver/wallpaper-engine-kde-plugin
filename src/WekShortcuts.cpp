@@ -17,9 +17,10 @@ namespace
 // Send an async D-Bus method call to the WekControl service (the C++ adapter
 // over the QML PlaylistController).  Async because the action's triggered()
 // signal lives on the UI thread and we don't want to block on a method
-// response.  Errors are silent: the service is owned by the first plasmoid,
-// so on multi-monitor secondaries with no service the call just goes
-// nowhere -- the primary plasmoid still handled it.
+// response.  Errors are silent: the call is addressed by bus name, so
+// whichever plasmoid owns the surface answers it no matter how many screens
+// are up; with no wallpaper plasmoid running there is no owner and the call
+// goes nowhere.
 void invokeDBusMethod(const QString& method) {
     auto msg =
         QDBusMessage::createMethodCall(QStringLiteral("com.github.captsilver.WallpaperEngine"),

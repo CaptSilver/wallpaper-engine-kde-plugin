@@ -404,11 +404,12 @@ Rectangle {
     WekNotifier   { id: notifier }
     WekDiagnostics { id: diagnostics }
 
-    // Headless control surface — D-Bus session bus.  First-plasmoid-wins
-    // on multi-monitor; the second plasmoid logs "service already
-    // registered" and goes silent.  See src/WekControl.{hpp,cpp} for the
-    // C++ side.  setPlaylistController binds the route once both elements
-    // are constructed.
+    // Headless control surface — D-Bus session bus.  One of these per
+    // screen, all in the one plasmashell process: the first to export
+    // /WallpaperEngine owns the surface and answers for every screen, the
+    // rest log and go silent.  See src/WekControl.{hpp,cpp} for the C++
+    // side.  setPlaylistController binds the route once both elements are
+    // constructed.
     WekControl {
         id: dbusControl
         Component.onCompleted: dbusControl.setPlaylistController(playlistController)

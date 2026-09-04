@@ -16,6 +16,7 @@
 #include "../src/WekControl.hpp"
 
 #include <QDBusConnection>
+#include <QDBusConnectionInterface>
 #include <QDBusInterface>
 #include <QSignalSpy>
 #include <QtTest/QtTest>
@@ -91,6 +92,8 @@ private slots:
     // -- Session-bus integration (QSKIP without a bus) ------------------
     void registersOnSessionBus_whenBusReachable();
     void secondRegistrationFailsCleanly_whenBusReachable();
+    void ownerDestruction_releasesServiceName_whenBusReachable();
+    void losingInstanceDestruction_leavesOwnerRegistered_whenBusReachable();
 
     // -- Q_CLASSINFO contract --------------------------------------
     void qClassInfo_dbusInterfaceName_isCorrect();
@@ -269,14 +272,62 @@ void TestWekControl::registersOnSessionBus_whenBusReachable() {
 }
 
 void TestWekControl::secondRegistrationFailsCleanly_whenBusReachable() {
-    // Mimics multi-monitor: first plasmoid wins, second goes silent.
+    // Mimics multi-monitor: one wallpaper plasmoid per screen inside a single
+    // plasmashell process, so both instances share one session-bus
+    // connection.  A bus name is owned by the *connection*, not the instance,
+    // so the loser must fail without touching the name — releasing it would
+    // silently kill the control surface for the whole process while the
+    // winner still believes it is registered.
     if (! QDBusConnection::sessionBus().isConnected())
         QSKIP("no session bus — distrobox without dbus-launch");
     auto* a = WekControl::registerOnSessionBus();
     if (! a) QSKIP("service already owned");
     auto* b = WekControl::registerOnSessionBus();
     QCOMPARE(b, nullptr);
+    QVERIFY(QDBusConnection::sessionBus().interface()->isServiceRegistered(
+        QStringLiteral("com.github.captsilver.WallpaperEngine")));
+    // Still answering by name, not merely still owning it.
+    QDBusInterface iface(QStringLiteral("com.github.captsilver.WallpaperEngine"),
+                         QStringLiteral("/WallpaperEngine"),
+                         QStringLiteral("com.github.captsilver.WallpaperEngine"));
+    QVERIFY(iface.isValid());
     delete a;
+}
+
+void TestWekControl::ownerDestruction_releasesServiceName_whenBusReachable() {
+    // A wallpaper plasmoid is destroyed on screen unplug, wallpaper-plugin
+    // switch or containment re-create.  The owner must hand the name back, or
+    // the process keeps a service with no exported object behind it and no
+    // later instance can ever take over.
+    if (! QDBusConnection::sessionBus().isConnected())
+        QSKIP("no session bus — distrobox without dbus-launch");
+    auto* owner = WekControl::registerOnSessionBus();
+    if (! owner) QSKIP("service already owned");
+    delete owner;
+    QVERIFY(! QDBusConnection::sessionBus().interface()->isServiceRegistered(
+        QStringLiteral("com.github.captsilver.WallpaperEngine")));
+}
+
+void TestWekControl::losingInstanceDestruction_leavesOwnerRegistered_whenBusReachable() {
+    // The other side of the same hazard: a secondary that never took the name
+    // must not hand it back on destruction either.  Plasma destroys and
+    // re-creates these per-screen objects freely, so an unconditional release
+    // here would take the owner's control surface down with it.
+    if (! QDBusConnection::sessionBus().isConnected())
+        QSKIP("no session bus — distrobox without dbus-launch");
+    auto* owner = WekControl::registerOnSessionBus();
+    if (! owner) QSKIP("service already owned");
+    {
+        WekControl loser; // default ctor registers on the session bus and loses
+        QVERIFY(! loser.isRegistered());
+    }
+    QVERIFY(QDBusConnection::sessionBus().interface()->isServiceRegistered(
+        QStringLiteral("com.github.captsilver.WallpaperEngine")));
+    QDBusInterface iface(QStringLiteral("com.github.captsilver.WallpaperEngine"),
+                         QStringLiteral("/WallpaperEngine"),
+                         QStringLiteral("com.github.captsilver.WallpaperEngine"));
+    QVERIFY(iface.isValid());
+    delete owner;
 }
 
 // -- Q_CLASSINFO contract ------------------------------------------------

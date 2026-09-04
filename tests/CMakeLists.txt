@@ -569,9 +569,8 @@ add_test(NAME tst_playlist_manager COMMAND tst_playlist_manager -v2)
 
 # ── WekControl D-Bus surface tests ────────────────────────────────────────────
 # Pure-routing tests that exercise WekControl::*  dispatch into a
-# PlaylistControllerStub without standing up a session bus.  The two
-# session-bus-needing cases QSKIP per feedback_distrobox_dbus_launch_missing
-# (dbus-launch / dbus-run-session absent in Bazzite distrobox).
+# PlaylistControllerStub without standing up a session bus.  The
+# session-bus-needing cases QSKIP when no bus is reachable.
 find_package(Qt6 COMPONENTS DBus QUIET)
 if(Qt6DBus_FOUND)
     add_executable(tst_wekcontrol
@@ -590,7 +589,18 @@ if(Qt6DBus_FOUND)
             -fpass-plugin=${MULL_PLUGIN_PATH}
             -g -grecord-command-line)
     endif()
-    add_test(NAME tst_wekcontrol COMMAND tst_wekcontrol -v2)
+    # A private bus, like tst_mpriscolors. On a real desktop the live plasmoid
+    # already owns com.github.captsilver.WallpaperEngine, so on the developer's
+    # own session every ownership case would QSKIP and the multi-instance
+    # contract would go unpinned. A clean bus makes them run everywhere.
+    find_program(DBUS_RUN_SESSION dbus-run-session)
+    if(DBUS_RUN_SESSION)
+        add_test(NAME tst_wekcontrol
+            COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:tst_wekcontrol> -v2)
+    else()
+        message(STATUS "dbus-run-session not found — tst_wekcontrol runs without a private bus")
+        add_test(NAME tst_wekcontrol COMMAND tst_wekcontrol -v2)
+    endif()
     set_tests_properties(tst_wekcontrol PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()

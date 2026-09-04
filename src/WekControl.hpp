@@ -16,9 +16,12 @@ namespace wekde
 // PlaylistController.qml for the QML-side export layer that this class
 // invokes.
 //
-// Service ownership is first-plasmoid-wins on multi-monitor (the second
-// plasmoid logs and goes silent). The owning plasmoid handles "Next" for
-// the user. Per-monitor multi-instance D-Bus is a future spec.
+// Ownership is first-instance-wins. On multi-monitor every wallpaper
+// plasmoid lives in the same plasmashell process on one session-bus
+// connection, so the winner is whoever exports /WallpaperEngine first —
+// the losers log and go silent, and the winner handles "Next" for every
+// screen. The owner hands the name back when it is destroyed, so a later
+// instance can take over. There is no per-monitor D-Bus surface.
 class WekControl : public QObject {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "com.github.captsilver.WallpaperEngine")
@@ -26,12 +29,17 @@ class WekControl : public QObject {
 public:
     // Default constructor: lazy-registers on the session bus at construction.
     // Used by QML element instantiation. Silently no-ops on multi-monitor
-    // secondaries (already-owned service) or environments without a session
-    // bus.
+    // secondaries (the object path is already exported) or environments
+    // without a session bus.
     explicit WekControl(QObject* parent = nullptr);
 
+    // Hands the bus name back so the next plasmoid can take over after a
+    // screen unplug, wallpaper-plugin switch or containment re-create.
+    ~WekControl() override;
+
     // Factory: registers on the session bus immediately. Returns nullptr if
-    // the service is already owned (multi-monitor case) or the bus is
+    // another instance in this process already exports the object path
+    // (multi-monitor case), another process owns the name, or the bus is
     // unavailable.
     static WekControl* registerOnSessionBus(QObject* parent = nullptr);
 
@@ -41,8 +49,9 @@ public:
     // dbus-run-session ship in the Bazzite Fedora toolbox.
     static WekControl* registerOnConnection(QDBusConnection bus, QObject* parent = nullptr);
 
-    // True if the bus registration succeeded.  False on multi-monitor
-    // secondaries, or when no session bus is available.
+    // True if the bus registration succeeded — and therefore whether this
+    // instance is the one that must release the name.  False on
+    // multi-monitor secondaries, or when no session bus is available.
     bool isRegistered() const { return m_registered; }
 
     // Set by the QML root once PlaylistController.qml is created. Calls

@@ -1,5 +1,5 @@
 {
- "_accepted_equivalent": "src/backend_scene/src/WPShaderParser.cpp:1150 (cxx_gt_to_ge, cxx_gt_to_le) is `if (s_memoCompiles > 0)`, and it guards nothing but a LOG_INFO summary. Both mutants only change whether that line is emitted, so no assertion can distinguish them without capturing log output, and contorting a test to do so would pin the logging rather than the behaviour. Accepted deliberately. The two sibling survivors that WERE killed (the include-depth bound at :117 and the memo compile counter) are the ones that described real behaviour.",
+ "_accepted_equivalent": "src/backend_scene/src/WPShaderParser.cpp:1150 (cxx_gt_to_ge, cxx_gt_to_le) is `if (s_memoCompiles > 0)`, and it guards nothing but a LOG_INFO summary. Both mutants only change whether that line is emitted, so no assertion can distinguish them without capturing log output, and contorting a test to do so would pin the logging rather than the behaviour. Accepted deliberately. The two sibling survivors that WERE killed (the include-depth bound at :117 and the memo compile counter) are the ones that described real behaviour.  src/backend_scene/src/WPParticleParser.cpp:955 (cxx_gt_to_ge) is the angularmovement drag gate `if (drag > 0.0f)`. `>=` only changes which branch is taken when drag is exactly zero, and there the guarded body computes factor = max(0.0, 1.0 - 0*blend*dt) = 1.0, so MutiplyAngularVelocity(p, 1.0) is the identity on every float value. The only way that factor could come out as anything but 1.0 at drag==0 is a non-finite blend factor or step, and in exactly those cases the operator's own AngularAccelerate(p, force * blend, dt) two lines earlier has already driven angularVelocity to NaN, which absorbs both *1.0 and *0.0 -- so the branch cannot be observed from the outside either way. A non-finite step is not reachable regardless: ParticleSystem clamps frameTime with kMaxParticleFrameTime. Verified empirically as well -- with the mutation applied by hand the whole 3235-case backend_scene_tests suite passes unchanged. The two sibling cxx_mul_to_div mutants on the next line describe real behaviour (blended angular drag) and were killed with tests rather than accepted here.",
  "_comment": "Surviving mutants accepted as baseline. Run tools/scripts/mutation.sh --refresh-baseline to update; new entries in a non-refresh run fail the gate.",
  "_scope": "Measured from the parent test binaries only. backend_scene_tests is NOT represented: its instrumented warmup takes ~91s and Mull's ceiling was 60s from 2026-06-06 until 2026-09-01, so that target has never once produced a report. The src/backend_scene/ entries here come from parent binaries linking submodule sources (Audio, Utils), not from that target. A future full submodule sweep will therefore surface a large batch of survivors that are first measurements, not regressions -- refresh the baseline from that run rather than treating them as new.",
  "survivors": [
@@ -1577,6 +1577,11 @@
    "file": "src/backend_scene/src/Utils/SceneProfiler.cpp",
    "line": 104,
    "mutator": "cxx_div_to_mul"
+  },
+  {
+   "file": "src/backend_scene/src/WPParticleParser.cpp",
+   "line": 955,
+   "mutator": "cxx_gt_to_ge"
   },
   {
    "file": "src/backend_scene/src/WPShaderParser.cpp",

@@ -5,6 +5,7 @@
 
 #include "WebAudioBridge.hpp"
 #include "Audio/AudioAnalyzer.h"
+#include "Audio/AudioBus.h"
 #include "Audio/AudioCapture.h"
 
 #include <QCoreApplication>
@@ -12,6 +13,7 @@
 #include <QObject>
 #include <QSignalSpy>
 #include <QTest>
+#include <QThread>
 #include <cmath>
 #include <memory>
 #include <vector>
@@ -179,6 +181,58 @@ private slots:
         bridge.setEnabled(false);
         QVERIFY(! bridge.enabled());
         QCOMPARE(spy.count(), 2);
+    }
+
+    // ── AudioBus spectrum lease ─────────────────────────────────────────
+    // The bus's own 60 Hz thread is the only caller of AudioAnalyzer::Process,
+    // and it only runs the FFT while somebody declares that they read the
+    // spectrum.  An enabled bridge is exactly such a consumer, so without a
+    // lease a web wallpaper would sample an all-zero spectrum forever.
+    void enabledBridge_leasesTheBusSpectrum() {
+        qputenv("WEK_TEST_AUDIO_NULL_CAPTURE", "1");
+        wallpaper::audio::AudioBus::TEST_resetForNextCase();
+
+        wekde::WebAudioBridge bridge;
+        bridge.setEnabled(true);
+
+        // Same singleton analyzer the bridge holds; feed it two full windows.
+        auto analyzer = wallpaper::audio::AudioBus::Acquire(false);
+        QVERIFY(analyzer);
+        std::vector<float> pcm(4096, 0.25f);
+        analyzer->FeedPcm(pcm.data(), 2048, 2);
+
+        quint64 processed = 0;
+        for (int i = 0; i < 200 && processed == 0; ++i) {
+            QThread::msleep(10);
+            processed = analyzer->WindowsProcessedForTest();
+        }
+        QVERIFY(processed > 0);
+
+        // Disabling withdraws the lease — fresh PCM must sit unconsumed.
+        bridge.setEnabled(false);
+        QThread::msleep(50);
+        const quint64 afterDisable = analyzer->WindowsProcessedForTest();
+        analyzer->FeedPcm(pcm.data(), 2048, 2);
+        QThread::msleep(160);
+        QCOMPARE(analyzer->WindowsProcessedForTest(), afterDisable);
+
+        analyzer.reset();
+        wallpaper::audio::AudioBus::TEST_resetForNextCase();
+    }
+
+    void feedTestPcm_refusesToTouchTheSharedBusAnalyzer() {
+        // While enabled, m_analyzer IS the bus singleton, and the bus thread
+        // owns its Process().  Running an FFT here would make the test hook a
+        // second, unsynchronised consumer.
+        qputenv("WEK_TEST_AUDIO_NULL_CAPTURE", "1");
+        wallpaper::audio::AudioBus::TEST_resetForNextCase();
+
+        wekde::WebAudioBridge bridge;
+        bridge.setEnabled(true);
+        QVERIFY(! bridge.feedTestPcm(makeSineStereo(FFT_SIZE * 2, 440.0, 48000.0), 2));
+
+        bridge.setEnabled(false);
+        wallpaper::audio::AudioBus::TEST_resetForNextCase();
     }
 
     void setIntervalMs_validatesAndEmits() {

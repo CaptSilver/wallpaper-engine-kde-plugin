@@ -42,6 +42,10 @@ void WebAudioBridge::start() {
     // missing) — the timer will still run but the spectrum stays empty,
     // matching the pre-bus qWarning fall-through path.
     m_analyzer = wallpaper::audio::AudioBus::Acquire(/*wantSystemCapture=*/true);
+    // Declare ourselves a spectrum reader so the bus thread actually runs the
+    // FFT; without this the timer would sample an all-zero spectrum whenever
+    // no scene wallpaper happens to want audio too.
+    m_spectrum_lease = wallpaper::audio::AudioBus::AcquireSpectrumConsumer();
     if (! m_analyzer) {
         qWarning() << "WebAudioBridge: AudioBus::Acquire returned null; "
                       "audio-reactive web wallpapers will receive no spectrum data";
@@ -62,7 +66,9 @@ void WebAudioBridge::stop() {
     // Dropping the shared_ptr decrements the bus's subscriber count; if
     // we were the last system-capture wanter the bus releases the
     // PulseAudio monitor stream, if we were the last subscriber of any
-    // kind it tears the whole bus down.
+    // kind it tears the whole bus down.  Drop the spectrum lease first so
+    // the bus thread stops running the FFT on our behalf.
+    m_spectrum_lease.reset();
     m_analyzer.reset();
 }
 
@@ -91,6 +97,15 @@ QList<double> WebAudioBridge::encodeBuffer(wallpaper::audio::AudioAnalyzer& anal
 }
 
 bool WebAudioBridge::feedTestPcm(const QList<qreal>& interleavedStereo, int channels) {
+    if (m_enabled) {
+        // m_analyzer is the AudioBus singleton here and the bus's 60Hz thread
+        // is its only legitimate Process() caller.  Feeding + processing from
+        // this thread would race it on readPos, the kissfft scratch and every
+        // band array.
+        qWarning() << "WebAudioBridge::feedTestPcm refused: the analyzer is the shared "
+                      "AudioBus singleton while enabled; disable the bridge first";
+        return false;
+    }
     if (channels <= 0) channels = 2;
     if (! m_analyzer) m_analyzer = std::make_shared<wallpaper::audio::AudioAnalyzer>();
 

@@ -46,9 +46,11 @@ public:
     // onAudioBuffer signal-handler boundary.
     static QList<double> encodeBuffer(wallpaper::audio::AudioAnalyzer& analyzer);
 
-    // Test hook: feed PCM samples into the underlying analyzer and run one
-    // FFT pass.  Lazy-creates the analyzer if `enabled` is false so tests
-    // never need to flip the capture lifecycle on.
+    // Test hook: feed PCM samples into a private analyzer and run one FFT
+    // pass.  Only valid while `enabled` is false — that's the state where the
+    // analyzer is ours to drive.  Once enabled, the analyzer is the shared
+    // AudioBus singleton whose Process() belongs to the bus's own thread, and
+    // a second caller would race it; the call is refused (returns false).
     Q_INVOKABLE bool feedTestPcm(const QList<qreal>& interleavedStereo, int channels = 2);
 
     // Test hook: synchronously do what the QTimer would do — Process the
@@ -70,7 +72,10 @@ private:
     int  m_intervalMs { 33 };
 
     std::shared_ptr<wallpaper::audio::AudioAnalyzer> m_analyzer;
-    QTimer                                           m_timer;
+    // Tells the bus we read the spectrum; it only runs the FFT while at least
+    // one consumer says so.  Held for as long as the bridge is enabled.
+    std::shared_ptr<void> m_spectrum_lease;
+    QTimer                m_timer;
 };
 
 } // namespace wekde

@@ -15,6 +15,9 @@ Item{
         Qt.binding(function() { return background.mute ? 0 : background.volume; }),
         (volume) => { player.volume = volume / 100.0; }
     )
+    // Both drive the load watchdog below.
+    property bool _paused: false
+    property bool _firstFrameSeen: false
 
     // displayMode no longer drives fillMode imperatively: the player binds its
     // size + fillMode to the pure Layout helpers below, so both follow
@@ -116,6 +119,15 @@ Item{
             target: player
             function onFirstFrame() {
                 background.sig_backendFirstFrame('scene');
+                sceneItem._firstFrameSeen = true;
+                loadWatchdog.stop();
+            }
+            // Named failure from the backend — the renderer already knows it
+            // will never draw, so show the real reason instead of waiting out
+            // the watchdog's generic "no frame" message.
+            function onSceneLoadFailed(reason) {
+                loadWatchdog.stop();
+                sceneItem.showLoadFailure(reason);
             }
             // Route SceneScript engine.openUserShortcut(name) to MPRIS for
             // well-known media-control names (bplay/bnext/bprev and the
@@ -189,14 +201,58 @@ Item{
         }
     }
 
+    // Backstop for every silent scene-load failure: a malformed scene.json,
+    // no scene JSON in the pkg, an unmountable pkg dir and a failed GL-interop
+    // init all bail with nothing but a log line, leaving the desktop on the
+    // background colour with no way to tell a broken wallpaper from a broken
+    // plugin. 20s because a first-time load compiles shaders and decompresses
+    // textures — a slow cold start on a big scene must not trip this.
+    Timer {
+        id: loadWatchdog
+        interval: 20000
+        repeat: false
+        running: true
+        onTriggered: {
+            // main.qml pauses the backend 300ms into every launch and plays it
+            // back 5s later, and leaves it paused for as long as the desktop
+            // stays occluded or locked. A paused scene has no frame for a
+            // legitimate reason, so keep waiting instead of replacing a
+            // perfectly good wallpaper with a failure pane.
+            if (sceneItem._paused) {
+                loadWatchdog.restart();
+                return;
+            }
+            sceneItem.showLoadFailure(
+                "The scene produced no frame within 20 seconds. It may be corrupt, "
+                + "or use features this renderer does not support.");
+        }
+    }
+    // Re-arm on every source change so switching wallpapers re-runs the watch.
+    onSourceChanged: {
+        _firstFrameSeen = false;
+        loadWatchdog.restart();
+    }
+
+    function showLoadFailure(reason) {
+        if (sceneItem.parent && typeof sceneItem.parent.loadInfoShow === "function")
+            sceneItem.parent.loadInfoShow(reason);
+        else
+            console.log("[WEK] scene load failed: " + reason);
+    }
+
     Component.onCompleted: {
         background.nowBackend = 'scene';
     }
     function play() {
+        _paused = false;
+        // Give the renderer a fresh window to draw in: the load budget should
+        // start when rendering actually resumes, not when the item was built.
+        if (! _firstFrameSeen) loadWatchdog.restart();
         volumeFade.start();
         player.play();
     }
     function pause() {
+        _paused = true;
         volumeFade.stop();
         player.pause();
     }

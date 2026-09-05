@@ -37,6 +37,7 @@ Item {
     signal mediaTimelineChanged(var position, var duration, int state)
     signal mediaStatusChanged(bool enabled)
     signal videoDecodeFailed(string summary)
+    signal sceneLoadFailed(string reason)
 
     // ── test recorders (test-only stub) ──────────────────────────────────
     // Production wrappers call these imperatively; recording call-count and

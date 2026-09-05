@@ -15,6 +15,15 @@ TestCase {
     // unqualified `background` via parent QML scope.
     BackgroundFake { id: background }
 
+    // loadInfoShow recorder — Scene.qml routes a load failure through
+    // `sceneItem.parent.loadInfoShow(msg)`, and the TestCase is the parent.
+    property int    loadInfoShowCount: 0
+    property string lastLoadInfoMsg: ""
+    function loadInfoShow(msg) {
+        loadInfoShowCount += 1;
+        lastLoadInfoMsg = String(msg);
+    }
+
     Backend.Scene {
         id: scene
         source: "stub://scene.pkg"
@@ -211,5 +220,93 @@ TestCase {
         // signal handler may not run synchronously under qmltestrunner.
         tryCompare(overlay, "lastSummary", summary);
         tryCompare(overlay, "shown", true);
+    }
+
+    // A scene that never produces a frame leaves the desktop showing only the
+    // background colour, which is indistinguishable from a broken plugin. The
+    // watchdog is the backstop that turns that into the InfoShow recovery
+    // pane; fire triggered() directly rather than waiting out the interval.
+    function _findLoadWatchdog() {
+        const buckets = [scene.children || [], scene.data || []];
+        for (const b of buckets) {
+            for (let i = 0; i < b.length; i++) {
+                const t = b[i];
+                if (t && typeof t.start === "function" &&
+                    typeof t.interval !== "undefined" &&
+                    t.interval === 20000) return t;
+            }
+        }
+        return null;
+    }
+
+    function test_loadWatchdog_expiry_routesToInfoShow() {
+        const wd = _findLoadWatchdog();
+        verify(wd !== null);
+        const n = loadInfoShowCount;
+        wd.triggered();
+        compare(loadInfoShowCount, n + 1);
+        verify(lastLoadInfoMsg.indexOf("no frame") !== -1);
+    }
+
+    function test_firstFrame_stopsLoadWatchdog() {
+        const wd = _findLoadWatchdog();
+        verify(wd !== null);
+        wd.restart();
+        verify(wd.running);
+        _findScenePlayer().firstFrame();
+        verify(! wd.running);
+    }
+
+    function test_sourceChange_rearmsLoadWatchdog() {
+        const wd = _findLoadWatchdog();
+        wd.stop();
+        verify(! wd.running);
+        scene.source = "stub://another.pkg";
+        verify(wd.running);
+    }
+
+    // main.qml pauses the backend 300ms into every launch and only plays it
+    // back 5s later — and leaves it paused for as long as the desktop stays
+    // occluded or locked. A paused scene has no frame for a legitimate reason,
+    // so the watchdog must hold the watch open rather than cry wolf.
+    function test_loadWatchdog_whilePaused_keepsWaiting() {
+        const wd = _findLoadWatchdog();
+        scene.pause();
+        const n = loadInfoShowCount;
+        wd.triggered();
+        compare(loadInfoShowCount, n);
+        verify(wd.running);
+        scene.play();
+    }
+
+    function test_play_beforeFirstFrame_rearmsWatchdog() {
+        scene.source = "stub://rearm.pkg";   // clears the first-frame latch
+        const wd = _findLoadWatchdog();
+        wd.stop();
+        scene.play();
+        verify(wd.running);
+    }
+
+    function test_play_afterFirstFrame_leavesWatchdogStopped() {
+        const wd = _findLoadWatchdog();
+        _findScenePlayer().firstFrame();
+        verify(! wd.running);
+        scene.play();
+        verify(! wd.running);
+    }
+
+    // The GL-interop gate fails before the renderer ever starts, so the
+    // watchdog's generic message is the wrong thing to show — the named
+    // reason must reach InfoShow straight away and disarm the watchdog.
+    function test_sceneLoadFailed_routesReasonAndStopsWatchdog() {
+        const player = _findScenePlayer();
+        const wd = _findLoadWatchdog();
+        wd.restart();
+        verify(wd.running);
+        const n = loadInfoShowCount;
+        player.sceneLoadFailed("GL interop init failed");
+        compare(loadInfoShowCount, n + 1);
+        verify(lastLoadInfoMsg.indexOf("GL interop init failed") !== -1);
+        verify(! wd.running);
     }
 }

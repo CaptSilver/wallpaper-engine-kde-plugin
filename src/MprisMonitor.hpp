@@ -136,6 +136,10 @@ private:
     void findActivePlayer();
     void fetchAllProperties();
     void processArtUrl(const QString& artUrl);
+    // Invalidate album art already in flight and return the generation the
+    // caller's own work should carry. Cancels a cover fetch that is still out
+    // so a server that stopped answering doesn't keep the socket.
+    quint64 supersedeArt();
     // Apply a PlaybackStatus string (the value of the "PlaybackStatus" MPRIS
     // property): map to the int state, emit playbackStateChanged on a real
     // transition, and start/stop the 1Hz position poll. Shared by the
@@ -166,11 +170,15 @@ private:
     bool            m_engaged { false }; // true once D-Bus watch started
     QString         m_lastArtUrl;
     bool            m_artUrlEverProcessed { false };
-    // Bumped on every art dispatch. An off-thread LocalFile decode captures the
-    // value and drops its result on the GUI-thread emit if the generation
-    // advanced — so a slow decode of a previous cover can't overwrite the newer
-    // one's colors. Mirrors m_scanGeneration.
+    // Bumped on every art dispatch — all four URL kinds, not just the ones that
+    // start background work — and on disconnect. An off-thread LocalFile decode
+    // captures the value, an HTTP fetch carries it on the reply, and both drop
+    // their result if the generation moved on in the meantime, so a previous
+    // cover can't overwrite the newer one's colors. Mirrors m_scanGeneration.
     quint64 m_artGeneration { 0 };
+    // The cover fetch currently out, so a new dispatch can cancel it. QPointer
+    // because the reply deletes itself once it has been handled.
+    QPointer<QNetworkReply> m_artReply;
 
     // Async D-Bus state. All reads (position poll, the findActivePlayer scan,
     // and fetchAllProperties) now go through QDBusConnection::asyncCall +

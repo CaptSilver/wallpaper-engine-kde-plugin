@@ -6,6 +6,7 @@
 #include <QMetaObject>
 #include <QSignalSpy>
 #include <QTemporaryFile>
+#include <QTimer>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QDBusArgument>
@@ -158,6 +159,19 @@ private slots:
     // m_lastPosition, and m_duration so a matching-state first reply
     // from a reconnected player is not swallowed by the dedup guard.
     void disconnectFromPlayer_resetsDedupState_so_matchingFirstReplyEmits();
+
+    // ── Art supersession: whatever was dispatched last owns the palette
+    // A track with no usable cover must stay artless even when the previous
+    // track's decode is still running.
+    void processArtUrl_artlessTrackWhileDecoding_keepsNoThumbnail_data();
+    void processArtUrl_artlessTrackWhileDecoding_keepsNoThumbnail();
+    // Two HTTP covers answered out of order: the older reply must not repaint.
+    void processArtUrl_lateHttpReplyFromPreviousCover_isIgnored();
+    // A superseded HTTP fetch is cancelled instead of left hanging on a server
+    // that never answers.
+    void processArtUrl_supersededHttpFetch_isCancelled();
+    // Leaving a player invalidates the art it had in flight.
+    void disconnectFromPlayer_dropsInflightArtFromPreviousPlayer();
 };
 
 // Helper: create a solid-color image
@@ -1288,11 +1302,23 @@ void TestMprisColors::handlePropsChanged_metadataAsQDBusArgument_unmarshalsAndEm
 // ----- HTTP path: real local QTcpServer that returns a valid PNG --------
 class FakePngHttpServer : public QObject {
 public:
-    explicit FakePngHttpServer(const QByteArray& body): m_body(body) {
+    // delayMs holds the response back, so a request issued later can be answered
+    // first — the ordering a real cover CDN hands you when two tracks go by.
+    explicit FakePngHttpServer(const QByteArray& body, int delayMs = 0)
+        : m_body(body), m_delayMs(delayMs) {
         connect(&m_server, &QTcpServer::newConnection, this, [this] {
             QTcpSocket* sock = m_server.nextPendingConnection();
             connect(sock, &QTcpSocket::readyRead, this, [this, sock] {
-                writeReply(sock);
+                if (sock->property("answered").toBool()) return; // one reply per socket
+                sock->setProperty("answered", true);
+                if (m_delayMs <= 0) {
+                    writeReply(sock);
+                    return;
+                }
+                // sock as context: a client that gives up cancels the reply.
+                QTimer::singleShot(m_delayMs, sock, [this, sock] {
+                    writeReply(sock);
+                });
             });
             connect(sock, &QTcpSocket::disconnected, sock, &QObject::deleteLater);
         });
@@ -1316,6 +1342,7 @@ private:
     }
     QTcpServer m_server;
     QByteArray m_body;
+    int        m_delayMs { 0 };
 };
 
 void TestMprisColors::processArtUrl_http_downloadsAndEmits() {
@@ -1637,6 +1664,155 @@ void TestMprisColors::disconnectFromPlayer_resetsDedupState_so_matchingFirstRepl
     mon.applyPlaybackStatus(QStringLiteral("Playing"));
     QCOMPARE(spy.count(), 2);
     QCOMPARE(spy.last().at(0).toInt(), 1);
+}
+
+// ===========================================================================
+// Art supersession: the cover dispatched last owns the palette
+//
+// Nothing downstream reconciles the thumbnail state — Scene.qml forwards the
+// signal edge straight into the scene — so whichever emit lands last is what
+// the wallpaper wears until the art URL changes again. Every one of these cases
+// is a stale cover winning that last emit.
+// ===========================================================================
+
+// Encode a solid-colour PNG so a test can tell one served cover from another.
+static QByteArray pngBytes(QColor color) {
+    QImage img(8, 8, QImage::Format_RGB32);
+    img.fill(color);
+    QByteArray bytes;
+    QBuffer    buf(&bytes);
+    buf.open(QIODevice::WriteOnly);
+    img.save(&buf, "PNG");
+    return bytes;
+}
+
+// Accepts the connection and never answers, so a fetch against it stays in
+// flight until the client gives up. sawDisconnect() is how the test observes
+// that the client did give up.
+class StalledHttpServer : public QObject {
+public:
+    StalledHttpServer() {
+        connect(&m_server, &QTcpServer::newConnection, this, [this] {
+            QTcpSocket* sock = m_server.nextPendingConnection();
+            m_connected      = true;
+            connect(sock, &QTcpSocket::disconnected, this, [this, sock] {
+                m_disconnected = true;
+                sock->deleteLater();
+            });
+        });
+    }
+    bool    listen() { return m_server.listen(QHostAddress::LocalHost, 0); }
+    quint16 port() const { return m_server.serverPort(); }
+    bool    sawConnect() const { return m_connected; }
+    bool    sawDisconnect() const { return m_disconnected; }
+
+private:
+    QTcpServer m_server;
+    bool       m_connected { false };
+    bool       m_disconnected { false };
+};
+
+void TestMprisColors::processArtUrl_artlessTrackWhileDecoding_keepsNoThumbnail_data() {
+    QTest::addColumn<QString>("artlessUrl");
+    QTest::newRow("empty artUrl") << QString();
+    QTest::newRow("unhandled scheme") << QStringLiteral("blob:https://example.com/cover");
+}
+
+// A track whose art URL is empty (or a scheme we don't fetch) answers "no art"
+// straight away on the GUI thread while the previous track's decode is still
+// parked on the worker. The artless answer is the newer one, so it has to be
+// the state that sticks — otherwise a track with no cover at all shows the
+// previous track's palette.
+void TestMprisColors::processArtUrl_artlessTrackWhileDecoding_keepsNoThumbnail() {
+    QFETCH(QString, artlessUrl);
+
+    QTemporaryDir td;
+    QVERIFY(td.isValid());
+    BlockingCoverFifo cover(td.filePath("cover"), 150);
+    QVERIFY(cover.isValid());
+
+    MprisMonitor m;
+    QSignalSpy   spy(&m, &MprisMonitor::thumbnailChanged);
+
+    m.processArtUrl(cover.url());
+    QVERIFY2(cover.waitForDecodeStart(5000), "album-art decode never started");
+
+    m.processArtUrl(artlessUrl);
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.last().at(0).toBool(), false);
+
+    QVERIFY(cover.waitForBytesFed(5000)); // the parked decode can finish now
+    QTest::qWait(300);                    // a queued emit from it would land here
+
+    QCOMPARE(spy.count(), 1); // the superseded decode stayed quiet
+    QCOMPARE(spy.last().at(0).toBool(), false);
+}
+
+// Spotify and browser players publish https cover URLs, so two tracks in a row
+// mean two overlapping GETs. Serve the first one slowly: its reply arrives
+// after the second track's cover is already on screen and must be dropped.
+void TestMprisColors::processArtUrl_lateHttpReplyFromPreviousCover_isIgnored() {
+    FakePngHttpServer slow(pngBytes(Qt::blue), /*delayMs=*/300);
+    FakePngHttpServer fast(pngBytes(Qt::red));
+    QVERIFY(slow.listen());
+    QVERIFY(fast.listen());
+
+    MprisMonitor m;
+    QSignalSpy   spy(&m, &MprisMonitor::thumbnailChanged);
+
+    m.processArtUrl(QStringLiteral("http://127.0.0.1:%1/previous.png").arg(slow.port()));
+    m.processArtUrl(QStringLiteral("http://127.0.0.1:%1/current.png").arg(fast.port()));
+
+    QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 5000);
+    const QVariantList colors = spy.last().at(1).toList();
+    QCOMPARE(colors.size(), 15);
+    QVERIFY2(colors[0].toDouble() > 0.8 && colors[2].toDouble() < 0.2,
+             "palette came from the previous track's cover, not the current one");
+
+    QTest::qWait(600); // outlives the slow server's delay
+    QCOMPARE(spy.count(), 1);
+}
+
+// A cover fetch nobody wants any more must be cancelled, not left holding a
+// socket against a server that never answers.
+void TestMprisColors::processArtUrl_supersededHttpFetch_isCancelled() {
+    StalledHttpServer stalled;
+    QVERIFY(stalled.listen());
+
+    MprisMonitor m;
+    QSignalSpy   spy(&m, &MprisMonitor::thumbnailChanged);
+
+    m.processArtUrl(QStringLiteral("http://127.0.0.1:%1/never.png").arg(stalled.port()));
+    QTRY_VERIFY_WITH_TIMEOUT(stalled.sawConnect(), 5000);
+
+    m.processArtUrl(QString()); // next track has no art
+
+    QTRY_VERIFY_WITH_TIMEOUT(stalled.sawDisconnect(), 5000);
+    QCOMPARE(spy.count(), 1); // only the artless answer
+    QCOMPARE(spy.last().at(0).toBool(), false);
+}
+
+// Leaving a player has to invalidate the art it had in flight: player A's
+// decode is still parked when we disconnect, and if its result lands afterwards
+// it repaints A's cover over whatever player B is playing.
+void TestMprisColors::disconnectFromPlayer_dropsInflightArtFromPreviousPlayer() {
+    QTemporaryDir td;
+    QVERIFY(td.isValid());
+    BlockingCoverFifo cover(td.filePath("cover"), 150);
+    QVERIFY(cover.isValid());
+
+    MprisMonitor m;
+    QSignalSpy   spy(&m, &MprisMonitor::thumbnailChanged);
+
+    m.m_activeService = QStringLiteral("org.mpris.MediaPlayer2.playerA");
+    m.processArtUrl(cover.url());
+    QVERIFY2(cover.waitForDecodeStart(5000), "album-art decode never started");
+
+    m.disconnectFromPlayer();
+
+    QVERIFY(cover.waitForBytesFed(5000));
+    QTest::qWait(300);
+    QCOMPARE(spy.count(), 0);
 }
 
 QTEST_GUILESS_MAIN(TestMprisColors)

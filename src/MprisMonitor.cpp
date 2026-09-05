@@ -14,6 +14,7 @@
 #include <QUrl>
 #include <QDebug>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 using namespace wekde;
@@ -22,6 +23,9 @@ static const char* MPRIS_PREFIX    = "org.mpris.MediaPlayer2.";
 static const char* MPRIS_PATH      = "/org/mpris/MediaPlayer2";
 static const char* MPRIS_PLAYER_IF = "org.mpris.MediaPlayer2.Player";
 static const char* DBUS_PROPS_IF   = "org.freedesktop.DBus.Properties";
+// Generation stamped onto each cover-fetch reply so onArtDownloaded can tell a
+// current reply from one issued for a track that has already gone by.
+static const char* ART_GEN_PROPERTY = "wekArtGeneration";
 
 int wekde::toPlaybackState(const QString& status) {
     if (status == "Playing") return 1;
@@ -101,6 +105,10 @@ MprisMonitor::MprisMonitor(QQuickItem* parent)
     // poll + persistent PropertiesChanged subscription. ensureEngaged()
     // takes care of the lazy hook-up when needed.
     m_pool.setMaxThreadCount(1);
+    // Inactivity bound on cover fetches. A CDN that accepts the connection and
+    // then goes quiet would otherwise hold the request open for the life of the
+    // wallpaper, and the palette would sit on the previous track forever.
+    m_nam.setTransferTimeout(std::chrono::seconds(10));
 }
 
 MprisMonitor::~MprisMonitor() {
@@ -255,6 +263,9 @@ void MprisMonitor::disconnectFromPlayer() {
     // the previous connection's lifetime, not the wallpaper's.
     m_lastArtUrl.clear();
     m_artUrlEverProcessed = false;
+    // Art already in flight belongs to the player we are leaving: without this
+    // a decode or cover fetch from player A repaints on top of player B.
+    supersedeArt();
     if (m_enabled) {
         m_enabled = false;
         emit enabledChanged(false);
@@ -408,12 +419,27 @@ void MprisMonitor::pollPosition() {
     });
 }
 
+quint64 MprisMonitor::supersedeArt() {
+    // Bump before the abort: abort() can deliver finished() right here, and
+    // onArtDownloaded must already see that reply as stale.
+    const quint64 gen = ++m_artGeneration;
+    if (m_artReply) m_artReply->abort();
+    m_artReply = nullptr;
+    return gen;
+}
+
 void MprisMonitor::processArtUrl(const QString& artUrl) {
+    // Every dispatch supersedes what came before it, including the two kinds
+    // that answer immediately: an artless track emits "no art" on the spot, and
+    // the previous track's decode or cover fetch must not paint over it
+    // afterwards. Nothing downstream reconciles — the QML side just forwards
+    // the signal edge — so the last emit is what the wallpaper keeps.
+    const quint64 gen = supersedeArt();
     switch (classifyArtUrl(artUrl)) {
-    case MprisArtUrlKind::Empty: emit thumbnailChanged(false, {}); return;
+    case MprisArtUrlKind::Empty:
+    case MprisArtUrlKind::Unknown: emit thumbnailChanged(false, {}); return;
     case MprisArtUrlKind::LocalFile: {
         const QString localPath = QUrl(artUrl).toLocalFile();
-        const quint64 gen       = ++m_artGeneration;
         m_pool.start([this, localPath, gen]() {
             QImage img(localPath); // decode off the compositor thread
             if (img.isNull()) {
@@ -440,10 +466,14 @@ void MprisMonitor::processArtUrl(const QString& artUrl) {
     }
     case MprisArtUrlKind::Http: {
         QNetworkReply* reply = m_nam.get(QNetworkRequest(QUrl(artUrl)));
+        // The reply carries its own generation: HTTP replies come back in
+        // whatever order the network gives them, so the check cannot use a
+        // single "latest" field.
+        reply->setProperty(ART_GEN_PROPERTY, QVariant::fromValue(gen));
+        m_artReply = reply;
         connect(reply, &QNetworkReply::finished, this, &MprisMonitor::onArtDownloaded);
         return;
     }
-    case MprisArtUrlKind::Unknown: emit thumbnailChanged(false, {}); return;
     }
 }
 
@@ -462,6 +492,9 @@ void MprisMonitor::onArtDownloaded() {
     auto* reply = qobject_cast<QNetworkReply*>(sender());
     if (! reply) return;
     reply->deleteLater();
+    // Dropped, not painted: this cover was superseded (newer track, or the
+    // player went away) while the fetch was still out.
+    if (reply->property(ART_GEN_PROPERTY).toULongLong() != m_artGeneration) return;
 
     QVariantList colors;
     if (decodeArtReplyBytes(reply->readAll(), reply->error() != QNetworkReply::NoError, colors)) {

@@ -18,6 +18,11 @@
 #include <functional>
 #include <optional>
 
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
+#include <unistd.h>
+
 #ifdef WEKDE_HAS_MPV
 #    include "backend_mpv/ThumbnailGrabber.hpp"
 #endif
@@ -106,6 +111,66 @@ static int headInsertPos(const QString& html) {
         searchFrom = lt + 5;
     }
 }
+
+// Read a file the plugin was handed by a wallpaper, refusing anything that is
+// not a regular file and stopping at kMaxReadSize. `who` names the caller in
+// the warnings; nullopt means "refused", and the caller decides what an empty
+// result looks like on its own signature.
+//
+// The type check has to come BEFORE the open: open(2) on a fifo parks until a
+// writer arrives, which freezes whichever thread called in — the GUI thread
+// for readFile, or a pool thread that ~FileHelper joins with no timeout for
+// requestReadFile. It is also the only thing standing between a symlink to
+// /dev/zero and an unbounded read, because st_size is 0 for character
+// devices, fifos and procfs entries, so the size cap below cannot see them.
+std::optional<QByteArray> readRegularFileCapped(const QString& native, const char* who) {
+    const QFileInfo info(native);
+    if (! info.exists()) {
+        qWarning() << who << "no such file:" << native;
+        return std::nullopt;
+    }
+    if (! info.isFile()) {
+        qWarning() << who << "refused non-regular file:" << native;
+        return std::nullopt;
+    }
+
+    QFile file(native);
+    if (! file.open(QIODevice::ReadOnly)) {
+        qWarning() << who << "cannot open file:" << native;
+        return std::nullopt;
+    }
+
+    const qint64 declared = file.size();
+    if (declared > FileHelper::kMaxReadSize) {
+        qWarning() << who << "refused over-size file:" << native << "(" << declared << "bytes >"
+                   << FileHelper::kMaxReadSize << ")";
+        return std::nullopt;
+    }
+
+    // Chunked instead of readAll(): st_size is a hint, not a promise. A
+    // regular file can grow between the stat and the read, so the cap is
+    // enforced against the bytes that actually arrive.
+    constexpr qint64 kChunk = 64 * 1024;
+    QByteArray       out;
+    if (declared > 0) out.reserve(declared);
+    QByteArray buf(kChunk, Qt::Uninitialized);
+    for (;;) {
+        const qint64 n = file.read(buf.data(), kChunk);
+        if (n < 0) {
+            qWarning() << who << "read failed on" << native << ":" << file.errorString();
+            return std::nullopt;
+        }
+        if (n == 0) break;
+        if (out.size() + n > FileHelper::kMaxReadSize) {
+            qWarning() << who << "refused file that grew past" << FileHelper::kMaxReadSize
+                       << "bytes mid-read:" << native;
+            return std::nullopt;
+        }
+        out.append(buf.constData(), n);
+    }
+    return out;
+}
+
 } // namespace
 
 FileHelper::FileHelper(QObject* parent): QObject(parent) {
@@ -136,14 +201,17 @@ QString FileHelper::wallpaperConfigFile(const QString& id) const {
 }
 
 QByteArray FileHelper::readFile(const QString& path) {
+    // Strip file:// once, up front, and open the stripped form — requestReadFile
+    // does the same, and QML callers pass both shapes.
+    QString native = path;
+    if (native.startsWith("file://")) native = native.mid(7);
+
     // Allowlist check (fail-closed when seeded, permissive when empty for
     // first-run back-compat). Canonicalisation resolves symlinks + ".." +
     // CWD-relative — the canonical form is what we compare to the seeded
     // roots, so a symlink INSIDE an allowed root pointing OUTSIDE it is
-    // refused. Strip file:// to match the addReadRoot canon strip.
+    // refused.
     if (! m_readRoots.isEmpty()) {
-        QString native = path;
-        if (native.startsWith("file://")) native = native.mid(7);
         const QString canon = QFileInfo(native).canonicalFilePath();
         if (! isUnderAnyRoot(canon, m_readRoots)) {
             qWarning() << "FileHelper::readFile refused path outside allowed roots:" << path
@@ -152,23 +220,8 @@ QByteArray FileHelper::readFile(const QString& path) {
         }
     }
 
-    QFile file(path);
-    if (! file.open(QIODevice::ReadOnly)) {
-        qWarning() << "FileHelper: Cannot open file:" << path;
-        return QByteArray();
-    }
-
-    // Size cap fires regardless of allowlist state — pathological inputs
-    // (sparse files, /dev/zero via FUSE-mounted workshop dir) are refused
-    // even in the back-compat permissive path. QFile::size() on regular
-    // files returns the on-disk size up front (no read needed).
-    if (file.size() > kMaxReadSize) {
-        qWarning() << "FileHelper::readFile refused over-size file:" << path << "(" << file.size()
-                   << "bytes >" << kMaxReadSize << ")";
-        return QByteArray();
-    }
-
-    return file.readAll();
+    // Type check + size cap apply in BOTH allowlist modes.
+    return readRegularFileCapped(native, "FileHelper::readFile").value_or(QByteArray());
 }
 
 void FileHelper::addReadRoot(const QString& path) {
@@ -199,13 +252,12 @@ QString FileHelper::qwebChannelSource() {
 }
 
 QString FileHelper::patchedHtml(const QString& path) {
-    QFile file(path);
-    if (! file.open(QIODevice::ReadOnly)) {
-        qWarning() << "FileHelper: Cannot open HTML file:" << path;
-        return QString();
-    }
+    // Same gate as readFile: the path comes from a wallpaper directory, and a
+    // fifo here would park the GUI thread inside open(2) forever.
+    const auto bytes = readRegularFileCapped(path, "FileHelper::patchedHtml");
+    if (! bytes) return QString();
 
-    QString html = QString::fromUtf8(file.readAll());
+    QString html = QString::fromUtf8(*bytes);
 
     // Inject a script that patches History API to suppress SecurityError
     // on file:// URLs.  Must run before any other scripts (e.g. Angular).
@@ -339,20 +391,9 @@ void FileHelper::requestReadFile(const QString& path) {
         if (! allowlistOk) {
             qWarning() << "FileHelper::requestReadFile refused path outside allowed roots:" << path
                        << "(canon:" << canon << ")";
-        } else {
-            QFile file(native);
-            if (file.open(QIODevice::ReadOnly)) {
-                const qint64 sz = file.size();
-                if (sz > kMaxReadSize) {
-                    qWarning() << "FileHelper::requestReadFile refused over-size file:" << path
-                               << "(" << sz << "bytes >" << kMaxReadSize << ")";
-                } else {
-                    contents = file.readAll();
-                    ok       = (contents.size() == sz);
-                }
-            } else {
-                qWarning() << "FileHelper::requestReadFile: cannot open:" << path;
-            }
+        } else if (auto bytes = readRegularFileCapped(native, "FileHelper::requestReadFile")) {
+            contents = std::move(*bytes);
+            ok       = true;
         }
 
         // Deliver on the GUI thread. Capture by value — `this` is kept alive
@@ -1183,11 +1224,26 @@ bool FileHelper::atomicWriteJson(const QString& path, const QJsonDocument& doc) 
         QFile::remove(tmp);
         return false;
     }
+    // flush() only empties Qt's userspace buffer. Get the bytes onto the disk
+    // before the rename, or a crash straight after it leaves `path` naming a
+    // zero-length file — the exact outcome the temp-file dance exists to avoid.
+    // EINVAL means the filesystem has no sync to perform (some FUSE mounts) —
+    // nothing was lost, so it is not a write failure.
+    if (::fsync(f.handle()) != 0 && errno != EINVAL) {
+        qWarning() << "FileHelper::atomicWriteJson: fsync failed on" << tmp << ":"
+                   << std::strerror(errno);
+        f.close();
+        QFile::remove(tmp);
+        return false;
+    }
     f.close();
-    // QFile::rename will not overwrite on POSIX; remove target first.
-    if (QFile::exists(path)) QFile::remove(path);
-    if (! QFile::rename(tmp, path)) {
-        qWarning() << "FileHelper::atomicWriteJson: rename failed" << tmp << "->" << path;
+    // rename(2) replaces the directory entry in one step, so a concurrent
+    // reader sees either the old file or the new one and never a gap. Qt's
+    // QFile::rename refuses to overwrite and unlinking the target first would
+    // hand back exactly the gap this is here to prevent.
+    if (std::rename(QFile::encodeName(tmp).constData(), QFile::encodeName(path).constData()) != 0) {
+        qWarning() << "FileHelper::atomicWriteJson: rename failed" << tmp << "->" << path << ":"
+                   << std::strerror(errno);
         QFile::remove(tmp);
         return false;
     }

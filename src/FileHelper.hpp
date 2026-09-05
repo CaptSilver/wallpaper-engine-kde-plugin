@@ -35,18 +35,22 @@ public:
     // canonicalises its argument and accepts iff the canonical form is the
     // root itself or a descendant. Empty allowlist => permissive back-compat
     // (default-installed plugin with no settings configured keeps today's
-    // behaviour). The 64 MiB size cap applies in BOTH modes — pathological
-    // inputs (a wallpaper symlink to /dev/zero via FUSE) are refused
-    // regardless. Call these from the GUI thread only: a requestReadFile job
-    // already in flight keeps the allowlist it was dispatched with, so a
+    // behaviour). Three separate guards, worth keeping straight: canonicalisation
+    // refuses targets outside the roots (only when roots are seeded), the
+    // regular-file check refuses devices, fifos and directories (both modes),
+    // and the 64 MiB cap bounds regular files (both modes). A symlink to
+    // /dev/zero is stopped by the second one, not the cap — st_size is 0 for a
+    // character device. Call these from the GUI thread only: a requestReadFile
+    // job already in flight keeps the allowlist it was dispatched with, so a
     // settings change never retroactively refuses an in-flight read.
     Q_INVOKABLE void addReadRoot(const QString& path);
     Q_INVOKABLE void clearReadRoots();
 
     // Maximum bytes readFile will return. Larger files yield an empty
-    // QByteArray + qWarning. 64 MiB is a generous ceiling for project.json
-    // (~10 KB typical, a few MB for fat puppet definitions) while defeating
-    // GB-scale DoS reads of /dev/zero or a sparse file.
+    // QByteArray + qWarning, and so does a file that grows past the cap while
+    // being read. 64 MiB is a generous ceiling for project.json (~10 KB
+    // typical, a few MB for fat puppet definitions) while defeating GB-scale
+    // reads of a sparse file.
     static constexpr qint64 kMaxReadSize = 64LL * 1024 * 1024;
     // Synchronous, recursive directory byte total. `depth` semantics:
     //   depth <= 0  => UNLIMITED recursion (historical sentinel — note this is the
@@ -157,9 +161,11 @@ public:
                                     const QStringList& installedWallpaperDirs,
                                     const QStringList& videoFolderPaths, qint64 quotaBytes);
 
-    // Atomic JSON write: encode `doc` to UTF-8, write to <path>.tmp, flush,
-    // then rename(2) to `path`. Returns false on any failure; the temp file
-    // is removed on failure to avoid clutter. Uses no instance state — static
+    // Atomic JSON write: encode `doc` to UTF-8, write to <path>.tmp, fsync,
+    // then rename(2) over `path`. The rename is not preceded by an unlink, so
+    // a concurrent reader of `path` always gets either the old contents or the
+    // new ones. Returns false on any failure; the temp file is removed on
+    // failure to avoid clutter. Uses no instance state — static
     // so callers (e.g. PlaylistManager::persist) need not construct a throwaway
     // FileHelper (whose ctor mkpaths the wallpaper config dir as a side effect).
     static bool atomicWriteJson(const QString& path, const QJsonDocument& doc);

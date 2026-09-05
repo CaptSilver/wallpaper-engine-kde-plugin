@@ -12,12 +12,22 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QThread>
 #include <QVariantList>
 #include <QVariantMap>
+
+#include <atomic>
+#include <thread>
+
+#include <cerrno>
+#include <dirent.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "CachePaths.hpp"
 #include "FileHelper.hpp"
@@ -37,6 +47,34 @@ private:
         if (! f.open(QIODevice::WriteOnly)) return false;
         f.write(QByteArray(size, fill));
         return true;
+    }
+
+    // Read offset of whatever fd this process holds on `path`, or -1 when the
+    // file is not open. A non-zero offset proves the reader is past its size
+    // check and inside the chunk loop, which is the only window in which
+    // growing the file exercises the mid-read cap. Matching on (dev, ino)
+    // rather than on the readlink text keeps it right when the sandbox path
+    // runs through a symlink.
+    static qint64 openReadOffset(const QString& path) {
+        struct stat want {};
+        if (::stat(QFile::encodeName(path).constData(), &want) != 0) return -1;
+        DIR* dir = ::opendir("/proc/self/fd");
+        if (dir == nullptr) return -1;
+        qint64 pos = -1;
+        while (struct dirent* ent = ::readdir(dir)) {
+            if (ent->d_name[0] == '.') continue;
+            const QByteArray link = QByteArray("/proc/self/fd/") + ent->d_name;
+            struct stat      got {};
+            if (::stat(link.constData(), &got) != 0) continue;
+            if (got.st_dev != want.st_dev || got.st_ino != want.st_ino) continue;
+            QFile info(QStringLiteral("/proc/self/fdinfo/") + QString::fromLatin1(ent->d_name));
+            if (! info.open(QIODevice::ReadOnly)) continue;
+            const QList<QByteArray> lines = info.readAll().split('\n');
+            for (const QByteArray& line : lines)
+                if (line.startsWith("pos:")) pos = qMax(pos, line.mid(4).trimmed().toLongLong());
+        }
+        ::closedir(dir);
+        return pos;
     }
 
     // Fill `dir` with empty files until one synchronous getDirSize walk costs at
@@ -237,6 +275,131 @@ private slots:
         FileHelper helper;
         helper.addReadRoot(m_tmp.path());
         QCOMPARE(helper.readFile(small).size(), qint64(1 << 20));
+    }
+
+    void readFile_atTheCapIsRead_oneByteOverIsRefused() {
+        // The cap is inclusive. A file measuring exactly kMaxReadSize is still
+        // handed back; the refusal starts at the very next byte. Sparse files
+        // via QFile::resize, so neither one costs 64 MiB of disk.
+        const QString atCap = m_tmp.filePath("atcap.bin");
+        const QString over  = m_tmp.filePath("overcap.bin");
+        {
+            QFile f(atCap);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            QVERIFY(f.resize(FileHelper::kMaxReadSize));
+        }
+        {
+            QFile f(over);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            QVERIFY(f.resize(FileHelper::kMaxReadSize + 1));
+        }
+
+        FileHelper helper;
+        helper.addReadRoot(m_tmp.path());
+        QCOMPARE(helper.readFile(atCap).size(), qint64(FileHelper::kMaxReadSize));
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("refused over-size file"));
+        QVERIFY(helper.readFile(over).isEmpty());
+    }
+
+    void readFile_fileThatGrowsPastTheCapMidRead_isRefused() {
+        // st_size is a hint, not a promise: a wallpaper's file can be appended
+        // to after the size check and before the last chunk arrives. A file
+        // sitting exactly on the cap when it is opened, plus one byte added
+        // while it is being drained, is over the cap by the time the bytes
+        // land, and the chunk loop is the only thing that can notice.
+        const QString path = m_tmp.filePath("growing.bin");
+        {
+            QFile f(path);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            QVERIFY(f.resize(FileHelper::kMaxReadSize)); // sparse
+        }
+
+        std::atomic<bool> stop { false };
+        std::atomic<bool> grew { false };
+        // Wait for the read offset to move before appending: a byte added
+        // before the size check would trip the up-front cap instead, which is
+        // a different branch and would leave this one unexercised.
+        std::thread grower([&] {
+            QElapsedTimer t;
+            t.start();
+            while (! stop.load(std::memory_order_relaxed) && t.elapsed() < 10000) {
+                if (openReadOffset(path) <= 0) continue;
+                QFile g(path);
+                if (g.open(QIODevice::Append) && g.write("x", 1) == 1) grew.store(true);
+                return;
+            }
+        });
+
+        FileHelper helper;
+        helper.addReadRoot(m_tmp.path());
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("refused file that grew past"));
+        const QByteArray got = helper.readFile(path);
+        stop.store(true);
+        grower.join();
+
+        QVERIFY2(grew.load(), "the file never grew while it was being read");
+        QVERIFY(got.isEmpty());
+    }
+
+    void readFile_fifo_refusedInsteadOfBlocking() {
+        // open(2) on a fifo parks until a writer shows up. readFile runs on
+        // the GUI thread, so a fifo named project.json inside a configured
+        // root would freeze plasmashell — the type check has to come before
+        // the open.
+        const QString fifo = m_tmp.filePath("blocking.fifo");
+        if (::mkfifo(QFile::encodeName(fifo).constData(), 0600) != 0)
+            QSKIP("cannot create a fifo in the test temp dir");
+
+        FileHelper helper;
+        helper.addReadRoot(m_tmp.path());
+
+        std::atomic<bool> done { false };
+        QByteArray        result;
+        std::thread       reader([&] {
+            result = helper.readFile(fifo);
+            done.store(true);
+        });
+
+        QElapsedTimer t;
+        t.start();
+        while (! done.load() && t.elapsed() < 3000) QThread::msleep(5);
+        const bool returned = done.load();
+
+        // Hand a still-parked reader its writer so the thread can be joined:
+        // the O_WRONLY open completes its open(2), and closing right away
+        // gives it EOF. With no reader waiting this is ENXIO and a no-op.
+        QElapsedTimer unwedge;
+        unwedge.start();
+        while (! done.load() && unwedge.elapsed() < 5000) {
+            const int w = ::open(QFile::encodeName(fifo).constData(), O_WRONLY | O_NONBLOCK);
+            if (w >= 0) ::close(w);
+            QThread::msleep(5);
+        }
+        reader.join();
+
+        QVERIFY2(returned, "readFile must refuse a fifo, not block in open(2)");
+        QVERIFY(result.isEmpty());
+    }
+
+    void readFile_characterDevice_refused() {
+        // With no roots seeded nothing canonicalises the path away, and the
+        // size cap cannot help: st_size is 0 for a character device, so the
+        // only thing between /dev/zero and an unbounded readAll() is the
+        // type check.
+        if (! QFileInfo::exists("/dev/null")) QSKIP("no /dev/null on this system");
+        FileHelper helper;
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("refused non-regular file"));
+        QVERIFY(helper.readFile("/dev/null").isEmpty());
+    }
+
+    void readFile_fileUrlPrefix_readsTheSameBytes() {
+        // requestReadFile strips file:// before opening; the sync path has to
+        // agree or a QML caller passing a raw QUrl gets an empty result.
+        const QString p = m_tmp.filePath("urlform.txt");
+        QVERIFY(writeBytes(p, 5, 'u'));
+        FileHelper helper;
+        helper.addReadRoot(m_tmp.path());
+        QCOMPARE(helper.readFile("file://" + p), QByteArray(5, 'u'));
     }
 
     void addReadRoot_nonexistentPath_warnsAndNoOps() {
@@ -496,6 +659,56 @@ private slots:
         const auto args = spy.takeFirst();
         QCOMPARE(args.at(2).toBool(), false);
         QVERIFY(args.at(1).toByteArray().isEmpty());
+    }
+
+    void requestReadFile_fifo_refusedInsteadOfParkingAWorker() {
+        // A worker blocked in open(2) never returns, and ~FileHelper joins the
+        // pool with no timeout — one fifo would deadlock plasmashell teardown.
+        const QString fifo = m_tmp.filePath("async.fifo");
+        if (::mkfifo(QFile::encodeName(fifo).constData(), 0600) != 0)
+            QSKIP("cannot create a fifo in the test temp dir");
+
+        FileHelper helper;
+        helper.addReadRoot(m_tmp.path());
+        QSignalSpy spy(&helper, &FileHelper::fileReadReady);
+        helper.requestReadFile(fifo);
+
+        QElapsedTimer t;
+        t.start();
+        while (spy.count() == 0 && t.elapsed() < 3000) {
+            QCoreApplication::processEvents();
+            QThread::msleep(5);
+        }
+        const bool answered = spy.count() == 1;
+
+        // Same unwedge as the sync case, and mandatory here: leaving the
+        // worker parked would hang the destructor at the end of this function.
+        QElapsedTimer unwedge;
+        unwedge.start();
+        while (spy.count() == 0 && unwedge.elapsed() < 5000) {
+            const int w = ::open(QFile::encodeName(fifo).constData(), O_WRONLY | O_NONBLOCK);
+            if (w >= 0) ::close(w);
+            QCoreApplication::processEvents();
+            QThread::msleep(5);
+        }
+
+        QVERIFY2(answered, "requestReadFile must refuse a fifo, not park a pool thread");
+        const auto fifoArgs = spy.takeFirst();
+        QCOMPARE(fifoArgs.at(2).toBool(), false);
+        QVERIFY(fifoArgs.at(1).toByteArray().isEmpty());
+    }
+
+    void requestReadFile_characterDevice_refused() {
+        // Permissive mode (no roots): st_size is 0 for a char device, so the
+        // size cap is a no-op and only the type check refuses it.
+        if (! QFileInfo::exists("/dev/null")) QSKIP("no /dev/null on this system");
+        FileHelper helper;
+        QSignalSpy spy(&helper, &FileHelper::fileReadReady);
+        helper.requestReadFile("/dev/null");
+        QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 5000);
+        const auto devArgs = spy.takeFirst();
+        QCOMPARE(devArgs.at(2).toBool(), false);
+        QVERIFY(devArgs.at(1).toByteArray().isEmpty());
     }
 
     void requestReadFile_concurrentBatch() {
@@ -1132,6 +1345,40 @@ private slots:
         QVERIFY(result.contains("<body>Hello</body>"));
     }
 
+    void patchedHtml_fifo_refusedInsteadOfBlocking() {
+        // A web wallpaper's index.html is whatever the wallpaper directory
+        // holds; patchedHtml runs on the GUI thread, so a fifo there would
+        // hang the compositor in open(2).
+        const QString fifo = m_tmp.filePath("page.fifo");
+        if (::mkfifo(QFile::encodeName(fifo).constData(), 0600) != 0)
+            QSKIP("cannot create a fifo in the test temp dir");
+
+        FileHelper        helper;
+        std::atomic<bool> done { false };
+        QString           result;
+        std::thread       reader([&] {
+            result = helper.patchedHtml(fifo);
+            done.store(true);
+        });
+
+        QElapsedTimer t;
+        t.start();
+        while (! done.load() && t.elapsed() < 3000) QThread::msleep(5);
+        const bool returned = done.load();
+
+        QElapsedTimer unwedge;
+        unwedge.start();
+        while (! done.load() && unwedge.elapsed() < 5000) {
+            const int w = ::open(QFile::encodeName(fifo).constData(), O_WRONLY | O_NONBLOCK);
+            if (w >= 0) ::close(w);
+            QThread::msleep(5);
+        }
+        reader.join();
+
+        QVERIFY2(returned, "patchedHtml must refuse a fifo, not block in open(2)");
+        QVERIFY(result.isEmpty());
+    }
+
     void patchedHtml_nonExistentFile_returnsEmpty() {
         FileHelper helper;
         QString    result = helper.patchedHtml("/tmp/wekde_nonexistent.html");
@@ -1517,6 +1764,75 @@ private slots:
         const bool ok =
             fh.atomicWriteJson("/nonexistent-test-dir-xyz/data.json", QJsonDocument(obj));
         QCOMPARE(ok, false);
+    }
+
+    void atomicWriteJson_targetIsNeverAbsentWhileBeingReplaced() {
+        // The point of the temp-file dance is that a concurrent reader always
+        // sees either the old file or the new one. Unlinking the target before
+        // the rename opens a window where it sees neither.
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        const QString path = d.path() + "/data.json";
+        QJsonObject   seed;
+        seed["v"] = 0;
+        QVERIFY(FileHelper::atomicWriteJson(path, QJsonDocument(seed)));
+
+        const QByteArray  native = QFile::encodeName(path);
+        std::atomic<bool> stop { false };
+        std::atomic<int>  misses { 0 };
+        std::atomic<int>  polls { 0 };
+        std::thread       watcher([&] {
+            while (! stop.load(std::memory_order_relaxed)) {
+                if (::access(native.constData(), F_OK) != 0)
+                    misses.fetch_add(1, std::memory_order_relaxed);
+                polls.fetch_add(1, std::memory_order_relaxed);
+            }
+        });
+
+        bool allWrote = true;
+        for (int i = 1; i <= 400 && allWrote; ++i) {
+            QJsonObject o;
+            o["v"]   = i;
+            allWrote = FileHelper::atomicWriteJson(path, QJsonDocument(o));
+        }
+        stop.store(true);
+        watcher.join();
+
+        QVERIFY(allWrote);
+        QVERIFY2(polls.load() > 0, "watcher thread never polled");
+        QCOMPARE(misses.load(), 0);
+    }
+
+    void atomicWriteJson_fsyncThatCannotSync_stillCountsAsWritten() {
+        // Some mounts (FUSE ones especially) answer fsync(2) with EINVAL
+        // because there is nothing for them to push. Nothing was lost, so the
+        // write has to stand. A fifo is the cheapest local stand-in — the
+        // kernel hands back the same EINVAL for a pipe fd.
+        int probe[2];
+        QVERIFY(::pipe(probe) == 0);
+        errno                      = 0;
+        const bool pipeGivesEinval = ::fsync(probe[1]) != 0 && errno == EINVAL;
+        ::close(probe[0]);
+        ::close(probe[1]);
+        if (! pipeGivesEinval) QSKIP("fsync on a pipe does not fail with EINVAL here");
+
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        const QString path = d.path() + "/fifo-target.json";
+        const QString tmp  = path + ".tmp";
+        if (::mkfifo(QFile::encodeName(tmp).constData(), 0600) != 0)
+            QSKIP("cannot create a fifo in the test temp dir");
+        // Something has to hold the read end open or the writer's open(2)
+        // parks; the pipe buffer swallows a document this small on its own, so
+        // the reader never has to drain it.
+        const int rd = ::open(QFile::encodeName(tmp).constData(), O_RDONLY | O_NONBLOCK);
+        QVERIFY(rd >= 0);
+
+        QJsonObject obj;
+        obj["k"]      = "v";
+        const bool ok = FileHelper::atomicWriteJson(path, QJsonDocument(obj));
+        ::close(rd);
+        QVERIFY2(ok, "an fsync answering EINVAL must not be reported as a failed write");
     }
 
     // ── clearCacheDir — safety belt + recursive removal contract ───────────

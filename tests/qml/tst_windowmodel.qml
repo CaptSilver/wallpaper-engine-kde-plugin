@@ -304,22 +304,60 @@ TestCase {
         return null;
     }
 
-    function test_activityChanged_propagatesToVirtualDesktop() {
-        // Production handler: ActivityInfo.onCurrentActivityChanged calls
-        // virtualDesktopInfo.onCurrentDesktopChanged() which, when the
-        // current activity matches wModel.activity, writes
-        // wModel.desktop = virtualDesktopInfo.currentDesktop. Drive the VDI
-        // stub to a non-zero desktop so the propagation is observable.
+    function test_activityChanged_rereadsCurrentDesktop() {
+        // TasksModel filters by wModel.desktop and nothing else re-reads it
+        // when the activity changes, so the switch has to pull the current
+        // desktop across itself.
         const ai = _findActivityInfo();
         const vdi = _findVirtualDesktopInfo();
         verify(ai !== null);
         verify(vdi !== null);
-        // Align activity so the propagation gate passes (both default to "").
-        wm.activity = ai.currentActivity;
         vdi.currentDesktop = 7;
-        ai.currentActivityChanged();
+        wm.desktop = 0;   // desync, so the re-read is observable
+        ai.currentActivity = "activity-Z";
         compare(wm.desktop, 7,
-                "activityChanged must propagate VDI.currentDesktop to wModel.desktop");
+                "an activity switch must re-read VirtualDesktopInfo.currentDesktop");
+    }
+
+    function test_activitySwitch_tracksActivityAndRedecides() {
+        // The window lives only on the activity being switched TO. Nothing in
+        // TasksModel moves on an activity switch (filterByActivity is off), so
+        // WindowModel has to notice the switch and re-run the decision itself
+        // — otherwise the wallpaper keeps rendering behind a maximized window.
+        const ai = _findActivityInfo();
+        verify(ai !== null);
+        const tt = _findTriggerTimer();
+        verify(tt !== null);
+        wm.modePlay = Plugin.Common.PauseMode.FocusOrMax;
+        _setWindows([{
+            isWindow: true, isActive: false, isMaximized: true, isFullScreen: false,
+            isMinimized: false, activities: ["activity-B"], appName: "onB",
+        }]);
+        ai.currentActivity = "activity-A";
+        tt.stop();
+
+        ai.currentActivity = "activity-B";
+
+        compare(wm.activity, "activity-B",
+                "activity must follow ActivityInfo, not the value read at load");
+        verify(tt.running, "an activity switch must re-run the pause decision");
+        tt.triggered();
+        compare(wm.reqPause, true,
+                "a maximized window on the newly-current activity must pause");
+    }
+
+    function test_desktopKeepsTrackingAfterActivitySwitch() {
+        // Desktop writes used to be gated on the activity captured at load, so
+        // every desktop change after a switch was dropped and TasksModel went
+        // on filtering by the wrong virtual desktop.
+        const ai = _findActivityInfo();
+        const vdi = _findVirtualDesktopInfo();
+        verify(ai !== null);
+        verify(vdi !== null);
+        ai.currentActivity = "activity-C";
+        vdi.currentDesktop = 4;
+        compare(wm.desktop, 4,
+                "desktop changes must keep landing after an activity switch");
     }
 
     // ── tasksModel signal handlers ───────────────────────────────────────────
@@ -350,11 +388,5 @@ TestCase {
         verify(tt.running,
                "onVirtualDesktopChanged must schedule the triggerTimer");
         tt.stop();
-    }
-
-    function test_tasksModelGetProperty_unknownNameReturnsUndefined() {
-        const tm = _findTasksModel();
-        verify(tm !== null);
-        compare(tm.getProperty(0, "ZZZNoSuchRole"), undefined);
     }
 }

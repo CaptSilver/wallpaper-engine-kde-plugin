@@ -47,6 +47,22 @@ TestCase {
         compare(p.playCount, n + 1);
     }
 
+    // The wallpaper settings hide per-wallpaper properties on video
+    // wallpapers because this wrapper has nowhere to put them — mpv plays a
+    // file, there is no shader uniform or script behind it. Pin the absence:
+    // whoever adds a consumer here has to go re-enable the controls too.
+    function test_userPropertiesReachNothingOnTheVideoPath() {
+        const p = _findMpvPlayer();
+        verify(p !== null);
+        compare(typeof mpv.userPropsJson, "undefined",
+                "the mpv wrapper exposes no user-property surface");
+        const properties = p.setPropertyCount;
+        const commands   = p.commandCount;
+        background.userPropsJson = '{"schemecolor":"0.13 0.21 0.34"}';
+        compare(p.setPropertyCount, properties);
+        compare(p.commandCount, commands);
+    }
+
     function test_getMouseTargetReturnsUndefined() {
         // Mpv backend explicitly does not return a mouse target.
         compare(mpv.getMouseTarget(), undefined);

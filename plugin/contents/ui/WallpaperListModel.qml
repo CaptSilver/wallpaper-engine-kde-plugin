@@ -32,6 +32,16 @@ Item {
 
     readonly property ListModel model: ListModel {
         function assignModel(index, value) {
+            // Callers derive the index from a view's currentIndex, which is
+            // -1 while nothing is selected. Report it and leave the model
+            // alone rather than throwing out of the middle of the caller and
+            // stranding whatever it still had to do (persisting favourites,
+            // in the one caller that can hit this).
+            if(index < 0 || index >= this.count) {
+                console.warn("[WEK] assignModel: index", index,
+                             "out of range for", this.count, "rows");
+                return;
+            }
             Object.assign(this.get(index), value);
             const workshopid = this.get(index).workshopid;
             new Promise((resolve, reject) => {

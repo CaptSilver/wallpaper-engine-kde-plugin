@@ -455,11 +455,24 @@ RowLayout {
 
     Control {
         id: right_content
-        Layout.preferredWidth: parent.width / 3
+        // Plasma opens the wallpaper config dialog around gridUnit*45 wide and
+        // never remembers a resize, so a third of it lands well under the
+        // preview's natural 300px. Ask for a third but never go below what the
+        // options and properties need to stay usable — the preview scales down
+        // to whatever is left instead of the pane going away.
+        readonly property int min_pane_width: Kirigami.Units.gridUnit * 11
+        Layout.minimumWidth: min_pane_width
+        Layout.preferredWidth: Math.max(parent.width / 3, min_pane_width)
         Layout.fillHeight: true
 
         readonly property int image_size: 300
         readonly property int content_margin: 16
+        // What the column inside the Flickable actually gets to draw in.
+        // The scrollbar width comes off unconditionally: reading its
+        // `visible` here would feed the column's height back into the
+        // condition that decides whether the scrollbar shows at all.
+        readonly property int content_width: Math.max(
+            0, width - content_margin * 2 - right_content_scrollbar.width)
         // Source-tracking pair: _wpmodel_src is the bare model reference
         // (cheap identity-tracked binding); wpmodel is the converted JS
         // object the ~10 right-pane consumers read. Separating the source
@@ -473,7 +486,10 @@ RowLayout {
             ? Common.wpitemFromQtObject(_wpmodel_src)
             : Common.wpitem_template
 
-        visible: Layout.preferredWidth > image_size + content_margin*2 + right_content_scrollbar.width
+        // project.json writes the type in mixed case; normalise once here so
+        // the panels below all branch on the same spelling.
+        readonly property string wallpaperType:
+            String(wpmodel?.type ?? '').toLowerCase()
 
         topPadding: 0
         leftPadding: 0
@@ -506,7 +522,10 @@ RowLayout {
                 AnimatedImage { 
                     id: animated_image; 
                     Layout.topMargin: right_content.content_margin
-                    Layout.preferredWidth: right_content.image_size
+                    // Ceiling, not a fixed size: a narrow dialog shrinks the
+                    // thumbnail rather than pushing the pane out of the layout.
+                    Layout.preferredWidth: Math.min(right_content.image_size,
+                                                    right_content.content_width)
                     Layout.preferredHeight: Layout.preferredWidth
                     Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
 
@@ -539,13 +558,12 @@ RowLayout {
                 // Label out of the scene-graph entirely for renderable types
                 // (consistent with WallpaperGrid.qml's badge Loader).
                 Loader {
+                    objectName: "unrenderableTypeWarning"
                     Layout.fillWidth: true
-                    active: right_content.wpmodel
-                         && (right_content.wpmodel.type === "application"
-                          || right_content.wpmodel.type === "preset")
+                    active: right_content.wallpaperType === "application"
+                         || right_content.wallpaperType === "preset"
                     sourceComponent: Label {
-                        text: right_content.wpmodel
-                              && right_content.wpmodel.type === "application"
+                        text: right_content.wallpaperType === "application"
                             ? i18nc("@info pre-apply warning unsupported application wallpaper", "Application wallpapers ship a native Windows .exe host and cannot be rendered by this plugin. Apply will fail.")
                             : i18nc("@info pre-apply warning unsupported preset wallpaper", "Preset wallpapers reference another workshop entry; they are not standalone and cannot be rendered by this plugin. Apply will fail.")
                         color: Kirigami.Theme.negativeTextColor
@@ -882,8 +900,16 @@ RowLayout {
                         ]
                     }
                     Repeater {
+                        objectName: "rightOptsRepeater"
                         property bool markModel: false;
-                        model: [
+                        // An option is only worth offering when something
+                        // downstream reads it. `scene_only` entries reach the
+                        // scene renderer and nothing else, so on a video or
+                        // web wallpaper they would write to <id>.json, flag
+                        // the row as changed, and leave the screen alone.
+                        model: allOpts.filter(o => !o.scene_only
+                                              || right_content.wallpaperType === 'scene')
+                        readonly property var allOpts: [
                             {
                                 mark_: markModel,
                                 text: i18nc("@label per-wallpaper display option", "Display"),
@@ -954,6 +980,7 @@ RowLayout {
                             // default. Experimental: Ultra can look too dark on
                             // some scenes (audit open); opt-in per wallpaper.
                             {
+                                scene_only: true,
                                 text: i18nc("@label per-wallpaper postprocessing option", "Postprocessing (Ultra, experimental)"),
                                 config_key: 'postprocessing',
                                 comp: right_opt_switch,
@@ -1081,7 +1108,6 @@ RowLayout {
                 OptionGroup {
                     id: user_props_group
                     Layout.fillWidth: true
-                    visible: user_props_repeater.model.length > 0
 
                     readonly property string workshopid: wallpaperPageRoot.activeWorkshopid
                     onWorkshopidChanged: {
@@ -1101,6 +1127,30 @@ RowLayout {
                         // Clear last — this triggers _loadProps → userProperties → Repeater rebuild
                         userProperties = [];
                     }
+
+                    // Whether the backend that will render this wallpaper
+                    // reads project.json properties at all. The scene
+                    // renderer binds them to shader uniforms and hands them
+                    // to its scripts, and the web view pushes them into the
+                    // page; video playback has nowhere to put them — neither
+                    // mpv nor the QtMultimedia fallback looks at them. Almost
+                    // every video wallpaper in the Workshop declares a
+                    // schemecolor, so without this the panel hands out a
+                    // colour picker that saves to <id>.json, marks the row
+                    // changed, and never reaches the screen. Types we don't
+                    // recognise keep their controls: guessing them inert
+                    // would hide working ones.
+                    readonly property bool backendReadsProps:
+                        right_content.wallpaperType !== 'video'
+
+                    // The types the editor switch below can build a control
+                    // for. Everything else in project.json — decorative text,
+                    // group headers, scene textures, key bindings — has no
+                    // editor here, and a row without a control is just a label
+                    // the user can't do anything with, so it never gets built.
+                    readonly property var editableTypes: ['bool', 'slider', 'color',
+                                                          'combo', 'textinput',
+                                                          'file', 'directory']
 
                     property var userProperties: []
                     property var propConfig: wallpaperPageRoot.activeConfig
@@ -1123,16 +1173,28 @@ RowLayout {
                                     const formatLabel = Utils.formatPropertyLabel;
                                     for (const key in props) {
                                         const prop = props[key];
-                                        // Skip non-interactive types (info text, groups)
-                                        if (!prop.type || prop.type === 'text' || prop.type === 'group')
+                                        if (!prop) continue;
+                                        // project.json spells type names in
+                                        // mixed case ("Text" and "text" both
+                                        // occur in the wild), so normalise here
+                                        // and let everything downstream compare
+                                        // against the lowercase form.
+                                        const type = String(prop.type || '').toLowerCase();
+                                        if (user_props_group.editableTypes.indexOf(type) < 0)
                                             continue;
                                         arr.push({
                                             key: key,
                                             text: formatLabel(prop.text, key),
-                                            type: prop.type,
+                                            type: type,
                                             value: prop.value,
                                             min: prop.min,
                                             max: prop.max,
+                                            // Slider geometry: `fraction` and
+                                            // `step` are how a wallpaper says
+                                            // its range is continuous.
+                                            step: prop.step,
+                                            precision: prop.precision,
+                                            fraction: prop.fraction,
                                             options: prop.options,
                                             fileType: prop.fileType  // for file picker name filters
                                         });
@@ -1166,6 +1228,60 @@ RowLayout {
 
                         // Signal main.qml to reload config
                         cfg_PerOptChanged++;
+                    }
+
+                    // Slider geometry, answered once. The Loader needs it
+                    // twice — to pick the control, then to wire its bounds —
+                    // and two copies of the same expression is exactly how the
+                    // two answers end up disagreeing.
+                    //
+                    // Wallpaper Engine marks continuous sliders with
+                    // `fraction`; when a wallpaper doesn't say, the numbers
+                    // decide. Deciding purely on whether min/max/value happen
+                    // to be written whole turns a 0..1 opacity into a
+                    // two-position spin box.
+                    function sliderShape(prop) {
+                        const asNumber = (v, fallback) => {
+                            const n = Number(v);
+                            return Number.isFinite(n) ? n : fallback;
+                        };
+                        const bounds = [asNumber(prop.min, 0), asNumber(prop.max, 100)];
+                        const from = Math.min(bounds[0], bounds[1]);
+                        const to   = Math.max(bounds[0], bounds[1]);
+                        const value = asNumber(prop.value, from);
+                        const declaredStep = asNumber(prop.step, 0);
+                        const step = declaredStep > 0
+                            ? declaredStep
+                            : (to > from ? (to - from) / 100 : 1);
+
+                        const whole = x => x % 1 === 0;
+                        const wholeUnits = { continuous: false, from: Math.floor(from),
+                                             to: Math.ceil(to), step: 1, decimals: 0 };
+                        // Either the wallpaper flags the range continuous, or
+                        // the numbers it wrote can't be walked in whole units.
+                        // A range-derived step is not evidence of anything —
+                        // span/100 comes out fractional for most whole ranges.
+                        if (prop.fraction !== true && whole(from) && whole(to)
+                            && whole(value) && (declaredStep <= 0 || whole(declaredStep)))
+                            return wholeUnits;
+
+                        // DoubleSpinBox scales its bounds by 10^decimals into
+                        // SpinBox's int properties, so a range in the tens of
+                        // millions has to give decimals up rather than wrap.
+                        let decimals = asNumber(prop.precision, -1);
+                        if (!whole(decimals) || decimals < 1 || decimals > 6)
+                            decimals = Math.min(6, Math.max(1, Math.ceil(-Math.log10(step))));
+                        const reach = Math.max(Math.abs(from), Math.abs(to), 1);
+                        while (decimals > 0 && reach * Math.pow(10, decimals) > 2147483647)
+                            decimals--;
+                        if (decimals === 0)
+                            return wholeUnits;
+
+                        // A step smaller than the displayed resolution rounds
+                        // to a stepSize of zero, which freezes the control.
+                        return { continuous: true, from: from, to: to,
+                                 step: Math.max(step, Math.pow(10, -decimals)),
+                                 decimals: decimals };
                     }
 
                     function getPropValue(key, defaultVal) {
@@ -1212,9 +1328,37 @@ RowLayout {
                         ]
                     }
 
+                    // Without this the panel collapses to nothing on a
+                    // wallpaper that ships no adjustable properties, which
+                    // reads as "this plugin doesn't have that feature".
+                    Label {
+                        objectName: "userPropsEmptyPlaceholder"
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 16
+                        Layout.rightMargin: 16
+                        Layout.topMargin: 4
+                        Layout.bottomMargin: 4
+                        visible: user_props_repeater.count === 0
+                        wrapMode: Text.WordWrap
+                        color: Kirigami.Theme.disabledTextColor
+                        // Two different silences: the wallpaper ships nothing
+                        // to tune, or it ships something its player can't use.
+                        // Saying "no properties" in the second case is the
+                        // same lie as the control was.
+                        text: (!user_props_group.backendReadsProps
+                               && user_props_group.userProperties.length > 0)
+                            ? i18nc("@info placeholder when the wallpaper's player ignores its declared properties",
+                                    "Video playback ignores this wallpaper's properties, so they aren't offered here. "
+                                    + "Scaling, speed and volume are in the Option panel above.")
+                            : i18nc("@info placeholder when a wallpaper exposes no adjustable properties",
+                                    "This wallpaper doesn't expose any adjustable properties.")
+                    }
+
                     Repeater {
                         id: user_props_repeater
-                        model: user_props_group.userProperties
+                        objectName: "userPropsRepeater"
+                        model: user_props_group.backendReadsProps
+                               ? user_props_group.userProperties : []
 
                         OptionItem {
                             text: modelData.text
@@ -1234,15 +1378,15 @@ RowLayout {
 
                             actor: Loader {
                                 sourceComponent: {
-                                    switch(modelData.type) {
+                                    // Normalised at the parse, but the switch
+                                    // does it too so a model built any other
+                                    // way still lands on a real control.
+                                    switch(String(modelData.type || '').toLowerCase()) {
                                         case 'bool':
                                             return right_opt_switch;
                                         case 'slider':
-                                            // Use int spinbox if min/max are integers
-                                            const hasDecimals = (modelData.min && modelData.min % 1 !== 0) ||
-                                                               (modelData.max && modelData.max % 1 !== 0) ||
-                                                               (modelData.value && modelData.value % 1 !== 0);
-                                            return hasDecimals ? right_opt_dspinbox : right_opt_spinbox;
+                                            return user_props_group.sliderShape(modelData).continuous
+                                                ? right_opt_dspinbox : right_opt_spinbox;
                                         case 'color':
                                             return user_prop_color;
                                         case 'combo':
@@ -1262,26 +1406,33 @@ RowLayout {
                                     const savedVal = user_props_group.getPropValue(modelData.key, null);
                                     const defVal = savedVal !== null ? savedVal : modelData.value;
 
-                                    switch(modelData.type) {
+                                    switch(String(modelData.type || '').toLowerCase()) {
                                         case 'bool':
                                             this.item.def_val = Boolean(defVal);
                                             break;
-                                        case 'slider':
-                                            const hasDecimals = (modelData.min && modelData.min % 1 !== 0) ||
-                                                               (modelData.max && modelData.max % 1 !== 0) ||
-                                                               (modelData.value && modelData.value % 1 !== 0);
-                                            if (hasDecimals) {
-                                                this.item.dFrom = modelData.min || 0;
-                                                this.item.dTo = modelData.max || 100;
-                                                this.item.dStepSize = (modelData.max - modelData.min) / 100 || 0.01;
-                                                this.item.def_val = defVal || 0;
+                                        case 'slider': {
+                                            const shape = user_props_group.sliderShape(modelData);
+                                            const saved = Number(defVal);
+                                            const start = Number.isFinite(saved) ? saved : shape.from;
+                                            const inRange = Math.min(shape.to,
+                                                                     Math.max(shape.from, start));
+                                            if (shape.continuous) {
+                                                // decimals drives the int scale
+                                                // the other three are expressed
+                                                // in, so it goes first.
+                                                this.item.decimals  = shape.decimals;
+                                                this.item.dFrom     = shape.from;
+                                                this.item.dTo       = shape.to;
+                                                this.item.dStepSize = shape.step;
+                                                this.item.def_val   = inRange;
                                             } else {
-                                                this.item.from = Math.floor(modelData.min || 0);
-                                                this.item.to = Math.floor(modelData.max || 100);
-                                                this.item.stepSize = 1;
-                                                this.item.def_val = Math.floor(defVal || 0);
+                                                this.item.from     = shape.from;
+                                                this.item.to       = shape.to;
+                                                this.item.stepSize = shape.step;
+                                                this.item.def_val  = Math.round(inRange);
                                             }
                                             break;
+                                        }
                                         case 'color':
                                             // Color can be string "0.1 0.2 0.3" or object {r,g,b}
                                             let colorVal = "#ffffff";

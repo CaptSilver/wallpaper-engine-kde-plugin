@@ -20,6 +20,16 @@ Flickable {
     Layout.fillWidth: true
     ScrollBar.vertical: ScrollBar { id: scrollbar }
 
+    // Absolute local path -> file:// URL. Pasting the path straight after
+    // "file://" leaves '#' and '?' for the URL parser to read as a fragment
+    // or query marker, which silently cuts the name short. '%' goes first so
+    // a literal percent in the path can't swallow the escapes added after it.
+    function localFileUrl(path) {
+        return "file://" + path.replace(/%/g, "%25")
+                               .replace(/#/g, "%23")
+                               .replace(/\?/g, "%3F");
+    }
+
     // Diagnostic-bundle helpers.  They go in `resources` rather than the
     // Flickable's default property: Flickable reparents Items into its
     // contentItem and drops non-Items into a bare QObject child list that
@@ -202,7 +212,7 @@ Flickable {
                         diagnosticStatus.text = "";
                         // Pre-select the bundle's own filename so the picker
                         // opens on it and the user only has to choose a folder.
-                        saveBundleDialog.selectedFile = "file://" + diagnosticRow.bundlePath;
+                        saveBundleDialog.selectedFile = localFileUrl(diagnosticRow.bundlePath);
                         saveBundleDialog.open();
                     } else {
                         console.warn("[wek-diag] Bundle creation failed:",

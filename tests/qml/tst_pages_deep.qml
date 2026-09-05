@@ -119,13 +119,37 @@ TestCase {
     // Select a wallpaper the way the grid does: park `cfg` on the FileHelper
     // stub so the page-root read answers with it, then flip wpmodel and let
     // the promise settle. Callers must restore _wallpaperConfigReturns.
-    function _selectWallpaper(rc, fh, id, cfg) {
+    // `type` is the project.json wallpaper type ("scene" / "video" / "web");
+    // the right pane branches on it, so cases that care pass it explicitly.
+    function _selectWallpaper(rc, fh, id, cfg, type) {
         fh._wallpaperConfigReturns = cfg;
         const before = fh.readWallpaperConfigCount;
-        rc.wpmodel = { workshopid: id, path: "/x", title: "", type: "",
+        rc.wpmodel = { workshopid: id, path: "/x", title: "",
+                       type: type === undefined ? "" : type,
                        tags: [], playlists: [], favor: false, contentrating: "" };
         asyncUtil.awaitBinding(this, fh, "readWallpaperConfigCount", before + 1);
         asyncUtil.pumpMicrotasks(this);
+    }
+
+    // Breadth-first objectName lookup inside one subtree. The initTestCase
+    // index is built once and misses anything a Repeater created later, so
+    // panel internals get looked up live.
+    function _findInSubtree(root, name) {
+        const seen = new Set([root]);
+        const queue = [root];
+        while (queue.length > 0) {
+            const n = queue.shift();
+            if (n.objectName === name) return n;
+            const buckets = [n.children || [], n.data || []];
+            for (const b of buckets) {
+                if (!b || typeof b.length === "undefined") continue;
+                for (let i = 0; i < b.length; i++) {
+                    const c = b[i];
+                    if (c && !seen.has(c)) { seen.add(c); queue.push(c); }
+                }
+            }
+        }
+        return null;
     }
 
     function _findRightContent() {
@@ -400,6 +424,78 @@ TestCase {
                    "debugLogs ON must produce at least one debug emission");
         } finally {
             ro.debugLogs = false;
+        }
+    }
+
+    // Application and preset entries can't be rendered at all, and the right
+    // pane warns before the user clicks Apply. Every panel in the pane reads
+    // the same normalised type, so a wallpaper that spells it "Application"
+    // still gets the warning.
+    function test_rightPane_warnsBeforeApplyOnUnrenderableTypes() {
+        const rc = _findRightContent();
+        if (!rc) return;
+        const fh = _findFileHelper();
+        verify(fh !== null);
+        const warning = _findInSubtree(rc, "unrenderableTypeWarning");
+        verify(warning !== null, "pre-apply warning Loader unreachable");
+
+        const savedReturns = fh._wallpaperConfigReturns;
+        try {
+            _selectWallpaper(rc, fh, "wek_type_scene", {}, "scene");
+            verify(!warning.active, "a renderable type must not be warned about");
+
+            _selectWallpaper(rc, fh, "wek_type_app", {}, "Application");
+            verify(warning.active,
+                   "an application wallpaper must be flagged before Apply, " +
+                   "whatever case its project.json spells the type in");
+
+            _selectWallpaper(rc, fh, "wek_type_preset", {}, "preset");
+            verify(warning.active, "a preset wallpaper must be flagged before Apply");
+        } finally {
+            fh._wallpaperConfigReturns = savedReturns;
+            _selectWallpaper(rc, fh, "wek_type_restore", {}, "scene");
+        }
+    }
+
+    // "Postprocessing (Ultra)" is a scene-renderer switch: main.qml routes it
+    // to SceneViewer.postprocessingOverride and nothing else reads it. Left in
+    // the list for a video wallpaper it writes postprocessing into <id>.json,
+    // flags the row as changed, and changes nothing on screen.
+    function test_rightOpts_postprocessingIsOfferedOnlyWhereItApplies() {
+        const ro = _findRightOpts();
+        if (!ro) return;
+        const rc = _findRightContent();
+        verify(rc !== null);
+        const fh = _findFileHelper();
+        verify(fh !== null);
+        const repeater = _findInSubtree(ro, "rightOptsRepeater");
+        verify(repeater !== null, "per-wallpaper option Repeater unreachable");
+
+        function offeredKeys() {
+            const out = [];
+            const m = repeater.model;
+            for (let i = 0; i < m.length; i++) out.push(m[i].config_key);
+            return out;
+        }
+
+        const savedReturns = fh._wallpaperConfigReturns;
+        try {
+            _selectWallpaper(rc, fh, "wek_pp_scene", {}, "scene");
+            verify(offeredKeys().indexOf("postprocessing") >= 0,
+                   "the scene renderer reads postprocessing, so a scene " +
+                   "wallpaper must keep the switch");
+
+            _selectWallpaper(rc, fh, "wek_pp_video", {}, "video");
+            compare(offeredKeys().indexOf("postprocessing"), -1,
+                    "nothing on the video path reads postprocessing, so the " +
+                    "switch must not be offered there");
+            verify(offeredKeys().indexOf("volume") >= 0,
+                   "the options video playback does honour must stay");
+            verify(offeredKeys().indexOf("display_mode") >= 0,
+                   "the options video playback does honour must stay");
+        } finally {
+            fh._wallpaperConfigReturns = savedReturns;
+            _selectWallpaper(rc, fh, "wek_pp_restore", {}, "scene");
         }
     }
 
@@ -678,6 +774,60 @@ TestCase {
         verify(seen.has("image"));
     }
 
+    // Video wallpapers ship a scheme colour in project.json, and nothing on
+    // the video path reads it — the mpv backend and the QtMultimedia
+    // fallback both ignore project.json properties, and there is no shader
+    // uniform or script behind a video to bind one to. Offering the control
+    // anyway writes the value to <id>.json, flags the row as changed, and
+    // leaves the wallpaper exactly as it was.
+    function test_userProps_videoWallpaperBuildsNoControlsAndSaysWhy() {
+        const upg = _findUserPropsGroup();
+        if (!upg) return;
+        const rc = _findRightContent();
+        verify(rc !== null);
+        const fh = _findFileHelper();
+        verify(fh !== null);
+        const repeater = _findInSubtree(upg, "userPropsRepeater");
+        verify(repeater !== null, "user-property Repeater unreachable");
+        const placeholder = _findInSubtree(upg, "userPropsEmptyPlaceholder");
+        verify(placeholder !== null, "empty-panel placeholder unreachable");
+
+        const declared = [{ key: "schemecolor", text: "Scheme Color",
+                            type: "color", value: "0.13 0.21 0.34" }];
+        const savedReturns = fh._wallpaperConfigReturns;
+        try {
+            _selectWallpaper(rc, fh, "wek_props_scene", {}, "scene");
+            upg.userProperties = [];
+            const noPropsText = placeholder.text;
+            upg.userProperties = declared;
+            compare(repeater.count, 1,
+                    "the scene renderer binds properties to shader uniforms, " +
+                    "so a scene wallpaper's declared property must get a control");
+
+            _selectWallpaper(rc, fh, "wek_props_video", {}, "video");
+            upg.userProperties = declared;
+            compare(repeater.count, 0,
+                    "video playback has no consumer for a declared property, " +
+                    "so the panel must not offer a control for it");
+            // Qt.Test's TestCase item is never itself visible, so effective
+            // visibility can't be read here. The placeholder shows whenever
+            // the Repeater is empty — pinned by the count above — so what's
+            // left to check is that it explains itself instead of leaving a
+            // blank panel.
+            verify(placeholder.text.length > 0,
+                   "suppressing the control must leave an explanation behind");
+            verify(placeholder.text !== noPropsText,
+                   "a wallpaper whose declared properties cannot be applied " +
+                   "needs that reason, not the generic no-properties line");
+        } finally {
+            fh._wallpaperConfigReturns = savedReturns;
+            // Later cases build controls off userProperties; leave the pane
+            // on a type whose backend reads them.
+            _selectWallpaper(rc, fh, "wek_props_restore", {}, "scene");
+            upg.userProperties = [];
+        }
+    }
+
     function test_userPropsGroup_propChanges_isChangedFlagFires() {
         const upg = _findUserPropsGroup();
         if (!upg) return;
@@ -689,6 +839,197 @@ TestCase {
         // the OptionItem `is_changed` binding depends on this signal.
         compare(propChangesSpy.count, 2);
         compare(Object.keys(upg.propChanges).length, 0);
+    }
+
+    // Every row the user-props Repeater builds must end up with a loaded
+    // editor. A Loader whose sourceComponent resolved to null leaves the
+    // OptionItem showing a label with nothing to click.
+    function _userPropActors(upg) {
+        const out = [];
+        const seen = new Set([upg]);
+        const queue = [upg];
+        while (queue.length > 0) {
+            const n = queue.shift();
+            if (n !== upg && typeof n.sourceComponent !== "undefined" && n.item &&
+                typeof n.item.def_val !== "undefined" &&
+                typeof n.item.finish === "function")
+                out.push(n);
+            const buckets = [n.children || [], n.data || []];
+            for (const b of buckets) {
+                if (!b || typeof b.length === "undefined") continue;
+                for (let i = 0; i < b.length; i++) {
+                    const c = b[i];
+                    if (c && !seen.has(c)) { seen.add(c); queue.push(c); }
+                }
+            }
+        }
+        return out;
+    }
+
+    // ── WallpaperPage: user-property slider geometry ─────────────────────────
+    // Wallpaper Engine writes a 0..1 opacity as min 0, max 1, value 1 and
+    // flags it fractional. Deciding integer-vs-float from whether those
+    // numbers happen to be written whole turns it into a two-position spin
+    // box, which is what pushes people into editing project.json by hand.
+    function test_userPropsSlider_fractionalRangeStaysContinuous() {
+        const upg = _findUserPropsGroup();
+        if (!upg) return;
+        verify(typeof upg.sliderShape === "function",
+               "slider geometry must come from one shared helper — the " +
+               "component choice and the value wiring cannot disagree");
+        const s = upg.sliderShape({ min: 0, max: 1, value: 1,
+                                    step: 0.1, precision: 2, fraction: true });
+        verify(s.continuous, "a fractional 0..1 range must not become integer");
+        compare(s.from, 0);
+        compare(s.to, 1);
+        verify((s.to - s.from) / s.step >= 10,
+               "0..1 opacity offers only " + ((s.to - s.from) / s.step + 1) +
+               " positions");
+    }
+
+    // A plain count slider has no fractional hint anywhere, and whole units
+    // are the right granularity for it.
+    function test_userPropsSlider_wholeUnitRangeStaysInteger() {
+        const upg = _findUserPropsGroup();
+        if (!upg) return;
+        verify(typeof upg.sliderShape === "function", "sliderShape helper missing");
+        const s = upg.sliderShape({ min: 0, max: 100, value: 50 });
+        verify(!s.continuous);
+        compare(s.step, 1);
+        compare(s.from, 0);
+        compare(s.to, 100);
+    }
+
+    // A span that doesn't divide into 100 whole steps is not evidence of
+    // anything: 0..10 is a count, not a fractional range.
+    function test_userPropsSlider_shortWholeRangeStaysInteger() {
+        const upg = _findUserPropsGroup();
+        if (!upg) return;
+        verify(typeof upg.sliderShape === "function", "sliderShape helper missing");
+        const s = upg.sliderShape({ min: 0, max: 10, value: 3 });
+        verify(!s.continuous);
+        compare(s.step, 1);
+    }
+
+    // Some wallpapers clear the fractional flag and then write a fractional
+    // default anyway. The numbers win — rounding the default away loses the
+    // author's setting.
+    function test_userPropsSlider_fractionalDefaultOverridesTheFlag() {
+        const upg = _findUserPropsGroup();
+        if (!upg) return;
+        verify(typeof upg.sliderShape === "function", "sliderShape helper missing");
+        const s = upg.sliderShape({ min: 0, max: 1, value: 0.56, fraction: false });
+        verify(s.continuous);
+    }
+
+    // A wallpaper that writes whole bounds and doesn't flag the range
+    // fractional gets the two-stop switch it asked for; the span alone is
+    // not a reason to widen it.
+    function test_userPropsSlider_declaredNonFractionalStaysTwoStop() {
+        const upg = _findUserPropsGroup();
+        if (!upg) return;
+        verify(typeof upg.sliderShape === "function", "sliderShape helper missing");
+        const s = upg.sliderShape({ min: 0, max: 1, value: 1, fraction: false });
+        verify(!s.continuous);
+        compare(s.step, 1);
+    }
+
+    // A min of 0 is a real bound, not a missing one, and negative bounds are
+    // ordinary. Reading either through JS truthiness loses it.
+    function test_userPropsSlider_zeroAndNegativeBoundsSurvive() {
+        const upg = _findUserPropsGroup();
+        if (!upg) return;
+        verify(typeof upg.sliderShape === "function", "sliderShape helper missing");
+        const s = upg.sliderShape({ min: -4000, max: 0, value: 0,
+                                    step: 0.5, fraction: true });
+        compare(s.from, -4000);
+        compare(s.to, 0);
+        verify(s.step > 0);
+    }
+
+    // DoubleSpinBox scales its bounds by 10^decimals into SpinBox's int
+    // properties, so a range in the tens of millions has to give up decimals
+    // rather than wrap the underlying int.
+    function test_userPropsSlider_wideRangeKeepsScaledBoundsInsideInt() {
+        const upg = _findUserPropsGroup();
+        if (!upg) return;
+        verify(typeof upg.sliderShape === "function", "sliderShape helper missing");
+        const s = upg.sliderShape({ min: 0, max: 100000000, value: 0,
+                                    step: 0.1, precision: 2, fraction: true });
+        verify(s.to * Math.pow(10, s.decimals) <= 2147483647,
+               "scaled upper bound overflows the spin box's int range");
+        verify(s.step > 0);
+    }
+
+    function test_userPropsSlider_fractionalRangeLoadsAFractionalEditor() {
+        const upg = _findUserPropsGroup();
+        if (!upg) return;
+        upg.userProperties = [
+            { key: "clock_alpha", text: "Alpha", type: "slider",
+              min: 0, max: 1, value: 0.4, step: 0.1, precision: 2, fraction: true },
+        ];
+        tryVerify(() => _userPropActors(upg).length === 1, 2000,
+                  "user-props Repeater never settled to a single editor");
+        const box = _userPropActors(upg)[0].item;
+        verify(typeof box.dValue === "number",
+               "fractional slider loaded a whole-number spin box");
+        compare(box.dFrom, 0);
+        compare(box.dTo, 1);
+        verify(box.stepSize > 0, "spin box cannot be stepped at all");
+        verify((box.to - box.from) / box.stepSize >= 10,
+               "fractional slider collapsed to " +
+               ((box.to - box.from) / box.stepSize + 1) + " positions");
+        fuzzyCompare(box.res_val, 0.4, 0.005,
+                     "the wallpaper's fractional default has to survive into " +
+                     "the control, not round to a bound");
+    }
+
+    // ── WallpaperPage: user-property type filtering ──────────────────────────
+    // project.json spells type names in mixed case and carries types this
+    // panel has no editor for. A row that reaches the panel has to reach it
+    // with a control attached; anything else is dropped at the parse.
+    function test_userPropsParse_dropsTypesWithNoEditorAndIgnoresCase() {
+        const upg = _findUserPropsGroup();
+        if (!upg) return;
+        const rc = _findRightContent();
+        verify(rc !== null);
+        const fh = _findFileHelper();
+        verify(fh !== null);
+
+        const savedReads = fh._readReturns;
+        try {
+            fh._readReturns = JSON.stringify({
+                general: { properties: {
+                    capSlider: { type: "Slider", value: 1, min: 0, max: 1,
+                                 step: 0.1, precision: 2, fraction: true,
+                                 text: "Cap Slider" },
+                    lowerBool: { type: "bool", value: true, text: "Lower Bool" },
+                    capText:   { type: "Text", text: "<b>donate</b>" },
+                    lowerText: { type: "text", text: "info" },
+                    capGroup:  { type: "Group", text: "Group" },
+                    sceneTex:  { type: "scenetexture", value: "", text: "bg" },
+                    shortcut:  { type: "usershortcut", value: "", text: "Play" },
+                    blankType: { type: "", value: "", text: "spacer" },
+                }},
+            });
+            rc.wpmodel = {
+                workshopid: "wek_prop_types",
+                path: "file:///steam/steamapps/common/wallpaper_engine/projects/myprojects/types/",
+                title: "Types", preview: "", file: "scene.pkg", type: "scene",
+                contentrating: "Everyone", tags: [], favor: false, playlists: [],
+            };
+            tryVerify(() => upg.userProperties.length > 0, 4000,
+                      "project.json never reached the user-properties panel");
+            compare(upg.userProperties.map(p => p.key + ":" + p.type).join(", "),
+                    "capSlider:slider, lowerBool:bool",
+                    "only rows this panel can edit may reach it, and the type " +
+                    "has to arrive normalised");
+
+            tryVerify(() => _userPropActors(upg).length === upg.userProperties.length,
+                      2000, "a property row rendered without a control");
+        } finally {
+            fh._readReturns = savedReads;
+        }
     }
 
     // ── WallpaperPage: GridView delegate methods ─────────────────────────────
@@ -1506,30 +1847,29 @@ TestCase {
                "resetUserProps must write an empty user_props block");
     }
 
-    function test_clearShaderCacheConfirm_openedAndAcceptedRunBody() {
-        // Dialog lives at SettingPage's Flickable root. The BFS walker
-        // in initTestCase walks .data so the popup should be indexed,
-        // but rebuild the index here just in case the dialog wasn't
-        // present at initTestCase time (lazy Flickable materialisation).
-        let dlg = _firstByObjectName("clearShaderCacheConfirm");
-        if (!dlg) {
-            // Walk from cfg again with a fresh BFS; SettingPage may have
-            // realised after initTestCase.
-            const seen = new Set();
-            const queue = [cfg];
-            while (queue.length > 0 && !dlg) {
-                const n = queue.shift();
-                if (!n || seen.has(n)) continue;
-                seen.add(n);
-                if (n.objectName === "clearShaderCacheConfirm") {
-                    dlg = n; break;
-                }
-                const buckets = [n.children || [], n.data || []];
-                for (const b of buckets)
-                    for (let i = 0; i < (b.length || 0); ++i)
-                        if (b[i]) queue.push(b[i]);
-            }
+    // The dialog lives at SettingPage's Flickable root. The index built in
+    // initTestCase walks .data, but the popup materialises later, so fall
+    // back to a fresh walk of the live tree.
+    function _findClearCacheDialog() {
+        const indexed = _firstByObjectName("clearShaderCacheConfirm");
+        if (indexed) return indexed;
+        const seen = new Set();
+        const queue = [cfg];
+        while (queue.length > 0) {
+            const n = queue.shift();
+            if (!n || seen.has(n)) continue;
+            seen.add(n);
+            if (n.objectName === "clearShaderCacheConfirm") return n;
+            const buckets = [n.children || [], n.data || []];
+            for (const b of buckets)
+                for (let i = 0; i < (b.length || 0); ++i)
+                    if (b[i]) queue.push(b[i]);
         }
+        return null;
+    }
+
+    function test_clearShaderCacheConfirm_openedAndAcceptedRunBody() {
+        const dlg = _findClearCacheDialog();
         if (!dlg) return;  // Overlay.overlay-anchored popup unreachable
                            // in offscreen TestCase; handler covered
                            // implicitly by manual QA.
@@ -1542,6 +1882,19 @@ TestCase {
         const beforeClears = fh.clearCacheDirCount;
         dlg.accepted();
         compare(fh.clearCacheDirCount, beforeClears + 1);
+    }
+
+    function test_clearShaderCacheConfirm_centresOnTheWindowOverlay() {
+        // The confirm dialog centres itself on the window overlay. When the
+        // page's Controls import predates the Overlay attached type the
+        // binding quietly resolves to null and the dialog lands in the
+        // top-left corner of the settings window instead.
+        const dlg = _findClearCacheDialog();
+        verify(dlg !== null, "clear-cache confirm dialog unreachable from cfg tree");
+        dlg.open();
+        verify(dlg.anchors.centerIn !== null,
+               "clear-cache confirm must resolve the window overlay to centre on");
+        dlg.close();
     }
 
     // ── Open Containing Folder action — Kirigami.Action onTriggered
@@ -1859,5 +2212,32 @@ TestCase {
         diag.nextLastError = "";
         btn.clicked();
         compare(shown.text, "", "a successful create must clear the previous failure message");
+    }
+
+    function test_aboutPageSaveBundle_prefillSurvivesPunctuationInCachePath() {
+        // The picker is pre-filled with the bundle's own location. A '#' or
+        // '?' in XDG_CACHE_HOME is URL punctuation, so pasting the path
+        // straight after "file://" makes the rest of it a fragment or query
+        // and the picker opens on a truncated name.
+        if (!cfg) return;
+        const diag = _findDiagnostics();
+        verify(diag !== null, "WekDiagnostics unreachable from cfg tree");
+        const dlg = _findSaveBundleDialog();
+        verify(dlg !== null, "save-bundle FileDialog unreachable from cfg tree");
+        const btn = _findSaveBundleButton();
+        verify(btn !== null, "'Save diagnostic bundle...' button unreachable from cfg tree");
+
+        const bundlePath = "/tmp/wek#cache?x/diag-20260101-000000.tar.gz";
+        diag.nextBundlePath = bundlePath;
+        diag.nextLastError = "";
+        btn.clicked();
+
+        const prefilled = String(dlg.selectedFile);
+        verify(prefilled.indexOf("#") < 0 && prefilled.indexOf("?") < 0,
+               "pre-filled URL must not leave '#'/'?' for the URL parser: " + prefilled);
+        compare(decodeURIComponent(prefilled), "file://" + bundlePath,
+                "the pre-filled URL must decode back to the whole bundle path");
+
+        diag.nextBundlePath = "/tmp/wekde-stub-diag.tar.gz";
     }
 }

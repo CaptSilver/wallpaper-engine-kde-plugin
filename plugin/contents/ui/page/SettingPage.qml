@@ -1,5 +1,5 @@
 import QtQuick 2.6
-import QtQuick.Controls 2.2
+import QtQuick.Controls 2.3
 import QtQuick.Controls.Material 2.5 as QSMat
 import QtQuick.Layouts 1.5
 
@@ -640,34 +640,39 @@ Flickable {
         }
     }
 
-    // Dialog lives at Flickable root — OptionGroup's `content` is a
-    // QQuickItem-only list and Dialog (a Popup) can't sit inside it.
-    Dialog {
-        id: clearShaderCacheConfirm
-        objectName: "clearShaderCacheConfirm"
-        title: i18nc("@title:window clear shader cache confirmation", "Clear shader cache")
-        modal: true
-        implicitWidth: Kirigami.Units.gridUnit * 22
-        anchors.centerIn: Overlay.overlay
-        contentItem: Label {
-            text: i18nc("@info confirmation message for clearing shader cache", "Delete all cached compiled shaders? They will be regenerated on the next wallpaper load (first frame may be slower).")
-            wrapMode: Text.WordWrap
+    // The dialog can't sit inside OptionGroup — that `content` list is
+    // QQuickItem-only and a Dialog is a Popup — and it can't go in the
+    // Flickable's default property either: Flickable parks non-Items in a
+    // plain QObject child list that nothing can walk back out of. `resources`
+    // keeps it a first-class child of this page.
+    resources: [
+        Dialog {
+            id: clearShaderCacheConfirm
+            objectName: "clearShaderCacheConfirm"
+            title: i18nc("@title:window clear shader cache confirmation", "Clear shader cache")
+            modal: true
+            implicitWidth: Kirigami.Units.gridUnit * 22
+            anchors.centerIn: Overlay.overlay
+            contentItem: Label {
+                text: i18nc("@info confirmation message for clearing shader cache", "Delete all cached compiled shaders? They will be regenerated on the next wallpaper load (first frame may be slower).")
+                wrapMode: Text.WordWrap
+            }
+            standardButtons: Dialog.Yes | Dialog.No
+            onOpened: {
+                const noBtn = standardButton(Dialog.No);
+                if (noBtn) noBtn.forceActiveFocus();
+            }
+            onAccepted: {
+                if (!plugin_info.cache_path || !pyext) return;
+                pyext.clear_cache(Common.urlNative(plugin_info.cache_path))
+                    .then(ok => {
+                        if (ok && typeof shaderCacheItem !== "undefined")
+                            shaderCacheItem._cacheRev += 1;
+                        else if (!ok)
+                            console.warn("Shader cache clear failed — see plasmashell journal");
+                    });
+            }
         }
-        standardButtons: Dialog.Yes | Dialog.No
-        onOpened: {
-            const noBtn = standardButton(Dialog.No);
-            if (noBtn) noBtn.forceActiveFocus();
-        }
-        onAccepted: {
-            if (!plugin_info.cache_path || !pyext) return;
-            pyext.clear_cache(Common.urlNative(plugin_info.cache_path))
-                .then(ok => {
-                    if (ok && typeof shaderCacheItem !== "undefined")
-                        shaderCacheItem._cacheRev += 1;
-                    else if (!ok)
-                        console.warn("Shader cache clear failed — see plasmashell journal");
-                });
-        }
-    }
+    ]
 }
 

@@ -98,7 +98,16 @@ Item {
 
     TaskManager.ActivityInfo { 
         id: activityInfo 
-        onCurrentActivityChanged: virtualDesktopInfo.onCurrentDesktopChanged();
+        // An activity switch moves no TasksModel row and emits no model
+        // signal (filterByActivity is off — see tasksModel below), so nothing
+        // else notices it. Re-read both inputs of the pause decision and
+        // re-run it here, or the wallpaper keeps deciding against the
+        // activity that happened to be current when it loaded.
+        onCurrentActivityChanged: {
+            wModel.activity = this.currentActivity;
+            wModel.desktop = virtualDesktopInfo.currentDesktop;
+            updateWindowsinfo();
+        }
         Component.onCompleted: {
             wModel.activity = this.currentActivity;
         }
@@ -107,8 +116,7 @@ Item {
     TaskManager.VirtualDesktopInfo { 
         id: virtualDesktopInfo 
         onCurrentDesktopChanged: {
-            if(activity === activityInfo.currentActivity)
-                wModel.desktop = this.currentDesktop;
+            wModel.desktop = this.currentDesktop;
         }
         Component.onCompleted: {
             wModel.desktop = this.currentDesktop;
@@ -138,10 +146,6 @@ Item {
             if(wModel.logging)
                 console.error(this.virtualDesktop, ':', this.screenGeometry)
             updateWindowsinfo();
-        }
-        function getProperty(idx, property) {
-            if(TaskManager.AbstractTasksModel[property] === undefined) return undefined;
-            return this.data(idx, TaskManager.AbstractTasksModel[property]);
         }
     }
 

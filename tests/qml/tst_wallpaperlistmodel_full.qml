@@ -242,6 +242,25 @@ TestCase {
         compare(row.favor, true,  "assignModel must update favor in ListModel row");
     }
 
+    function test_assignModel_outOfRangeIndexIsReportedNotThrown() {
+        // WallpaperGrid.toggleFavor falls back to the view's currentIndex,
+        // which is -1 while nothing is selected. ListModel.get(-1) is
+        // undefined, so merging into it threw a TypeError out of the middle
+        // of the caller and stranded the write that persists favourites.
+        wpModel.model.append({ workshopid: "6666", title: "Untouched", favor: false });
+        const idx = wpModel.model.count - 1;
+        for (const bad of [-1, wpModel.model.count]) {
+            ignoreWarning(new RegExp("assignModel: index " + bad + " out of range"));
+            let threw = null;
+            try { wpModel.model.assignModel(bad, { favor: true, title: "Clobbered" }); }
+            catch (e) { threw = e; }
+            compare(threw, null, "index " + bad + " must not throw, got: " + threw);
+        }
+        const row = wpModel.model.get(idx);
+        compare(row.title, "Untouched", "an out-of-range index must leave every row alone");
+        compare(row.favor, false, "an out-of-range index must leave every row alone");
+    }
+
     // ── refresh() — fire when enabled=true ──────────────────────────────────
     function test_refresh_runsBodyWhenEnabled() {
         // Disabled-path early-returns Promise.resolve(null) without setting

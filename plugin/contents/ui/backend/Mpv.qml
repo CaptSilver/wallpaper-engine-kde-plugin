@@ -9,6 +9,11 @@ Item{
     readonly property int displayMode: background.displayMode
     readonly property real videoRate: background.speed
     readonly property bool stats: background.mpvStats
+    // No userPropsJson binding on purpose. A project.json property binds to a
+    // shader uniform or a scene script, and a video has neither — mpv just
+    // plays the file. The wallpaper settings hide those controls for video
+    // wallpapers to match; wiring one here means going back and re-enabling
+    // them.
     property var volumeFade: Common.createVolumeFade(
         videoItem, 
         Qt.binding(function() { return background.mute ? 0 : background.volume; }),

@@ -496,6 +496,18 @@ for t in "${TARGETS[@]}"; do
                mutator: (.mutatorName // .mutator // "unknown")}
             | select(.file | test($moc) | not) ]
         ' "$rpt" > "$target_dir/survivors.json"
+        # The same mutant seen by a target that DOES cover it.  Timeout counts:
+        # a mutant that hangs the suite has been detected just as surely as one
+        # that fails an assertion.
+        jq --arg leaf "$repo_leaf" --arg moc "$MOC_IGNORE" '
+          [ .files | to_entries[] as $e
+            | $e.value.mutants[]
+            | select((.status // "") | ascii_downcase | . == "killed" or . == "timeout")
+            | {file: ($e.key | sub("^.*/"+$leaf+"/"; "")),
+               line: (.location.start.line // 0),
+               mutator: (.mutatorName // .mutator // "unknown")}
+            | select(.file | test($moc) | not) ]
+        ' "$rpt" > "$target_dir/killed.json"
     else
         # IDE reporter: prints "path/file.cpp:line:col: <mutator> Survived" lines.
         out="$target_dir/ide.log"
@@ -547,9 +559,24 @@ fi
 
 # ── Aggregate + dedupe survivors across targets ───────────────────────────────
 # Shape: { survivors: [ {file, line, mutator}, ... ] }
-jq -s '
-  [ .[][] ]
+# A mutant is dead if ANY target killed it.  Several binaries link the same
+# translation unit -- a test for one class pulls in a helper .cpp for a single
+# function -- so the same mutant is offered to suites that never execute that
+# line.  Unioning the per-target survivor lists therefore reports mutants the
+# owning suite kills, which reads as a regression and is really a binary being
+# asked about code it does not test.  Subtract what was killed anywhere.
+KILLED_JSON="$OUT_DIR/killed-any.json"
+if compgen -G "$OUT_DIR/*/killed.json" >/dev/null; then
+    jq -s '[ .[][] ] | unique_by({file, line, mutator})' \
+       "$OUT_DIR"/*/killed.json > "$KILLED_JSON"
+else
+    echo '[]' > "$KILLED_JSON"
+fi
+jq -s --slurpfile killed "$KILLED_JSON" '
+  ($killed[0] | map({key: "\(.file)|\(.line)|\(.mutator)", value: true}) | from_entries) as $dead
+  | [ .[][] ]
   | unique_by({file, line, mutator})
+  | map(select($dead["\(.file)|\(.line)|\(.mutator)"] | not))
   | sort_by([.file, .line, .mutator])
   | {survivors: .}
 ' "$OUT_DIR"/*/survivors.json > "$OUT_DIR/all.json"

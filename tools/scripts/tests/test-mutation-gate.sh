@@ -50,14 +50,20 @@ for a in "$@"; do
     [[ "$prev" == "--report-dir" ]] && dir="$a"
     prev="$a"
 done
+# A per-target body wins over the shared one, so a case can give two targets
+# different results for the same mutant -- which is the only way to see whether
+# the aggregate treats "killed here, survived there" as killed.
+tgt="$(basename "${dir:-}")"
+var="STUB_REPORT_${tgt}"
+body="${!var:-${STUB_REPORT:-none}}"
 # STUB_REPORT=none reproduces a Mull run that died before reporting (the
 # timed-out warmup); anything else is a JSON body to drop in as the report.
-if [[ "${STUB_REPORT:-none}" == "none" ]]; then
+if [[ "$body" == "none" ]]; then
     echo "[error] Original test failed (warmup run)" >&2
     exit 1
 fi
 mkdir -p "$dir"
-printf '%s' "$STUB_REPORT" > "$dir/report.json"
+printf '%s' "$body" > "$dir/report.json"
 STUB
     chmod +x "$path"
 }
@@ -105,6 +111,25 @@ for spec in sys.argv[2:]:
          "location": {"start": {"line": int(line)}}, "status": "Survived"})
 print(json.dumps({"files": files}))
 PY
+}
+
+
+# Like report_json but every spec carries an explicit status, so a case can
+# describe one target killing a mutant another target merely links.
+report_json_status() {
+    local root="$1"; shift
+    python3 - "$root" "$@" <<'PYEOF'
+import json, sys
+root = sys.argv[1]
+files = {}
+for spec in sys.argv[2:]:
+    rel, line, mutator, status = spec.rsplit(":", 3)
+    key = f"{root}/{rel}"
+    files.setdefault(key, {"mutants": []})["mutants"].append(
+        {"id": f"{rel}:{line}", "mutatorName": mutator,
+         "location": {"start": {"line": int(line)}}, "status": status})
+print(json.dumps({"files": files}))
+PYEOF
 }
 
 run_gate() {  # run_gate <root> <stub-report> <args...> ; echoes output, returns rc
@@ -199,6 +224,31 @@ body="$(report_json "$root" "src/FileHelper.cpp:1:cxx_gt_to_ge")"
 out="$(run_gate "$root" "$body" --diff-only --strict)"; rc=$?
 check "an uncommitted source change selects its own test binary" \
       "" "$rc" 1 "$out" "tst_filehelper"
+
+
+# 7. A mutant is dead if any suite kills it.  Several binaries link the same
+#    TU -- tst_playlist_manager compiles FileHelper.cpp for the one function it
+#    needs -- so a mutant in a read path it never calls survives there while the
+#    file's own suite kills it.  Unioning the per-target survivor lists reports
+#    that as a finding; the honest aggregate subtracts what was killed.
+root="$(make_root)"
+gitc7() { git -C "$root" -c user.email=t@t -c user.name=t "$@"; }
+printf '#!/bin/sh\nexit 0\n' > "$root/build/impl-mutation/tst_playlist_manager"
+chmod +x "$root/build/impl-mutation/tst_playlist_manager"
+mkdir -p "$root/src"
+printf 'a\n' > "$root/src/FileHelper.cpp"; printf 'b\n' > "$root/src/PlaylistManager.cpp"
+gitc7 add src/FileHelper.cpp src/PlaylistManager.cpp; gitc7 commit -q -m sources
+gitc7 update-ref refs/remotes/origin/main HEAD
+printf 'a2\n' > "$root/src/FileHelper.cpp"; printf 'b2\n' > "$root/src/PlaylistManager.cpp"
+killed="$(report_json_status "$root" "src/FileHelper.cpp:144:cxx_gt_to_ge:Killed")"
+lived="$(report_json_status "$root" "src/FileHelper.cpp:144:cxx_gt_to_ge:Survived")"
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 MULL_WORKERS=1 \
+        STUB_REPORT="$lived" \
+        STUB_REPORT_tst_filehelper="$killed" \
+        STUB_REPORT_tst_playlist_manager="$lived" \
+        "$GATE" --diff-only --strict 2>&1 )"; rc=$?
+check "a mutant its own suite kills is not resurrected by another target" \
+      "" "$rc" 0 "$out"
 
 echo
 if [[ "$FAIL" -gt 0 ]]; then

@@ -178,6 +178,28 @@ out="$(run_gate "$root" "$body" --target tst_filehelper --strict)"; rc=$?
 check "survivors already in the baseline pass" \
       "" "$rc" 0 "$out" "no new surviving mutants"
 
+
+# 6. Mull mutates the working tree, so the target selector has to read it too.
+#    Reading only committed history runs the wrong binaries and reports
+#    survivors that the missing binary would have killed -- a clean gate that
+#    has measured nothing, which is the same failure this file exists for.
+#    FileHelper.cpp is committed well before HEAD and edited only in the tree,
+#    so committed history alone cannot see it.  origin/main exists here\n#    because that is what makes the three-dot range succeed in anger --\n#    without it the fallback diff, which does read the tree, hides the bug.
+root="$(make_root)"
+gitc() { git -C "$root" -c user.email=t@t -c user.name=t "$@"; }
+mkdir -p "$root/src"
+printf 'int f(){return 0;}\n' > "$root/src/FileHelper.cpp"
+gitc add src/FileHelper.cpp; gitc commit -q -m adds-filehelper
+gitc update-ref refs/remotes/origin/main HEAD
+printf 'x\n' > "$root/README.md"
+gitc add README.md; gitc commit -q -m unrelated-tip
+# The change under test: uncommitted, exactly like a sweep mid-review.
+printf 'int f(){return 1;}\n' > "$root/src/FileHelper.cpp"
+body="$(report_json "$root" "src/FileHelper.cpp:1:cxx_gt_to_ge")"
+out="$(run_gate "$root" "$body" --diff-only --strict)"; rc=$?
+check "an uncommitted source change selects its own test binary" \
+      "" "$rc" 1 "$out" "tst_filehelper"
+
 echo
 if [[ "$FAIL" -gt 0 ]]; then
     printf '%s%d passed, %d failed%s\n' "$RED" "$PASS" "$FAIL" "$RESET"

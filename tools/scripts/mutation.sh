@@ -161,8 +161,21 @@ elif [[ "$MODE" == "diff" ]]; then
     # (including the gitlink in the parent diff) triggers backend_scene_tests;
     # mutation is heavy enough that finer-grained submodule mapping isn't worth
     # the maintenance cost.
-    CHANGED="$(git diff --name-only origin/main...HEAD 2>/dev/null \
-              || git diff --name-only HEAD~1 2>/dev/null || true)"
+    # Committed range UNION the working tree.  Mull mutates the tree as it
+    # stands, so a selector reading only committed history picks the wrong
+    # binaries: a source edited but not yet committed gets mutated while the
+    # suite that covers it never runs, and every one of its mutants is then
+    # reported as surviving.  That reads as a finding and is really a gate that
+    # measured nothing.  Note the HEAD~1 fallback already diffs against the
+    # tree (no range), so only the three-dot path needed widening -- which is
+    # why this stayed invisible in any checkout without an origin/main.
+    CHANGED="$(
+        {
+            git diff --name-only origin/main...HEAD 2>/dev/null \
+                || git diff --name-only HEAD~1 2>/dev/null || true
+            git diff --name-only HEAD 2>/dev/null || true
+        } | sort -u
+    )"
     declare -A SRC_TO_TARGET=(
         [src/FileHelper.cpp]=tst_filehelper [src/FileHelper.hpp]=tst_filehelper
         [src/PluginInfo.cpp]=tst_plugininfo [src/PluginInfo.hpp]=tst_plugininfo

@@ -167,6 +167,29 @@ QVariant MpvObject::getProperty(const QString& name, bool* ok) const {
     return result;
 }
 
+namespace mpv
+{
+RenderInitOutcome classifyRenderInit(int create_result, bool already_reported) {
+    if (create_result >= 0) return RenderInitOutcome { true, false, QString() };
+    // libmpv is the only thing that knows why GL bring-up failed — a missing
+    // current context, a GL stack it cannot use, a build without the render
+    // API. Dropping the code leaves a black wallpaper and an empty journal.
+    const char* msg = mpv_error_string(create_result);
+    return RenderInitOutcome { false,
+                               ! already_reported,
+                               QString::fromUtf8(msg && *msg ? msg : "unknown mpv error") };
+}
+} // namespace mpv
+
+void MpvObject::onRenderInitFailed(const QString& reason) {
+    // Reuse sourceLoadFailed: QML already routes it to the info pane and stops
+    // the 15s watchdog, and from the desktop's side a wallpaper whose renderer
+    // never came up is the same black rectangle as one whose file would not
+    // load — except this way the pane names the real cause.
+    const QString detail = reason.isEmpty() ? QStringLiteral("no reason reported") : reason;
+    Q_EMIT sourceLoadFailed(QStringLiteral("video render setup failed (%1)").arg(detail));
+}
+
 void MpvObject::initCallback() {
     QUrl temp(m_source.toString());
     m_source.clear();
@@ -344,6 +367,9 @@ public:
 signals:
     void mpvRedraw();
     void inited();
+    // GL bring-up failed and this renderer will never draw. Queued to the item,
+    // which turns it into the load failure QML already knows how to show.
+    void renderInitFailed(const QString& reason);
 
 public slots:
     // render thread
@@ -380,10 +406,22 @@ public slots:
     void synchronize(QQuickFramebufferObject* item) override {
         MpvObject* mpv_obj = static_cast<MpvObject*>(item);
 
+        // mpv_create() can fail — the ctor warns and leaves a null handle — but
+        // QML still instantiates the item and the scene graph still builds this
+        // renderer, so without the guard the first sync hands the null straight
+        // to libmpv and segfaults plasmashell.
+        if (! m_mpv) return;
+
         if (m_mpv_context == nullptr) {
-            if (CreateMpvContex(m_mpv, &m_mpv_context) >= 0) {
+            const RenderInitOutcome outcome =
+                classifyRenderInit(CreateMpvContex(m_mpv, &m_mpv_context), m_init_failure_reported);
+            if (outcome.usable) {
                 mpv_render_context_set_update_callback(m_mpv_context, on_mpv_redraw, this);
                 Q_EMIT this->inited();
+            } else if (outcome.report) {
+                m_init_failure_reported = true;
+                qCWarning(wekdeMpv) << "mpv_render_context_create failed:" << outcome.reason;
+                Q_EMIT this->renderInitFailed(outcome.reason);
             }
         }
 
@@ -419,6 +457,11 @@ private:
     [[maybe_unused]] QQuickWindow* m_window { nullptr };
 
     std::shared_ptr<MpvHandle> m_shared_mpv { nullptr };
+
+    // One-shot latch for the bring-up failure: synchronize() runs again on
+    // every resize and item update, and a context that failed once fails the
+    // same way every time.
+    bool m_init_failure_reported { false };
 
     std::atomic<bool> m_dirty { false };
 };
@@ -557,6 +600,11 @@ QQuickFramebufferObject::Renderer* MpvObject::createRenderer() const {
     // Use Queued signal to update at gui thread
     connect(render, &MpvRender::mpvRedraw, this, &MpvObject::update, Qt::QueuedConnection);
     connect(render, &MpvRender::inited, this, &MpvObject::initCallback, Qt::QueuedConnection);
+    connect(render,
+            &MpvRender::renderInitFailed,
+            this,
+            &MpvObject::onRenderInitFailed,
+            Qt::QueuedConnection);
     return render;
 }
 

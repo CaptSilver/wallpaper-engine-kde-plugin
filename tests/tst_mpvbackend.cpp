@@ -8,7 +8,10 @@
 // may destroy a QQuickFramebufferObject::Renderer (its destructor is
 // protected), so ~MpvRender needs a live render thread and is checked by hand
 // in plasmashell. What a test can reach is the GUI-thread half of teardown,
-// MpvHandle::beginShutdown().
+// MpvHandle::beginShutdown() — and the two halves of the render-context
+// bring-up that were deliberately pulled out of the renderer: classifyRenderInit
+// (what to do with mpv_render_context_create's return code) and
+// MpvObject::onRenderInitFailed (where that lands for QML).
 //
 // Run under QT_QPA_PLATFORM=offscreen so QGuiApplication can attach without
 // a display.
@@ -95,6 +98,19 @@ private slots:
     void setSource_validFixture_doesNotEmitSourceLoadFailed();
     void sourceLoadFailed_carriesNonEmptyReason();
     void sourceChanged_notEmittedOnAsyncEndFileError();
+
+    // Render-context bring-up. mpv_render_context_create needs a current
+    // QOpenGLContext on the scene graph's render thread, so the call itself is
+    // only reachable in a live plasmashell; the decision taken from its return
+    // code is a free function precisely so it can be pinned here.
+    void classifyRenderInit_success_isUsableAndSilent();
+    void classifyRenderInit_failure_carriesMpvReason();
+    void classifyRenderInit_repeatedFailure_reportsOnce();
+    void classifyRenderInit_unknownCode_stillCarriesReason();
+    // A render context that never came up is a dead wallpaper; it has to reach
+    // the same QML pane as a load failure instead of waiting out the watchdog.
+    void renderInitFailure_surfacesThroughSourceLoadFailed();
+    void renderInitFailure_emptyReason_stillExplainsItself();
 
     // Regression: constructor used to set `loop`, `vo`, `hwdec`, `config`
     // *after* mpv_initialize(), where mpv silently drops them.
@@ -610,6 +626,68 @@ void TestMpvBackend::sourceChanged_notEmittedOnAsyncEndFileError() {
     // sourceChanged fired exactly once (at sync-accept time); the async
     // ERROR does not retroactively un-emit it.
     QCOMPARE(changed.count(), 1);
+}
+
+// A live render context: install the update callback and let the item know.
+void TestMpvBackend::classifyRenderInit_success_isUsableAndSilent() {
+    const auto ok = mpv::classifyRenderInit(0, false);
+    QVERIFY(ok.usable);
+    QVERIFY(! ok.report);
+    QVERIFY(ok.reason.isEmpty());
+}
+
+// The failure this exists for: libmpv explains itself through the return code,
+// and dropping it leaves a black wallpaper with nothing in the journal.
+void TestMpvBackend::classifyRenderInit_failure_carriesMpvReason() {
+    const auto failed = mpv::classifyRenderInit(MPV_ERROR_UNSUPPORTED, false);
+    QVERIFY(! failed.usable);
+    QVERIFY(failed.report);
+    QCOMPARE(failed.reason, QString::fromUtf8(mpv_error_string(MPV_ERROR_UNSUPPORTED)));
+    QVERIFY(! failed.reason.isEmpty());
+}
+
+// synchronize() runs again on every resize and item update, and a bring-up that
+// failed once fails the same way every time — one warning per renderer, not one
+// per frame.
+void TestMpvBackend::classifyRenderInit_repeatedFailure_reportsOnce() {
+    const auto again = mpv::classifyRenderInit(MPV_ERROR_UNSUPPORTED, true);
+    QVERIFY(! again.usable);
+    QVERIFY(! again.report);
+}
+
+// A libmpv build that returns a code this header does not know about still owes
+// the user a sentence.
+void TestMpvBackend::classifyRenderInit_unknownCode_stillCarriesReason() {
+    const auto odd = mpv::classifyRenderInit(-31337, false);
+    QVERIFY(! odd.usable);
+    QVERIFY(odd.report);
+    QVERIFY(! odd.reason.isEmpty());
+}
+
+// The render thread hands the failure to the item queued; the item re-uses
+// sourceLoadFailed, which QML already routes to the info pane and which stops
+// the 15s watchdog, so the user reads the real cause instead of "no frame".
+void TestMpvBackend::renderInitFailure_surfacesThroughSourceLoadFailed() {
+    auto       obj = makeObject();
+    QSignalSpy spy(obj.get(), &MpvObject::sourceLoadFailed);
+    obj->onRenderInitFailed(QStringLiteral("not implemented on this hardware"));
+    QCOMPARE(spy.count(), 1);
+    const QString reason = spy.at(0).at(0).toString();
+    QVERIFY2(reason.contains(QStringLiteral("not implemented on this hardware")),
+             qPrintable(reason));
+    // The pane prefixes "MPV could not load this video:", so the message has to
+    // point at video setup rather than quoting libmpv on its own.
+    QVERIFY2(reason.contains(QStringLiteral("render"), Qt::CaseInsensitive), qPrintable(reason));
+}
+
+// Defence in depth: even with nothing to quote, the pane must not show a bare
+// colon.
+void TestMpvBackend::renderInitFailure_emptyReason_stillExplainsItself() {
+    auto       obj = makeObject();
+    QSignalSpy spy(obj.get(), &MpvObject::sourceLoadFailed);
+    obj->onRenderInitFailed(QString());
+    QCOMPARE(spy.count(), 1);
+    QVERIFY(spy.at(0).at(0).toString().size() > 3);
 }
 
 // Q_PROPERTY mute is declared NOTIFY muteChanged; setMute(true/false) must

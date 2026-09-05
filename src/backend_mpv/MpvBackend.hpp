@@ -47,6 +47,21 @@ struct MpvHandle {
     MpvObject* owner { nullptr };
 };
 
+// What synchronize() should do with one mpv_render_context_create attempt.
+// libmpv's GL bring-up needs a current QOpenGLContext on the scene graph's
+// render thread, so the call itself only happens in a live plasmashell; the
+// decision made from its return code lives out here where it can be exercised.
+struct RenderInitOutcome {
+    bool    usable { false }; // context is live: install the update callback, signal inited
+    bool    report { false }; // first failure: warn and hand the reason to QML
+    QString reason;           // libmpv's explanation; empty unless report
+};
+
+// `already_reported` is the caller's one-shot latch: synchronize() runs again
+// on every resize and item update, and a bring-up that failed once fails the
+// same way every time.
+RenderInitOutcome classifyRenderInit(int create_result, bool already_reported);
+
 class MpvRender;
 
 class MpvObject : public QQuickFramebufferObject {
@@ -88,8 +103,9 @@ public:
     // Re-derive from the given flags; emit statusChanged() iff the status
     // crossed a boundary vs the last seen value. Returns whether it changed.
     bool refreshStatus(bool idleActive, bool paused);
-    // True only after mpv_create() AND mpv_initialize() both succeeded. QML reads
-    // this to fall back instead of presenting a black void when mpv is unavailable.
+    // True only after mpv_create() AND mpv_initialize() both succeeded: libmpv
+    // is usable at all. Distinct from the private `inited`, which tracks the GL
+    // render context — that one can still fail with this true.
     bool    initialized() const { return m_mpv != nullptr && m_inited_ok; }
     QUrl    source() const;
     bool    mute() const;
@@ -110,7 +126,10 @@ public slots:
     bool     setProperty(const QString& name, const QVariant& value);
     QVariant getProperty(const QString& name, bool* ok = nullptr) const;
     void     initCallback();
-    void     checkAndEmitFirstFrame();
+    // Queued from the render thread when the mpv render context could not be
+    // brought up.
+    void onRenderInitFailed(const QString& reason);
+    void checkAndEmitFirstFrame();
     // GUI-thread drain of mpv's event queue (posted by wakeup()); emits
     // statusChanged() when an observed property moves the derived status.
     void onMpvEvents();
@@ -121,15 +140,17 @@ signals:
     void initializedChanged();
     void sourceChanged();
     void firstFrame();
-    // Surface mpv load failures so QML can react immediately instead of
-    // waiting for the 15s watchdog. Two emit sites:
+    // Surface mpv failures so QML can react immediately instead of waiting for
+    // the 15s watchdog. Three emit sites:
     //   - setSource(): when this->command(loadfile, ...) returns false
     //     (sync rejection by mpv's command parser).
     //   - onMpvEvents(): when mpv posts MPV_EVENT_END_FILE with
     //     reason == MPV_END_FILE_REASON_ERROR (async demux/decode failure).
-    // The reason string is short English (mpv_error_string for the async
-    // path; a literal diagnostic for the sync path), suitable for direct
-    // display in the loadInfoShow pane.
+    //   - onRenderInitFailed(): when the GL render context never came up, so
+    //     nothing will play regardless of the file.
+    // The reason string is short English (mpv_error_string for the async and
+    // render paths; a literal diagnostic for the sync path), suitable for
+    // direct display in the loadInfoShow pane.
     void sourceLoadFailed(const QString& reason);
     void muteChanged();
     void volumeChanged();

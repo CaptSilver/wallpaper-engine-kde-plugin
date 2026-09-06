@@ -62,6 +62,12 @@ if [[ "$body" == "none" ]]; then
     echo "[error] Original test failed (warmup run)" >&2
     exit 1
 fi
+# A clean run with nothing in scope: Mull says so and writes no report at all.
+# Distinct from "none", which is a run that died before it could report.
+if [[ "$body" == "nomutants" ]]; then
+    echo "[info] No mutants found. Mutation score: infinitely high"
+    exit 0
+fi
 mkdir -p "$dir"
 printf '%s' "$body" > "$dir/report.json"
 STUB
@@ -249,6 +255,17 @@ out="$( cd "$root" && MUTATION_SKIP_BUILD=1 MULL_WORKERS=1 \
         "$GATE" --diff-only --strict 2>&1 )"; rc=$?
 check "a mutant its own suite kills is not resurrected by another target" \
       "" "$rc" 0 "$out"
+
+
+# 8. "Nothing to mutate" is a clean result, not a failed measurement.  Mull
+#    writes no report when the diff holds no mutable lines -- a build-system or
+#    comment-only change does this -- and the driver cannot tell that apart from
+#    a run that died before reporting.  Reporting 78 there sends you hunting a
+#    warmup timeout that never happened.
+root="$(make_root)"
+out="$(run_gate "$root" "nomutants" --target tst_filehelper --strict)"; rc=$?
+check "a run with no mutants in scope is a pass, not an unmeasurable run" \
+      "" "$rc" 0 "$out" "no mutants"
 
 echo
 if [[ "$FAIL" -gt 0 ]]; then

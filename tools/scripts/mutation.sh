@@ -476,11 +476,23 @@ for t in "${TARGETS[@]}"; do
                        --reporters Elements \
                        --report-dir "$target_dir" \
                        --report-name report \
-                       "$bin" 2>&1 | tail -8; then
+                       "$bin" 2>&1 | tee "$target_dir/runner.log" | tail -8; then
             warn "Mull exit nonzero for $t (survivors expected; output captured)"
         fi
         rpt=$(find "$target_dir" -maxdepth 1 -name '*.json' -type f 2>/dev/null | head -1 || true)
         if [[ -z "$rpt" || ! -s "$rpt" ]]; then
+            # Mull writes no report when the diff holds no mutable lines, which a
+            # build-system or comment-only change produces routinely.  That is a
+            # clean measurement of nothing, not a failure to measure -- and only
+            # Mull's own message separates the two, so read it rather than
+            # inferring from the missing file.
+            if grep -qi 'No mutants found' "$target_dir/runner.log" 2>/dev/null; then
+                ok "$t: no mutants in scope for this diff — nothing to measure"
+                printf '[]\n' > "$target_dir/survivors.json"
+                printf '[]\n' > "$target_dir/killed.json"
+                ANY_REPORT=1
+                continue
+            fi
             warn "no Elements report for $t — skipping in aggregate"
             continue
         fi

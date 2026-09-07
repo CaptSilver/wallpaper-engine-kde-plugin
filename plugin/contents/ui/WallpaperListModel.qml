@@ -330,6 +330,12 @@ Item {
     function _attachWatchers() {
         if (! Boolean(pyext) || typeof pyext.unwatch_all_wallpaper_dirs !== "function") return;
         pyext.unwatch_all_wallpaper_dirs();
+        // A model that isn't scanning holds no watchers. config.qml binds
+        // workshopDirs to getProjectDirs(cfg_SteamLibraryPath); with no Steam
+        // library configured that still yields absolute-looking paths such as
+        // "/steamapps/workshop/content/431960", and handing those to the
+        // watcher just logs a rejection per path. Release above, attach nothing.
+        if (!root.loadEnabled) return;
         this.workshopDirs.forEach(el => {
             const dirs = (Array.isArray(el) ? el : [el]).map(Common.urlNative);
             // Only watch the primary resolved path; fallbacks are handled by
@@ -341,6 +347,9 @@ Item {
     }
 
     onWorkshopDirsChanged: _attachWatchers()
+    // Re-evaluate on the gate too: turning it off releases the watchers,
+    // turning it back on re-attaches them for the current dirs.
+    onLoadEnabledChanged: _attachWatchers()
 
     // Steam's atomic-download writes 2-3 directoryChanged events per subscribe
     // (creates dotfile, renames into place). 500 ms debounce coalesces.

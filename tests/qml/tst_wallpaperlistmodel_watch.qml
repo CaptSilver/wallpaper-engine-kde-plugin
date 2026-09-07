@@ -70,6 +70,19 @@ TestCase {
         Component.onCompleted: { wpModel.playlists = {}; }
     }
 
+    // Dedicated instance for the scan-gate tests. Toggling loadEnabled fires
+    // loadEnabledChanged -> refresh, so driving the gate on the shared wpModel
+    // would leak extra modelRefreshed signals into the debounce tests.
+    Plugin.WallpaperListModel {
+        id: gateModel
+        loadEnabled: false
+        workshopDirs: ["/gate/workshop"]
+        globalConfigPath: "/fake/global.json"
+        initItemOp: function(item) {}
+        readfile: function(path) { return tc._thenable('{"general":{"playlists":[]}}'); }
+        Component.onCompleted: { gateModel.playlists = {}; }
+    }
+
     SignalSpy {
         id: refreshSpy
         target: wpModel
@@ -136,4 +149,34 @@ TestCase {
         compare(refreshSpy.count, 1,
                 "3 rapid watcher events must coalesce into exactly 1 refresh");
     }
+
+    // config.qml binds workshopDirs to Common.getProjectDirs(cfg_SteamLibraryPath)
+    // and the scan gate to Boolean(cfg_SteamLibraryPath). With no Steam library
+    // configured, getProjectDirs("") still yields real-looking absolute paths —
+    // "/steamapps/workshop/content/431960" and friends — and an ungated
+    // _attachWatchers hands every one of them to QFileSystemWatcher. That is
+    // what produced the "watchWallpaperDir: path is not a directory" lines in
+    // the journal. A model that is not scanning must hold no watchers.
+    function test_gateOff_attachesNoWatchers() {
+        gateModel.loadEnabled = false;
+        watchCalls = 0;
+        unwatchAllCalls = 0;
+        gateModel.workshopDirs = ["/steamapps/workshop/content/431960"];
+        compare(watchCalls, 0,
+                "a model whose scan gate is off must not watch any directory");
+        verify(unwatchAllCalls >= 1,
+               "turning the gate off must still release any watchers already held");
+    }
+
+    function test_gateOn_attachesWatchersForCurrentDirs() {
+        gateModel.loadEnabled = false;
+        gateModel.workshopDirs = ["/library/one", "/library/two"];
+        watchCalls = 0;
+        unwatchAllCalls = 0;
+        gateModel.loadEnabled = true;
+        compare(watchCalls, 2,
+                "turning the scan gate on must attach a watcher per workshop dir");
+        gateModel.loadEnabled = false;
+    }
+
 }

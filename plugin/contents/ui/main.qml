@@ -366,7 +366,7 @@ Rectangle {
         // ActivePlaylistId set but RandomizeWallpaper=false leave the
         // model unloaded, so PlaylistController can't resolve workshop
         // IDs and the cycle bails after 8 consecutive skips.
-        enabled: background.randomizeWallpaper
+        loadEnabled: background.randomizeWallpaper
               || (wallpaper.configuration.ActivePlaylistId !== "")
         workshopDirs: Common.getProjectDirs(background.steamlibrary)
         globalConfigPath: Common.getGlobalConfigPath(background.steamlibrary)

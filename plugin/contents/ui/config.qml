@@ -163,7 +163,7 @@ ColumnLayout {
             if(!root.customConf) return;
             item.favor = root.customConf.favor.has(item.workshopid);
         }
-        enabled: Boolean(cfg_SteamLibraryPath)
+        loadEnabled: Boolean(cfg_SteamLibraryPath)
         readfile: pyext.readfile
         // Re-read the manifest whenever the user re-configures the Steam
         // library path. Empty path => empty map => no badges.

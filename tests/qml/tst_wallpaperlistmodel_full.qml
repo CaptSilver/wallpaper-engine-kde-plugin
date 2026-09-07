@@ -3,9 +3,9 @@
 // It's designed to take injected `readfile` + `initItemOp` so we can run
 // it against fake fixtures with no real Steam install.
 //
-// We rely on WallpaperListModel's `enabled: false` default to suppress the
-// auto-refresh timer; tests trigger functions explicitly. (Actually default
-// is true, but we set it false at construction.)
+// The model's scan gate (loadEnabled) defaults to true, so we set it false at
+// construction to suppress the auto-refresh timer; tests drive the functions
+// explicitly.
 import QtQuick
 import QtTest
 
@@ -50,7 +50,7 @@ TestCase {
 
     Plugin.WallpaperListModel {
         id: wpModel
-        enabled: false  // suppress the 10s scan Timer; we drive it manually
+        loadEnabled: false  // suppress the 10s scan Timer; we drive it manually
         workshopDirs: ["/fake/workshop"]
         globalConfigPath: "/fake/global.json"
         initItemOp: function(item) {
@@ -172,7 +172,7 @@ TestCase {
 
     // ── refresh — when disabled, returns immediately ────────────────────────
     function test_refresh_noOpWhenDisabled() {
-        // wpModel.enabled is false; refresh resolves to null.
+        // wpModel.loadEnabled is false; refresh resolves to null.
         const r = wpModel.refresh();
         verify(r !== undefined);
     }
@@ -181,8 +181,8 @@ TestCase {
         // Enabling triggers refresh; we just verify the call returns
         // without throwing. The actual folder enumeration can't complete
         // because pyext.get_folder_list isn't available in tests.
-        // We don't actually toggle enabled in this test — the production
-        // code wires enabledChanged -> refresh. Just call refresh directly.
+        // We don't actually toggle the gate in this test — the production
+        // code wires loadEnabledChanged -> refresh. Just call refresh directly.
         // Skip: requires a `pyext` global which isn't injected here.
         verify(typeof wpModel.refresh === "function");
     }
@@ -261,19 +261,19 @@ TestCase {
         compare(row.favor, false, "an out-of-range index must leave every row alone");
     }
 
-    // ── refresh() — fire when enabled=true ──────────────────────────────────
+    // ── refresh() — fire when loadEnabled=true ──────────────────────────────
     function test_refresh_runsBodyWhenEnabled() {
         // Disabled-path early-returns Promise.resolve(null) without setting
         // scanning or reading any file. Enabled path sets scanning=true
         // and calls loadPlaylists() which reads the global config.
-        wpModel.enabled = true;
+        wpModel.loadEnabled = true;
         const beforeReads = readfileCalls.length;
         try { wpModel.refresh(); } catch (e) {}
         verify(wpModel.scanning,
                "refresh() with enabled=true must flip scanning to true");
         verify(readfileCalls.length > beforeReads,
                "refresh() body must read the global config");
-        wpModel.enabled = false;
+        wpModel.loadEnabled = false;
     }
 
     // ── findItem / titleOf — unfiltered-source lookup ────────────────────────
@@ -408,4 +408,41 @@ TestCase {
             compare(got.title, "X");
         }
     }
+
+    function _modelSource() {
+        const xhr = new XMLHttpRequest();
+        xhr.open("GET", Qt.resolvedUrl("../../plugin/contents/ui/WallpaperListModel.qml"), false);
+        xhr.send(null);
+        compare(xhr.status, 200, "could not read WallpaperListModel.qml source");
+        return xhr.responseText;
+    }
+
+    // WallpaperListModel is an Item, and it re-declared `property bool enabled`,
+    // which shadows Item.enabled. The two mean different things: Item.enabled
+    // gates input and visual state and propagates down to children, while the
+    // model's flag decides whether it scans the Steam library at all. Qt logs
+    // "Member enabled of the object ... overrides a member of the base object"
+    // for exactly this. The gate needs its own name.
+    function test_loadGate_doesNotRedeclareItemEnabled() {
+        const src = _modelSource();
+        verify(!/^\s*property\s+bool\s+enabled\b/m.test(src),
+               "WallpaperListModel must not re-declare `property bool enabled` — "
+             + "it shadows Item.enabled. Give the scan gate a distinct name.");
+    }
+
+    function test_loadGate_isDistinctFromItemEnabled() {
+        verify(wpModel.loadEnabled !== undefined,
+               "WallpaperListModel must expose its scan gate under a name that "
+             + "does not shadow Item.enabled; found no `loadEnabled`");
+        const itemEnabledBefore = wpModel.enabled;
+        wpModel.loadEnabled = false;
+        compare(wpModel.enabled, itemEnabledBefore,
+                "toggling the scan gate must leave Item.enabled alone — "
+              + "they are separate concerns");
+        wpModel.loadEnabled = true;
+        compare(wpModel.enabled, itemEnabledBefore,
+                "toggling the scan gate must leave Item.enabled alone");
+        wpModel.loadEnabled = false;
+    }
+
 }

@@ -62,7 +62,7 @@ TestCase {
 
     Plugin.WallpaperListModel {
         id: wpModel
-        enabled: true
+        loadEnabled: true
         workshopDirs: ["/fake/workshop"]
         globalConfigPath: "/fake/global.json"
         initItemOp: function(item) {}

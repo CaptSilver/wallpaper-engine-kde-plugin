@@ -54,7 +54,7 @@ TestCase {
     property string fakeFileContent: '{"general":{"playlists":[]}}'
 
     // pyext stub — refresh() makes a bare `pyext.get_folder_list` reference.
-    // Returning empty items makes refresh a no-op on enabledChanged; tests
+    // Returning empty items makes refresh a no-op on loadEnabledChanged; tests
     // drive loadFolderLists directly. Pattern mirrors tst_filter_playlist_integration.
     property var pyext: ({
         get_folder_list: function(dir, opts) {
@@ -64,7 +64,7 @@ TestCase {
 
     Plugin.WallpaperListModel {
         id: wpModel
-        enabled: true  // required: filterStrChanged/sortModeChanged are gated on enabled
+        loadEnabled: true  // required: filterStrChanged/sortModeChanged are gated on loadEnabled
         workshopDirs: ["/fake/workshop"]
         globalConfigPath: "/fake/global.json"
         initItemOp: function(item) { /* no-op */ }

@@ -10,7 +10,7 @@ Item {
     property var globalConfigPath
     property string filterStr: ""
     property int sortMode: Common.SortMode.Id
-    property bool enabled: true
+    property bool loadEnabled: true
 
     // Steam Workshop manifest: workshopid -> timeupdated (qint64 unix
     // timestamp). Empty {} when Steam library isn't configured or the
@@ -248,7 +248,7 @@ Item {
     }
 
     function refresh() {
-        if(!root.enabled) return Promise.resolve(null);
+        if(!root.loadEnabled) return Promise.resolve(null);
         const p_list = [];
 
         root.scanning = true;
@@ -356,20 +356,20 @@ Item {
         interval: 500
         repeat: false
         onTriggered: {
-            if (root.enabled) root.refresh();
+            if (root.loadEnabled) root.refresh();
         }
     }
 
     Component.onCompleted: {
         this.modelRefreshed.connect(function() { root._sourceRev = root._sourceRev + 1; });
         this.filterStrChanged.connect(function() {
-            if(root.enabled) {
+            if(root.loadEnabled) {
                 return folderWorker.filterToList(root.model, root.filterStr, folderWorker.model)
             }
             return Promise.resolve();
         });
         this.sortModeChanged.connect(this.filterStrChanged);
-        this.enabledChanged.connect(this.refresh.bind(this));
+        this.loadEnabledChanged.connect(this.refresh.bind(this));
 
         const fc = this.readfile;
         this.readfileChanged.connect(function() {

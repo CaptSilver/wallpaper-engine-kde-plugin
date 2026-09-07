@@ -64,10 +64,13 @@ BuildRequires: pkgconfig(gl)
 BuildRequires: pkgconfig(egl)
 BuildRequires: pkgconfig(gbm)
 
-%if 0%{?fedora}
-# src/backend_mpv/CMakeLists.txt reads Qt6Gui_PRIVATE_INCLUDE_DIRS.  Only Fedora
-# splits the private headers into their own package; openSUSE and Mageia ship
-# them inside the ordinary Qt6 devel packages.
+%if 0%{?fedora} || 0%{?rhel}
+# src/backend_mpv/CMakeLists.txt reads Qt6Gui_PRIVATE_INCLUDE_DIRS.  Fedora splits
+# the private headers into their own package, and so does everything rebuilt from
+# it -- RHEL 10 and the AlmaLinux / Rocky / CentOS Stream rebuilds, where the
+# package sits in CRB rather than the default repos.  openSUSE and Mageia ship the
+# private headers inside the ordinary Qt6 devel packages, so asking for a separate
+# one there is unresolvable.
 BuildRequires: qt6-qtbase-private-devel
 %endif
 

@@ -96,10 +96,22 @@ ColumnLayout {
     //     }
     // }
 
-    property var libcheck: ({
-        wallpaper: Common.checklib_wallpaper(root),
-        qtwebchannel: Common.checklib_webchannel(root)
-    })
+    // One-shot capability probes, NOT live bindings. Common.checklib* calls
+    // Qt.createQmlObject, and invoking that DURING binding evaluation (i.e.
+    // while this file is still loading) re-enters Qt's QML loader on the same
+    // thread and can SIGSEGV in QQmlThread::internalCallMethodInThread —
+    // main.qml carries the same note on its hasLib property after hitting
+    // exactly that in production. The `false` defaults keep every consumer's
+    // binding valid during load; Component.onCompleted below assigns the real
+    // answers, and the resulting libcheckChanged re-evaluates those bindings.
+    property var libcheck: ({ wallpaper: false, qtwebchannel: false })
+
+    Component.onCompleted: {
+        libcheck = {
+            wallpaper: Common.checklib_wallpaper(root),
+            qtwebchannel: Common.checklib_webchannel(root)
+        };
+    }
 
 
     // C++-backed PluginInfo. Eagerly created; the underlying object is a

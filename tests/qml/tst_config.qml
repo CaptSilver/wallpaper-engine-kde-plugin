@@ -223,4 +223,34 @@ TestCase {
         sp.cfg_PresentMode = 0;
         compare(sp.cfg_PresentMode, 0);
     }
+
+    function _configQmlSource() {
+        const xhr = new XMLHttpRequest();
+        xhr.open("GET", Qt.resolvedUrl("../../plugin/contents/ui/config.qml"), false);
+        xhr.send(null);
+        compare(xhr.status, 200, "could not read config.qml source");
+        return xhr.responseText;
+    }
+
+    // Common.checklib* call Qt.createQmlObject. Running that during binding
+    // evaluation re-enters Qt's QML loader on the loading thread and can
+    // SIGSEGV in QQmlThread::internalCallMethodInThread — main.qml hit exactly
+    // that in production and fixed it by making `hasLib` a plain default it
+    // assigns in Component.onCompleted. config.qml's libcheck is the same kind
+    // of capability probe and needs the same shape.
+    function test_libcheck_probeDeferredOutOfBindingEvaluation() {
+        const src = _configQmlSource();
+        const at = src.indexOf("property var libcheck");
+        verify(at >= 0, "config.qml must declare a libcheck property");
+        const rest = src.slice(at);
+        const end = rest.indexOf("\n\n");
+        const decl = end > 0 ? rest.slice(0, end) : rest.slice(0, 400);
+        verify(!/Common\.checklib/.test(decl),
+               "libcheck's declaration must not call Common.checklib* — that runs "
+             + "Qt.createQmlObject during binding evaluation. Defer the probe to "
+             + "Component.onCompleted. Found:\n" + decl);
+        verify(/libcheck\s*=\s*\(?\{/.test(src),
+               "expected a deferred `libcheck = { ... }` assignment in config.qml");
+    }
+
 }

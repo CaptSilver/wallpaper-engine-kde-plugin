@@ -14,6 +14,17 @@ using namespace wekde;
 class TestWekDiagnostics : public QObject {
     Q_OBJECT
 
+private:
+    // Reports which line leaked, so a failure names the collector's output
+    // instead of just the file.
+    static QString firstLineContaining(const QString& text, const QString& needle) {
+        const auto lines = text.split('\n');
+        for (const auto& line : lines) {
+            if (line.contains(needle)) return line.trimmed();
+        }
+        return QStringLiteral("(not found)");
+    }
+
 private slots:
     void initTestCase() {
         // Per-process HOME isolation for parallel Mull invocations.
@@ -50,13 +61,120 @@ private slots:
         QFile::remove(bundlePath);
     }
 
-    void testRedactsHomePathInEnvDump() {
+    // The env dump captures the whitelisted prefixes and nothing else. Its
+    // values go in raw — the home path is taken out once on the way into the
+    // bundle, which testBundleRedactsHomePathInEveryMember covers.
+    void testEnvDumpCapturesOnlyWhitelistedVars() {
         qputenv("WEKDE_TEST_PATH", QFile::encodeName(QDir::homePath() + QStringLiteral("/secret")));
+        qputenv("WEKTEST_UNRELATED", "nosy");
         WekDiagnostics diag;
         const auto     envDump = diag.collectPluginEnvForTest();
-        QVERIFY(envDump.contains(QStringLiteral("WEKDE_TEST_PATH=<HOME>/secret")));
-        QVERIFY2(! envDump.contains(QDir::homePath()), "home path leaked in env dump");
         qunsetenv("WEKDE_TEST_PATH");
+        qunsetenv("WEKTEST_UNRELATED");
+        QVERIFY2(envDump.contains(QStringLiteral("WEKDE_TEST_PATH=")), qPrintable(envDump));
+        QVERIFY2(! envDump.contains(QStringLiteral("WEKTEST_UNRELATED")),
+                 "captured an env var outside the whitelisted prefixes");
+    }
+
+    // The About page tells the user their home path is redacted before the
+    // archive is written, so every member has to be clean — not just the
+    // environment dump. Plant the home path in three different collector
+    // sources and read the whole archive back out.
+    void testBundleRedactsHomePathInEveryMember() {
+        const auto home = QDir::homePath();
+        QVERIFY(! home.isEmpty());
+
+        qputenv("WEKDE_TEST_PATH", QFile::encodeName(home + QStringLiteral("/secret")));
+
+        // A cfg key outside the redact-by-name list: the key-name pass leaves
+        // its value alone, so the home path in it survives to the bundle.
+        const auto cfgPath =
+            QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
+            QStringLiteral("/plasma-org.kde.plasma.desktop-appletsrc");
+        QDir().mkpath(QFileInfo(cfgPath).absolutePath());
+        {
+            QFile f(cfgPath);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write(QStringLiteral("[Containments][1][Wallpaper]"
+                                   "[com.github.captsilver.wallpaperEngineKde]\n"
+                                   "WallpaperFilePath=%1/ws/scene.pkg\n")
+                        .arg(home)
+                        .toUtf8());
+        }
+
+        // The renderer's pipeline dump goes in verbatim.
+        const auto pipelineDir =
+            QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) +
+            QStringLiteral("/wallpaper-scene-renderer");
+        QVERIFY(QDir().mkpath(pipelineDir));
+        {
+            QFile f(pipelineDir + QStringLiteral("/pipeline-diag.txt"));
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write(QStringLiteral("last scene: %1/ws/scene.pkg\n").arg(home).toUtf8());
+        }
+        qputenv("WEKDE_PIPELINE_DIAG", "1");
+
+        WekDiagnostics diag;
+        const auto     bundlePath = diag.saveBundle();
+        qunsetenv("WEKDE_PIPELINE_DIAG");
+        qunsetenv("WEKDE_TEST_PATH");
+        QVERIFY2(! bundlePath.isEmpty(),
+                 qPrintable(QStringLiteral("saveBundle failed: ") + diag.lastError()));
+
+        QTemporaryDir extracted;
+        QVERIFY(extracted.isValid());
+        QProcess tar;
+        tar.start(QStringLiteral("tar"),
+                  { QStringLiteral("-xzf"), bundlePath, QStringLiteral("-C"), extracted.path() });
+        QVERIFY(tar.waitForFinished(5000));
+        QCOMPARE(tar.exitCode(), 0);
+
+        const auto members =
+            QDir(extracted.path()).entryInfoList(QDir::Files | QDir::NoDotAndDotDot, QDir::Name);
+        QVERIFY(! members.isEmpty());
+        QStringList leaks;
+        for (const auto& fi : members) {
+            QFile f(fi.absoluteFilePath());
+            QVERIFY(f.open(QIODevice::ReadOnly));
+            const auto text = QString::fromUtf8(f.readAll());
+            if (text.contains(home)) {
+                leaks << QStringLiteral("%1: %2").arg(fi.fileName(),
+                                                      firstLineContaining(text, home));
+            }
+        }
+        QVERIFY2(
+            leaks.isEmpty(),
+            qPrintable(QStringLiteral("bundle members ship the home path:\n") + leaks.join('\n')));
+
+        QFile envDump(extracted.filePath(QStringLiteral("plugin-env.txt")));
+        QVERIFY(envDump.open(QIODevice::ReadOnly));
+        QVERIFY(QString::fromUtf8(envDump.readAll())
+                    .contains(QStringLiteral("WEKDE_TEST_PATH=<HOME>/secret")));
+
+        QFile::remove(bundlePath);
+    }
+
+    // /home is a symlink to /var/home on ostree systems, so the same
+    // directory is spelled two ways: $HOME carries one prefix while paths
+    // logged by other processes carry the other. Both have to redact,
+    // whichever way round $HOME happens to be.
+    void testScrubRedactsBothOstreeHomeSpellings() {
+        const auto line     = QStringLiteral("baseUrl=file://%1/.local/share/Steam/scene.pkg");
+        const auto plain    = QStringLiteral("/home/alice");
+        const auto varHome  = QStringLiteral("/var/home/alice");
+        const auto expected = QStringLiteral("baseUrl=file://<HOME>/.local/share/Steam/scene.pkg");
+
+        QCOMPARE(WekDiagnostics::scrubHomePathsForTest(line.arg(plain), plain), expected);
+        QCOMPARE(WekDiagnostics::scrubHomePathsForTest(line.arg(varHome), plain), expected);
+        QCOMPARE(WekDiagnostics::scrubHomePathsForTest(line.arg(plain), varHome), expected);
+        QCOMPARE(WekDiagnostics::scrubHomePathsForTest(line.arg(varHome), varHome), expected);
+    }
+
+    // An empty or root home must not redact every path in the bundle.
+    void testScrubIgnoresEmptyAndRootHome() {
+        const auto text = QStringLiteral("/usr/share/wallpapers/scene.pkg");
+        QCOMPARE(WekDiagnostics::scrubHomePathsForTest(text, QString()), text);
+        QCOMPARE(WekDiagnostics::scrubHomePathsForTest(text, QStringLiteral("/")), text);
     }
 
     void testRedactsCfgPathFields() {

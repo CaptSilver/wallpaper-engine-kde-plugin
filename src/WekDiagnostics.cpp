@@ -9,6 +9,7 @@
 #include <QProcessEnvironment>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <algorithm>
 
 #ifndef WEK_VERSION
 #    define WEK_VERSION "unknown"
@@ -30,18 +31,28 @@ QString WekDiagnostics::saveBundle() {
     const auto ts  = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
     const auto out = QStringLiteral("%1/diag-%2.tar.gz").arg(dir.absolutePath(), ts);
 
-    QMap<QString, QByteArray> files;
-    files[QStringLiteral("journal.txt")]             = collectJournal().toUtf8();
-    files[QStringLiteral("gpu-info.txt")]            = collectGpuInfo().toUtf8();
-    files[QStringLiteral("vulkan-info.txt")]         = collectVulkanInfo().toUtf8();
-    files[QStringLiteral("plugin-env.txt")]          = collectPluginEnv().toUtf8();
-    files[QStringLiteral("plugin-cfg-redacted.txt")] = collectRedactedCfg().toUtf8();
-    files[QStringLiteral("cache-manifest.txt")]      = collectCacheManifest().toUtf8();
-    files[QStringLiteral("plugin-version.txt")]      = collectPluginVersion().toUtf8();
+    QMap<QString, QString> collected;
+    collected[QStringLiteral("journal.txt")]             = collectJournal();
+    collected[QStringLiteral("gpu-info.txt")]            = collectGpuInfo();
+    collected[QStringLiteral("vulkan-info.txt")]         = collectVulkanInfo();
+    collected[QStringLiteral("plugin-env.txt")]          = collectPluginEnv();
+    collected[QStringLiteral("plugin-cfg-redacted.txt")] = collectRedactedCfg();
+    collected[QStringLiteral("cache-manifest.txt")]      = collectCacheManifest();
+    collected[QStringLiteral("plugin-version.txt")]      = collectPluginVersion();
     // Opt-in via WEKDE_PIPELINE_DIAG=1; otherwise the file is omitted.
     const auto pipelineDiag = collectPipelineDiag();
     if (! pipelineDiag.isEmpty()) {
-        files[QStringLiteral("pipeline-diag.txt")] = pipelineDiag.toUtf8();
+        collected[QStringLiteral("pipeline-diag.txt")] = pipelineDiag;
+    }
+
+    // The one place every collector's output passes through. Journal lines,
+    // cache listings and the "couldn't read X" strings all carry the home
+    // path, so scrubbing per collector only ever covered whichever one
+    // remembered to.
+    const QString             home = QDir::homePath();
+    QMap<QString, QByteArray> files;
+    for (auto it = collected.cbegin(); it != collected.cend(); ++it) {
+        files[it.key()] = scrubHomePaths(it.value(), home).toUtf8();
     }
 
     if (! pack(out, files)) {
@@ -134,16 +145,12 @@ QString WekDiagnostics::collectPluginEnv() {
         QStringLiteral("XDG_"),    QStringLiteral("MESA_"), QStringLiteral("AMD_VULKAN_"),
         QStringLiteral("NVIDIA_"), QStringLiteral("VK_"),
     };
-    auto        env  = QProcessEnvironment::systemEnvironment();
-    const auto  home = QDir::homePath();
+    auto        env = QProcessEnvironment::systemEnvironment();
     QStringList wanted;
     for (const auto& key : env.keys()) {
         for (const auto& pfx : prefixes) {
             if (key.startsWith(pfx)) {
-                auto v = env.value(key);
-                // Redact home path to <HOME>.
-                if (! home.isEmpty()) v.replace(home, QStringLiteral("<HOME>"));
-                wanted << QStringLiteral("%1=%2").arg(key, v);
+                wanted << QStringLiteral("%1=%2").arg(key, env.value(key));
                 break;
             }
         }
@@ -221,6 +228,40 @@ QString WekDiagnostics::collectPipelineDiag() {
         return QStringLiteral("WEKDE_PIPELINE_DIAG=1 set but no pipeline-diag.txt at %1")
             .arg(cacheRoot);
     return QString::fromUtf8(f.readAll()).left(200000); // 200KB cap
+}
+
+QString WekDiagnostics::scrubHomePaths(const QString& text, const QString& homePath) {
+    const QString home = QDir::cleanPath(homePath);
+    if (home.isEmpty() || home == QLatin1String("/")) return text;
+
+    QStringList spellings;
+    const auto  add = [&spellings](const QString& p) {
+        if (p.isEmpty() || p == QLatin1String("/")) return;
+        if (! spellings.contains(p)) spellings << p;
+    };
+    add(home);
+    // A symlinked home is written down under whichever prefix the process
+    // doing the logging held. ostree systems are the common case: the real
+    // home is /var/home/<user> and /home is a symlink to it, so $HOME and the
+    // paths in the journal routinely disagree about which one they say.
+    add(QFileInfo(home).canonicalFilePath());
+    const QString kHome    = QStringLiteral("/home/");
+    const QString kVarHome = QStringLiteral("/var/home/");
+    for (const QString& p : QStringList(spellings)) {
+        if (p.startsWith(kVarHome))
+            add(kHome + p.mid(kVarHome.size()));
+        else if (p.startsWith(kHome))
+            add(kVarHome + p.mid(kHome.size()));
+    }
+    // Longest first: /home/u is a substring of /var/home/u, so replacing the
+    // short spelling first leaves "/var<HOME>" behind.
+    std::sort(spellings.begin(), spellings.end(), [](const QString& a, const QString& b) {
+        return a.size() > b.size();
+    });
+
+    QString out = text;
+    for (const QString& p : spellings) out.replace(p, QStringLiteral("<HOME>"));
+    return out;
 }
 
 bool WekDiagnostics::pack(const QString& outPath, const QMap<QString, QByteArray>& files) {

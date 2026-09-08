@@ -14,7 +14,8 @@ namespace wekde
 // relocate it.
 //
 // Redaction:
-//   - Home path -> <HOME> across env + cfg before writing.
+//   - Home path -> <HOME> in every bundle file, applied once in saveBundle()
+//     so a new collector cannot forget it.
 //   - cfg_* fields with paths (SteamLibraryPath, WallpaperSource,
 //     VideoFolderPath) -> <REDACTED>.
 //   - Only WEKDE_/QT_/KDE_/XDG_/MESA_/AMD_VULKAN_/NVIDIA_/VK_ env vars
@@ -38,11 +39,14 @@ public:
 
     // Test hooks — exposed for tst_wekdiagnostics; not part of the
     // production QML API.
-    QString collectPluginEnvForTest() { return collectPluginEnv(); }
-    QString collectRedactedCfgForTest() { return collectRedactedCfg(); }
-    QString collectGpuInfoForTest() { return collectGpuInfo(); }
-    QString collectCacheManifestForTest() { return collectCacheManifest(); }
-    QString collectPipelineDiagForTest() { return collectPipelineDiag(); }
+    QString        collectPluginEnvForTest() { return collectPluginEnv(); }
+    QString        collectRedactedCfgForTest() { return collectRedactedCfg(); }
+    QString        collectGpuInfoForTest() { return collectGpuInfo(); }
+    QString        collectCacheManifestForTest() { return collectCacheManifest(); }
+    QString        collectPipelineDiagForTest() { return collectPipelineDiag(); }
+    static QString scrubHomePathsForTest(const QString& text, const QString& homePath) {
+        return scrubHomePaths(text, homePath);
+    }
 
 private:
     QString collectJournal();
@@ -53,7 +57,10 @@ private:
     QString collectCacheManifest();
     QString collectPluginVersion();
     QString collectPipelineDiag();
-    bool    pack(const QString& outPath, const QMap<QString, QByteArray>& files);
+    // Replaces the user's home path with <HOME>. Every collector's output
+    // goes through this on its way into the bundle.
+    static QString scrubHomePaths(const QString& text, const QString& homePath);
+    bool           pack(const QString& outPath, const QMap<QString, QByteArray>& files);
 
     QString m_lastError;
 };

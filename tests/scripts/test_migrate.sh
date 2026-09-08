@@ -70,6 +70,14 @@ assert_marker_present() {
     [[ -f "$sandbox/.config/wekde/migrated-from-catsout" ]]
 }
 
+# The plugin's in-process migration writes this same file, so a marker in a
+# fresh sandbox stands in for "migration already happened".
+write_marker() {
+    local sandbox=$1
+    mkdir -p "$sandbox/.config/wekde"
+    echo ok > "$sandbox/.config/wekde/migrated-from-catsout"
+}
+
 # run_test <name> <expect_exit> <expect_out> [assert_backup=0|1] [seed_old=0|1] [expect_marker=0|1]
 run_test() {
     local name=$1 expect_exit=$2 expect_out=${3:-} assert_backup=${4:-0} \
@@ -135,8 +143,10 @@ run_idempotency_test() {
         echo "FAIL [$name]: first run failed"; FAIL=$((FAIL + 1))
         rm -rf "$sandbox"; return
     }
+    # --force: the first run leaves a marker, and without the override the
+    # second run would stop at it and prove nothing about the rewrite.
     HOME="$sandbox" XDG_CONFIG_HOME="$sandbox/.config" \
-        PATH="$sandbox/bin:$PATH" "$SCRIPT" --auto >/dev/null 2>&1 || {
+        PATH="$sandbox/bin:$PATH" "$SCRIPT" --auto --force >/dev/null 2>&1 || {
         echo "FAIL [$name]: second run failed"; FAIL=$((FAIL + 1))
         rm -rf "$sandbox"; return
     }
@@ -204,13 +214,126 @@ run_dryrun_test() {
     rm -rf "$sandbox"
 }
 
+# A marker means the migration already ran — through this script or through the
+# plugin's in-process path. An interactive run must stop there just like --auto
+# does, without touching config and without bouncing plasmashell.
+run_marker_test() {
+    local name="marker-stops-interactive-run" sandbox; sandbox=$(mktemp -d)
+    make_sandbox "$sandbox"
+    cp "$FIXTURES/appletsrc-post-inprocess.in" \
+       "$sandbox/.config/plasma-org.kde.plasma.desktop-appletsrc"
+    write_marker "$sandbox"
+    local actual_exit=0
+    HOME="$sandbox" XDG_CONFIG_HOME="$sandbox/.config" \
+        PATH="$sandbox/bin:$PATH" "$SCRIPT" --verbose >/dev/null 2>&1 || actual_exit=$?
+    if [[ "$actual_exit" -ne 0 ]]; then
+        echo "FAIL [$name]: exit code $actual_exit, expected 0"
+        FAIL=$((FAIL + 1)); rm -rf "$sandbox"; return
+    fi
+    if ! diff -u "$FIXTURES/appletsrc-post-inprocess.in" \
+            "$sandbox/.config/plasma-org.kde.plasma.desktop-appletsrc"; then
+        echo "FAIL [$name]: appletsrc rewritten despite the marker"
+        FAIL=$((FAIL + 1)); rm -rf "$sandbox"; return
+    fi
+    if [[ -d "$sandbox/.config/wek-migration-backup" ]]; then
+        echo "FAIL [$name]: ran far enough to take a backup"
+        FAIL=$((FAIL + 1)); rm -rf "$sandbox"; return
+    fi
+    echo "PASS [$name]"
+    PASS=$((PASS + 1))
+    rm -rf "$sandbox"
+}
+
+# --force is the way past the marker. It must produce the merge result, not the
+# duplicate-group mess a blind rename would leave behind.
+run_force_test() {
+    local name="force-overrides-marker" sandbox; sandbox=$(mktemp -d)
+    make_sandbox "$sandbox"
+    cp "$FIXTURES/appletsrc-post-inprocess.in" \
+       "$sandbox/.config/plasma-org.kde.plasma.desktop-appletsrc"
+    write_marker "$sandbox"
+    HOME="$sandbox" XDG_CONFIG_HOME="$sandbox/.config" \
+        PATH="$sandbox/bin:$PATH" "$SCRIPT" --force >/dev/null 2>&1 || {
+        echo "FAIL [$name]: forced run failed"; FAIL=$((FAIL + 1))
+        rm -rf "$sandbox"; return
+    }
+    if ! diff -u "$FIXTURES/appletsrc-post-inprocess.expected" \
+            "$sandbox/.config/plasma-org.kde.plasma.desktop-appletsrc"; then
+        echo "FAIL [$name]: appletsrc differs from expected"
+        FAIL=$((FAIL + 1)); rm -rf "$sandbox"; return
+    fi
+    echo "PASS [$name]"
+    PASS=$((PASS + 1))
+    rm -rf "$sandbox"
+}
+
+# Containment already carrying a captsilver group: the catsout group donates
+# only the keys the captsilver one lacks and keeps its own name, so the file
+# never ends up with two groups under the same header.
+run_merge_test() {
+    local name="merge-keeps-single-captsilver-group" sandbox; sandbox=$(mktemp -d)
+    make_sandbox "$sandbox"
+    cp "$FIXTURES/appletsrc-post-inprocess.in" \
+       "$sandbox/.config/plasma-org.kde.plasma.desktop-appletsrc"
+    HOME="$sandbox" XDG_CONFIG_HOME="$sandbox/.config" \
+        PATH="$sandbox/bin:$PATH" "$SCRIPT" --auto >/dev/null 2>&1 || {
+        echo "FAIL [$name]: run failed"; FAIL=$((FAIL + 1))
+        rm -rf "$sandbox"; return
+    }
+    local result="$sandbox/.config/plasma-org.kde.plasma.desktop-appletsrc"
+    if ! diff -u "$FIXTURES/appletsrc-post-inprocess.expected" "$result"; then
+        echo "FAIL [$name]: appletsrc differs from expected"
+        FAIL=$((FAIL + 1)); rm -rf "$sandbox"; return
+    fi
+    local dupes
+    dupes=$(grep -cFx \
+        "[Containments][1][Wallpaper][com.github.captsilver.wallpaperEngineKde][General]" \
+        "$result")
+    if (( dupes != 1 )); then
+        echo "FAIL [$name]: $dupes captsilver General headers in containment 1, expected 1"
+        FAIL=$((FAIL + 1)); rm -rf "$sandbox"; return
+    fi
+    echo "PASS [$name]"
+    PASS=$((PASS + 1))
+    rm -rf "$sandbox"
+}
+
+# The lockscreen wallpaper lives in kscreenlockerrc, and it can be the only
+# place catsout is still named — appletsrc alone is not enough to decide there
+# is no work to do.
+run_locker_test() {
+    local name="lockscreen-only-reference" sandbox; sandbox=$(mktemp -d)
+    make_sandbox "$sandbox"
+    cp "$FIXTURES/appletsrc-already-migrated.in" \
+       "$sandbox/.config/plasma-org.kde.plasma.desktop-appletsrc"
+    cp "$FIXTURES/kscreenlockerrc-post-inprocess.in" "$sandbox/.config/kscreenlockerrc"
+    HOME="$sandbox" XDG_CONFIG_HOME="$sandbox/.config" \
+        PATH="$sandbox/bin:$PATH" "$SCRIPT" --auto >/dev/null 2>&1 || {
+        echo "FAIL [$name]: run failed"; FAIL=$((FAIL + 1))
+        rm -rf "$sandbox"; return
+    }
+    if ! diff -u "$FIXTURES/kscreenlockerrc-post-inprocess.expected" \
+            "$sandbox/.config/kscreenlockerrc"; then
+        echo "FAIL [$name]: kscreenlockerrc differs from expected"
+        FAIL=$((FAIL + 1)); rm -rf "$sandbox"; return
+    fi
+    echo "PASS [$name]"
+    PASS=$((PASS + 1))
+    rm -rf "$sandbox"
+}
+
 # ── tests ─────────────────────────────────────────────────────────────────────
 run_test appletsrc-already-migrated 0 appletsrc-already-migrated.expected 0 0 0
 run_test appletsrc-simple           0 appletsrc-simple.expected   1 1 1
 run_test appletsrc-multidesk        0 appletsrc-multidesk.expected 1 0 1
 run_idempotency_test appletsrc-simple
+run_idempotency_test appletsrc-post-inprocess
 run_concurrent_test
 run_dryrun_test
+run_marker_test
+run_force_test
+run_merge_test
+run_locker_test
 
 echo
 echo "Tests: $PASS passed, $FAIL failed."

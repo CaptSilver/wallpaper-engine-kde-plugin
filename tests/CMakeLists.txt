@@ -189,6 +189,10 @@ if(Qt6Gui_FOUND AND Qt6Quick_FOUND)
     target_include_directories(tst_mpriscolors PRIVATE ${WEKDE_SRC_DIR})
     target_link_libraries(tst_mpriscolors PRIVATE
         Qt6::Core Qt6::Test Qt6::Gui Qt6::Network Qt6::DBus Qt6::Quick)
+    # The stub-fidelity case reads the QML stub's source text and diffs its
+    # surface against MprisMonitor's metaobject.
+    target_compile_definitions(tst_mpriscolors PRIVATE
+        WEK_MPRIS_STUB_QML="${CMAKE_CURRENT_SOURCE_DIR}/qml/_stubs/com/github/captsilver/wallpaperEngineKde/MprisMonitor.qml")
     if(COVERAGE)
         target_compile_options(tst_mpriscolors PRIVATE ${_cov_compile_flags})
         target_link_options(tst_mpriscolors PRIVATE ${_cov_link_flags})
@@ -786,6 +790,12 @@ endif()
 # sandbox, runs in <1s.
 add_test(NAME test_mutation
          COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_mutation.sh)
+
+# Hermetic bash self-test for tools/scripts/migrate-from-catsout.sh (the
+# catsout->captsilver config rewrite).  Sandboxed HOME with fake plasmashell /
+# systemctl / kpackagetool6 on PATH, fixture appletsrc in, expected out.
+add_test(NAME test_migrate
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_migrate.sh)
 
 # ── Apply opt-in sanitizers to every C++ test target ──────────────────────────
 # No-op unless -DWEK_SANITIZE=... is set.  Guarded by if(TARGET ...) because

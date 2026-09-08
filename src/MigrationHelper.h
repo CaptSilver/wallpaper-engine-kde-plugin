@@ -42,8 +42,10 @@ public:
     /// every plasmoid construction.
     ///
     /// NOTE: tools/scripts/migrate-from-catsout.sh still ships as
-    /// /usr/bin/wek-migrate-from-catsout for manual/CLI migration, but
-    /// runIfNeeded() does NOT invoke it — the two paths are independent.
+    /// /usr/bin/wek-migrate-from-catsout for manual/CLI migration.
+    /// runIfNeeded() does NOT invoke it; all the two share is the marker file,
+    /// which whichever runs first writes and the other then stops on (the
+    /// script takes --force to go past it).
     Q_INVOKABLE void runIfNeeded();
 
 private:

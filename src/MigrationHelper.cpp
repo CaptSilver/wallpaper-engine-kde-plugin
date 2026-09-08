@@ -61,9 +61,9 @@ bool MigrationHelper::shouldRun() const {
     if (QFileInfo::exists(cfg + "/" + kMarkerRel)) return false;
 
     // Either file can be the trigger — a user whose ONLY catsout reference is
-    // in kscreenlockerrc must still kick off the migration. The shell shim's
-    // backup/rewrite loops (tools/scripts/migrate-from-catsout.sh:137,161) iterate
-    // both files for the same reason.
+    // in kscreenlockerrc must still kick off the migration. The shell shim
+    // (tools/scripts/migrate-from-catsout.sh) walks the same two files for the
+    // same reason.
     auto fileMentionsOldUri = [&](const QString& rel) {
         QFile f(cfg + "/" + rel);
         if (! f.open(QIODevice::ReadOnly | QIODevice::Text)) return false;

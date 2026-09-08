@@ -297,8 +297,8 @@ private slots:
     }
 
     // ── kscreenlockerrc (lockscreen wallpaper config) coverage ────────────────
-    // The shell shim's two-file iteration (tools/scripts/migrate-from-catsout.sh:137,161)
-    // includes "$CONFIG_HOME/kscreenlockerrc" alongside the appletsrc glob; the
+    // The shell shim (tools/scripts/migrate-from-catsout.sh) covers
+    // kscreenlockerrc alongside the appletsrc glob; the
     // in-process port previously only walked appletsrc, leaving users whose
     // lockscreen wallpaper was set to the catsout build with a permanently
     // broken lockscreen wallpaper after the rename.

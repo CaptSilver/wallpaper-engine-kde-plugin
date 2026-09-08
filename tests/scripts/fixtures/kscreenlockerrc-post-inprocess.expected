@@ -1,0 +1,11 @@
+[Greeter]
+Theme=org.kde.breeze
+WallpaperPlugin=com.github.captsilver.wallpaperEngineKde
+
+[Greeter][Wallpaper][com.github.captsilver.wallpaperEngineKde][General]
+WallpaperSource=/home/user/lock-current.mp4
+MuteAudio=true
+
+[Greeter][Wallpaper][com.github.catsout.wallpaperEngineKde][General]
+WallpaperSource=/home/user/lock-stale.mp4
+MuteAudio=true

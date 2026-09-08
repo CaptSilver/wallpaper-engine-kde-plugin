@@ -1897,6 +1897,46 @@ TestCase {
         dlg.close();
     }
 
+    // The shader-cache readout must re-read the directory after a wipe.
+    // It used to be a binding whose own async callback assigned back to it,
+    // which dropped the binding on the first resolve; from then on the label
+    // kept showing the pre-wipe size until the settings dialog was reopened.
+    function test_clearShaderCache_reQueriesTheCacheSize() {
+        const dlg = _findClearCacheDialog();
+        verify(dlg !== null, "clear-cache confirm dialog unreachable from cfg tree");
+        const fh = _findFileHelper();
+        verify(fh !== null, "FileHelper stub unreachable");
+        if (cfg.plugin_info) cfg.plugin_info.cache_path = "file:///tmp/cache";
+        asyncUtil.pumpMicrotasks(this);  // let the page-load query resolve
+
+        const before = fh.requestDirSizeCount;
+        dlg.accepted();
+        asyncUtil.pumpMicrotasks(this);
+        verify(fh.requestDirSizeCount > before,
+               "accepting the wipe must re-read the cache directory size; "
+             + "requestDirSize stayed at " + before);
+    }
+
+    // Pointing the plugin at a different cache directory must re-read the
+    // size too — same root cause as the wipe case above.
+    function test_shaderCacheSize_reQueriesWhenTheCachePathChanges() {
+        const fh = _findFileHelper();
+        verify(fh !== null, "FileHelper stub unreachable");
+        verify(cfg.plugin_info !== null, "plugin_info unreachable");
+        cfg.plugin_info.cache_path = "file:///tmp/cache";
+        asyncUtil.pumpMicrotasks(this);
+
+        const before = fh.requestDirSizeCount;
+        cfg.plugin_info.cache_path = "file:///tmp/other-cache";
+        asyncUtil.pumpMicrotasks(this);
+        verify(fh.requestDirSizeCount > before,
+               "a new cache path must re-read the directory size; "
+             + "requestDirSize stayed at " + before);
+
+        cfg.plugin_info.cache_path = "file:///tmp/cache";
+        asyncUtil.pumpMicrotasks(this);
+    }
+
     // ── Open Containing Folder action — Kirigami.Action onTriggered
     //    that builds the file:// URL and calls Qt.openUrlExternally.
     //    qmlcov needs this body executed; openUrlExternally is a no-op

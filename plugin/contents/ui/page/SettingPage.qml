@@ -587,9 +587,26 @@ Flickable {
                 text: i18nc("@label settings option shader cache", "Shader cache")
                 text_color: Kirigami.Theme.textColor
                 icon: '../../images/information-outline.svg'
-                // Bumped by the Clear action to force the cache-size Text
-                // below to re-query after a successful wipe.
-                property int _cacheRev: 0
+
+                property string cachePath: Common.urlNative(plugin_info.cache_path)
+                // Assigned, never bound: get_dir_size walks the tree off the
+                // GUI thread and its callback writes the answer back here. As
+                // a binding that write would destroy the binding on the first
+                // resolve, and the readout could never update again.
+                property string cacheSize:
+                    i18nc("@info shader cache size placeholder while loading", "? MB")
+
+                // Refreshed on load, when the cache directory moves, and by
+                // the Clear action once the wipe reports success.
+                function refreshCacheSize() {
+                    if (!pyext || !cachePath) return;
+                    pyext.get_dir_size(cachePath).then(res => {
+                        shaderCacheItem.cacheSize = Utils.prettyBytes(res);
+                    }).catch(reason => console.error(reason));
+                }
+                onCachePathChanged: refreshCacheSize()
+                Component.onCompleted: refreshCacheSize()
+
                 actor: Kirigami.ActionToolBar {
                     Layout.fillWidth: true
                     alignment: Qt.AlignRight
@@ -614,26 +631,11 @@ Flickable {
                 contentBottom: ColumnLayout {
                     Text {
                         Layout.fillWidth: true
-                        property string cache_path: Common.urlNative(plugin_info.cache_path)
-                        // Re-read whenever shaderCacheItem._cacheRev bumps
-                        // (Clear sets it after wiping the dir).
-                        property int _rev: shaderCacheItem._cacheRev
-
                         color: Kirigami.Theme.disabledTextColor
                         text: plugin_info.cache_path
-                        ? i18nc("@info shader cache path - size, %1=path, %2=size", "%1 - %2", cache_path, cache_size)
+                        ? i18nc("@info shader cache path - size, %1=path, %2=size", "%1 - %2",
+                                shaderCacheItem.cachePath, shaderCacheItem.cacheSize)
                         : i18nc("@info shader cache not available", "Not available")
-
-                        property string cache_size: {
-                            // Touch _rev so the binding re-evaluates.
-                            void _rev;
-                            if(pyext) {
-                                pyext.get_dir_size(this.cache_path).then(res => {
-                                    this.cache_size = Utils.prettyBytes(res);
-                                }).catch(reason => console.error(reason));
-                            }
-                            return i18nc("@info shader cache size placeholder while loading", "? MB");
-                        }
                     }
                 }
             }
@@ -666,9 +668,9 @@ Flickable {
                 if (!plugin_info.cache_path || !pyext) return;
                 pyext.clear_cache(Common.urlNative(plugin_info.cache_path))
                     .then(ok => {
-                        if (ok && typeof shaderCacheItem !== "undefined")
-                            shaderCacheItem._cacheRev += 1;
-                        else if (!ok)
+                        if (ok)
+                            shaderCacheItem.refreshCacheSize();
+                        else
                             console.warn("Shader cache clear failed — see plasmashell journal");
                     });
             }

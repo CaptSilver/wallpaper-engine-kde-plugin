@@ -26,10 +26,16 @@ void SafeWallpaperBridge::pushUserProperties(const QVariantMap& m) {
 void SafeWallpaperBridge::setLoaded(bool v) {
     if (m_loaded == v) return; // dedupe redundant transitions
     m_loaded = v;
+    if (! v) {
+        // The document went away — QtWebView clears loaded both when it
+        // replaces the page and when a long pause discards the renderer.
+        // Whatever loads next is a new page, so re-arm its init handshake.
+        m_initFired = false;
+    }
     emit loadedChanged();
-    // One-shot init: only fire on the FIRST false->true transition this
-    // lifetime. Subsequent toggles are page-lifecycle events (lifecycle
-    // freeze/thaw) and the wallpaper JS does not expect a fresh handshake.
+    // Init fires once per document, not once per bridge. Repeat trues are
+    // in-page navigations on a page that already handshook, and must not
+    // re-run it.
     if (v && ! m_initFired) {
         m_initFired = true;
         emit sigInit();

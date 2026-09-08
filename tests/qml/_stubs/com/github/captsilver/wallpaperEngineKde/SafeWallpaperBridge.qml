@@ -14,8 +14,8 @@ import QtQuick
 //   * sigGeneralProperties / sigUserProperties / sigAudio / sigInit are
 //     signals that wallpaper JS subscribes to over QWebChannel.
 //   * loadedChanged is auto-emitted by the QML engine for the `loaded`
-//     property; setLoaded routes through it + drives sigInit one-shot
-//     semantics.
+//     property; setLoaded routes through it + fires sigInit once per
+//     loaded document.
 QtObject {
     id: bridge
 
@@ -23,7 +23,7 @@ QtObject {
     property var  _generalProperties: ({})
     property var  _userProperties:    ({})
     property bool _loaded:            false
-    // One-shot init guard — matches the C++ m_initFired.
+    // Per-document init guard — matches the C++ m_initFired.
     property bool _initFired:         false
 
     // READ-only views — match the production C++ Q_PROPERTY surface
@@ -50,6 +50,8 @@ QtObject {
     function setLoaded(v) {
         if (_loaded === v) return;
         _loaded = v;
+        // false means the document went away — re-arm init for the next one.
+        if (!v) _initFired = false;
         if (v && !_initFired) {
             _initFired = true;
             sigInit();

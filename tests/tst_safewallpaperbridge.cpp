@@ -3,8 +3,8 @@
 //   * Q_PROPERTY surface is READ-only (no JS-side WRITE through QWebChannel).
 //   * QML-only setters update the mirror + fire NOTIFY.
 //   * Three signals: sigGeneralProperties / sigUserProperties / sigAudio.
-//   * One one-shot init signal: sigInit (fired by QML on first
-//     LoadSucceededStatus, replaces the page-injected wpeQml.loaded = true).
+//   * An init signal: sigInit (fired by QML on LoadSucceededStatus, once per
+//     document; replaces the page-injected wpeQml.loaded = true).
 //   * No Q_INVOKABLE methods (web JS receives signals only).
 //
 // Real-world JS-write attempts are exercised in the QML integration test
@@ -70,7 +70,7 @@ private slots:
         QCOMPARE(sigSpy.count(), 1);
     }
 
-    void setLoaded_firesLoadedChangedAndSigInit_onlyOnFalseToTrue() {
+    void setLoaded_dedupesRepeatTrue_andReArmsInitAfterUnload() {
         SafeWallpaperBridge b;
         QSignalSpy          notifySpy(&b, &SafeWallpaperBridge::loadedChanged);
         QSignalSpy          initSpy(&b, &SafeWallpaperBridge::sigInit);
@@ -88,17 +88,16 @@ private slots:
         QCOMPARE(notifySpy.count(), 1);
         QCOMPARE(initSpy.count(), 1);
 
-        // false then true again: NOTIFY fires both transitions but sigInit
-        // is one-shot for the lifetime of the bridge — once init has
-        // happened, subsequent loaded toggles are page-level lifecycle
-        // events (Frozen <-> Active) and the wallpaper JS doesn't expect
-        // a fresh init handshake.
+        // false means the document is gone — QtWebView says so when it
+        // replaces the page and when a discard kills the renderer. Whatever
+        // loads afterwards is a fresh page with a fresh JS context, so it gets
+        // its own handshake: the previous document's connections died with it.
         b.setLoaded(false);
         QCOMPARE(notifySpy.count(), 2);
         QCOMPARE(initSpy.count(), 1);
         b.setLoaded(true);
         QCOMPARE(notifySpy.count(), 3);
-        QCOMPARE(initSpy.count(), 1);
+        QCOMPARE(initSpy.count(), 2);
     }
 
     void sigAudio_emitsQListDoubleNotQVariantList() {

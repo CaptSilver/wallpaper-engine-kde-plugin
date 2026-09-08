@@ -39,11 +39,15 @@ TestCase {
         readfile: function(p) {
             // QtWebView reads project.json via readfile() to populate
             // userProperties. Return a parseable JSON string in a thenable.
+            // The second wallpaper declares a different default so a test can
+            // tell whose properties were delivered.
             readfileCount  += 1;
             lastReadfileArg = p;
+            const dflt = p.indexOf("second_wallpaper") !== -1 ? 33 : 50;
             return {
                 then: function(cb) {
-                    cb('{"general":{"properties":{"sliderProp":{"value":50}}}}');
+                    cb('{"general":{"properties":{"sliderProp":{"value":'
+                       + dflt + '}}}}');
                     return this;
                 },
             };
@@ -115,6 +119,46 @@ TestCase {
         generalPropsSpy.clear();
         background.fps = 60;
         compare(generalPropsSpy.count, 0);
+    }
+
+    // Switching between two web wallpapers reuses this QtWebView — main.qml
+    // just reassigns source — so the bridge outlives the document. The new
+    // wallpaper has its own project.json and must be handed its own
+    // properties; otherwise it renders with whatever the previous one left
+    // in the bridge.
+    function test_sourceChange_deliversTheNewWallpapersUserProperties() {
+        const wev    = _findWebEngineView();
+        const webobj = _findWebobj();
+        verify(wev !== null);
+        verify(webobj !== null);
+
+        const succeeded = function(url) {
+            return { status: WebEngineView.LoadSucceededStatus,
+                     url: url, errorString: "" };
+        };
+
+        // First wallpaper is up and initialised.
+        webobj.setLoaded(false);
+        web.userPropsJson = "";
+        web.source = "file:///tmp/first_wallpaper/index.html";
+        wev.loadingChanged(succeeded("file:///tmp/first_wallpaper/index.html"));
+        compare(webobj.loaded, true);
+
+        // The page the second wallpaper loads connects its own listener.
+        let delivered = null;
+        const onProps = function(props) { delivered = props; };
+        webobj.sigUserProperties.connect(onProps);
+
+        web.source = "file:///tmp/second_wallpaper/index.html";
+        wev.loadingChanged(succeeded("file:///tmp/second_wallpaper/index.html"));
+
+        webobj.sigUserProperties.disconnect(onProps);
+        verify(lastReadfileArg.indexOf("second_wallpaper") !== -1,
+            "the new wallpaper's project.json must be the one read");
+        verify(delivered !== null,
+            "the new wallpaper's page must be handed its user properties");
+        compare(delivered.sliderProp.value, 33,
+            "delivered properties must come from the new wallpaper's project.json");
     }
 
     function test_sourceChange_re_triggersLoadWallpaper() {
@@ -592,6 +636,65 @@ TestCase {
             "resume from Discarded must trigger loadWallpaper()");
         compare(web._isDiscarded, false,
             "resume from Discarded must clear the flag");
+    }
+
+    // A discard kills the renderer and the document with it. The reloaded
+    // document connects a brand-new wallpaperPropertyListener, so the resume
+    // has to hand it the user properties all over again — otherwise the
+    // wallpaper comes back rendering the project.json defaults instead of the
+    // values the user configured.
+    function test_resumeFromDiscarded_reDeliversUserPropertiesToFreshPage() {
+        const wev       = _findWebEngineView();
+        const webobj    = _findWebobj();
+        const longTimer = _findLongPauseTimer();
+        verify(wev !== null);
+        verify(webobj !== null);
+        verify(longTimer !== null);
+
+        // project.json (the readfile stub above) defaults sliderProp to 50;
+        // 77 is the value the user picked in the settings UI.
+        webobj.setLoaded(false);
+        web._isDiscarded = false;
+        wev.paused = false;
+        web.userPropsJson = '{"sliderProp":77}';
+
+        const succeeded = {
+            status: WebEngineView.LoadSucceededStatus,
+            url: "file:///tmp/fake_wallpaper.html", errorString: "",
+        };
+        wev.loadingChanged(succeeded);      // first document finishes loading
+        compare(webobj.loaded, true);
+
+        // Long pause → Discarded.
+        wev.paused = true;
+        longTimer.triggered();
+        compare(web._isDiscarded, true);
+
+        // Stand in for the reloaded page's property listener: it is connected
+        // by the injected script of the NEW document, so it has heard nothing
+        // that was pushed before the discard.
+        let delivered = null;
+        let initCount = 0;
+        const onProps = function(props) { delivered = props; };
+        const onInit  = function() { initCount += 1; };
+        webobj.sigUserProperties.connect(onProps);
+        webobj.sigInit.connect(onInit);
+
+        const reloads = web._testReloadCallCount;
+        wev.paused = false;                 // resume → loadWallpaper()
+        verify(web._testReloadCallCount > reloads,
+            "resume from Discarded must reload the wallpaper");
+        wev.loadingChanged(succeeded);      // reloaded document finishes
+
+        webobj.sigUserProperties.disconnect(onProps);
+        webobj.sigInit.disconnect(onInit);
+
+        verify(delivered !== null,
+            "reloaded page must be handed its user properties again");
+        compare(delivered.sliderProp.value, 77,
+            "reloaded page must get the configured value, not the project.json default");
+        compare(initCount, 1,
+            "reloaded page must get its own init handshake");
     }
 
     // Rapid pause/resume must NOT escalate — the long-pause timer is stopped

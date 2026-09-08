@@ -28,8 +28,8 @@ namespace wekde
 //       sigUserProperties(QVariantMap)    — per-wallpaper user_properties
 //       sigAudio(QList<double>)           — 128-element FFT spectrum
 //                                           (matches WebAudioBridge zero-copy)
-//       sigInit()                         — fired once when the bridge is
-//                                           ready (replaces the page-injected
+//       sigInit()                         — fired once per loaded document
+//                                           (replaces the page-injected
 //                                           wpeQml.loaded = true writeback)
 //
 // SceneObject (the scene-renderer QQuickItem with the dangerous
@@ -73,8 +73,8 @@ signals:
     void sigGeneralProperties(const QVariantMap& properties);
     void sigUserProperties(const QVariantMap& properties);
     void sigAudio(const QList<double>& samples);
-    // One-shot init: fired by setLoaded(true) on the first false->true
-    // transition. Replaces the page-injected `wpeQml.loaded = true`
+    // Init handshake: fired by setLoaded(true) on a false->true transition,
+    // once per document. Replaces the page-injected `wpeQml.loaded = true`
     // writeback the legacy webobj relied on; the QML side now owns the
     // init handshake (fires from onLoadingChanged ==> LoadSucceededStatus).
     void sigInit();
@@ -83,8 +83,10 @@ private:
     QVariantMap m_general;
     QVariantMap m_user;
     bool        m_loaded { false };
-    // Track whether sigInit has fired this lifetime so subsequent
-    // loaded toggles (Frozen <-> Active lifecycle) don't re-fire init.
+    // Track whether sigInit has fired for the CURRENT document, so repeat
+    // LoadSucceededStatus reports (in-page navs) don't re-fire init.
+    // setLoaded(false) clears it — that is QtWebView telling us the document
+    // is gone.
     bool m_initFired { false };
 };
 

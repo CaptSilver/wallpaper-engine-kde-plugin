@@ -56,6 +56,14 @@ Item {
         var fileUrl = webItem.source.toString();
         if (!fileUrl) return;
 
+        // The document the bridge was talking to is about to be replaced —
+        // by another wallpaper, or by the reload after a discard. Clear loaded
+        // so the LoadSucceededStatus that follows is a real false->true edge;
+        // the bridge dedupes true->true, and a swallowed edge means nobody
+        // reads the new project.json and the page renders its built-in
+        // defaults instead of the user's values.
+        webobj.setLoaded(false);
+
         var filePath = Common.urlNative(fileUrl);
         var baseUrl = fileUrl.substring(0, fileUrl.lastIndexOf('/') + 1);
         var baseDir = Common.urlNative(baseUrl); // strip file:// once
@@ -323,9 +331,9 @@ Item {
                 // Fire the bridge's setLoaded(true) here — replaces the legacy
                 // page-injected wpeQml.loaded = true writeback (which a malicious
                 // wallpaper could re-trigger to re-fire the project.json load).
-                // The bridge dedupes redundant true->true transitions and only
-                // fires sigInit on the first one this lifetime, so in-page navs
-                // that re-fire LoadSucceededStatus are harmless.
+                // The bridge dedupes redundant true->true transitions and
+                // fires sigInit once per document, so in-page navs that
+                // re-fire LoadSucceededStatus are harmless.
                 if (webobj && typeof webobj.setLoaded === "function")
                     webobj.setLoaded(true);
                 // check pause after load
@@ -485,6 +493,10 @@ Item {
             pauseImage.source = "";
             web.lifecycleState = WebEngineView.LifecycleState.Discarded;
             webItem._isDiscarded = true;
+            // The renderer dies with the document, so stop reporting a live
+            // page: fps, user-property and audio pushes are all gated on
+            // loaded and have nowhere to go until the resume reloads.
+            webobj.setLoaded(false);
             console.log("[WEK] WebEngineView escalated to Discarded after long pause");
         }
     }

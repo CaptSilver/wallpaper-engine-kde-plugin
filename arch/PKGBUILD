@@ -49,6 +49,11 @@ depends=(
     'lz4'
     'freetype2'
     'libpulse'
+    # gl.pc / egl.pc and gbm.pc.  The renderer probes all three without
+    # REQUIRED, so without them the hardware video-texture decoder is left
+    # out of the build and nothing says so louder than a cmake status line.
+    'libglvnd'
+    'mesa'
     'vulkan-icd-loader'
 )
 

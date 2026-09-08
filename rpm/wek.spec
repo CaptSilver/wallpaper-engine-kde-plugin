@@ -19,6 +19,11 @@ Source0: %{name}-%{version}.tar.gz
 # `rpmbuild --with check`; the fast-path build is unchanged.
 %bcond_with check
 
+# The gettext catalog name.  po/Messages.sh extracts strings into
+# <domain>.pot, translators return po/<lang>/<domain>.po, and ki18n_install
+# compiles those into <domain>.mo under %%{_datadir}/locale.
+%global l10n_domain plasma_wallpaper_com.github.captsilver.wallpaperEngineKde
+
 # Dependencies are declared as cmake()/pkgconfig() capabilities rather than
 # package names.  The three distros this builds for share almost no names for
 # the same libraries -- lz4-devel on Fedora is liblz4-devel on openSUSE and
@@ -157,6 +162,20 @@ cmake --build _build -- %{?_smp_mflags}
 DESTDIR=%{buildroot} cmake --install _build \
       --prefix %{_prefix}
 
+# ki18n_install stages %%{_datadir}/locale on every build, translations or not,
+# so the first .po anyone lands would otherwise arrive as a file no %%files
+# entry claims, and rpm aborts on unpackaged files.  %%find_lang collects the
+# catalogs into a file list %%files reads.  --all-name so a catalog renamed
+# upstream is still collected.
+#
+# While po/ holds nothing but the .pot -- today -- there is nothing to collect:
+# find-lang.sh exits 1 and writes an empty list, which rpm rejects just as hard
+# ("Empty %%files file"), and it counts comment lines as empty too.  So the
+# fallback writes one real entry that claims nothing: the staged locale
+# directory is empty, and excluding it is what we mean anyway.
+%find_lang %{l10n_domain} --all-name \
+    || echo '%%exclude %{_datadir}/locale' > %{l10n_domain}.lang
+
 %check
 %if %{with check}
 # Run only the bus-free, display-free C++ tests in the RPM build chroot.
@@ -169,7 +188,7 @@ ctest --test-dir _build/tests \
       --label-exclude 'DISPLAY_NEEDED|DBUS_NEEDED'
 %endif
 
-%files
+%files -f %{l10n_domain}.lang
 # The project's LICENSE + every vendored third-party license is installed by
 # cmake under ${_datadir}/wek/licenses/.  Listing the directory once via
 # %%license captures the project LICENSE (at wek/licenses/LICENSE) AND each

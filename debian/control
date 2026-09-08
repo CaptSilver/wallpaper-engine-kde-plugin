@@ -29,6 +29,13 @@ Build-Depends:
  libfreetype-dev,
  libfontconfig-dev,
  libpulse-dev,
+# EGL, GL and GBM are probed without REQUIRED and gate the hardware
+# video-texture decoder as a set -- two out of three still drops it, and the
+# only trace is one line of cmake output.  Left out, the package builds and
+# installs fine and decodes MP4 scene textures on the CPU forever.
+ libegl-dev,
+ libgl-dev,
+ libgbm-dev,
  pkg-config,
 Standards-Version: 4.6.2
 Homepage: https://github.com/CaptSilver/wallpaper-engine-kde-plugin

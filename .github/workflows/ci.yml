@@ -50,7 +50,9 @@ jobs:
             mpv \
             lz4 \
             freetype2 \
-            libpulse
+            libpulse \
+            libglvnd \
+            mesa
 
       - name: Configure
         run: |
@@ -108,7 +110,9 @@ jobs:
             qt6-qtwebengine-devel \
             qt6-qtdeclarative-devel \
             freetype-devel \
-            pulseaudio-libs-devel
+            pulseaudio-libs-devel \
+            libglvnd-devel \
+            mesa-libgbm-devel
 
       - name: Configure
         run: |
@@ -171,7 +175,10 @@ jobs:
             libmpv-dev \
             liblz4-dev \
             libfreetype-dev \
-            libpulse-dev
+            libpulse-dev \
+            libegl-dev \
+            libgl-dev \
+            libgbm-dev
 
       - name: Configure
         run: |

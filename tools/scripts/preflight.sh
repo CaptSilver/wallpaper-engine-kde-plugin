@@ -162,6 +162,11 @@ DEPS_FEDORA=(
 
     # native libs
     lz4-devel mpv-devel freetype-devel fontconfig-devel glfw-devel
+    # Probed without REQUIRED, so a box without them still builds green and
+    # simply has less in it: libglvnd + mesa-libgbm gate the hardware
+    # video-texture decoder, pulseaudio-libs the audio-capture sink rebind.
+    # A gate provisioned without them cannot see a regression in either.
+    libglvnd-devel mesa-libgbm-devel pulseaudio-libs-devel
 
     # sanitizer runtimes (libasan.so.8 lives only inside distrobox per CLAUDE.md).
     # libtsan is what the --tsan leg links against.

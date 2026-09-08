@@ -4,6 +4,10 @@
 #include <QColor>
 #include <QCoreApplication>
 #include <QMetaObject>
+#include <QMetaMethod>
+#include <QMetaProperty>
+#include <QRegularExpression>
+#include <QSet>
 #include <QSignalSpy>
 #include <QTemporaryFile>
 #include <QTimer>
@@ -172,6 +176,12 @@ private slots:
     void processArtUrl_supersededHttpFetch_isCancelled();
     // Leaving a player invalidates the art it had in flight.
     void disconnectFromPlayer_dropsInflightArtFromPreviousPlayer();
+
+    // ── media availability: the state QML reads to tell a scene script
+    // whether a player is there at all.
+    void mediaAvailable_isOwnPropertyFollowingTheConnection();
+    // The QML test stub must not offer members the real monitor lacks.
+    void qmlStubSurfaceMatchesTheRealMonitor();
 };
 
 // Helper: create a solid-color image
@@ -714,7 +724,7 @@ void TestMprisColors::handlePropsChanged_sameArtUrl_doesNotReprocess() {
 
 void TestMprisColors::handleNameOwnerChanged_nonMprisName_ignored() {
     MprisMonitor m;
-    QSignalSpy   spy(&m, &MprisMonitor::enabledChanged);
+    QSignalSpy   spy(&m, &MprisMonitor::mediaAvailableChanged);
     // Anything not starting with "org.mpris.MediaPlayer2." → early return.
     invokeSlot(&m,
                "handleNameOwnerChanged",
@@ -942,20 +952,20 @@ void TestMprisColors::handleNameOwnerChanged_activePlayerVanishes_disconnects() 
     }
     QCOMPARE(m.activeService(), svc);
 
-    QSignalSpy enabledSpy(&m, &MprisMonitor::enabledChanged);
+    QSignalSpy availableSpy(&m, &MprisMonitor::mediaAvailableChanged);
     // oldOwner non-empty + newOwner empty + name == m_activeService →
     // disconnectFromPlayer() + findActivePlayer().  The first emission is
-    // always `enabledChanged(false)` from disconnectFromPlayer; findActive
+    // always `mediaAvailableChanged(false)` from disconnectFromPlayer; findActive
     // may then reconnect if there's *another* MPRIS player on the session
-    // bus, producing a second `enabledChanged(true)`.  We only assert on
+    // bus, producing a second `mediaAvailableChanged(true)`.  We only assert on
     // the disconnect emission.
     invokeSlot(&m,
                "handleNameOwnerChanged",
                Q_ARG(QString, svc),
                Q_ARG(QString, ":1.99"),
                Q_ARG(QString, ""));
-    QVERIFY(enabledSpy.count() >= 1);
-    QCOMPARE(enabledSpy.at(0).at(0).toBool(), false);
+    QVERIFY(availableSpy.count() >= 1);
+    QCOMPARE(availableSpy.at(0).at(0).toBool(), false);
 }
 
 void TestMprisColors::handleNameOwnerChanged_unrelatedServiceVanishes_noDisconnect() {
@@ -964,14 +974,14 @@ void TestMprisColors::handleNameOwnerChanged_unrelatedServiceVanishes_noDisconne
         QSKIP("could not establish an active MPRIS service for this test");
     QString kept = m.activeService();
 
-    QSignalSpy enabledSpy(&m, &MprisMonitor::enabledChanged);
+    QSignalSpy availableSpy(&m, &MprisMonitor::mediaAvailableChanged);
     // A *different* MPRIS service vanishing must not disconnect us.
     invokeSlot(&m,
                "handleNameOwnerChanged",
                Q_ARG(QString, "org.mpris.MediaPlayer2.someone_else"),
                Q_ARG(QString, ":1.50"),
                Q_ARG(QString, ""));
-    QCOMPARE(enabledSpy.count(), 0);
+    QCOMPARE(availableSpy.count(), 0);
     QCOMPARE(m.activeService(), kept);
 }
 
@@ -1032,7 +1042,7 @@ void TestMprisColors::disconnect_whenInactive_isSafeNoop() {
     MprisMonitor m;
     if (! m.activeService().isEmpty())
         QSKIP("session bus has a real MPRIS player; can't test inactive branch");
-    QSignalSpy enabledSpy(&m, &MprisMonitor::enabledChanged);
+    QSignalSpy availableSpy(&m, &MprisMonitor::mediaAvailableChanged);
     // disconnectFromPlayer is private — drive it indirectly via the vanish
     // path with a name we never connected to.  The handler's first guard
     // (`name.startsWith(MPRIS_PREFIX)`) passes; the second
@@ -1043,7 +1053,7 @@ void TestMprisColors::disconnect_whenInactive_isSafeNoop() {
                Q_ARG(QString, "org.mpris.MediaPlayer2.notconnected"),
                Q_ARG(QString, ":1.42"),
                Q_ARG(QString, ""));
-    QCOMPARE(enabledSpy.count(), 0);
+    QCOMPARE(availableSpy.count(), 0);
 }
 
 void TestMprisColors::handleNameOwnerChanged_alreadyConnectedIgnoresOther() {
@@ -1052,7 +1062,7 @@ void TestMprisColors::handleNameOwnerChanged_alreadyConnectedIgnoresOther() {
         QSKIP("could not establish an active MPRIS service for this test");
     QString first = m.activeService();
 
-    QSignalSpy enabledSpy(&m, &MprisMonitor::enabledChanged);
+    QSignalSpy availableSpy(&m, &MprisMonitor::mediaAvailableChanged);
     // A second MPRIS service appearing while we already have one MUST NOT
     // switch — the connect branch is gated on `m_activeService.isEmpty()`.
     invokeSlot(&m,
@@ -1061,7 +1071,7 @@ void TestMprisColors::handleNameOwnerChanged_alreadyConnectedIgnoresOther() {
                Q_ARG(QString, ""),
                Q_ARG(QString, ":1.50"));
     QCOMPARE(m.activeService(), first); // unchanged
-    QCOMPARE(enabledSpy.count(), 0);    // no enabledChanged
+    QCOMPARE(availableSpy.count(), 0);  // no mediaAvailableChanged
 }
 
 void TestMprisColors::handlePropsChanged_changedArtUrl_reprocesses() {
@@ -1813,6 +1823,179 @@ void TestMprisColors::disconnectFromPlayer_dropsInflightArtFromPreviousPlayer() 
     QVERIFY(cover.waitForBytesFed(5000));
     QTest::qWait(300);
     QCOMPARE(spy.count(), 0);
+}
+
+// ===========================================================================
+// Media availability — the flag QML forwards to scene scripts
+// ===========================================================================
+
+// The monitor is a QQuickItem, so `enabled` is already taken: QQuickItem
+// defines it, it is true for any live item, and nothing here ever clears it.
+// The availability flag therefore needs a name of its own, declared by this
+// class — anything a caller can reach on the base class is a constant true
+// dressed up as state.
+void TestMprisColors::mediaAvailable_isOwnPropertyFollowingTheConnection() {
+    MprisMonitor       m;
+    const QMetaObject* mo  = m.metaObject();
+    const int          idx = mo->indexOfProperty("mediaAvailable");
+    QVERIFY2(idx >= mo->propertyOffset(),
+             "MprisMonitor must declare a media-availability property itself");
+    QCOMPARE(m.property("mediaAvailable").toBool(), false);
+
+    QSignalSpy spy(&m, &MprisMonitor::mediaAvailableChanged);
+
+    const QString svc = QStringLiteral("org.mpris.MediaPlayer2.testfake_available");
+    QVERIFY(injectFakeService(m, svc));
+    QCOMPARE(m.property("mediaAvailable").toBool(), true);
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.at(0).at(0).toBool(), true);
+
+    // The player quits. disconnectFromPlayer() answers synchronously; the
+    // findActivePlayer() scan that follows is async, so nothing else can have
+    // landed by the time we look.
+    invokeSlot(&m,
+               "handleNameOwnerChanged",
+               Q_ARG(QString, svc),
+               Q_ARG(QString, ":1.99"),
+               Q_ARG(QString, ""));
+    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.at(1).at(0).toBool(), false);
+    QCOMPARE(m.property("mediaAvailable").toBool(), false);
+    // The base-class property sat at true through both transitions — the
+    // reason it cannot carry this state.
+    QVERIFY(m.isEnabled());
+}
+
+// ===========================================================================
+// QML stub fidelity
+// ===========================================================================
+
+namespace
+{
+
+struct StubMember {
+    QString     kind; // "property" | "signal" | "function"
+    QString     name;
+    QString     type;   // declared type, properties only
+    QStringList params; // declared parameter types, signals only
+    int         arity { 0 };
+    int         line { 0 };
+};
+
+// QML type token -> metatype id. Anything not listed (var, list, custom) is
+// unchecked: the stub is allowed to be loose where QML has no matching token.
+int qmlTypeToMetaTypeId(const QString& token) {
+    if (token == "int") return QMetaType::Int;
+    if (token == "bool") return QMetaType::Bool;
+    if (token == "string") return QMetaType::QString;
+    if (token == "real" || token == "double") return QMetaType::Double;
+    return QMetaType::UnknownType;
+}
+
+QList<StubMember> parseStubMembers(const QString& qml) {
+    static const QRegularExpression propRe(
+        QStringLiteral("^\\s*(?:readonly\\s+)?property\\s+([\\w.]+)\\s+(\\w+)"));
+    static const QRegularExpression sigRe(QStringLiteral("^\\s*signal\\s+(\\w+)\\s*\\(([^)]*)\\)"));
+    static const QRegularExpression funcRe(
+        QStringLiteral("^\\s*function\\s+(\\w+)\\s*\\(([^)]*)\\)"));
+
+    QList<StubMember> out;
+    int               lineNo = 0;
+    for (const QString& line : qml.split('\n')) {
+        ++lineNo;
+        if (line.trimmed().startsWith("//")) continue;
+
+        if (auto mp = propRe.match(line); mp.hasMatch()) {
+            out.append({ "property", mp.captured(2), mp.captured(1), {}, 0, lineNo });
+            continue;
+        }
+        auto ms = sigRe.match(line);
+        auto mf = funcRe.match(line);
+        if (! ms.hasMatch() && ! mf.hasMatch()) continue;
+
+        const auto& mm   = ms.hasMatch() ? ms : mf;
+        StubMember  memb = {
+            ms.hasMatch() ? "signal" : "function", mm.captured(1), {}, {}, 0, lineNo
+        };
+        const QString args = mm.captured(2).trimmed();
+        if (! args.isEmpty()) {
+            for (const QString& arg : args.split(',')) {
+                // "bool hasThumbnail" in a signal; bare "name" in a function.
+                const QStringList parts = arg.trimmed().split(QRegularExpression("\\s+"));
+                memb.params.append(parts.size() > 1 ? parts.first() : QString());
+            }
+            memb.arity = int(memb.params.size());
+        }
+        out.append(memb);
+    }
+    return out;
+}
+
+// Index of a method the class declares itself, by name. Base-class methods
+// deliberately do not count.
+int ownMethodIndex(const QMetaObject* mo, const QString& name) {
+    for (int i = mo->methodOffset(); i < mo->methodCount(); ++i)
+        if (mo->method(i).name() == name.toUtf8()) return i;
+    return -1;
+}
+
+} // namespace
+
+// The stub in tests/qml/_stubs stands in for this class whenever a QML test
+// loads Scene.qml, so every member it offers is a claim about the real type.
+// A member that only exists on the stub — or one the real type merely
+// inherits — lets a QML test go green over production wiring that cannot
+// work: reading QQuickItem::enabled through a stub that redeclares `enabled`
+// as its own bool is exactly how the media-availability path stayed broken.
+void TestMprisColors::qmlStubSurfaceMatchesTheRealMonitor() {
+    QFile f(QStringLiteral(WEK_MPRIS_STUB_QML));
+    QVERIFY2(f.open(QIODevice::ReadOnly | QIODevice::Text),
+             qPrintable(QStringLiteral("cannot read stub: ") + f.fileName()));
+    const QString qml = QString::fromUtf8(f.readAll());
+
+    // Recorders the stub adds for tests to inspect. Nothing else may be
+    // invented: an addition here is a deliberate, reviewable act.
+    static const QSet<QString> recorders { "invokeShortcutCount", "lastShortcut", "engageCount" };
+
+    const QMetaObject*      mo      = &MprisMonitor::staticMetaObject;
+    const QList<StubMember> members = parseStubMembers(qml);
+    QVERIFY2(! members.isEmpty(), "stub parsed to nothing — the parser or the stub moved");
+
+    for (const StubMember& memb : members) {
+        if (recorders.contains(memb.name)) continue;
+        const QString where =
+            QStringLiteral("%1 %2 (stub line %3)").arg(memb.kind, memb.name).arg(memb.line);
+
+        if (memb.kind == "property") {
+            const int idx = mo->indexOfProperty(memb.name.toUtf8());
+            QVERIFY2(idx >= mo->propertyOffset(),
+                     qPrintable(where + " is not a property MprisMonitor declares"));
+            const int want = qmlTypeToMetaTypeId(memb.type);
+            if (want != QMetaType::UnknownType) QCOMPARE(mo->property(idx).metaType().id(), want);
+            continue;
+        }
+
+        const int idx = ownMethodIndex(mo, memb.name);
+        QVERIFY2(idx >= 0, qPrintable(where + " is not declared by MprisMonitor"));
+        const QMetaMethod method = mo->method(idx);
+        if (memb.kind == "signal")
+            QVERIFY2(method.methodType() == QMetaMethod::Signal,
+                     qPrintable(where + " is not a signal on MprisMonitor"));
+        QVERIFY2(method.parameterCount() == memb.arity,
+                 qPrintable(where + QStringLiteral(" takes %1 argument(s), the real one takes %2")
+                                        .arg(memb.arity)
+                                        .arg(method.parameterCount())));
+        for (int i = 0; i < memb.arity; ++i) {
+            const int want = qmlTypeToMetaTypeId(memb.params.at(i));
+            if (want == QMetaType::UnknownType) continue;
+            QVERIFY2(method.parameterMetaType(i).id() == want,
+                     qPrintable(where +
+                                QStringLiteral(" argument %1 is declared %2, the real one is %3")
+                                    .arg(i)
+                                    .arg(memb.params.at(i),
+                                         QString::fromUtf8(method.parameterMetaType(i).name()))));
+        }
+    }
 }
 
 QTEST_GUILESS_MAIN(TestMprisColors)

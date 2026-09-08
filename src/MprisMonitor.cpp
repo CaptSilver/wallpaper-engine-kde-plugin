@@ -229,8 +229,8 @@ void MprisMonitor::connectToPlayer(const QString& service) {
                          this,
                          SLOT(handlePropertiesChanged(QString, QVariantMap, QStringList)));
 
-    m_enabled = true;
-    emit enabledChanged(true);
+    m_mediaAvailable = true;
+    emit mediaAvailableChanged(true);
 
     fetchAllProperties();
     qDebug() << "MprisMonitor: connected to" << service;
@@ -266,9 +266,9 @@ void MprisMonitor::disconnectFromPlayer() {
     // Art already in flight belongs to the player we are leaving: without this
     // a decode or cover fetch from player A repaints on top of player B.
     supersedeArt();
-    if (m_enabled) {
-        m_enabled = false;
-        emit enabledChanged(false);
+    if (m_mediaAvailable) {
+        m_mediaAvailable = false;
+        emit mediaAvailableChanged(false);
     }
 }
 

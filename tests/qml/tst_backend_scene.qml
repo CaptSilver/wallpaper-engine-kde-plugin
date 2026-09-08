@@ -97,9 +97,9 @@ TestCase {
         verify(mpris !== null);
         playbackSpy.target = player;
         playbackSpy.clear();
-        mpris.playbackStateChanged("Playing");
+        mpris.playbackStateChanged(1);  // 1 = playing
         compare(playbackSpy.count, 1);
-        compare(playbackSpy.signalArguments[0][0], "Playing");
+        compare(playbackSpy.signalArguments[0][0], 1);
     }
 
     function test_mprisPropertiesForwardsToPlayer() {
@@ -138,15 +138,19 @@ TestCase {
         compare(timelineSpy.signalArguments[0][2], 1);  // state
     }
 
-    function test_mprisEnabledForwardsToPlayer() {
+    // The media player quitting has to reach the scene script: the monitor
+    // says so on the signal, and Scene.qml forwards that argument verbatim.
+    function test_mprisMediaAvailabilityForwardsToPlayer() {
         const mpris  = _findChildByMethodName(scene, "invokeShortcut");
         const player = _findScenePlayer();
         statusSpy.target = player;
         statusSpy.clear();
-        const want = !mpris.enabled;
-        mpris.enabled = want;
+        mpris.mediaAvailableChanged(false);
         compare(statusSpy.count, 1);
-        compare(statusSpy.signalArguments[0][0], want);
+        compare(statusSpy.signalArguments[0][0], false);
+        mpris.mediaAvailableChanged(true);
+        compare(statusSpy.count, 2);
+        compare(statusSpy.signalArguments[1][0], true);
     }
 
     // ── SceneViewer Connections handlers ──────────────────────────────────────

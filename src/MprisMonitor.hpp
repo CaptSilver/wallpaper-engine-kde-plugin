@@ -72,6 +72,10 @@ bool decodeArtReplyBytes(const QByteArray& data, bool networkError, QVariantList
 
 class MprisMonitor : public QQuickItem {
     Q_OBJECT
+    // Deliberately not called `enabled`: QQuickItem already owns that name,
+    // and it reads true for every live item, so QML asking it whether a media
+    // player is around would be told "yes" forever.
+    Q_PROPERTY(bool mediaAvailable READ mediaAvailable NOTIFY mediaAvailableChanged)
     // Test seam: lets tst_mpriscolors invoke the private disconnectFromPlayer
     // and applyPlaybackStatus without promoting them to public/Q_INVOKABLE
     // (production has no external caller for either; the slots are only
@@ -99,6 +103,10 @@ public:
     // after handleNameOwnerChanged / connectToPlayer runs.
     Q_INVOKABLE QString activeService() const { return m_activeService; }
 
+    // True while an MPRIS player is connected. Scene wallpapers see the
+    // transitions as the scene script's mediaStatusChanged event.
+    bool mediaAvailable() const { return m_mediaAvailable; }
+
     // Start watching D-Bus for MPRIS player services + poll position.
     // Call from QML when the wallpaper subscribes to media-info signals
     // (propertiesChanged / playbackStateChanged / timelineChanged /
@@ -120,7 +128,9 @@ signals:
     // SceneScript can read event.state from the timeline event without
     // synchronizing against the separate playbackStateChanged signal.
     void timelineChanged(double position, double duration, int state);
-    void enabledChanged(bool enabled);
+    // Carries the new value so a QML handler forwards the argument rather
+    // than reading the property back off the item.
+    void mediaAvailableChanged(bool available);
 
 private slots:
     void handlePropertiesChanged(const QString& interface, const QVariantMap& changed,
@@ -166,7 +176,7 @@ private:
     double          m_lastPosition { 0 };
     double          m_duration { 0 };
     int             m_playbackState { 0 }; // 0=stopped
-    bool            m_enabled { false };
+    bool            m_mediaAvailable { false };
     bool            m_engaged { false }; // true once D-Bus watch started
     QString         m_lastArtUrl;
     bool            m_artUrlEverProcessed { false };

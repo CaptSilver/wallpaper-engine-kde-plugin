@@ -1,6 +1,6 @@
 // Test stub — see tests/qml/_stubs/README.md for contract.
 // Real source: src/plugin.cpp registers scenebackend::SceneObject (src/backend_scene/qml_helper/)
-// Last contract review: 2026-05-27
+// Last contract review: 2026-09-08
 
 // Stub for the Vulkan-backed SceneViewer plugin type. Quick3D / Vulkan can't
 // run in qmltestrunner offscreen; we just provide the QML API surface that
@@ -29,7 +29,7 @@ Item {
 
     signal firstFrame()
     signal userShortcutRequested(string name)
-    signal mediaPlaybackChanged(string state)
+    signal mediaPlaybackChanged(int state)
     // arities mirror the C++ SceneObject::media*Changed Q_INVOKABLEs and the
     // production routes in plugin/contents/ui/backend/Scene.qml.
     signal mediaPropertiesChanged(string title, string artist, string albumTitle, string albumArtist, var genres, var duration)

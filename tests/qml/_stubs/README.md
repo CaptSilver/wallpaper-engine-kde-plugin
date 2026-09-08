@@ -16,7 +16,7 @@ known shortcuts. When you add a new test that needs a stub method:
 | FileHelper          | src/FileHelper.hpp + src/FileHelper.cpp    | Q_INVOKABLEs: readFile, patchedHtml, qwebChannelSource, getDirSize, requestDirSize, getFolderList, scanVideoFolder, readWallpaperConfig, writeWallpaperConfig, resetWallpaperConfig, readActiveBindings, generateThumbnail, clearCacheDir, addReadRoot, clearReadRoots, videoThumbDir(cacheRoot), pruneOrphanThumbnails(cacheRoot, installedWallpaperDirs, videoFolderPaths), enforceCacheQuota(roots, quotaBytes), enforceCacheQuotaForce(roots, quotaBytes), requestCacheGc(cacheRoot, installedWallpaperDirs, videoFolderPaths, quotaBytes), readWorkshopManifest, allSeenVersions, recordSeenVersion, seenVersion. Property: lastGcBytesFreed. Signals: thumbnailReady(videoPath, outPath, ok), dirSizeReady(path, bytes), cacheGcFinished(prunedBytes, evictedBytes). | Method bodies record call counts + last args; thumbnailReady/dirSizeReady fire synchronously via Qt.callLater. clearCacheDir always reports success (real impl gates on cache-root prefix and preserves localstorage*.json). requestCacheGc only records — the real one dispatches onto a QThreadPool and answers via cacheGcFinished. |
 | MigrationHelperStub | src/MigrationHelper.cpp                    | Singleton; runIfNeeded() one-shot migration entrypoint.                                                               | No-op body — real migration is a v1.2 to v1.3 catsout-id rewrite via KConfig.    |
 | MouseGrabber        | src/MouseGrabber.hpp + src/MouseGrabber.cpp| Property: target (QQuickItem*); functions: start(), stop().                                                           | No real mouse capture path — tests assign target directly.                       |
-| MprisMonitor        | src/MprisMonitor.hpp + src/MprisMonitor.cpp| Properties: enabled, playing, title, artist, artUrl, dominantColor. Signals: propertiesChanged(title, artist, albumTitle, albumArtist, genres, duration); thumbnailChanged(hasThumbnail, colors); timelineChanged(position, duration, state); userShortcutRequested(name). Q_INVOKABLEs: invokeShortcut(name), engage(). | Drift: see drift log entry (stub's playbackStateChanged carries a string; real signal is int state).                  |
+| MprisMonitor        | src/MprisMonitor.hpp + src/MprisMonitor.cpp| Signals: playbackStateChanged(int state); propertiesChanged(title, artist, albumTitle, albumArtist, genres, duration); thumbnailChanged(hasThumbnail, colors); timelineChanged(position, duration, state); mediaAvailableChanged(bool available). Q_INVOKABLEs: invokeShortcut(name), engage(). | Machine-checked: `tst_mpriscolors::qmlStubSurfaceMatchesTheRealMonitor` diffs this stub against MprisMonitor's metaobject. The real `mediaAvailable` property is absent — declaring it in QML would auto-generate a second, parameterless `mediaAvailableChanged`. |
 | Mpv                 | src/backend_mpv/                           | Properties: source, volume, mute. Functions: play, pause, stop, command(cmd), setProperty(name, val). Signals: firstFrame, sourceLoadFailed(reason). | source setter no-op; no real libmpv decoder.                                     |
 | PlaylistManager     | src/PlaylistManager.hpp + src/PlaylistManager.cpp | Owns PlaylistsModel + PlaylistItemsModel; Q_INVOKABLE CRUD: createPlaylist, deletePlaylist, renamePlaylist, setMode, setIntervalMin, addItem, removeItem, moveItem, activate, deactivate, skipCurrent, acceptPick, pauseTicks, resumeTicks, setFilteredLibraryIntervalMin, reload, pickShuffle, playlistContains, itemsModel. Signals: tick, requestFilteredPick, activationFailed, persistFailed, persisted. | Models in-memory only; itemsModel returns a fresh empty ListModel each call. playlistContains always false. pickShuffleImpl is a deterministic round-robin (override on stub instance for fixed sequences). |
 | PluginInfo          | src/PluginInfo.hpp + src/PluginInfo.cpp    | Properties: version, cache_path.                                                                                       | Synthetic test-stub version + empty cache_path by default.                       |
@@ -74,21 +74,24 @@ known shortcuts. When you add a new test that needs a stub method:
    comment when you touch the stub.
 4. **Update this README in the same commit** that adds/modifies a stub.
 
-## Drift log (audited 2026-05-27)
+## Drift log
 
-Drift items found during the initial audit. Each is recorded here so a
-follow-up fix can address it without redoing the audit.
+What drift costs, and what stops it.
 
-- **MprisMonitor.qml** — stub declares `signal playbackStateChanged(string state)`
-  but the real C++ signal in `src/MprisMonitor.hpp` is
-  `void playbackStateChanged(int state)` (0=stopped, 1=playing, 2=paused).
-  Consumers that rely on the string form would break against the real
-  signal; the stub should be migrated to `int state` so consumers exercise
-  the same coercion behaviour they will see at runtime.
+- **MprisMonitor.qml** carried a `bool enabled` the real monitor never
+  declared. `MprisMonitor` is a `QQuickItem`, so `enabled` resolved to the
+  base class's always-true property: production read a constant while the
+  QML test wrote the stub's invented one and went green. The monitor now
+  answers with `mediaAvailable`, and
+  `tst_mpriscolors::qmlStubSurfaceMatchesTheRealMonitor` reads this stub's
+  source and fails on any member `MprisMonitor` does not declare itself, on
+  a wrong argument count, and on a wrong argument type. Test-only recorders
+  are named in an allowlist inside that case, so adding one is a visible act.
+  The same pass closed the older `playbackStateChanged(string state)` drift
+  (the real signal is `int state`, 0=stopped 1=playing 2=paused).
 
-(No other drift surfaced during the audit pass — all other stub signals
-and Q_PROPERTY surfaces line up with their real-source headers as of the
-review date above.)
+Every other stub here is hand-maintained: the rows above are claims about
+the real type, not guarantees, and nothing fails when one goes stale.
 
 ## Related helpers
 

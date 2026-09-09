@@ -147,7 +147,7 @@ Item {
     function video_thumb_dir(cacheRoot) {
         return fileHelper.videoThumbDir(cacheRoot);
     }
-    // Steam Workshop manifest helpers (GAP-9). Synchronous reads; the .acf
+    // Steam Workshop manifest helpers. Synchronous reads; the .acf
     // is ~tens of KB for a few hundred items.
     function read_workshop_manifest(steamLibraryPath) {
         return fileHelper.readWorkshopManifest(steamLibraryPath);
@@ -157,6 +157,12 @@ Item {
     }
     function record_seen_version(id, timeUpdated) {
         fileHelper.recordSeenVersion(id, timeUpdated);
+    }
+    // Fills in the seen version of wallpapers configured before anything was
+    // ever recorded, so they don't all read as updated. One-shot on the C++
+    // side; calling it again is a no-op.
+    function seed_last_seen_versions(steamLibraryPath) {
+        fileHelper.seedLastSeenVersions(steamLibraryPath);
     }
 
     // Expose the underlying FileHelper so QML can bind to its

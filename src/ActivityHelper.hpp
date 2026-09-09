@@ -21,8 +21,7 @@ namespace wekde
 // for the current-activity UUID stream; this helper wraps it for QML.  Reads
 // route to the `Activity_<uuid>` subgroup with a `General` fallback so existing
 // installs without per-Activity entries continue to resolve.  Writes target the
-// current Activity's bucket (or an explicit Activity via setForActivity, used by
-// "All Activities" affinity + the boot-time migration).
+// current Activity's bucket, or at a named one via setForActivity.
 //
 // The Consumer dependency is taken via a virtual hook (currentActivity()) so the
 // production build can plug in `Plasma::Activities::Consumer` (devel package
@@ -55,11 +54,9 @@ public:
     // round-trips identically to KCfg-generated writes.
     Q_INVOKABLE void setPerActivity(const QString& key, const QVariant& value);
 
-    // Explicit-Activity write — used by MigrationHelper to seed the boot
-    // Activity's bucket from [General] and by the WallpaperPage combo's
-    // "All Activities" branch (which targets [General] via empty-activity =
-    // "all", i.e. the caller sets activity == QStringLiteral("all") and we
-    // route to [General] directly).
+    // Write to a named Activity rather than the current one. The activity
+    // "all" is not a UUID: it means every Activity, and routes to [General]
+    // so the read-side fallback picks it up whichever Activity is live.
     Q_INVOKABLE void setForActivity(const QString& activity, const QString& key,
                                     const QVariant& value);
 

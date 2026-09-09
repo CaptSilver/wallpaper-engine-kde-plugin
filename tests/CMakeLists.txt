@@ -429,36 +429,6 @@ add_test(NAME tst_safewallpaperbridge COMMAND tst_safewallpaperbridge -v2)
 set_tests_properties(tst_safewallpaperbridge PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
-# ── MigrationHelper unit tests ────────────────────────────────────────────────
-# MigrationHelper now does the catsout→captsilver merge in-process via KConfig
-# (was: spawn migrate-from-catsout.sh that got cgroup-killed when plasmashell
-# stopped). The test binary needs KF6::ConfigCore. Find the component
-# directly (no umbrella `find_package(KF6 …)` because the standalone test
-# build doesn't pull in ECM).
-find_package(KF6Config REQUIRED)
-# MigrationHelper now also calls into FileHelper for seedLastSeenVersions
-# (Steam workshop manifest parsing + per-wallpaper config writes), so the
-# test binary needs FileHelper.cpp plus its qrc.
-add_executable(tst_migrationhelper
-    tst_migrationhelper.cpp
-    ${WEKDE_SRC_DIR}/MigrationHelper.cpp
-    ${WEKDE_SRC_DIR}/FileHelper.cpp
-    ${WEKDE_SRC_DIR}/qwebchannel.qrc
-)
-target_include_directories(tst_migrationhelper PRIVATE ${WEKDE_SRC_DIR}
-    ${WEKDE_RENDERER_HEADER_DIRS})
-target_link_libraries(tst_migrationhelper PRIVATE Qt6::Core Qt6::Test KF6::ConfigCore)
-if(COVERAGE)
-    target_compile_options(tst_migrationhelper PRIVATE ${_cov_compile_flags})
-    target_link_options(tst_migrationhelper PRIVATE ${_cov_link_flags})
-endif()
-if(MUTATION_TESTING)
-    target_compile_options(tst_migrationhelper PRIVATE
-        -fpass-plugin=${MULL_PLUGIN_PATH}
-        -g -grecord-command-line)
-endif()
-add_test(NAME tst_migrationhelper COMMAND tst_migrationhelper -v2)
-
 # ── ActivityHelper unit tests ─────────────────────────────────────────────────
 # Per-Activity KConfig sub-group routing with [General] fallback.  The helper
 # is read/write-tested through an injected config-file path so each case runs
@@ -466,6 +436,10 @@ add_test(NAME tst_migrationhelper COMMAND tst_migrationhelper -v2)
 # (libPlasmaActivities) is enabled at build time via WEK_HAS_PLASMA_ACTIVITIES;
 # the unit tests bypass Consumer entirely and drive the current-activity slot
 # directly so they don't need a running KActivityManagerd.
+#
+# KF6::ConfigCore comes from the component package directly — no umbrella
+# `find_package(KF6 …)`, because the standalone test build doesn't pull in ECM.
+find_package(KF6Config REQUIRED)
 add_executable(tst_activityhelper
     tst_activityhelper.cpp
     ${WEKDE_SRC_DIR}/ActivityHelper.cpp
@@ -791,12 +765,6 @@ endif()
 add_test(NAME test_mutation
          COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_mutation.sh)
 
-# Hermetic bash self-test for tools/scripts/migrate-from-catsout.sh (the
-# catsout->captsilver config rewrite).  Sandboxed HOME with fake plasmashell /
-# systemctl / kpackagetool6 on PATH, fixture appletsrc in, expected out.
-add_test(NAME test_migrate
-         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_migrate.sh)
-
 # ── Apply opt-in sanitizers to every C++ test target ──────────────────────────
 # No-op unless -DWEK_SANITIZE=... is set.  Guarded by if(TARGET ...) because
 # several targets are conditional on optional Qt components / libmpv.  The
@@ -804,7 +772,7 @@ add_test(NAME test_migrate
 # not C++ executables, so they are not listed.
 foreach(_wek_test_target
         tst_filehelper tst_plugininfo tst_mpriscolors tst_mousegrabber tst_mpvbackend
-        tst_thumbnail_grabber tst_webaudio tst_migrationhelper tst_activityhelper
+        tst_thumbnail_grabber tst_webaudio tst_activityhelper
         tst_playlist_manager tst_main_integration tst_ttyswitchmonitor
         tst_safewallpaperbridge tst_weburlinterceptor tst_screensavermonitor
         tst_wekcontrol tst_wekshortcuts tst_weknotifier tst_wekdiagnostics)
@@ -864,10 +832,6 @@ if(COVERAGE)
     if(TARGET tst_thumbnail_grabber)
         list(APPEND _cov_objs -object=$<TARGET_FILE:tst_thumbnail_grabber>)
         list(APPEND _cov_tests tst_thumbnail_grabber)
-    endif()
-    if(TARGET tst_migrationhelper)
-        list(APPEND _cov_objs -object=$<TARGET_FILE:tst_migrationhelper>)
-        list(APPEND _cov_tests tst_migrationhelper)
     endif()
     if(TARGET tst_playlist_manager)
         list(APPEND _cov_objs -object=$<TARGET_FILE:tst_playlist_manager>)

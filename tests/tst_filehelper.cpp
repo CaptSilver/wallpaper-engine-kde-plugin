@@ -99,6 +99,55 @@ private:
         return false;
     }
 
+    // Wipe the seeding state every case in this binary shares: one test-mode
+    // config dir, and seeding is one-shot per dir, so a leftover sentinel or a
+    // stray <id>.json from an earlier case would decide the outcome. Returns
+    // the wekde config dir.
+    static QString resetSeedingState() {
+        const QString cfg =
+            QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/wekde";
+        QDir(cfg + "/wallpaper").removeRecursively();
+        QFile::remove(cfg + "/last-seen-seeded");
+        QDir().mkpath(cfg + "/wallpaper");
+        return cfg;
+    }
+
+    static bool writeWallpaperConfig(const QString& wekdeCfgDir, const QString& name,
+                                     const QByteArray& json) {
+        QFile f(wekdeCfgDir + "/wallpaper/" + name + ".json");
+        if (! f.open(QIODevice::WriteOnly)) return false;
+        return f.write(json) == json.size();
+    }
+
+    // Parsed per-wallpaper config, or an empty object when it is missing or
+    // garbled. Callers checking that a key is ABSENT should also assert on a
+    // key they wrote, so an empty object can't pass for an untouched file.
+    static QJsonObject readWallpaperConfig(const QString& wekdeCfgDir, const QString& name) {
+        QFile f(wekdeCfgDir + "/wallpaper/" + name + ".json");
+        if (! f.open(QIODevice::ReadOnly)) return {};
+        return QJsonDocument::fromJson(f.readAll()).object();
+    }
+
+    // Synthetic Steam library: an appworkshop_431960.acf under `libRoot` giving
+    // each workshop id its timeupdated, in the Valve KV shape
+    // readWorkshopManifest parses in production.
+    static bool writeWorkshopManifest(const QString& libRoot, const QVariantMap& timeUpdated) {
+        const QString acfPath = libRoot + "/steamapps/workshop/appworkshop_431960.acf";
+        QDir().mkpath(QFileInfo(acfPath).absolutePath());
+        QFile f(acfPath);
+        if (! f.open(QIODevice::WriteOnly)) return false;
+        QString body;
+        for (auto it = timeUpdated.cbegin(); it != timeUpdated.cend(); ++it)
+            body += QStringLiteral("    \"%1\" { \"timeupdated\" \"%2\" }\n")
+                        .arg(it.key())
+                        .arg(it.value().toLongLong());
+        const QByteArray acf =
+            QStringLiteral("\"AppWorkshop\" { \"WorkshopItemsInstalled\" {\n%1} }")
+                .arg(body)
+                .toUtf8();
+        return f.write(acf) == acf.size();
+    }
+
 private slots:
     // ── test-suite setup / teardown ───────────────────────────────────────────
     void initTestCase() {
@@ -3006,6 +3055,104 @@ private slots:
         QCOMPARE(m.value("aaa").toLongLong(), qint64 { 100 });
         QCOMPARE(m.value("bbb").toLongLong(), qint64 { 200 });
         QVERIFY(! m.contains("ccc"));
+    }
+
+    // ── seedLastSeenVersions ─────────────────────────────────────────────────
+    // Fills in last_seen_version for wallpapers the user already had configured
+    // when this bookkeeping first appeared, so the Updated badge does not light
+    // up on every one of them at once.
+    void seedLastSeenVersions_seedsConfigsMissingAVersion() {
+        const QString cfg = resetSeedingState();
+        QVERIFY(writeWallpaperConfig(cfg, "100", R"({"display_mode": 1})"));
+        QVERIFY(writeWallpaperConfig(cfg, "200", R"({"volume": 50})"));
+
+        QTemporaryDir lib;
+        QVERIFY(lib.isValid());
+        QVERIFY(writeWorkshopManifest(lib.path(), { { "100", 1000 }, { "200", 2000 } }));
+
+        FileHelper fh;
+        fh.seedLastSeenVersions(lib.path());
+
+        const QJsonObject c100 = readWallpaperConfig(cfg, "100");
+        const QJsonObject c200 = readWallpaperConfig(cfg, "200");
+        QCOMPARE(c100.value("last_seen_version").toVariant().toLongLong(), qint64 { 1000 });
+        QCOMPARE(c200.value("last_seen_version").toVariant().toLongLong(), qint64 { 2000 });
+        QVERIFY(QFile::exists(cfg + "/last-seen-seeded"));
+    }
+
+    void seedLastSeenVersions_sentinelBlocksASecondRun() {
+        const QString cfg = resetSeedingState();
+        QFile         sentinel(cfg + "/last-seen-seeded");
+        QVERIFY(sentinel.open(QIODevice::WriteOnly));
+        sentinel.close();
+
+        QVERIFY(writeWallpaperConfig(cfg, "77", R"({"display_mode": 1})"));
+        QTemporaryDir lib;
+        QVERIFY(lib.isValid());
+        QVERIFY(writeWorkshopManifest(lib.path(), { { "77", 9999 } }));
+
+        FileHelper fh;
+        fh.seedLastSeenVersions(lib.path());
+
+        const QJsonObject after = readWallpaperConfig(cfg, "77");
+        QCOMPARE(after.value("display_mode").toInt(), 1);
+        QVERIFY(! after.contains("last_seen_version"));
+    }
+
+    // No library path means no manifest to seed from, but the sentinel still
+    // goes down: the seeding pass is done, and a later run would only churn.
+    void seedLastSeenVersions_emptyLibraryPathStillWritesTheSentinel() {
+        const QString cfg = resetSeedingState();
+        QVERIFY(writeWallpaperConfig(cfg, "55", R"({"display_mode": 1})"));
+
+        FileHelper fh;
+        fh.seedLastSeenVersions(QString {});
+
+        const QJsonObject after = readWallpaperConfig(cfg, "55");
+        QCOMPARE(after.value("display_mode").toInt(), 1);
+        QVERIFY(! after.contains("last_seen_version"));
+        QVERIFY(QFile::exists(cfg + "/last-seen-seeded"));
+    }
+
+    // Seeding only fills the gap. A value already on disk is what the user has
+    // actually seen, so the manifest must not clobber it.
+    void seedLastSeenVersions_keepsAnExistingVersion() {
+        const QString cfg = resetSeedingState();
+        QVERIFY(
+            writeWallpaperConfig(cfg, "42", R"({"display_mode": 1, "last_seen_version": 555})"));
+
+        QTemporaryDir lib;
+        QVERIFY(lib.isValid());
+        QVERIFY(writeWorkshopManifest(lib.path(), { { "42", 9999 } }));
+
+        FileHelper fh;
+        fh.seedLastSeenVersions(lib.path());
+
+        const QJsonObject after = readWallpaperConfig(cfg, "42");
+        QCOMPARE(after.value("last_seen_version").toVariant().toLongLong(), qint64 { 555 });
+    }
+
+    // "<id>_bindings.json" is a sidecar, not a wallpaper config, and carries no
+    // version. The skip is only observable when the manifest names the id that
+    // the sidecar's filename would yield, hence the otherwise-impossible
+    // "77_bindings" entry below.
+    void seedLastSeenVersions_skipsBindingsSidecars() {
+        const QString cfg = resetSeedingState();
+        QVERIFY(writeWallpaperConfig(cfg, "77", R"({"display_mode": 1})"));
+        QVERIFY(writeWallpaperConfig(cfg, "77_bindings", R"({"bind": "audio"})"));
+
+        QTemporaryDir lib;
+        QVERIFY(lib.isValid());
+        QVERIFY(writeWorkshopManifest(lib.path(), { { "77", 4242 }, { "77_bindings", 4242 } }));
+
+        FileHelper fh;
+        fh.seedLastSeenVersions(lib.path());
+
+        const QJsonObject seeded  = readWallpaperConfig(cfg, "77");
+        const QJsonObject sidecar = readWallpaperConfig(cfg, "77_bindings");
+        QCOMPARE(seeded.value("last_seen_version").toVariant().toLongLong(), qint64 { 4242 });
+        QCOMPARE(sidecar.value("bind").toString(), QString("audio"));
+        QVERIFY(! sidecar.contains("last_seen_version"));
     }
 };
 

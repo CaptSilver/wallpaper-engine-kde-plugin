@@ -29,7 +29,6 @@ add_library(${PROJECT_NAME}
 	SafeWallpaperBridge.cpp
 	WebAudioBridge.cpp
 	WebUrlInterceptor.cpp
-	MigrationHelper.cpp
 	Playlist.cpp
 	PlaylistManager.cpp
 	PlaylistsModel.cpp

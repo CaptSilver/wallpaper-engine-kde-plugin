@@ -1204,6 +1204,56 @@ QVariantMap FileHelper::allSeenVersions() const {
     return out;
 }
 
+void FileHelper::seedLastSeenVersions(const QString& steamLibraryPath) {
+    // The one-shot marker is a plain file, not a config entry, so FileHelper
+    // stays free of KConfig — it is compiled into test targets that link Qt
+    // alone. Losing the marker is cheap rather than harmless: a second pass
+    // skips every id that already carries a version, so the only thing left
+    // for it to touch is a wallpaper that was configured but not installed
+    // when the first pass ran.
+    const QString sentinelPath = configDir() + "/last-seen-seeded";
+    if (QFileInfo::exists(sentinelPath)) {
+        qInfo() << "FileHelper::seedLastSeenVersions: already seeded, skipping";
+        return;
+    }
+
+    const QVariantMap manifest = readWorkshopManifest(steamLibraryPath);
+    if (manifest.isEmpty()) {
+        qInfo() << "FileHelper::seedLastSeenVersions: empty manifest, no seed";
+    } else {
+        QDir                wpDir(wallpaperConfigDir());
+        const QFileInfoList entries =
+            wpDir.entryInfoList(QStringList { QStringLiteral("*.json") }, QDir::Files);
+        int seeded = 0;
+        for (const QFileInfo& fi : entries) {
+            const QString id = fi.completeBaseName();
+            // <id>_bindings.json is a sidecar, not a wallpaper config.
+            if (id.endsWith("_bindings")) continue;
+            // A version already on disk is what the user has actually seen —
+            // overwriting it with the manifest would hide a real update.
+            if (seenVersion(id) != 0) continue;
+            const qint64 ts = manifest.value(id).toLongLong();
+            // No manifest timestamp: the wallpaper is configured but no longer
+            // installed, or Steam wrote a timeupdated we could not parse.
+            if (ts == 0) continue;
+            recordSeenVersion(id, ts);
+            ++seeded;
+        }
+        qInfo() << "FileHelper::seedLastSeenVersions: seeded" << seeded << "wallpapers";
+    }
+
+    // Existence is the whole signal. Written even when nothing was seeded, so a
+    // machine with no configured wallpapers doesn't re-read the manifest on
+    // every start.
+    QFile sentinel(sentinelPath);
+    if (sentinel.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        sentinel.close();
+    } else {
+        qWarning() << "FileHelper::seedLastSeenVersions: cannot write" << sentinelPath
+                   << "- seeding will run again next start";
+    }
+}
+
 bool FileHelper::atomicWriteJson(const QString& path, const QJsonDocument& doc) {
     const QString tmp = path + ".tmp";
     QFile         f(tmp);

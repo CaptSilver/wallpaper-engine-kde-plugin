@@ -1,6 +1,6 @@
 // Test stub — see tests/qml/_stubs/README.md for contract.
 // Real source: src/FileHelper.hpp + src/FileHelper.cpp
-// Last contract review: 2026-09-01
+// Last contract review: 2026-09-09
 
 // Test stub for the C++ FileHelper QML type. Methods return canned values
 // or empty objects so production code can run through happy paths in tests.
@@ -124,6 +124,8 @@ QtObject {
     property var  lastRecordSeenVersionArgs:  ({ id: "", version: 0 })
     property int  seenVersionCount:           0
     property var  lastSeenVersionId:          undefined
+    property int  seedLastSeenVersionsCount:  0
+    property var  lastSeedLastSeenVersionsPath: undefined
     property int  pruneOrphanThumbnailsCount: 0
     property int  enforceCacheQuotaCount:     0
     property int  requestCacheGcCount:        0
@@ -148,6 +150,12 @@ QtObject {
         seenVersionCount += 1;
         lastSeenVersionId = id;
         return 0;
+    }
+    // One-shot in production, guarded by a sentinel file; the stub records
+    // every call so tests can assert main.qml still makes the first one.
+    function seedLastSeenVersions(steamLibraryPath) {
+        seedLastSeenVersionsCount += 1;
+        lastSeedLastSeenVersionsPath = steamLibraryPath;
     }
     function videoThumbDir(cacheRoot) {
         if (!cacheRoot) return "";

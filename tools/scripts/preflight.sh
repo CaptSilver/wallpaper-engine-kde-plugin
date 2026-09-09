@@ -486,7 +486,6 @@ if [[ "$MODE" == "coverage" ]]; then
               -object=$cov_build/tst_mousegrabber \
               -object=$cov_build/tst_mpvbackend \
               -object=$cov_build/tst_thumbnail_grabber \
-              -object=$cov_build/tst_migrationhelper \
               -object=$cov_build/tst_playlist_manager"
     cov_ignore='-ignore-filename-regex=(^/usr/|/Qt6/|/tests/tst_|_autogen/|/moc_|third_party|backend_mpv/MpvBackend|backend_mpv/qthelper)'
     dbox "llvm-cov report $cov_objs \

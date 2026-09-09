@@ -34,5 +34,5 @@ We commit to:
 | Version | Supported                                    |
 |---------|----------------------------------------------|
 | 1.3.x   | Yes (current)                                |
-| 1.2.x   | No — please upgrade (auto-migrates to 1.3)   |
+| 1.2.x   | No — upgrade; settings do not carry over     |
 | < 1.2   | No — catsout fork; unmaintained              |

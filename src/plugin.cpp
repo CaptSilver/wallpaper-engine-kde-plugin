@@ -13,7 +13,6 @@
 #include "WebAudioBridge.hpp"
 #include "WebUrlInterceptor.hpp"
 #include "SafeWallpaperBridge.hpp"
-#include "MigrationHelper.h"
 #include "PlaylistManager.hpp"
 #include "PlaylistsModel.hpp"
 #include "PlaylistItemsModel.hpp"
@@ -91,10 +90,6 @@ public:
         qmlRegisterType<wekde::WekNotifier>(uri, WPVer[0], WPVer[1], "WekNotifier");
         qmlRegisterType<wekde::WekDiagnostics>(uri, WPVer[0], WPVer[1], "WekDiagnostics");
         qmlRegisterType<wekde::ActivityHelper>(uri, WPVer[0], WPVer[1], "ActivityHelper");
-        qmlRegisterSingletonType<wekde::MigrationHelper>(
-            uri, WPVer[0], WPVer[1], "MigrationHelper", [](QQmlEngine*, QJSEngine*) -> QObject* {
-                return new wekde::MigrationHelper();
-            });
 
 #ifdef WEKDE_HAS_GLOBALACCEL
         // Register KGlobalAccel-bound actions.  Construct once per process

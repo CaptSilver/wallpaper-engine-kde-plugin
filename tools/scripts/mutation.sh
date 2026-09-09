@@ -140,7 +140,7 @@ ALL_TARGETS=(
     tst_filehelper tst_weburlinterceptor tst_plugininfo
     tst_mpriscolors tst_mousegrabber tst_ttyswitchmonitor
     tst_screensavermonitor tst_mpvbackend tst_thumbnail_grabber
-    tst_webaudio tst_safewallpaperbridge tst_migrationhelper
+    tst_webaudio tst_safewallpaperbridge
     tst_playlist_manager
     backend_scene_tests
 )
@@ -187,8 +187,6 @@ elif [[ "$MODE" == "diff" ]]; then
         [src/backend_mpv/ThumbnailGrabber.cpp]=tst_thumbnail_grabber
         [src/WebAudioBridge.cpp]=tst_webaudio
         [src/SafeWallpaperBridge.cpp]=tst_safewallpaperbridge
-        [src/MigrationHelper.cpp]=tst_migrationhelper
-        [src/MigrationHelper.h]=tst_migrationhelper
         [src/PlaylistManager.cpp]=tst_playlist_manager
         [src/WebUrlInterceptor.cpp]=tst_weburlinterceptor
     )

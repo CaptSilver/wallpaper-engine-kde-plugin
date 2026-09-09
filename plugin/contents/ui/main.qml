@@ -726,19 +726,12 @@ Rectangle {
         // why this lives here instead of as a binding.
         hasLib = Common.checklib_wallpaper(background);
 
-        // catsout → captsilver one-shot migration. No-op when the marker is
-        // present or no catsout config exists. Runs IN-PROCESS via KConfig
-        // (no subprocess, no plasmashell restart) and returns normally, so it
-        // is safe to run applySource() and the signal connects below after it.
-        MigrationHelper.runIfNeeded();
-
-        // One-shot seed of last_seen_version for every existing <id>.json
-        // based on the current Steam manifest. Without this, the first
-        // launch after the Updated-badge feature lands would mark every
-        // configured wallpaper as updated (no last_seen_version => 0 < any
-        // manifest timestamp). Idempotent via its own KConfig marker;
-        // empty steamlibrary just sets the marker and returns.
-        MigrationHelper.seedLastSeenVersions(Common.urlNative(background.steamlibrary));
+        // Seed last_seen_version for the configured wallpapers from the Steam
+        // manifest. An unrecorded wallpaper reads as version 0 — older than any
+        // manifest timestamp — so without this the Updated badge would light up
+        // on the whole library. One-shot, guarded inside FileHelper; an empty
+        // steamlibrary just marks it done.
+        pyext.seed_last_seen_versions(Common.urlNative(background.steamlibrary));
 
         runCacheGc();
 

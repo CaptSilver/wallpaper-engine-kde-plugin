@@ -14,4 +14,3 @@ PlaylistManager 1.2 PlaylistManager.qml
 WekControl 1.2 WekControl.qml
 WekNotifier 1.2 WekNotifier.qml
 WekDiagnostics 1.2 WekDiagnostics.qml
-singleton MigrationHelper 1.2 MigrationHelperStub.qml

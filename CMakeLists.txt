@@ -113,19 +113,6 @@ endif()
 install(FILES plugin/contents/dbus/com.github.captsilver.WallpaperEngine.xml
         DESTINATION ${KDE_INSTALL_DATAROOTDIR}/dbus-1/interfaces)
 
-# ── Migration script ─────────────────────────────────────────────────────────
-install(PROGRAMS tools/scripts/migrate-from-catsout.sh
-        DESTINATION ${KDE_INSTALL_DATADIR}/wek/scripts
-        RENAME migrate-from-catsout.sh)
-install(CODE "
-  set(_link \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_BINDIR}/wek-migrate-from-catsout\")
-  file(REMOVE \"\${_link}\")
-  file(MAKE_DIRECTORY \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_BINDIR}\")
-  execute_process(COMMAND \${CMAKE_COMMAND} -E create_symlink
-    \"\${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_DATADIR}/wek/scripts/migrate-from-catsout.sh\"
-    \"\${_link}\")
-")
-
 # ── Third-party licenses ─────────────────────────────────────────────────────
 # The plugin statically embeds object code from libraries under
 # src/backend_scene/third_party/.  Each library's license travels with the

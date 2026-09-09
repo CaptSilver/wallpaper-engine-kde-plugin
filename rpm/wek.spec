@@ -209,10 +209,8 @@ ctest --test-dir _build/tests \
 %dir %{_datadir}/plasma
 %dir %{_datadir}/plasma/wallpapers
 %{_datadir}/plasma/wallpapers/com.github.captsilver.wallpaperEngineKde/
-# Migration script + /usr/bin symlink.
+# /usr/share/wek itself; everything under it is the licenses tree %%license claims.
 %dir %{_datadir}/wek
-%{_datadir}/wek/scripts/
-%{_bindir}/wek-migrate-from-catsout
 # D-Bus introspection XML for the WallpaperEngine control surface.
 %{_datadir}/dbus-1/interfaces/com.github.captsilver.WallpaperEngine.xml
 # KNotification event taxonomy (System Settings -> Notifications -> Wallpaper Engine).

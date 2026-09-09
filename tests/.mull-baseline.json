@@ -544,16 +544,6 @@
       "mutator": "cxx_ne_to_eq"
     },
     {
-      "file": "src/MigrationHelper.cpp",
-      "line": 50,
-      "mutator": "cxx_pre_inc_to_pre_dec"
-    },
-    {
-      "file": "src/MigrationHelper.cpp",
-      "line": 185,
-      "mutator": "cxx_pre_inc_to_pre_dec"
-    },
-    {
       "file": "src/MouseGrabber.cpp",
       "line": 127,
       "mutator": "cxx_eq_to_ne"

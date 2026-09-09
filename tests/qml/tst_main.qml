@@ -515,4 +515,27 @@ TestCase {
         bg.runCacheGc();
         compare(fh.requestCacheGcCount, 0);
     }
+
+    // Startup has to stamp a seen version onto wallpapers configured before
+    // anything was recorded, or the whole library reads as updated. The call
+    // fires from Component.onCompleted, so the count is whatever load left
+    // behind — no test may reset it.
+    function test_startup_seedsLastSeenVersionsOnce() {
+        const bg = _findBackground();
+        if (!bg) { verify(loadError !== ""); return; }
+        const pyext = _findPyext(bg);
+        verify(pyext !== null, "no Pyext exposing request_cache_gc under background");
+        const fh = pyext.helper;
+        verify(fh !== null && fh !== undefined, "Pyext.helper is not exposed");
+
+        compare(fh.seedLastSeenVersionsCount, 1);
+
+        // The C++ side opens the path directly, so it must arrive stripped of
+        // the file:// scheme QML carries it in.
+        const path = fh.lastSeedLastSeenVersionsPath;
+        verify(typeof path === "string",
+                "steamlibrary never reached seedLastSeenVersions");
+        verify(path.indexOf("file://") !== 0,
+                "steamlibrary arrived as a URL, not a native path: " + path);
+    }
 }

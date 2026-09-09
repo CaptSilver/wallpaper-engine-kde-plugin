@@ -191,6 +191,17 @@ public:
     // absent from the map (callers default to 0).
     Q_INVOKABLE QVariantMap allSeenVersions() const;
 
+    // Fill in last_seen_version for every <id>.json that hasn't got one, using
+    // the Steam manifest's current timestamps. Without this, a user who
+    // configured wallpapers before the plugin started tracking versions gets
+    // the Updated badge on every single one of them at once. Runs at most
+    // once per config dir: a sentinel file (<config>/wekde/last-seen-seeded)
+    // goes down afterwards even when there was nothing to seed, so an empty
+    // or missing manifest does not mean a rescan on every start.
+    // `steamLibraryPath` is the Steam library root, as for
+    // readWorkshopManifest.
+    Q_INVOKABLE void seedLastSeenVersions(const QString& steamLibraryPath);
+
 signals:
     // Emitted when lastGcBytesFreed changes (after every enforceCacheQuota
     // run that actually freed bytes; not emitted for no-op runs that

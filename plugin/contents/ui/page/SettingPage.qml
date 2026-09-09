@@ -160,6 +160,56 @@ Flickable {
                 }
             }
             OptionItem {
+                text: i18nc("@label settings option", "Render resolution")
+                text_color: Kirigami.Theme.textColor
+                icon: '../../images/window.svg'
+                actor: ComboBox {
+                    id: cbRenderScale
+                    model: [
+                        { text: i18nc("@item:inlistbox render resolution", "Native (100%)"), value: 100 },
+                        { text: i18nc("@item:inlistbox render resolution", "75%"),           value: 75 },
+                        { text: i18nc("@item:inlistbox render resolution", "50%"),           value: 50 },
+                        { text: i18nc("@item:inlistbox render resolution", "25%"),           value: 25 },
+                    ]
+                    textRole: "text"
+                    onActivated: cfg_RenderScale = Common.cbCurrentValue(this)
+                    Component.onCompleted: currentIndex = Common.cbIndexOfValue(this, cfg_RenderScale)
+                }
+                contentBottom: ColumnLayout {
+                    Text {
+                        Layout.fillWidth: true
+                        color: Kirigami.Theme.disabledTextColor
+                        text: i18nc("@info render resolution help text", "Draws the wallpaper smaller and lets the desktop scale it up. Almost all of a scene's cost is per-pixel, so 50% is roughly a quarter of the GPU work — the largest saving available on a heavy wallpaper, at the price of a softer picture. Changing this reloads the wallpaper.")
+                        wrapMode: Text.Wrap
+                    }
+                }
+            }
+            OptionItem {
+                text: i18nc("@label settings option", "Anti-aliasing")
+                text_color: Kirigami.Theme.textColor
+                icon: '../../images/window.svg'
+                actor: ComboBox {
+                    id: cbMsaaMode
+                    model: [
+                        { text: i18nc("@item:inlistbox anti-aliasing", "Automatic (recommended)"), value: 0 },
+                        { text: i18nc("@item:inlistbox anti-aliasing", "Off"),                     value: 1 },
+                        { text: i18nc("@item:inlistbox anti-aliasing", "2x"),                      value: 2 },
+                        { text: i18nc("@item:inlistbox anti-aliasing", "4x"),                      value: 4 },
+                    ]
+                    textRole: "text"
+                    onActivated: cfg_MsaaMode = Common.cbCurrentValue(this)
+                    Component.onCompleted: currentIndex = Common.cbIndexOfValue(this, cfg_MsaaMode)
+                }
+                contentBottom: ColumnLayout {
+                    Text {
+                        Layout.fillWidth: true
+                        color: Kirigami.Theme.disabledTextColor
+                        text: i18nc("@info anti-aliasing help text", "Smooths edges on thin, bright shapes like rain streaks and sparks. Its cost is paid once per layer a wallpaper draws, so a busy scene on a large screen pays it hundreds of times per frame. Automatic lowers it as the screen gets larger and as more screens run wallpapers; pick a value yourself to override that. Changing this reloads the wallpaper.")
+                        wrapMode: Text.Wrap
+                    }
+                }
+            }
+            OptionItem {
                 text: i18nc("@label settings option", "Display")
                 text_color: Kirigami.Theme.textColor
                 icon: '../../images/window.svg'

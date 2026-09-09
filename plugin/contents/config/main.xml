@@ -86,6 +86,14 @@
       <label>Fps</label>
       <default>30</default>
     </entry>
+    <entry name="RenderScale" type="Int">
+      <label>Percentage of the display resolution to render at; Qt upscales the result</label>
+      <default>100</default>
+    </entry>
+    <entry name="MsaaMode" type="Int">
+      <label>Anti-aliasing sample count: 0 = automatic, 1 = off, 2 = 2x, 4 = 4x</label>
+      <default>0</default>
+    </entry>
     <entry name="PresentMode" type="Int">
       <label>Swapchain present mode policy (0=Auto, 1=Fifo, 2=FifoRelaxed, 3=Mailbox, 4=Immediate)</label>
       <default>0</default>

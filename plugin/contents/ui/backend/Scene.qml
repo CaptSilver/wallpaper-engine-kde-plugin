@@ -105,6 +105,8 @@ Item{
         userProperties: sceneItem.userPropsJson
         hdrOutput: background.hdrOutput
         postprocessingOverride: background.postProcessing
+        msaaMode: background.msaaMode
+        renderScale: background.renderScale
         systemAudioCapture: background.systemAudioCapture
         Component.onCompleted: {
             player.setAcceptMouse(true);

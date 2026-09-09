@@ -22,6 +22,8 @@ Item {
     property bool   mouseInput:     true
     property bool   hdrOutput:      false
     property string postprocessingOverride: ""  // wallpaper-default when empty
+    property int    msaaMode:       0    // 0 = automatic tiering, 1/2/4 = pinned
+    property real   renderScale:    1.0  // fraction of native resolution to render at
     property bool   systemAudioCapture: false
     property int    presentMode:    0    // Swapchain present-mode policy (Auto=0)
     property int    outputRefreshMillihertz: 0      // 0 = no screen rate yet; C++ fills it from QScreen

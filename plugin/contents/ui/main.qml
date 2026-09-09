@@ -39,6 +39,15 @@ Rectangle {
     property bool   pauseOnBatPower: wallpaper.configuration.PauseOnBatPower
     property int    pauseBatPercent: wallpaper.configuration.PauseBatPercent
     property bool   hdrOutput: wallpaper.configuration.HdrOutput
+    // 0 = automatic (the renderer tiers it by output size, pass count and how
+    // many screens are drawing), 1 = off, 2 or 4 = pinned by the user.
+    property int    msaaMode: wallpaper.configuration.MsaaMode
+    // Fraction of the display resolution the wallpaper is rendered at, with Qt
+    // upscaling the result.  Nearly all of a scene's cost is per-pixel and
+    // per-pass, so 50% is roughly a quarter of the GPU work.  The Vulkan
+    // target size is fixed when the backend item is built, hence the reload
+    // below rather than a live binding.
+    property real   renderScale: wallpaper.configuration.RenderScale / 100.0
     property string postProcessing: get_opt_value('postprocessing', false) ? "ultra" : ""
     property bool   systemAudioCapture: wallpaper.configuration.SystemAudioCapture
 
@@ -749,6 +758,9 @@ Rectangle {
 
         // background signal connect
         background.videoBackendChanged.connect(loadBackend);
+        // The render target size is decided when the backend item is created,
+        // so changing the scale has to rebuild it.
+        background.renderScaleChanged.connect(loadBackend);
         background.okChanged.connect(autoPause);
         background.sourceChanged.connect(applySource);
 

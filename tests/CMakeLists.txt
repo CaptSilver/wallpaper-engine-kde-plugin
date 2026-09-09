@@ -676,6 +676,11 @@ if(QMLTESTRUNNER)
         #   tests/qml  — Cov singleton (instrumentation tracer)
         COMMAND ${CMAKE_COMMAND} -E env
                 QT_QPA_PLATFORM=offscreen
+                # Tests that read a .qml file back off disk over XHR run here
+                # too, so they need the same permission ctest grants them. The
+                # runner's exit code is swallowed below, so without it they
+                # fail silently into the log rather than failing the build.
+                QML_XHR_ALLOW_FILE_READ=1
                 "QML2_IMPORT_PATH=${_qmlcov_tests}/_stubs:${_qmlcov_tests}"
                 QML_DISABLE_DISK_CACHE=1
                 QV4_DISABLE_DISK_CACHE=1

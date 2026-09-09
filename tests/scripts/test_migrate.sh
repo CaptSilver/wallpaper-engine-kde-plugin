@@ -327,6 +327,48 @@ run_test appletsrc-already-migrated 0 appletsrc-already-migrated.expected 0 0 0
 run_test appletsrc-simple           0 appletsrc-simple.expected   1 1 1
 run_test appletsrc-multidesk        0 appletsrc-multidesk.expected 1 0 1
 run_idempotency_test appletsrc-simple
+# The migration must refuse a config home owned by someone else — that is the
+# `sudo -E` case, where root would rewrite the user's files and leave
+# root-owned backups behind.  Needs privilege to hand a directory to another
+# uid, so it only runs where we have it; say so out loud when we don't, rather
+# than passing silently.
+run_foreign_owner_test() {
+    local name="foreign-owned-config-home"
+    local sandbox; sandbox=$(mktemp -d)
+    make_sandbox "$sandbox"
+    cp "$FIXTURES/appletsrc-simple.in" \
+       "$sandbox/.config/plasma-org.kde.plasma.desktop-appletsrc"
+
+    if ! chown -R 65534 "$sandbox/.config" 2>/dev/null; then
+        echo "SKIP [$name]: cannot chown to another uid as uid $EUID"
+        rm -rf "$sandbox"
+        return
+    fi
+
+    local out actual_exit=0
+    out=$(HOME="$sandbox" XDG_CONFIG_HOME="$sandbox/.config" \
+          PATH="$sandbox/bin:$PATH" \
+          "$SCRIPT" --auto --verbose 2>&1) || actual_exit=$?
+
+    if [[ "$actual_exit" -ne 1 ]]; then
+        echo "FAIL [$name]: exit code $actual_exit, expected 1"
+        FAIL=$((FAIL + 1)); rm -rf "$sandbox"; return
+    fi
+    if ! grep -qiE 'owned by|not the owner' <<<"$out"; then
+        echo "FAIL [$name]: refused, but not for ownership: $out"
+        FAIL=$((FAIL + 1)); rm -rf "$sandbox"; return
+    fi
+    if ! diff -q "$FIXTURES/appletsrc-simple.in" \
+         "$sandbox/.config/plasma-org.kde.plasma.desktop-appletsrc" >/dev/null; then
+        echo "FAIL [$name]: refused but still edited appletsrc"
+        FAIL=$((FAIL + 1)); rm -rf "$sandbox"; return
+    fi
+    echo "PASS [$name]"
+    PASS=$((PASS + 1))
+    rm -rf "$sandbox"
+}
+
+
 run_idempotency_test appletsrc-post-inprocess
 run_concurrent_test
 run_dryrun_test
@@ -334,6 +376,7 @@ run_marker_test
 run_force_test
 run_merge_test
 run_locker_test
+run_foreign_owner_test
 
 echo
 echo "Tests: $PASS passed, $FAIL failed."

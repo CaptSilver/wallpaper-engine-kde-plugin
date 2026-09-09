@@ -98,7 +98,24 @@ start_plasmashell() {
 }
 
 # ── pre-flight ───────────────────────────────────────────────────────────────
-(( EUID == 0 )) && fail "do not run as root — migration is per-user" 1
+# Owning the config home is the real precondition, not "don't be root".  The
+# case worth refusing is `sudo -E`, which keeps the caller's HOME: root then
+# rewrites the user's files and leaves root-owned backups in their home for
+# plasmashell to trip over later.  Root operating on root's own config is
+# harmless, and a container has no other kind of user.  Checking ownership
+# also catches a plain user pointed at someone else's config home, which the
+# root test never covered.
+config_home_owner() {
+    local d="$CONFIG_HOME"
+    while [[ ! -e "$d" && "$d" != "/" ]]; do d=$(dirname "$d"); done
+    stat -c %u "$d" 2>/dev/null
+}
+CONFIG_OWNER=$(config_home_owner) \
+    || fail "cannot determine the owner of $CONFIG_HOME" 1
+[[ -n "$CONFIG_OWNER" ]] \
+    || fail "cannot determine the owner of $CONFIG_HOME" 1
+(( CONFIG_OWNER == EUID )) \
+    || fail "$CONFIG_HOME is owned by uid $CONFIG_OWNER, not $EUID — run the migration as that user" 1
 
 OLD_URI="com.github.catsout.wallpaperEngineKde"
 NEW_URI="com.github.captsilver.wallpaperEngineKde"

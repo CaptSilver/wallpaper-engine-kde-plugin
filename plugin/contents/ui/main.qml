@@ -120,24 +120,33 @@ Rectangle {
     // lock surface), 1 = Pause (default; renderer drops GPU draw to ~zero
     // until unlock). The lockMonitor.active gate only flips background.ok
     // when Policy=1, so Policy=0 leaves the chain unaffected.
-    property bool   ok: !windowModel.reqPause && !powerSource.reqPause
+    // playlistController.userPaused is the user-facing pause (D-Bus Pause /
+    // Toggle, global shortcut). It sits in the same gate as the automatic
+    // sources so resuming from it can't start drawing while a fullscreen
+    // window, battery saving or the locker still wants the renderer idle.
+    property bool   ok: !playlistController.userPaused
+                       && !windowModel.reqPause && !powerSource.reqPause
                        && !(lockMonitor.active
                             && wallpaper.configuration.ScreenSaverPolicy === 1)
 
     // detect TTY switch and pause wallpaper(s)
     TTYSwitchMonitor {
         id: ttyMonitor
-        // Pause/resume the active backend on VT switch or sleep.  `this` is the
-        // TTYSwitchMonitor (no play/pause) — the wallpaper is backendLoader.item,
-        // which can be null mid-load, so guard it.  (function form: Qt6 deprecates
-        // injecting the `sleep` parameter into a bare `onTtySwitch:` handler.)
-        function onTtySwitch(sleep) {
+        // Pause/resume the active backend on VT switch or sleep.  The wallpaper
+        // is backendLoader.item, which can be null mid-load, so guard it.  The
+        // handler must be a value assignment: a `function onTtySwitch(sleep)`
+        // declared in an object body is just a method — QML only auto-connects
+        // that form inside a Connections element, so this ran as dead code.
+        // Waking goes through autoPause() rather than a bare play() so every
+        // other pause source (user pause, fullscreen window, battery, locker)
+        // still gets a veto on the way back.
+        onTtySwitch: function(sleep) {
             if (sleep) {
                 console.log("Preparing for sleep (possibly a VT switch)");
                 if (backendLoader.item) backendLoader.item.pause();
             } else {
                 console.log("Waking up (VT switch back)");
-                if (backendLoader.item) backendLoader.item.play();
+                background.autoPause();
             }
         }
     }

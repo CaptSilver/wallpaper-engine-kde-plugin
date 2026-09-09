@@ -31,10 +31,12 @@ Item {
     // set, _applyWorkshopId calls into it to emit a WallpaperChanged D-Bus
     // signal every time the workshop id transitions.  See src/WekControl.*.
     property var dbusControl: null
-    // Local "paused" mirror for the QML side — pauseTicks() is timer-only and
-    // PlaylistManager doesn't expose an isPaused Q_PROPERTY, so we track it
-    // here for togglePause() decisions.
-    property bool _userPaused: false
+    // The user-facing pause (D-Bus / global shortcut), owned here because this
+    // is the object those routes call into. Write it only through
+    // pause()/resume()/togglePause(). main.qml reads it as one term of its
+    // render gate, so flipping it actually stops GPU submission; the local
+    // _pauseGate below turns it into stopped playlist rotation.
+    property bool userPaused: false
 
     // Reads — parent supplies plain values rather than the config object,
     // because main.qml's `wallpaper.configuration` and config.qml's `root`
@@ -126,18 +128,19 @@ Item {
     }
 
     function pause() {
-        root._userPaused = true;
-        mgr.pauseTicks();
+        // Rotation ticks stop via the _pauseGate handler below, which also
+        // keeps them stopped if a second pause source (desktop not ok) is
+        // already holding them.
+        root.userPaused = true;
     }
 
     function resume() {
-        root._userPaused = false;
-        mgr.resumeTicks();
+        root.userPaused = false;
     }
 
     function togglePause() {
-        if (root._userPaused) root.resume();
-        else                  root.pause();
+        if (root.userPaused) root.resume();
+        else                 root.pause();
     }
 
     function mute() {
@@ -367,8 +370,11 @@ Item {
         mgr.acceptPick(wid);
     }
 
-    // Pause hook
-    property bool _pauseGate: !(root.noRandomWhilePaused && !root.desktopOk)
+    // Pause hook. Rotation runs only when neither the user nor (optionally)
+    // the desktop state is holding a pause; without the userPaused term a
+    // later desktop-ok flip would silently restart cycling under a user pause.
+    property bool _pauseGate: !root.userPaused
+                              && !(root.noRandomWhilePaused && !root.desktopOk)
     on_PauseGateChanged: {
         if (_pauseGate) mgr.resumeTicks();
         else            mgr.pauseTicks();

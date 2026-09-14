@@ -62,7 +62,7 @@ Item {
         // the bridge dedupes true->true, and a swallowed edge means nobody
         // reads the new project.json and the page renders its built-in
         // defaults instead of the user's values.
-        webobj.setLoaded(false);
+        if (webobj) webobj.loaded = false;
 
         var filePath = Common.urlNative(fileUrl);
         var baseUrl = fileUrl.substring(0, fileUrl.lastIndexOf('/') + 1);
@@ -334,8 +334,8 @@ Item {
                 // The bridge dedupes redundant true->true transitions and
                 // fires sigInit once per document, so in-page navs that
                 // re-fire LoadSucceededStatus are harmless.
-                if (webobj && typeof webobj.setLoaded === "function")
-                    webobj.setLoaded(true);
+                if (webobj)
+                    webobj.loaded = true;
                 // check pause after load
                 if(paused) {
                     webItem.play();
@@ -496,7 +496,7 @@ Item {
             // The renderer dies with the document, so stop reporting a live
             // page: fps, user-property and audio pushes are all gated on
             // loaded and have nowhere to go until the resume reloads.
-            webobj.setLoaded(false);
+            if (webobj) webobj.loaded = false;
             console.log("[WEK] WebEngineView escalated to Discarded after long pause");
         }
     }

@@ -57,6 +57,9 @@ find_package(ECM REQUIRED NO_MODULE)
 set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH} ${CMAKE_MODULE_PATH})
 
 if(ECM_VERSION_MAJOR EQUAL 6)
+  # KDEInstallDirs6 queries Qt before Plasma dependency discovery.
+  set(QT_MAJOR_VERSION 6)
+  include(KDEInstallDirs6)
   find_package(Plasma REQUIRED)
   find_package(KF6 ${KF6_MIN_VERSION} REQUIRED COMPONENTS Package Config Notifications Crash I18n)
   # GlobalAccel + CoreAddons are optional at configure time so the build
@@ -70,7 +73,6 @@ if(ECM_VERSION_MAJOR EQUAL 6)
   # sysroot without it degrades to the KConfig-only shim (same posture as
   # GlobalAccel above).
   find_package(PlasmaActivities QUIET)
-  include(KDEInstallDirs6)
 else()
   find_package(KF5 ${KF_MIN_VERSION} REQUIRED COMPONENTS Package Plasma)
   include(KDEInstallDirs)

@@ -63,6 +63,12 @@ To run it: KDE Plasma 6, Qt 6, and a working Vulkan 1.1+ driver (AMD users want 
 
 [Troubleshooting](https://github.com/CaptSilver/wallpaper-engine-kde-plugin/wiki/Troubleshooting) and [Known Issues](https://github.com/CaptSilver/wallpaper-engine-kde-plugin/wiki/Known-Issues) cover the common ones — empty wallpaper lists, black desktops, missing audio.
 
+### Known fixes in this branch
+
+- **Web wallpapers showing white/black** (init handshake + properties): `setLoaded`, `pushGeneralProperties` and `pushUserProperties` are exposed to QML as writable `Q_PROPERTY`s (`webobj.loaded`, `webobj.generalProperties`, `webobj.userProperties`) instead of calling non-`Q_INVOKABLE` C++ methods, which failed with `TypeError: ... is not a function` and left web wallpapers blank. Also `settings.localContentCanAccessFileUrls = true` so injected `file://` sub-resources load.
+- **Full Steam library path** preserved (`Common.urlNative(cfg_SteamLibraryPath)` in `getProjectDirs`) — previously root-anchored `/steamapps/...` paths broke relative asset resolution and wallpaper watching.
+- **Huge Scene sprites rendered blank** (e.g. Hackercore `7680x8000`): the cumulative texture budget `kMaxTotalBytes` is now overridable at build time via `-DWEK_MAX_TEX_BYTES=...` (default 2 GiB, `#ifndef` in `WPTexImageParser.cpp`, wired through submodule CMake). Low-VRAM machines can lower it; high-VRAM cards can raise it. See [backend_scene](src/backend_scene) for details.
+
 ## Contributing
 
 PRs are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) has the local build-and-test gate and a few house rules.

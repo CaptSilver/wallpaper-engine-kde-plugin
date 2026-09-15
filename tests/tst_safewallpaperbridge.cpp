@@ -16,6 +16,7 @@
 
 #include <QCoreApplication>
 #include <QList>
+#include <QMetaProperty>
 #include <QObject>
 #include <QSignalSpy>
 #include <QTest>
@@ -116,6 +117,45 @@ private slots:
         // Compile-time pin: signal arg must round-trip via QList<double>.
         static_assert(
             std::is_same_v<decltype(std::declval<SafeWallpaperBridge>().sigAudio(samples)), void>);
+    }
+
+    // Regression: every Q_PROPERTY on the bridge must be READ-only. A WRITE
+    // clause here is JS-reachable — QWebChannel's publisher dispatches an
+    // inbound "setProperty" over the wire straight through QMetaProperty::write,
+    // so a WRITE gives web-wallpaper JS a setter with no Q_INVOKABLE required
+    // to grep for. (This is what shipped briefly: generalProperties/
+    // userProperties/loaded gained WRITE clauses so *QML* could reach the
+    // setters, which also reopened the JS-writable hole this class exists to
+    // close.)
+    void metaObject_allPropertiesAreReadOnly() {
+        SafeWallpaperBridge b;
+        const QMetaObject*  mo = b.metaObject();
+        for (int i = mo->propertyOffset(); i < mo->propertyCount(); ++i) {
+            const QMetaProperty p = mo->property(i);
+            QVERIFY2(! p.isWritable(),
+                     qPrintable(QString("property '%1' is writable — web JS reaches it over "
+                                        "QWebChannel")
+                                    .arg(p.name())));
+        }
+    }
+
+    // Regression: the bridge must not expose a QObject* property. The channel
+    // marshals whatever QObject a reachable property points at, so if the
+    // bridge ever grew a pointer back to SafeWallpaperBridgeController (or
+    // anything else), the page could walk through it to invoke the
+    // controller's Q_INVOKABLE setters — the exact hole this split is meant
+    // to close.
+    void metaObject_hasNoQObjectPointerProperty() {
+        SafeWallpaperBridge b;
+        const QMetaObject*  mo = b.metaObject();
+        for (int i = mo->propertyOffset(); i < mo->propertyCount(); ++i) {
+            const QMetaProperty p = mo->property(i);
+            QVERIFY2(! QByteArray(p.typeName()).contains('*'),
+                     qPrintable(QString("property '%1' is a pointer type ('%2') — the "
+                                        "QWebChannel-exposed bridge must not be reachable to "
+                                        "any other QObject")
+                                    .arg(p.name(), p.typeName())));
+        }
     }
 
     // Defensive: confirm the meta-object has NO Q_INVOKABLE methods. A

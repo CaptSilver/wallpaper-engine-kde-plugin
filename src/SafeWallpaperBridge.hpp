@@ -19,8 +19,12 @@ namespace wekde
 //
 // Contract:
 //   * generalProperties / userProperties / loaded are READ-only from JS.
-//     QML pushes via the public push*/setLoaded methods (not Q_INVOKABLE,
-//     so QWebChannel does not marshal them).
+//     QML pushes through SafeWallpaperBridgeController, a QML-only type
+//     that is never registered on the channel and forwards to the plain
+//     public push*/setLoaded methods (not Q_INVOKABLE, not slots, so
+//     QWebChannel does not publish them).
+//     tst_safewallpaperbridge::metaObject_allPropertiesAreReadOnly pins
+//     the no-WRITE half of this.
 //   * No Q_INVOKABLE methods anywhere — web JS receives signals only.
 //     tst_safewallpaperbridge::metaObject_hasNoInvokableMethods pins this.
 //   * Four signals reach web JS:
@@ -40,9 +44,9 @@ namespace wekde
 // carries the matching comment on the QML side.
 class SafeWallpaperBridge : public QObject {
     Q_OBJECT
-    Q_PROPERTY(QVariantMap generalProperties READ generalProperties WRITE pushGeneralProperties NOTIFY generalPropertiesChanged)
-    Q_PROPERTY(QVariantMap userProperties READ userProperties WRITE pushUserProperties NOTIFY userPropertiesChanged)
-    Q_PROPERTY(bool loaded READ loaded WRITE setLoaded NOTIFY loadedChanged)
+    Q_PROPERTY(QVariantMap generalProperties READ generalProperties NOTIFY generalPropertiesChanged)
+    Q_PROPERTY(QVariantMap userProperties READ userProperties NOTIFY userPropertiesChanged)
+    Q_PROPERTY(bool loaded READ loaded NOTIFY loadedChanged)
 
 public:
     explicit SafeWallpaperBridge(QObject* parent = nullptr);
@@ -53,10 +57,12 @@ public:
     QVariantMap userProperties() const { return m_user; }
     bool        loaded() const { return m_loaded; }
 
-    // QML-only public setters. NOT Q_INVOKABLE — QWebChannel only
-    // exposes Q_INVOKABLE methods to web JS, so a wallpaper cannot
-    // call these. QML reaches them directly via the C++ type system
-    // (no JSON marshal). Each updates the mirror + emits the matching
+    // Plain public setters: not Q_INVOKABLE, not slots, and no WRITE on
+    // the properties above — QWebChannel publishes all three of those to
+    // page JS, so any of them would let a wallpaper write its own state.
+    // QML cannot call plain methods either; SafeWallpaperBridgeController
+    // (a QML type that is never registered on the channel) is what
+    // forwards to these. Each updates the mirror + emits the matching
     // NOTIFY signal AND the corresponding sig* signal so JS-side
     // wallpapers and QML-side observers see the same event.
     void pushGeneralProperties(const QVariantMap& m);

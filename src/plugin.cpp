@@ -13,6 +13,7 @@
 #include "WebAudioBridge.hpp"
 #include "WebUrlInterceptor.hpp"
 #include "SafeWallpaperBridge.hpp"
+#include "SafeWallpaperBridgeController.hpp"
 #include "PlaylistManager.hpp"
 #include "PlaylistsModel.hpp"
 #include "PlaylistItemsModel.hpp"
@@ -73,6 +74,8 @@ public:
         qmlRegisterType<wekde::WebAudioBridge>(uri, WPVer[0], WPVer[1], "WebAudioBridge");
         qmlRegisterType<wekde::WebUrlInterceptor>(uri, WPVer[0], WPVer[1], "WebUrlInterceptor");
         qmlRegisterType<wekde::SafeWallpaperBridge>(uri, WPVer[0], WPVer[1], "SafeWallpaperBridge");
+        qmlRegisterType<wekde::SafeWallpaperBridgeController>(
+            uri, WPVer[0], WPVer[1], "SafeWallpaperBridgeController");
         qmlRegisterType<wekde::PlaylistManager>(uri, WPVer[0], WPVer[1], "PlaylistManager");
         qmlRegisterUncreatableType<wekde::PlaylistsModel>(
             uri,

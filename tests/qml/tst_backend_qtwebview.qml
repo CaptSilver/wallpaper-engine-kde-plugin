@@ -197,6 +197,20 @@ TestCase {
                                typeof c.sigGeneralProperties === "function");
     }
 
+    // The controller has a `bridge` property the real bridge does not — that
+    // is the one thing distinguishing them in the stub, where both types
+    // expose setLoaded/push* as plain callable functions (the stub can't
+    // reproduce the C++ Q_INVOKABLE-vs-plain-method distinction that keeps
+    // the real bridge's setters off the QWebChannel).
+    function _findWebobjCtl() {
+        return _findInner(c => c && typeof c.bridge !== "undefined" &&
+                               typeof c.setLoaded === "function");
+    }
+
+    function _findWebChannel() {
+        return _findInner(c => c && typeof c.registeredObjects !== "undefined");
+    }
+
     function _findPauseImage() {
         return _findInner(c => c && typeof c.source !== "undefined" &&
                                typeof c.enabled !== "undefined" &&
@@ -765,5 +779,24 @@ TestCase {
         // Verify the official path still works.
         webobj.setLoaded(true);
         compare(webobj.loaded, true);
+    }
+
+    // The controller exists so QML has something invokable to call; it must
+    // never itself be reachable from the wallpaper's page. Pin that at the
+    // WebChannel: only webobj may ever appear in registeredObjects.
+    function test_webChannel_registersOnlyWebobj_notController() {
+        const channel = _findWebChannel();
+        const webobj  = _findWebobj();
+        const ctl     = _findWebobjCtl();
+        verify(channel !== null, "WebChannel sibling must exist");
+        verify(webobj !== null);
+        verify(ctl !== null, "SafeWallpaperBridgeController sibling must exist");
+
+        compare(channel.registeredObjects.length, 1,
+            "only one object should ever be registered on the WebChannel");
+        compare(channel.registeredObjects[0], webobj,
+            "the registered object must be webobj");
+        verify(channel.registeredObjects[0] !== ctl,
+            "the controller must never be registered on the WebChannel");
     }
 }

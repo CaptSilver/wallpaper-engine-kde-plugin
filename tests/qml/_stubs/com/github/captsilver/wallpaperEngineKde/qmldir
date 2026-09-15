@@ -10,6 +10,7 @@ Mpv 1.2 Mpv.qml
 WebAudioBridge 1.2 WebAudioBridge.qml
 WebUrlInterceptor 1.2 WebUrlInterceptor.qml
 SafeWallpaperBridge 1.2 SafeWallpaperBridge.qml
+SafeWallpaperBridgeController 1.2 SafeWallpaperBridgeController.qml
 PlaylistManager 1.2 PlaylistManager.qml
 WekControl 1.2 WekControl.qml
 WekNotifier 1.2 WekNotifier.qml

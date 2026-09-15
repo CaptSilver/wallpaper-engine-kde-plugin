@@ -27,6 +27,7 @@ add_library(${PROJECT_NAME}
 	PluginInfo.cpp
 	FileHelper.cpp
 	SafeWallpaperBridge.cpp
+	SafeWallpaperBridgeController.cpp
 	WebAudioBridge.cpp
 	WebUrlInterceptor.cpp
 	Playlist.cpp

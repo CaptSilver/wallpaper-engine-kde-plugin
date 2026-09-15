@@ -179,12 +179,8 @@ Rectangle {
     // type is imported at file top (line 2).
     Component {
         id: mouseHookerComponent
-        // Keep the grabber above the wallpaper content so press/release reach
-        // interactive (web/mouse-aware) wallpapers. z:-1 put it behind another
-        // Plasma desktop input item on 6.6/Wayland: hover still arrived but
-        // mousePress/Release were swallowed before reaching MouseGrabber.
         MouseGrabber {
-            z: 1000
+            z: -1
             anchors.fill: parent
         }
     }
@@ -329,9 +325,7 @@ Rectangle {
             }
             console.warn("[WEK] MouseHook: found target " + hookParent);
             if(background.mouseHooker) background.mouseHooker.destroy();
-            // Create at the window content root, not inside QQuickGridView:
-            // z:1000 must outrank Plasma desktop input layers globally.
-            background.mouseHooker = mouseHookerComponent.createObject(Window.contentItem);
+            background.mouseHooker = mouseHookerComponent.createObject(hookParent);
             return true;
        }
        return false;

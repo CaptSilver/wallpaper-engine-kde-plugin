@@ -96,7 +96,6 @@ void MouseGrabber::sendHoverEvent(QHoverEvent* event) {
 }
 
 void MouseGrabber::mousePressEvent(QMouseEvent* event) {
-    qInfo("[WEK] MouseGrabber PRESS pos=(%.1f,%.1f)", (double)event->position().x(), (double)event->position().y());
     sendMouseEvent(event);
     // need accept press to receive release
     // this break long press on desktop
@@ -109,7 +108,6 @@ void MouseGrabber::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void MouseGrabber::mouseReleaseEvent(QMouseEvent* event) {
-    qInfo("[WEK] MouseGrabber RELEASE pos=(%.1f,%.1f)", (double)event->position().x(), (double)event->position().y());
     sendMouseEvent(event);
     event->ignore();
 }
@@ -120,24 +118,6 @@ void MouseGrabber::mouseDoubleClickEvent(QMouseEvent* event) {
 }
 
 void MouseGrabber::hoverMoveEvent(QHoverEvent* event) {
-    // Chromium (QtWebEngine) does not turn synthetic QHoverEvents into DOM
-    // mousemove, so interactive web wallpapers never see the cursor and
-    // objects park at (0,0). Re-deliver hover as a real QMouseEvent so the
-    // WebEngine input delegate updates document mouse coordinates.
-    if (m_target) {
-#if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
-        QMouseEvent move(QEvent::MouseMove,
-                         mapToItem(m_target, event->position()),
-                         event->globalPosition(),
-                         Qt::NoButton, Qt::NoButton, event->modifiers());
-#else
-        QMouseEvent move(QEvent::MouseMove,
-                         mapToItem(m_target, event->posF()),
-                         event->screenPos(),
-                         Qt::NoButton, Qt::NoButton, event->modifiers());
-#endif
-        QCoreApplication::sendEvent(m_target, &move);
-    }
     // Sample log once per ~120 hover events so we can tell from journalctl
     // whether hover is actually reaching the wallpaper.  Demoted from
     // qInfo to qDebug so the steady drip doesn't flood plasmashell logs

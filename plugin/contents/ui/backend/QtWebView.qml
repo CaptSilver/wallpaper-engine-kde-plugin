@@ -107,7 +107,7 @@ Item {
             }
             if (Object.keys(delta).length > 0) {
                 console.log("[WEK] Sending updated user properties:", JSON.stringify(Object.keys(delta)));
-                webobj.pushUserProperties(fresh);
+                webobj.userProperties = fresh;
                 // pushUserProperties fires sigUserProperties(fresh) — but the
                 // existing contract was to fire sigUserProperties(delta), not the
                 // full map. Preserve that by firing the delta-flavoured signal
@@ -124,7 +124,7 @@ Item {
         if (webobj.loaded) {
             var g = JSON.parse(JSON.stringify(webobj.generalProperties || {}));
             g.fps = webItem.fps;
-            webobj.pushGeneralProperties(g);
+            webobj.generalProperties = g;
             // pushGeneralProperties auto-fires sigGeneralProperties(g).
         }
     }
@@ -156,7 +156,7 @@ Item {
         onLoadedChanged: {
             if (!loaded) return;  // only react to false->true (lifecycle thaws are silent)
             if (!webobj.generalProperties || Object.keys(webobj.generalProperties).length === 0)
-                webobj.pushGeneralProperties({fps: 24});
+                webobj.generalProperties = {fps: 24};
             var wpDir = Common.urlNative(webItem.source.toString());
             wpDir = wpDir.substring(0, wpDir.lastIndexOf('/'));
             // Load user properties from project.json BEFORE signaling,
@@ -177,8 +177,8 @@ Item {
                 console.log("[WEK] project.json loaded, properties:", JSON.stringify(Object.keys(userProps)));
                 // pushUserProperties + pushGeneralProperties each fire their
                 // matching sig* signal automatically — no explicit emit needed.
-                webobj.pushUserProperties(userProps);
-                webobj.pushGeneralProperties(webobj.generalProperties || {fps: 24});
+                webobj.userProperties = userProps;
+                webobj.generalProperties = webobj.generalProperties || {fps: 24};
             });
         }
     }
@@ -296,6 +296,7 @@ Item {
             settings.showScrollBars = false;
 
             settings.localContentCanAccessRemoteUrls = true;
+            settings.localContentCanAccessFileUrls = true;
             // Geolocation + other dangerous features are NOT auto-granted;
             // see onFeaturePermissionRequested + permissionHandler below.
             _init = true;

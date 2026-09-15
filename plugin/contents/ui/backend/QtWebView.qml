@@ -513,7 +513,11 @@ Item {
         web.paused = true;
     }
     function getMouseTarget() {
+        // Target the WebEngineView itself. Its internal child is an
+        // implementation detail and does not reliably receive mouse events
+        // on Plasma 6 / Wayland, leaving interactive wallpapers stuck at
+        // (0,0) even though hover reaches MouseGrabber.
         web.activeFocusOnPress = true;
-        return Qt.binding(function() { return web.children[0]; })
+        return web;
     }
 }

@@ -305,7 +305,6 @@ Item {
             settings.showScrollBars = false;
 
             settings.localContentCanAccessRemoteUrls = true;
-            settings.localContentCanAccessFileUrls = true;
             // Geolocation + other dangerous features are NOT auto-granted;
             // see onFeaturePermissionRequested + permissionHandler below.
             _init = true;

@@ -167,7 +167,7 @@ ColumnLayout {
 
     WallpaperListModel {
         id: wpListModel
-        workshopDirs: Common.getProjectDirs(Common.urlNative(cfg_SteamLibraryPath))
+        workshopDirs: Common.getProjectDirs(cfg_SteamLibraryPath)
         globalConfigPath: Common.getGlobalConfigPath(cfg_SteamLibraryPath)
         filterStr: cfg_FilterStr
         sortMode: cfg_SortMode

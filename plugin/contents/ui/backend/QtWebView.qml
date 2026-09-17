@@ -203,14 +203,22 @@ Item {
         id: wallpaperInterceptor
     }
 
-    // Dedicated profile so the interceptor is scoped per-wallpaper-view and
-    // doesn't share storage with any other QtWebEngine consumer.
-    // offTheRecord=false + a stable storageName lets clock/weather wallpapers
-    // persist their localStorage across reloads.
+    // One browser context per wallpaper view. The file:// URL interceptor is
+    // installed once per context, so views sharing a context also share the
+    // first-installed interceptor: whichever web wallpaper view is created
+    // first would gate every other view's file:// requests against its own
+    // base dir. Deriving the storage name from the wallpaper's workshop id
+    // keeps each wallpaper on its own context and stays stable across
+    // reloads, so offTheRecord=false still preserves localStorage and cache
+    // for clock/weather wallpapers.
     WebEngineProfile {
         id: wallpaperProfile
         offTheRecord: false
-        storageName: "wek-wallpaper"
+        storageName: {
+            var wid = background.workshopid ? String(background.workshopid) : "";
+            var s = wid.replace(/[^A-Za-z0-9_-]/g, "");
+            return "wek-wp-" + (s ? s : "local");
+        }
 
         // Wire the per-wallpaper file:// interceptor.  Qt 6 has no QML
         // `urlRequestInterceptor` property on WebEngineProfile — the only entry
@@ -218,9 +226,9 @@ Item {
         // so the interceptor installs itself here once the profile exists.
         Component.onCompleted: wallpaperInterceptor.installOn(wallpaperProfile)
 
-        // Cap the HTTP cache so animated web wallpapers can't grow
-        // ~/.cache/wek-wallpaper/Cache/ unboundedly across long-running
-        // sessions.  50 MB is well above the working set of any single
+        // Cap the HTTP cache so animated web wallpapers can't grow the
+        // profile's on-disk cache unboundedly across long-running sessions.
+        // 50 MB is well above the working set of any single
         // wallpaper and lets Chromium's LRU evict stale assets cleanly.
         // localStorage (the load-bearing persistence requirement for
         // clock/weather wallpapers) is unaffected by this cap.  Setting

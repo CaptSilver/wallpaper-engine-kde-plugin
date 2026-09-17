@@ -744,8 +744,9 @@ TestCase {
 
     // ── WebEngineProfile cache cap ──────────────────────────────────────────
     // The wallpaper profile must declare an explicit DiskHttpCache type and a
-    // 50 MB max size so animated web wallpapers can't grow ~/.cache/wek-wallpaper/
-    // toward Chromium's implicit "1% of disk free" cap over long sessions.
+    // 50 MB max size so animated web wallpapers can't grow the profile's
+    // on-disk cache toward Chromium's implicit "1% of disk free" cap over
+    // long sessions.
     // localStorage persistence (offTheRecord=false + storageName) is unaffected.
     function test_profileHasCacheCap() {
         verify(typeof web.wallpaperProfile !== "undefined",
@@ -756,6 +757,40 @@ TestCase {
         compare(web.wallpaperProfile.httpCacheMaximumSize,
                 50 * 1024 * 1024,
                 "wallpaperProfile must cap the on-disk HTTP cache at 50 MB");
+    }
+
+    // ── WebEngineProfile per-wallpaper storage ──────────────────────────────
+    // The profile's storage name must be derived from the wallpaper's
+    // workshop id: the file:// URL interceptor is installed once per browser
+    // context, so two web wallpaper views that share a storage name share a
+    // context and with it the first-installed interceptor — its base dir then
+    // gates the other view's file:// requests and that wallpaper never
+    // finishes loading. Different ids must therefore map to different
+    // storage names (one context per wallpaper), while the same id keeps one
+    // stable name so localStorage/cache survive reloads. The real profile
+    // consumes storageName at construction time, so the binding value at
+    // creation is what counts; the stub re-evaluates live, which is enough
+    // to pin the derivation contract.
+    function test_profileStorageNameIsPerWallpaper() {
+        background.workshopid = "3801034513";
+        const a = web.wallpaperProfile.storageName;
+        compare(a, "wek-wp-3801034513",
+            "storage name is the workshop id under the wek-wp- prefix");
+
+        background.workshopid = "3757331413";
+        const b = web.wallpaperProfile.storageName;
+        compare(b, "wek-wp-3757331413");
+        verify(a !== b,
+            "different wallpapers must not share a storage name");
+
+        background.workshopid = "38/01 034+513";
+        compare(web.wallpaperProfile.storageName, "wek-wp-3801034513",
+            "characters outside [A-Za-z0-9_-] are stripped from the id");
+
+        background.workshopid = "";
+        compare(web.wallpaperProfile.storageName, "wek-wp-local",
+            "wallpapers without a workshop id fall back to the local name");
+        background.workshopid = "";
     }
 
     // Pin the SafeWallpaperBridge contract: a direct JS-side write to

@@ -171,6 +171,9 @@ Rectangle {
     }
 
     property string nowBackend: ""
+    // The workshop id the currently mounted backend was built for. Lets
+    // applySource() tell a wallpaper swap from a same-wallpaper source edit.
+    property string backendWorkshopId: ""
 
     property var mouseHooker
     // Declarative MouseGrabber factory for doHookMouse. Using a Component (vs
@@ -243,14 +246,24 @@ Rectangle {
         const type_changed = background.wallpaperType !== type;
         const is_infobackend = background.nowBackend === "InfoShow";
 
+        // The web backend keys its WebEngineProfile storage name off the
+        // workshop id (QtWebView.qml's wallpaperProfile.storageName). A live
+        // rename only moves the profile's network state — Chromium keeps the
+        // StoragePartition it already built, so localStorage written after
+        // the rename still lands in the OLD wallpaper's directory. So a web
+        // wallpaper whose workshop id changed needs a fresh backend (and with
+        // it a fresh profile), not a source reassignment on the reused view.
+        const web_wid_changed = type === "web" && background.backendWorkshopId !== wid;
+
         if(type_changed) wallpaperType = type;
         if(path_changed) wallpaperPath = path;
 
-        if(type_changed || is_infobackend || !source) {
+        if(type_changed || is_infobackend || !source || web_wid_changed) {
             loadBackend();
         } else if(path_changed) {
             backendLoader.item.source = path;
         }
+        backendWorkshopId = wid;
 
         sourceCallback();
     }

@@ -56,6 +56,7 @@ Item {
     }
     function background()         { return _find(mainItem, o => typeof o.get_opt_value === "function"); }
     function player()             { return _find(mainItem, o => typeof o.setAcceptMouse === "function"); }
+    function webView()            { return _find(mainItem, o => typeof o.loadWallpaper === "function"); }
     function windowModel()        { return _find(mainItem, o => typeof o.filterByScreen !== "undefined" && typeof o.modePlay !== "undefined"); }
     function powerSource()        { return _find(mainItem, o => typeof o.st_battery_state !== "undefined"); }
     function playlistController() { return _find(mainItem, o => typeof o.activePlaylistIdRead !== "undefined"); }

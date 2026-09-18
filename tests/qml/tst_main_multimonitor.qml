@@ -62,6 +62,44 @@ TestCase {
         return rig;
     }
 
+    // Web wallpapers name their WebEngineProfile storage after the workshop
+    // id, and Chromium keeps the StoragePartition it already built once a
+    // profile is live: renaming it moves cookies and cache but not
+    // localStorage. So a different web wallpaper must get a fresh backend,
+    // while a source edit on the SAME wallpaper keeps the mounted view.
+    function test_web_to_web_switch_mounts_fresh_backend() {
+        failOnWarning(/wallpaper is not defined/);
+        const rig = rigComp.createObject(tc, { screenGeometry: Qt.rect(0, 0, 1920, 1080) });
+        verify(rig !== null);
+        tryVerify(() => rig.mainItem !== null, 2000);
+
+        rig.setConfig({
+            SteamLibraryPath:    "/tmp/fakelib",
+            WallpaperWorkShopId: "111",
+            WallpaperSource:     "/tmp/fakelib/steamapps/workshop/content/431960/111/index.html+web"
+        });
+        tryVerify(() => rig.webView() !== null, 2000, "web backend never mounted");
+        const first = rig.webView();
+
+        rig.setConfig({
+            WallpaperWorkShopId: "222",
+            WallpaperSource:     "/tmp/fakelib/steamapps/workshop/content/431960/222/index.html+web"
+        });
+        tryVerify(() => rig.webView() !== null && rig.webView() !== first, 2000,
+            "web->web switch reused the previous backend");
+        const second = rig.webView();
+        compare(second.wallpaperProfile.storageName, "wek-wp-222");
+
+        // Same workshop id, different path: no rebuild.
+        rig.setConfig({
+            WallpaperSource: "/tmp/fakelib/steamapps/workshop/content/431960/222/other.html+web"
+        });
+        wait(200);
+        verify(rig.webView() === second, "path-only change must not rebuild the backend");
+
+        rig.destroy();
+    }
+
     function test_ultrawide_letterboxes_through_main() {
         const rig = _mkScene(3440, 1440);
         const p = rig.player();

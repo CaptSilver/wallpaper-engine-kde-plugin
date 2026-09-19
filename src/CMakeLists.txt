@@ -31,6 +31,7 @@ add_library(${PROJECT_NAME}
 	WebAudioBridge.cpp
 	WebUrlInterceptor.cpp
 	WebProfileRegistry.cpp
+	QmlCachePurge.cpp
 	Playlist.cpp
 	PlaylistManager.cpp
 	PlaylistsModel.cpp

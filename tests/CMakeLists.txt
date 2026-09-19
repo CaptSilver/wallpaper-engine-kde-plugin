@@ -460,6 +460,28 @@ else()
     message(STATUS "Qt6Qml not found — skipping tst_safewallpaperbridgecontroller")
 endif()
 
+# ── QML disk-cache purge tests ────────────────────────────────────────────────
+# Pure Qt6 Core+Test: QmlCachePurge only touches QFileInfo/QDir/QStandard-
+# Paths, no Qml/Gui/WebEngine dependency.
+add_executable(tst_qmlcachepurge
+    tst_qmlcachepurge.cpp
+    ${WEKDE_SRC_DIR}/QmlCachePurge.cpp
+)
+target_include_directories(tst_qmlcachepurge PRIVATE ${WEKDE_SRC_DIR})
+target_link_libraries(tst_qmlcachepurge PRIVATE Qt6::Core Qt6::Test)
+if(MUTATION_TESTING)
+    target_compile_options(tst_qmlcachepurge PRIVATE
+        -fpass-plugin=${MULL_PLUGIN_PATH}
+        -g -grecord-command-line)
+endif()
+if(COVERAGE)
+    target_compile_options(tst_qmlcachepurge PRIVATE ${_cov_compile_flags})
+    target_link_options(tst_qmlcachepurge PRIVATE ${_cov_link_flags})
+endif()
+add_test(NAME tst_qmlcachepurge COMMAND tst_qmlcachepurge -v2)
+set_tests_properties(tst_qmlcachepurge PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
 # ── WebProfileRegistry contract test ──────────────────────────────────────────
 # Drives the real class through a QQmlEngine, including two real QQuickWeb-
 # EngineProfile-backed WebEngineView instances loading against a shared
@@ -847,7 +869,7 @@ foreach(_wek_test_target
         tst_thumbnail_grabber tst_webaudio tst_activityhelper
         tst_playlist_manager tst_main_integration tst_ttyswitchmonitor
         tst_safewallpaperbridge tst_safewallpaperbridgecontroller tst_weburlinterceptor
-        tst_webprofileregistry
+        tst_webprofileregistry tst_qmlcachepurge
         tst_screensavermonitor
         tst_wekcontrol tst_wekshortcuts tst_weknotifier tst_wekdiagnostics)
     if(TARGET ${_wek_test_target})

@@ -14,12 +14,11 @@ Don't skip the submodule — the `backend_scene` Vulkan renderer is most of the 
 
 ## Build and test
 
-There's no cloud CI; everything runs locally through one script:
+There's no cloud CI; everything runs locally through one script. The default gate covers lint, build, tests, fuzz smoke, the whole-tree `-Werror` build, and ASAN/UBSAN — usually 3–5 min:
 
 ```sh
 git config core.hooksPath tools/scripts/git-hooks   # install the pre-push hook
-cmake -B build -S .
-tools/scripts/preflight.sh                          # lint + build + tests + fuzz smoke, ~3–5 min
+tools/scripts/preflight.sh
 ```
 
 The pre-push hook runs that same gate on every `git push`. It takes a few minutes and runs quietly — that's it working, not hanging — so resist the urge to reach for `--no-verify` on anything non-trivial. It catches real regressions.

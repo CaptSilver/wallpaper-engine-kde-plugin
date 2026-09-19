@@ -11,6 +11,18 @@ Item {
     property url source
     property bool hasLib: background.hasLib
     property int fps: background.fps
+    // No default binding to background.workshopid. QML evaluates a
+    // property's default binding during beginCreate, before
+    // Component.createObject's initial-properties argument (main.qml's
+    // `properties.workshopId`) overrides it -- so a live binding here would
+    // briefly resolve to whatever wallpaper was current a moment ago, not
+    // the one this view is being built for. On a scene->web switch that's
+    // a scene's id, which has no web profile, so wallpaperProfile below
+    // would build a needless Chromium context and on-disk directory for
+    // it. main.qml's loadBackend() always supplies workshopId as a
+    // constructor property; tests that declare QtWebView directly must set
+    // `workshopId: background.workshopid` themselves.
+    property string workshopId: ""
     property var readfile
     property var patchedHtml
     property string qwebChannelJs: ""
@@ -25,9 +37,13 @@ Item {
     property var _lastPermissionDialog: null
     property var _persistDecisionForTest: null
     property var _lastConsoleForward: null
-    // Expose the dedicated WebEngineProfile so QML tests can introspect the
-    // cache configuration without walking the child object tree.
-    property alias wallpaperProfile: wallpaperProfile
+    // The profile is looked up by name, not owned by this view -- see the
+    // WebProfileRegistry declaration below for why. null until workshopId is
+    // set, so a QtWebView built without one (or not yet given one) never
+    // asks the registry to build a profile nobody can name. Exposed as a
+    // property so QML tests can introspect it without walking the child
+    // object tree.
+    readonly property var wallpaperProfile: workshopId ? profiles.profileFor(workshopId) : null
 
     // Long-pause escalation: after this many ms of sustained pause, the
     // WebEngineView is escalated from Frozen → Discarded.  Discarded
@@ -70,8 +86,12 @@ Item {
 
         // Scope subsequent file:// requests from the page to this wallpaper's
         // directory; without this, malicious wallpapers can fetch arbitrary
-        // local files (e.g. /etc/passwd, ~/.ssh/id_rsa).
-        wallpaperInterceptor.setWallpaperBaseDir(baseDir);
+        // local files (e.g. /etc/passwd, ~/.ssh/id_rsa). The interceptor
+        // lives in the registry alongside its profile (see below), not as a
+        // sibling of this view. Guarded the same way wallpaperProfile is --
+        // an empty workshopId must never make the registry build a profile
+        // (and interceptor) for a wallpaper nobody can name.
+        if (workshopId) profiles.interceptorFor(workshopId).setWallpaperBaseDir(baseDir);
 
         // Read HTML and inject History API patch before Angular/etc scripts
         var html = webItem.patchedHtml(filePath);
@@ -196,46 +216,23 @@ Item {
         registeredObjects: [webobj]
     }
 
-    // Per-wallpaper file:// gate (SEC-WEB1 sandbox).  setWallpaperBaseDir
-    // is called from loadWallpaper() before loadHtml; until then the gate
-    // blocks all file:// requests (defensive default).
-    WebUrlInterceptor {
-        id: wallpaperInterceptor
-    }
-
-    // One browser context per wallpaper view. The file:// URL interceptor is
-    // installed once per context, so views sharing a context also share the
-    // first-installed interceptor: whichever web wallpaper view is created
-    // first would gate every other view's file:// requests against its own
-    // base dir. Deriving the storage name from the wallpaper's workshop id
-    // keeps each wallpaper on its own context and stays stable across
-    // reloads, so offTheRecord=false still preserves localStorage and cache
-    // for clock/weather wallpapers.
-    WebEngineProfile {
-        id: wallpaperProfile
-        offTheRecord: false
-        storageName: {
-            var wid = background.workshopid ? String(background.workshopid) : "";
-            var s = wid.replace(/[^A-Za-z0-9_-]/g, "");
-            return "wek-wp-" + (s ? s : "local");
-        }
-
-        // Wire the per-wallpaper file:// interceptor.  Qt 6 has no QML
-        // `urlRequestInterceptor` property on WebEngineProfile — the only entry
-        // point is QQuickWebEngineProfile::setUrlRequestInterceptor() in C++ —
-        // so the interceptor installs itself here once the profile exists.
-        Component.onCompleted: wallpaperInterceptor.installOn(wallpaperProfile)
-
-        // Cap the HTTP cache so animated web wallpapers can't grow the
-        // profile's on-disk cache unboundedly across long-running sessions.
-        // 50 MB is well above the working set of any single
-        // wallpaper and lets Chromium's LRU evict stale assets cleanly.
-        // localStorage (the load-bearing persistence requirement for
-        // clock/weather wallpapers) is unaffected by this cap.  Setting
-        // httpCacheType explicitly guards against a Qt default flip in
-        // a future LTS.
-        httpCacheType:        WebEngineProfile.DiskHttpCache
-        httpCacheMaximumSize: 50 * 1024 * 1024
+    // One browser context per wallpaper, keyed on its workshop id: its own
+    // storage directory, its own file:// gate. That used to mean one
+    // WebEngineProfile declared inline here per QtWebView instance -- but Qt
+    // never shares a context by name, so two profile objects that happen to
+    // land on the same name are two contexts pointed at one on-disk
+    // directory, and whichever one starts loading second silently stalls,
+    // wedging that name for the rest of the process. Two views can easily
+    // want the same wallpaper's profile alive at once: the same web
+    // wallpaper on two monitors, or a web-to-web swap, where main.qml's
+    // loader keeps the outgoing backend (and its profile) alive for up to
+    // 100 ms after the incoming one is created. WebProfileRegistry fixes
+    // that by handing every view of a wallpaper the SAME live profile
+    // object, looked up by workshop id instead of built fresh per view; the
+    // file:// interceptor and the cache cap (50 MiB, DiskHttpCache) are
+    // created alongside it -- see WebProfileRegistry.cpp.
+    WebProfileRegistry {
+        id: profiles
     }
 
     // Consents are persisted under the wallpaper config's `permissions` key
@@ -292,11 +289,42 @@ Item {
         id: permissionDialog
     }
 
+    // WebEngineView.profile can't be a plain `profile: wallpaperProfile`
+    // property binding on the view itself: a property's default-value
+    // binding evaluates during the object tree's beginCreate pass, before
+    // any Binding element or Component.onCompleted has run, and reading
+    // `profile` (or `settings`, or just reaching componentComplete)
+    // triggers QQuickWebEngineView::initializeProfile(), which substitutes
+    // Qt's own global "Default" profile for whatever is bound at that exact
+    // instant. During beginCreate wallpaperProfile is workshopId's default
+    // ("" -> null), so a plain property binding would hand the view a null
+    // profile right when it initializes -- forcing Qt's Default context and
+    // on-disk directory into existence, the same needless-profile problem
+    // workshopId's own default binding used to cause.
+    //
+    // A Binding element applies at ITS OWN componentComplete, not during
+    // beginCreate, and componentComplete runs across the object tree in
+    // declaration order -- so this MUST stay declared before the
+    // WebEngineView below. By the time it runs, createObject's initial
+    // properties have already supplied the real workshopId (main.qml passes
+    // it that way precisely so this ordering can rely on it), so
+    // wallpaperProfile is never null when this binding actually applies;
+    // `when` is still here as a defensive fallback for a QtWebView built
+    // with no workshopId at all (in that case web.profile is simply never
+    // set, and Qt's componentComplete()-triggered Default profile takes
+    // over until a real workshopId arrives).
+    Binding {
+        target: web
+        property: "profile"
+        value: webItem.wallpaperProfile
+        when: webItem.wallpaperProfile !== null
+        restoreMode: Binding.RestoreNone
+    }
+
     WebEngineView {
     //WebView {
         id: web
         anchors.fill: parent
-        profile: wallpaperProfile
         enabled: true
         audioMuted: background.mute
         activeFocusOnPress: false
@@ -304,20 +332,6 @@ Item {
 
         property bool paused: false
         property bool _scriptsReady: false
-        property bool _init: {
-            settings.fullScreenSupportEnabled = true;
-            settings.autoLoadIconsForPage = false;
-            settings.printElementBackgrounds = false;
-            settings.playbackRequiresUserGesture = false;
-            settings.pdfViewerEnabled = false;
-            settings.showScrollBars = false;
-
-            settings.localContentCanAccessRemoteUrls = true;
-            // Geolocation + other dangerous features are NOT auto-granted;
-            // see onFeaturePermissionRequested + permissionHandler below.
-            _init = true;
-        }
-
 
         //onContextMenuRequested: function(request) {
         //    request.accepted = true;
@@ -416,6 +430,24 @@ Item {
         }
 
         Component.onCompleted: {
+            // Was a `property bool _init: { settings.xxx = ...; }` creation-
+            // time binding. Reading `settings` here is safe now (see the
+            // Binding element above this view): componentComplete() runs
+            // before onCompleted, and componentComplete() is itself one of
+            // the three call sites that trigger initializeProfile(), so by
+            // the time this line runs the view has already initialized --
+            // using the real per-wallpaper profile the Binding applied
+            // during its own, earlier componentComplete, not Qt's Default.
+            settings.fullScreenSupportEnabled = true;
+            settings.autoLoadIconsForPage = false;
+            settings.printElementBackgrounds = false;
+            settings.playbackRequiresUserGesture = false;
+            settings.pdfViewerEnabled = false;
+            settings.showScrollBars = false;
+            settings.localContentCanAccessRemoteUrls = true;
+            // Geolocation + other dangerous features are NOT auto-granted;
+            // see onFeaturePermissionRequested + permissionHandler below.
+
             console.log("[WEK] WebEngineView.onCompleted");
 
             if (!webItem.qwebChannelJs || webItem.qwebChannelJs.length < 100)

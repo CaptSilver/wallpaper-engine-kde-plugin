@@ -246,13 +246,13 @@ Rectangle {
         const type_changed = background.wallpaperType !== type;
         const is_infobackend = background.nowBackend === "InfoShow";
 
-        // The web backend keys its WebEngineProfile storage name off the
-        // workshop id (QtWebView.qml's wallpaperProfile.storageName). A live
-        // rename only moves the profile's network state — Chromium keeps the
-        // StoragePartition it already built, so localStorage written after
-        // the rename still lands in the OLD wallpaper's directory. So a web
-        // wallpaper whose workshop id changed needs a fresh backend (and with
-        // it a fresh profile), not a source reassignment on the reused view.
+        // A web wallpaper whose workshop id changed still needs a fresh
+        // QtWebView, even though the WebEngineProfile itself is now looked
+        // up by name (WebProfileRegistry) rather than owned by the view:
+        // the bridge, its userProperties, and the page's own JS state are
+        // all per-view, and reassigning `source` on the reused view would
+        // carry the OLD wallpaper's state into the new one instead of
+        // starting clean.
         const web_wid_changed = type === "web" && background.backendWorkshopId !== wid;
 
         if(type_changed) wallpaperType = type;
@@ -671,7 +671,24 @@ Rectangle {
                 break;
             case 'web':
                 qmlsource = "backend/QtWebView.qml";
-                properties = {readfile: pyext.readfile, qwebChannelJs: pyext.qwebChannelSource(), patchedHtml: pyext.patchedHtml, pyext: pyext};
+                // workshopId is read straight from the configuration, not
+                // background.workshopid: when WallpaperWorkShopId and
+                // WallpaperSource change in the same tick, workshopid's
+                // binding may not have re-evaluated yet by the time this
+                // object is constructed (applySource() reads the
+                // configuration directly for the same reason). A stale id
+                // here would hand the new view the OLD wallpaper's profile.
+                // QtWebView.qml has no default binding for workshopId at
+                // all (not even to background.workshopid), so this is the
+                // only way it's ever set -- which also means it's frozen
+                // for that view's whole life. That's a feature, not just a
+                // side effect: the outgoing backend from a web-to-web swap
+                // stays alive for up to 100 ms (see backendLoader.load()'s
+                // destroy(100)), and without a fixed id it would keep
+                // tracking background.workshopid and follow it straight to
+                // the NEW wallpaper's profile during that window, instead
+                // of quietly finishing its own teardown.
+                properties = {readfile: pyext.readfile, qwebChannelJs: pyext.qwebChannelSource(), patchedHtml: pyext.patchedHtml, pyext: pyext, workshopId: wallpaper.configuration.WallpaperWorkShopId};
                 break;
             case 'scene':
                 if(background.hasLib) {

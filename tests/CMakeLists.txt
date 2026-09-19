@@ -460,6 +460,42 @@ else()
     message(STATUS "Qt6Qml not found — skipping tst_safewallpaperbridgecontroller")
 endif()
 
+# ── WebProfileRegistry contract test ──────────────────────────────────────────
+# Drives the real class through a QQmlEngine, including two real QQuickWeb-
+# EngineProfile-backed WebEngineView instances loading against a shared
+# profile — the actual two-monitor / web-to-web-swap regression this class
+# fixes. Needs a custom main() (QtWebEngineQuick::initialize() before the
+# QGuiApplication), so it doesn't use QTEST_MAIN like its siblings.
+find_package(Qt6 COMPONENTS Gui Qml WebEngineCore WebEngineQuick QUIET)
+if(Qt6Gui_FOUND AND Qt6Qml_FOUND AND Qt6WebEngineCore_FOUND AND Qt6WebEngineQuick_FOUND)
+    add_executable(tst_webprofileregistry
+        tst_webprofileregistry.cpp
+        ${WEKDE_SRC_DIR}/WebProfileRegistry.cpp
+        ${WEKDE_SRC_DIR}/WebUrlInterceptor.cpp
+    )
+    target_include_directories(tst_webprofileregistry PRIVATE ${WEKDE_SRC_DIR})
+    target_link_libraries(tst_webprofileregistry PRIVATE
+        Qt6::Core Qt6::Gui Qt6::Qml Qt6::Test Qt6::WebEngineCore Qt6::WebEngineQuick)
+    if(MUTATION_TESTING)
+        target_compile_options(tst_webprofileregistry PRIVATE
+            -fpass-plugin=${MULL_PLUGIN_PATH}
+            -g -grecord-command-line)
+    endif()
+    if(COVERAGE)
+        target_compile_options(tst_webprofileregistry PRIVATE ${_cov_compile_flags})
+        target_link_options(tst_webprofileregistry PRIVATE ${_cov_link_flags})
+    endif()
+    add_test(NAME tst_webprofileregistry COMMAND tst_webprofileregistry -v2)
+    # --no-sandbox: Chromium's setuid sandbox helper isn't set up in the
+    # distrobox / CI container this runs in. --disable-gpu: offscreen QPA has
+    # no GPU device to hand Chromium anyway.
+    set_tests_properties(tst_webprofileregistry PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu"
+        TIMEOUT 120)
+else()
+    message(STATUS "Qt6Gui / Qt6Qml / Qt6WebEngineCore / Qt6WebEngineQuick not found — skipping tst_webprofileregistry")
+endif()
+
 # ── ActivityHelper unit tests ─────────────────────────────────────────────────
 # Per-Activity KConfig sub-group routing with [General] fallback.  The helper
 # is read/write-tested through an injected config-file path so each case runs
@@ -811,6 +847,7 @@ foreach(_wek_test_target
         tst_thumbnail_grabber tst_webaudio tst_activityhelper
         tst_playlist_manager tst_main_integration tst_ttyswitchmonitor
         tst_safewallpaperbridge tst_safewallpaperbridgecontroller tst_weburlinterceptor
+        tst_webprofileregistry
         tst_screensavermonitor
         tst_wekcontrol tst_wekshortcuts tst_weknotifier tst_wekdiagnostics)
     if(TARGET ${_wek_test_target})

@@ -1,6 +1,7 @@
 import QtQuick
 import QtTest
 import QtWebEngine 1.10
+import com.github.captsilver.wallpaperEngineKde 1.2
 
 import "../../plugin/contents/ui" as Plugin
 import "../../plugin/contents/ui/backend" as Backend
@@ -33,9 +34,23 @@ TestCase {
     property int    readfileCount: 0
     property var    lastReadfileArg: undefined
 
+    // web is declared here, not built by main.qml's loadBackend(), so it
+    // has no constructor property handing it a workshopId -- QtWebView.qml
+    // itself has no default binding for one (see its comment on
+    // workshopId), so a test that wants live tracking has to bind it
+    // explicitly, same as main.qml supplies it explicitly in production.
+    // Tests below that reassign background.workshopid on this SAME
+    // instance exercise a live-rebinding shape production never hits
+    // (production always constructs a fresh view with a fixed id instead),
+    // and Qt's QML engine logs a "Binding loop detected for property
+    // wallpaperProfile" QWARN when they do: wallpaperProfile's binding
+    // reads workshopId, and another binding elsewhere reads wallpaperProfile
+    // back, so a change that actually swaps the returned object re-enters
+    // mid-evaluation. Harmless and expected here.
     Backend.QtWebView {
         id: web
         source: "file:///tmp/fake_wallpaper.html"
+        workshopId: background.workshopid
         readfile: function(p) {
             // QtWebView reads project.json via readfile() to populate
             // userProperties. Return a parseable JSON string in a thenable.
@@ -62,6 +77,11 @@ TestCase {
 
     SignalSpy { id: userPropsSpy;    signalName: "sigUserProperties"    }
     SignalSpy { id: generalPropsSpy; signalName: "sigGeneralProperties" }
+
+    // A separate, disposable QtWebView for the empty-workshopId case below --
+    // the shared `web` instance above always has a live workshopId binding,
+    // and this needs one that genuinely never gets one at construction.
+    Component { id: freshWebComp; Backend.QtWebView {} }
 
     function test_loadWallpaper_callsPatchedHtmlEvenWhenScriptsNotReady() {
         // loadWallpaper() unconditionally invokes patchedHtml(filePath)
@@ -319,23 +339,32 @@ TestCase {
         compare(generalPropsSpy.count, 1);
     }
 
-    // ── WebUrlInterceptor (file:// sandbox) wiring ─────────────────────────
-    // loadWallpaper() must call wallpaperInterceptor.setWallpaperBaseDir(baseDir)
-    // BEFORE invoking patchedHtml / loadHtml, with the wallpaper's DIRECTORY
-    // (not the file URL).  The QML stub for WebUrlInterceptor is a recorder.
-    function test_loadWallpaper_callsSetWallpaperBaseDir_withDirPath() {
-        function findInterceptor() {
-            const buckets = [web.children || [], web.data || []];
-            for (const b of buckets) {
-                for (let i = 0; i < b.length; i++) {
-                    const c = b[i];
-                    if (c && typeof c.setWallpaperBaseDir === "function") return c;
-                }
+    // The interceptor no longer lives as a sibling Item under QtWebView --
+    // it's owned by WebProfileRegistry alongside its profile, so tests reach
+    // it the same way production does, through the registry.
+    function _findProfileRegistry() {
+        const buckets = [web.children || [], web.data || []];
+        for (const b of buckets) {
+            for (let i = 0; i < b.length; i++) {
+                const c = b[i];
+                if (c && typeof c.profileFor === "function" &&
+                    typeof c.interceptorFor === "function") return c;
             }
-            return null;
         }
-        const it = findInterceptor();
-        verify(it !== null, "WebUrlInterceptor sibling must exist");
+        return null;
+    }
+
+    // ── WebUrlInterceptor (file:// sandbox) wiring ─────────────────────────
+    // loadWallpaper() must call profiles.interceptorFor(workshopId)
+    // .setWallpaperBaseDir(baseDir) BEFORE invoking patchedHtml / loadHtml,
+    // with the wallpaper's DIRECTORY (not the file URL).  The QML stub for
+    // WebUrlInterceptor is a recorder.
+    function test_loadWallpaper_callsSetWallpaperBaseDir_withDirPath() {
+        background.workshopid = "sec-web1-suite";
+        const profiles = _findProfileRegistry();
+        verify(profiles !== null, "WebProfileRegistry sibling must exist");
+        const it = profiles.interceptorFor(web.workshopId);
+        verify(it !== null, "interceptorFor must return the wallpaper's interceptor");
 
         const n = it.setBaseDirCount;
         web.source = "file:///tmp/sec-web1-suite/index.html";
@@ -349,22 +378,15 @@ TestCase {
 
     // The real WebEngineProfile has NO QML urlRequestInterceptor property (that
     // binding shipped broken and aborted every web wallpaper); the interceptor
-    // must be installed in C++ via WebUrlInterceptor.installOn(profile) from the
-    // profile's Component.onCompleted.  Pin that wiring so it can't regress to a
-    // non-existent property again.
+    // must be installed in C++ via WebUrlInterceptor.installOn(profile), which
+    // WebProfileRegistry now does once when it first builds a profile.  Pin
+    // that wiring so it can't regress to a non-existent property again.
     function test_interceptor_installedOnProfile_viaInstallOn() {
-        function findInterceptor() {
-            const buckets = [web.children || [], web.data || []];
-            for (const b of buckets) {
-                for (let i = 0; i < b.length; i++) {
-                    const c = b[i];
-                    if (c && typeof c.installOn === "function") return c;
-                }
-            }
-            return null;
-        }
-        const it = findInterceptor();
-        verify(it !== null, "WebUrlInterceptor sibling must exist");
+        background.workshopid = "sec-interceptor-install";
+        const profiles = _findProfileRegistry();
+        verify(profiles !== null, "WebProfileRegistry sibling must exist");
+        const it = profiles.interceptorFor(web.workshopId);
+        verify(it !== null, "interceptorFor must return the wallpaper's interceptor");
         verify(it.installOnCount >= 1,
             "interceptor must be installed on the profile via installOn() (no QML property exists)");
         compare(it.lastInstalledProfile, web.wallpaperProfile,
@@ -746,11 +768,14 @@ TestCase {
     // The wallpaper profile must declare an explicit DiskHttpCache type and a
     // 50 MB max size so animated web wallpapers can't grow the profile's
     // on-disk cache toward Chromium's implicit "1% of disk free" cap over
-    // long sessions.
+    // long sessions. WebProfileRegistry sets both when it builds the
+    // profile, so this is really pinning the registry's construction, not a
+    // QtWebView-local binding.
     // localStorage persistence (offTheRecord=false + storageName) is unaffected.
     function test_profileHasCacheCap() {
-        verify(typeof web.wallpaperProfile !== "undefined",
-            "QtWebView root must expose wallpaperProfile via property alias");
+        background.workshopid = "sec-cache-cap";
+        verify(typeof web.wallpaperProfile !== "undefined" && web.wallpaperProfile !== null,
+            "QtWebView root must expose wallpaperProfile once workshopId is set");
         compare(web.wallpaperProfile.httpCacheType,
                 WebEngineProfile.DiskHttpCache,
                 "wallpaperProfile must declare DiskHttpCache explicitly");
@@ -759,38 +784,61 @@ TestCase {
                 "wallpaperProfile must cap the on-disk HTTP cache at 50 MB");
     }
 
-    // ── WebEngineProfile per-wallpaper storage ──────────────────────────────
-    // The profile's storage name must be derived from the wallpaper's
-    // workshop id: the file:// URL interceptor is installed once per browser
-    // context, so two web wallpaper views that share a storage name share a
-    // context and with it the first-installed interceptor — its base dir then
-    // gates the other view's file:// requests and that wallpaper never
-    // finishes loading. Different ids must therefore map to different
-    // storage names (one context per wallpaper), while the same id keeps one
-    // stable name so localStorage/cache survive reloads. The real profile
-    // consumes storageName at construction time, so the binding value at
-    // creation is what counts; the stub re-evaluates live, which is enough
-    // to pin the derivation contract.
+    // ── WebProfileRegistry per-wallpaper storage ────────────────────────────
+    // wallpaperProfile is now `profiles.profileFor(workshopId)`, looked up by
+    // name rather than owned by this view, so two ids that sanitize to the
+    // same name must come back as the identical object -- not just an object
+    // with a matching storageName string. That distinction is the whole
+    // point: two DIFFERENT profile objects sharing one storage name is
+    // exactly the bug (two live Chromium contexts on one on-disk directory,
+    // the second view's load silently stalling) that the registry exists to
+    // rule out.
     function test_profileStorageNameIsPerWallpaper() {
         background.workshopid = "3801034513";
-        const a = web.wallpaperProfile.storageName;
-        compare(a, "wek-wp-3801034513",
+        const a = web.wallpaperProfile;
+        compare(a.storageName, "wek-wp-3801034513",
             "storage name is the workshop id under the wek-wp- prefix");
 
         background.workshopid = "3757331413";
-        const b = web.wallpaperProfile.storageName;
-        compare(b, "wek-wp-3757331413");
+        const b = web.wallpaperProfile;
+        compare(b.storageName, "wek-wp-3757331413");
         verify(a !== b,
-            "different wallpapers must not share a storage name");
+            "different wallpapers must not share a profile object");
 
         background.workshopid = "38/01 034+513";
         compare(web.wallpaperProfile.storageName, "wek-wp-3801034513",
             "characters outside [A-Za-z0-9_-] are stripped from the id");
+        verify(web.wallpaperProfile === a,
+            "the same sanitized id must return the SAME profile object");
 
         background.workshopid = "";
-        compare(web.wallpaperProfile.storageName, "wek-wp-local",
-            "wallpapers without a workshop id fall back to the local name");
-        background.workshopid = "";
+    }
+
+    // An empty workshopId must never reach the registry at all -- not even
+    // to land on the "wek-wp-local" bucket. profileFor() is only ever safe
+    // to call with a real id; QtWebView.qml's own workshopId has no default
+    // binding precisely so this can't happen by accident during
+    // construction (see its comment), and wallpaperProfile's ternary
+    // enforces the same rule for any OTHER way workshopId ends up empty.
+    function test_emptyWorkshopId_hasNullProfile_thenGetsOneWhenSet() {
+        const before = WebProfileRegistryStore.liveProfileCount();
+        const fresh = freshWebComp.createObject(null);
+        verify(fresh !== null);
+        compare(fresh.workshopId, "",
+            "a QtWebView built with no workshopId must default to empty, not track background.workshopid");
+        verify(fresh.wallpaperProfile === null,
+            "an empty workshopId must resolve wallpaperProfile to null");
+        compare(WebProfileRegistryStore.liveProfileCount(), before,
+            "an empty workshopId must never make the registry build a profile");
+
+        fresh.workshopId = "sec-empty-then-set";
+        verify(fresh.wallpaperProfile !== null,
+            "setting a real workshopId must resolve wallpaperProfile");
+        compare(fresh.wallpaperProfile.storageName, "wek-wp-sec-empty-then-set");
+        compare(WebProfileRegistryStore.liveProfileCount(), before + 1,
+            "setting the id must create exactly the one profile for it");
+
+        fresh.destroy();
     }
 
     // Pin the SafeWallpaperBridge contract: a direct JS-side write to

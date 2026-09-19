@@ -30,6 +30,7 @@ add_library(${PROJECT_NAME}
 	SafeWallpaperBridgeController.cpp
 	WebAudioBridge.cpp
 	WebUrlInterceptor.cpp
+	WebProfileRegistry.cpp
 	Playlist.cpp
 	PlaylistManager.cpp
 	PlaylistsModel.cpp

@@ -9,6 +9,8 @@ SceneViewer 1.2 SceneViewer.qml
 Mpv 1.2 Mpv.qml
 WebAudioBridge 1.2 WebAudioBridge.qml
 WebUrlInterceptor 1.2 WebUrlInterceptor.qml
+singleton WebProfileRegistryStore 1.2 WebProfileRegistryStore.qml
+WebProfileRegistry 1.2 WebProfileRegistry.qml
 SafeWallpaperBridge 1.2 SafeWallpaperBridge.qml
 SafeWallpaperBridgeController 1.2 SafeWallpaperBridgeController.qml
 PlaylistManager 1.2 PlaylistManager.qml

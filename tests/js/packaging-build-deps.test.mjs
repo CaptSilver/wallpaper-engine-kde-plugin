@@ -5,7 +5,7 @@
 // PulseAudio default-sink live-rebind are simply not in it.  Nothing downstream
 // ever notices, which is what makes these worth pinning.
 //
-// Every list that provisions a build has to name them, and the lists live in six
+// Every list that provisions a build has to name them, and the lists live in
 // files nobody edits together.  The probe table below is the join: the CMake side
 // says which libraries matter, and each reader says whether one manifest knows.
 
@@ -128,34 +128,35 @@ function preflightDeps() {
     return out;
 }
 
-// Package names in the workflow sit one per line inside a `run: |` block, each
-// continued with a trailing backslash.
-function ciJobPackages(jobId) {
-    const text = readFileSync(join(repoRoot, '.github', 'workflows', 'ci.yml'), 'utf8');
-    const block = text
-        .split(/\n(?=  [A-Za-z0-9_-]+:\n)/)
-        .find((b) => new RegExp(`^\\s*${jobId}:$`, 'm').test(b));
-    assert.ok(block, `.github/workflows/ci.yml has no ${jobId} job`);
-    const out = new Set();
-    for (const line of block.split('\n')) {
-        const m = /^\s+([A-Za-z0-9][A-Za-z0-9._+-]*)\s*\\?$/.exec(line);
-        if (m) out.add(m[1]);
-    }
-    return out;
-}
-
 // Every list that configures and builds the whole project. The workflow's
 // unit-tests job is absent on purpose: it builds tests/ standalone, which stubs
-// AudioCapture and never compiles the renderer.
+// AudioCapture and never compiles the renderer. The workflow's package jobs
+// are absent because they carry no list of their own; see the mechanism test.
 const MANIFESTS = [
     { name: 'rpm/wek.spec BuildRequires', key: 'spec', read: specUnconditionalBuildRequires },
     { name: 'debian/control Build-Depends', key: 'debian', read: debianBuildDepends },
     { name: 'arch/PKGBUILD depends + makedepends', key: 'arch', read: archBuildDeps },
     { name: 'tools/scripts/preflight.sh DEPS_FEDORA', key: 'fedora', read: preflightDeps },
-    { name: 'ci.yml build-fedora', key: 'fedora', read: () => ciJobPackages('build-fedora') },
-    { name: 'ci.yml build-ubuntu', key: 'debian', read: () => ciJobPackages('build-ubuntu') },
-    { name: 'ci.yml build-arch', key: 'arch', read: () => ciJobPackages('build-arch') },
 ];
+
+// The workflow's package jobs install straight from the manifests above, so a
+// package added to a manifest reaches CI without a second edit. Pinning the
+// command keeps a hand-maintained list from creeping back into ci.yml, where
+// it would drift from the manifest the way the old jobs' lists did.
+const CI_INSTALLS_FROM_MANIFEST = {
+    'package-rpm': /dnf builddep -y \S*\.src\.rpm/,
+    'package-deb': /apt-get build-dep -y \.\//,
+    'package-arch': /source arch\/PKGBUILD\n\s*pacman -S [^\n]*"\$\{depends\[@\]\}" "\$\{makedepends\[@\]\}"/,
+};
+
+function ciJobBlock(jobId) {
+    const text = readFileSync(join(repoRoot, '.github', 'workflows', 'ci.yml'), 'utf8');
+    const block = text
+        .split(/\n(?=  [A-Za-z0-9_-]+:\n)/)
+        .find((b) => new RegExp(`^\\s*${jobId}:$`, 'm').test(b));
+    assert.ok(block, `.github/workflows/ci.yml has no ${jobId} job`);
+    return block;
+}
 
 test('every optional pkg-config probe is declared in every build-dependency list', () => {
     const missing = [];
@@ -171,6 +172,16 @@ test('every optional pkg-config probe is declared in every build-dependency list
         [],
         'a build from these lists silently loses the feature the probe guards:\n  ' + missing.join('\n  '),
     );
+});
+
+test('every workflow package job installs its build dependencies from a manifest', () => {
+    for (const [jobId, command] of Object.entries(CI_INSTALLS_FROM_MANIFEST)) {
+        assert.match(
+            ciJobBlock(jobId),
+            command,
+            `${jobId} in .github/workflows/ci.yml no longer installs from the packaging manifest`,
+        );
+    }
 });
 
 test('no optional pkg-config probe escapes the dependency table', () => {

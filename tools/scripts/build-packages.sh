@@ -16,7 +16,7 @@
 #
 # Containers (auto-created if missing):
 #   fedora -> registry.fedoraproject.org/fedora-toolbox:latest
-#   ubuntu -> quay.io/toolbx/ubuntu-toolbox:25.04
+#   ubuntu -> quay.io/toolbx/ubuntu-toolbox:26.04
 #   arch   -> quay.io/toolbx-images/archlinux-toolbox:latest
 #
 # Outputs (copied to $HOME for easy upload):
@@ -63,10 +63,13 @@ fail() { printf '\n%sFAIL:%s %s\n' "$RED" "$RESET" "$*" >&2; exit 1; }
 FEDORA_BOX="fedora"
 FEDORA_IMAGE="registry.fedoraproject.org/fedora-toolbox:latest"
 UBUNTU_BOX="ubuntu"
-# 25.04 (plucky) — the KF6 dev packages (libkf6package-dev, libkf6config-dev,
-# libplasma-dev) are NOT in 24.04 (noble); the project's CI workflow targets
-# 25.04 for the same reason.
-UBUNTU_IMAGE="quay.io/toolbx/ubuntu-toolbox:25.04"
+# Pinned to the current Ubuntu LTS, the same base the CI deb job builds on via
+# ubuntu:latest — bump this by hand when Ubuntu ships the next one. Unlike
+# FEDORA_IMAGE/ARCH_IMAGE below, this image's own :latest tag doesn't track
+# the LTS (it currently resolves to 24.04, which has no KF6 dev packages at
+# all: libkf6package-dev, libkf6config-dev, libplasma-dev are all missing
+# from noble), so there's no floating tag to lean on here.
+UBUNTU_IMAGE="quay.io/toolbx/ubuntu-toolbox:26.04"
 ARCH_BOX="arch"
 # Official upstream Arch image on Docker Hub.  The quay.io/toolbx-images/
 # archlinux-toolbox tag is currently gated (401 on anonymous pulls); the
@@ -77,8 +80,8 @@ ARCH_IMAGE="docker.io/library/archlinux:latest"
 # ── Dependency manifests ──────────────────────────────────────────────────────
 # Fedora: rpmbuild + spec BuildRequires. Mirrors rpm/wek.spec; rpm-build/
 # rpmdevtools provide rpmbuild itself which fedora-toolbox doesn't ship.
-# qtdeclarative/qtwebsockets are not in the spec but the CI Fedora job lists
-# them; include explicitly so we don't rely on transitive resolution.
+# qtdeclarative/qtwebsockets are not in the spec; listed explicitly so the
+# box doesn't depend on transitive resolution.
 DEPS_FEDORA_BASE=(
     rpm-build rpmdevtools
     cmake extra-cmake-modules clang
@@ -109,10 +112,10 @@ DEPS_FEDORA_BASE=(
     # CLAUDE.md; required for ASAN builds of the standalone sceneviewer.
     libasan libubsan
 )
-# Lives in rpmfusion-free. mpv-libs-devel pulls full ffmpeg; the CI workflow
-# installs the free mpv-devel (ffmpeg-free) which is fine for compile-test but
-# produces an RPM that won't load codec-heavy video wallpapers — use the
-# rpmfusion variant for distributable artifacts.
+# Lives in rpmfusion-free. mpv-libs-devel pulls full ffmpeg; CI enables
+# rpmfusion-free too, so every distributable RPM — local or CI-built — links
+# against this variant rather than mpv-devel's ffmpeg-free, which can't
+# decode codec-heavy video wallpapers.
 DEPS_FEDORA_RPMFUSION=(
     mpv-libs-devel
 )
@@ -166,9 +169,6 @@ DEPS_UBUNTU=(
     # not pull the unversioned llvm tools, causing static-library link failures.
     llvm
     libvulkan-dev vulkan-validationlayers vulkan-tools
-    # Ubuntu names the Plasma Activities dev package libplasmaactivities-dev;
-    # Debian's libplasma-activities-dev does not exist on the 25.04 image
-    # this script provisions (debian/control accepts either).
     libkf6package-dev libkf6config-dev libplasma-dev libplasmaactivities-dev plasma-workspace-dev
     # KF6 integrations referenced by src/CMakeLists.txt (KNotification taxonomy,
     # DrKonqi KCrash, KI18n catalogs, KGlobalAccel shortcuts, KXmlGui for
@@ -195,9 +195,25 @@ container_exists() {
         | grep -qx "$1"
 }
 
+container_image() {
+    # IMAGE is the 4th pipe-separated column of `distrobox list`
+    # (ID | NAME | STATUS | IMAGE).
+    distrobox list 2>/dev/null \
+        | awk -F'|' -v name="$1" '
+            NR>1 {
+                gsub(/^ +| +$/, "", $2)
+                if ($2 == name) { gsub(/^ +| +$/, "", $4); print $4 }
+            }'
+}
+
 ensure_container() {
     local name="$1" image="$2"
     if container_exists "$name"; then
+        local current
+        current="$(container_image "$name")"
+        if [[ -n "$current" && "$current" != "$image" ]]; then
+            warn "distrobox '$name' is on $current, expected $image — 'distrobox rm $name' to recreate it"
+        fi
         ok "distrobox '$name' present"
     else
         warn "distrobox '$name' missing — creating from $image"

@@ -37,7 +37,7 @@ systemctl reboot
 
 Install it by package name, not a downloaded `.rpm` — `rpm-ostree install ./some.rpm` pins that exact file and never picks up a newer build. openSUSE Tumbleweed and Mageia 10 builds from the same COPR, and a `curl` fallback for images without `dnf5`, are in [Installation](https://github.com/CaptSilver/wallpaper-engine-kde-plugin/wiki/Installation).
 
-**Ubuntu / Debian** — grab the `.deb` from [Releases](https://github.com/CaptSilver/wallpaper-engine-kde-plugin/releases). You'll need Ubuntu 25.04+ or Debian Trixie+ (anything older ships a Qt that's too old):
+**Ubuntu / Debian** — each release carries two `.deb`s, one built on the current Ubuntu LTS and one on Debian stable, named for the distro (`_ubuntu-26.04_`, `_debian-13_`). Grab the one matching your system from [Releases](https://github.com/CaptSilver/wallpaper-engine-kde-plugin/releases). Only those two are built: anything older ships a Qt that's too old, and interim Ubuntu releases aren't covered:
 
 ```sh
 sudo apt install ./wallpaper-engine-kde-plugin_*.deb
@@ -74,7 +74,7 @@ The Scene renderer handles most of what Wallpaper Engine throws at it: particles
 
 ## Requirements
 
-To run it: KDE Plasma 6, Qt 6.7+, and a working Vulkan 1.1+ driver (AMD users want RADV). Building from source also needs a C++20 compiler — Clang is what we build with.
+To run it: KDE Plasma 6, Qt 6.8+, and a working Vulkan 1.1+ driver (AMD users want RADV). Building from source also needs a C++20 compiler — Clang is what we build with.
 
 ## Something not working?
 

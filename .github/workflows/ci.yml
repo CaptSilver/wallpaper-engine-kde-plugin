@@ -3,191 +3,172 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  # ── Arch Linux (primary target distribution) ──────────────────────────────
-  build-arch:
-    name: Full build — Arch Linux
+  # ── Arch Linux (.pkg.tar.zst, published from tagged releases) ─────────────
+  # Same PKGBUILD an Arch user runs by hand from arch/. Dependencies come from
+  # the PKGBUILD's own depends/makedepends arrays, so the list lives in one
+  # place. makepkg refuses to run as root and this container is root, hence
+  # the throwaway user.
+  package-arch:
+    name: Package .pkg.tar.zst — Arch Linux
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
-    env:
-      CC: clang
-      CXX: clang++
 
     steps:
-      - name: Install git (needed for checkout action inside container)
-        run: pacman -Sy --noconfirm git
+      - name: Sync packages and install git (needed for checkout action inside container)
+        run: pacman -Syu --noconfirm git
 
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Checkout submodules
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git submodule update --init --force --recursive
 
-      - name: Install build dependencies
+      - name: Install PKGBUILD dependencies
         run: |
-          pacman -Su --noconfirm
-          pacman -S --noconfirm \
-            base-devel \
-            clang \
-            cmake \
-            ninja \
-            extra-cmake-modules \
-            libplasma \
-            kconfig \
-            knotifications \
-            kcrash \
-            kglobalaccel \
-            ki18n \
-            kxmlgui \
-            qt6-declarative \
-            qt6-webchannel \
-            qt6-webengine \
-            vulkan-headers \
-            mpv \
-            lz4 \
-            freetype2 \
-            libpulse \
-            libglvnd \
-            mesa
+          source arch/PKGBUILD
+          pacman -S --noconfirm --needed "${depends[@]}" "${makedepends[@]}"
 
-      - name: Configure
+      - name: Build package
         run: |
-          cmake -B build -S . \
-            -DCMAKE_BUILD_TYPE=Release \
-            -G Ninja
+          useradd -m builder
+          chown -R builder: "$GITHUB_WORKSPACE"
+          cd arch
+          runuser -u builder -- env WEK_REPO_ROOT="$GITHUB_WORKSPACE" \
+            makepkg -f --noconfirm --skipchecksums
 
-      - name: Build
-        run: cmake --build build -j$(nproc)
+      - name: Collect package
+        run: |
+          mkdir -p dist
+          mv -v arch/wallpaper-engine-kde-plugin-*-x86_64.pkg.tar.zst dist/
+          ls -l dist
 
-  # ── Fedora (secondary target distribution) ───────────────────────────────
-  build-fedora:
-    name: Full build — Fedora
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-arch
+          path: dist/*
+          if-no-files-found: error
+
+  # ── Fedora (.rpm, published from tagged releases) ─────────────────────────
+  # Builds through the same SRPM path make-srpm.sh / build-packages.sh / COPR
+  # use, so the artifact a tag publishes is exactly what a local rpmbuild
+  # produces — not a separate compile-only check that can drift from it.
+  package-rpm:
+    name: Package .rpm — Fedora
     runs-on: ubuntu-latest
     container:
       image: fedora:latest
-    env:
-      CC: clang
-      CXX: clang++
 
     steps:
-      - name: Install git
-        run: dnf install -y git
+      - name: Install git and RPM build tooling
+        run: dnf install -y git rpm-build rpmdevtools
 
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Checkout submodules
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git submodule update --init --force --recursive
 
-      - name: Install build dependencies
+      - name: Enable RPM Fusion free (mpv-libs-devel lives there)
+        run: dnf install -y "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm"
+
+      - name: Build source RPM
+        run: tools/scripts/make-srpm.sh --outdir "$PWD/build/srpm"
+
+      - name: Install spec build dependencies
+        run: dnf builddep -y build/srpm/*.src.rpm
+
+      - name: Build RPM
+        run: rpmbuild --rebuild --define "_topdir $PWD/build/rpmbuild" build/srpm/*.src.rpm
+
+      - name: Collect RPM (drop -debuginfo/-debugsource — no debug packages published)
         run: |
-          dnf install -y \
-            clang \
-            cmake \
-            ninja-build \
-            extra-cmake-modules \
-            vulkan-headers \
-            plasma-workspace-devel \
-            kf6-plasma-devel \
-            kf6-kcoreaddons-devel \
-            kf6-kpackage-devel \
-            kf6-kconfig-devel \
-            kf6-knotifications-devel \
-            kf6-kcrash-devel \
-            kf6-kglobalaccel-devel \
-            kf6-ki18n-devel \
-            kf6-kxmlgui-devel \
-            lz4-devel \
-            mpv-devel \
-            qt6-qtbase-private-devel \
-            libplasma-devel \
-            qt6-qtwebchannel-devel \
-            qt6-qtwebengine-devel \
-            qt6-qtdeclarative-devel \
-            freetype-devel \
-            pulseaudio-libs-devel \
-            libglvnd-devel \
-            mesa-libgbm-devel
+          mkdir -p dist
+          cp -v build/rpmbuild/RPMS/*/wallpaper-engine-kde-plugin-qt6-[0-9]*.rpm dist/
+          ls -l dist
 
-      - name: Configure
-        run: |
-          cmake -B build -S . \
-            -DCMAKE_BUILD_TYPE=Release \
-            -G Ninja
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm-fedora
+          path: dist/*
+          if-no-files-found: error
 
-      - name: Build
-        run: cmake --build build -j$(nproc)
-
-  # ── Ubuntu (deb packaging target) ───────────────────────────────────────
-  build-ubuntu:
-    name: Full build — Ubuntu
+  # ── Ubuntu / Debian (.deb, published from tagged releases) ────────────────
+  # Matrix instead of two near-identical jobs: same steps, only the base
+  # image and the resulting filename's distro label differ.
+  package-deb:
+    name: Package .deb — ${{ matrix.label }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ubuntu:latest
+            label: ubuntu
+          - image: debian:stable
+            label: debian
     container:
-      image: ubuntu:25.04
+      image: ${{ matrix.image }}
     env:
-      CC: clang
-      CXX: clang++
+      DEBIAN_FRONTEND: noninteractive
 
     steps:
-      - name: Install git
+      - name: Install git (needed for checkout action inside container)
         run: |
           apt-get update
-          apt-get install -y git
+          apt-get install -y --no-install-recommends git ca-certificates
 
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Checkout submodules
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git submodule update --init --force --recursive
 
-      - name: Install build dependencies
-        env:
-          DEBIAN_FRONTEND: noninteractive
+      - name: Install packaging tools and build dependencies
         run: |
-          apt-get update
-          apt-get install -y \
-            clang \
-            cmake \
-            ninja-build \
-            extra-cmake-modules \
-            pkg-config \
-            libvulkan-dev \
-            libkf6package-dev \
-            libkf6config-dev \
-            libkf6notifications-dev \
-            libkf6crash-dev \
-            libkf6globalaccel-dev \
-            libkf6i18n-dev \
-            libkf6xmlgui-dev \
-            libplasma-dev \
-            plasma-workspace-dev \
-            qt6-base-dev \
-            qt6-base-private-dev \
-            qt6-declarative-dev \
-            qt6-webchannel-dev \
-            qt6-webengine-dev \
-            libmpv-dev \
-            liblz4-dev \
-            libfreetype-dev \
-            libpulse-dev \
-            libegl-dev \
-            libgl-dev \
-            libgbm-dev
+          apt-get install -y --no-install-recommends build-essential dpkg-dev fakeroot
+          apt-get build-dep -y ./
 
-      - name: Configure
+      - name: Generate debian/changelog
+        run: tools/scripts/gen-debian-changelog.sh
+
+      - name: Build .deb
+        run: dpkg-buildpackage -uc -us -b
+
+      # Both distros produce the identical wallpaper-engine-kde-plugin_<ver>_<arch>.deb,
+      # so the distro goes into the filename. The -dbgsym .ddeb is left behind on
+      # purpose: no debug packages are published.
+      - name: Collect .deb
         run: |
-          cmake -B build -S . \
-            -DCMAKE_BUILD_TYPE=Release \
-            -G Ninja
+          mkdir -p dist
+          . /etc/os-release
+          arch="$(dpkg --print-architecture)"
+          debs=(../wallpaper-engine-kde-plugin_*_"${arch}".deb)
+          [ "${#debs[@]}" -eq 1 ] || { echo "expected exactly one .deb, found: ${debs[*]}" >&2; exit 1; }
+          mv -v "${debs[0]}" "dist/$(basename "${debs[0]}" "_${arch}.deb")_${ID}-${VERSION_ID}_${arch}.deb"
+          ls -l dist
 
-      - name: Build
-        run: cmake --build build -j$(nproc)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.label }}
+          path: dist/*
+          if-no-files-found: error
 
   # ── Unit tests (Fedora, full Qt6 + KDE QML modules + libmpv) ───────────
   unit-tests:
@@ -248,3 +229,35 @@ jobs:
 
       - name: Run tests
         run: ctest --test-dir build/tests --output-on-failure -V
+
+  # ── Release (tag push only) ────────────────────────────────────────────────
+  # A draft, not a published release: notes get a human pass before anything
+  # goes public. Re-running the workflow against the same tag just re-attaches
+  # the freshly built assets to whatever release already sits there.
+  release:
+    name: Publish release
+    needs: [package-deb, package-rpm, package-arch, unit-tests]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - run: ls -l dist
+
+      - name: Create or update the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" --draft --title "$TAG" --generate-notes dist/*
+          fi

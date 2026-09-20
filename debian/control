@@ -1,7 +1,7 @@
 Source: wallpaper-engine-kde-plugin
 Section: kde
 Priority: optional
-Maintainer: CaptSilver <https://github.com/CaptSilver>
+Maintainer: CaptSilver <591618+CaptSilver@users.noreply.github.com>
 Build-Depends:
  debhelper-compat (= 13),
  clang,

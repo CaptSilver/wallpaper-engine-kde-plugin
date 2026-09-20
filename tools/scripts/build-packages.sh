@@ -166,7 +166,10 @@ DEPS_UBUNTU=(
     # not pull the unversioned llvm tools, causing static-library link failures.
     llvm
     libvulkan-dev vulkan-validationlayers vulkan-tools
-    libkf6package-dev libkf6config-dev libplasma-dev libplasma-activities-dev plasma-workspace-dev
+    # Ubuntu names the Plasma Activities dev package libplasmaactivities-dev;
+    # Debian's libplasma-activities-dev does not exist on the 25.04 image
+    # this script provisions (debian/control accepts either).
+    libkf6package-dev libkf6config-dev libplasma-dev libplasmaactivities-dev plasma-workspace-dev
     # KF6 integrations referenced by src/CMakeLists.txt (KNotification taxonomy,
     # DrKonqi KCrash, KI18n catalogs, KGlobalAccel shortcuts, KXmlGui for
     # KActionCollection).

@@ -14,10 +14,14 @@ jobs:
   # Same PKGBUILD an Arch user runs by hand from arch/. Dependencies come from
   # the PKGBUILD's own depends/makedepends arrays, so the list lives in one
   # place. makepkg refuses to run as root and this container is root, hence
-  # the throwaway user.
+  # the throwaway user. Container jobs run `run:` steps under sh unless told
+  # otherwise, and the package jobs use bash arrays, so each pins bash.
   package-arch:
     name: Package .pkg.tar.zst — Arch Linux
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     container:
       image: archlinux:latest
 
@@ -66,6 +70,9 @@ jobs:
   package-rpm:
     name: Package .rpm — Fedora
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     container:
       image: fedora:latest
 
@@ -112,6 +119,9 @@ jobs:
   package-deb:
     name: Package .deb — ${{ matrix.label }}
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:

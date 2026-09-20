@@ -64,11 +64,15 @@ QObject* WebProfileRegistry::profileFor(const QString& workshopId) {
     auto  it    = table.find(name);
     if (it != table.end()) return it->profile;
 
-    // The storage-name constructor sets it before the profile does any
-    // network-context setup; a default-construct + later setStorageName()
-    // leaves a window where the profile briefly owns Qt's default storage
-    // name instead of this one.
-    auto* profile = new QQuickWebEngineProfile(name, registryOwner());
+    // Qt 6.7 (the supported floor) only has the parent-only constructor,
+    // and a fresh QQuickWebEngineProfile starts off-the-record, which is why
+    // the name goes in first: while off-the-record the name is merely stored,
+    // and clearing offTheRecord afterwards builds the persistent storage once,
+    // under the final name. Nothing has used the profile yet, so there is no
+    // StoragePartition to be left behind (the "rename a live profile" problem
+    // only exists once a view has opened one).
+    auto* profile = new QQuickWebEngineProfile(registryOwner());
+    profile->setStorageName(name);
     profile->setOffTheRecord(false);
     profile->setHttpCacheType(QQuickWebEngineProfile::DiskHttpCache);
     // 50 MiB is well above any single wallpaper's working set and lets

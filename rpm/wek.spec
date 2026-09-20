@@ -1,5 +1,5 @@
 Name:    wallpaper-engine-kde-plugin-qt6
-Version: 1.4
+Version: 1.5
 Release: 1%{?dist}
 Summary: A KDE wallpaper plugin integrating Wallpaper Engine (Plasma 6)
 
@@ -217,6 +217,29 @@ ctest --test-dir _build/tests \
 %{_datadir}/knotifications6/wek.notifyrc
 
 %changelog
+* Sat Sep 19 2026 packager - 1.5-1
+- Scene rendering: 32-bit model indices, model-parented layer placement, puppet
+  rest poses and solid-layer colors, card winding, normal transforms, equirect
+  skybox pass, compose-layer camera, text effect chains, CJK text measurement
+- Anti-aliasing and render-resolution settings; MSAA tiered from output size and
+  pass count; exact frame pacing at the display's refresh rate
+- Web wallpapers: one WebEngine profile per wallpaper shared across views,
+  web-to-web switching rebuilds the backend, push* properties writable, file://
+  subresources allowed, bridge setters routed through a QML-only controller
+- Video: failed mpv render contexts are reported; libmpv shutdown no longer
+  blocks the render thread; hardware decoding gated on EGL, GL and GBM
+- Playlists: manual navigation, merged concurrent edits, star the clicked tile
+- Pause now stops the renderer; VT-switch handling revived; the diagnostics
+  bundle scrubs the home path and is written where the user picks
+- Stability: TextureNode redraw use-after-free, texture budget counting retained
+  bytes with a runtime override, stale compiled-QML cache purged, hostile-input
+  and worker-lifetime hardening, decoder leaks and load abort
+- Fonts resolved through fontconfig; translations packaged
+- Packaging: self-contained SRPM for Fedora, openSUSE Tumbleweed and Mageia from
+  one spec; CI builds the .deb (Ubuntu LTS, Debian stable), .rpm and Arch
+  package and attaches them to releases; catsout shim package and config
+  migration removed
+
 * Sat Jul 11 2026 packager - 1.4-1
 - Wallpaper playlists: editor with ordered and shuffle playback, per-monitor scope
 - Many scene-rendering fixes: puppet rigs/attachments, scripted clocks and text,

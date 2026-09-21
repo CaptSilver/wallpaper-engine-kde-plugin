@@ -207,15 +207,68 @@ WallpaperWorkShopId=1234567
         QVERIFY2(! cfgDump.contains(QStringLiteral("/home/user/Steam")), "Steam path leaked");
     }
 
-    void testLastErrorPopulatedOnFailure() {
-        // We can't easily force saveBundle() to fail without
-        // monkey-patching; this test asserts lastError() is empty by
-        // default. Either saveBundle succeeds (lastError empty) or fails
-        // (lastError populated) — both are valid states.
+    void testSaveBundleReportsCacheDirCreateFailure() {
+        // GenericCacheLocation resolves to $HOME/.qttest/cache under
+        // setTestModeEnabled(true) (see wek::test_sandbox::enableIsolated()) --
+        // XDG_CACHE_HOME is not consulted in test mode, so the collision has
+        // to land on that exact path, not on XDG_CACHE_HOME.
+        QTemporaryDir isolatedHome;
+        QVERIFY(isolatedHome.isValid());
+        const auto qttestDir = isolatedHome.path() + QStringLiteral("/.qttest");
+        QVERIFY(QDir().mkpath(qttestDir));
+        {
+            QFile blocker(qttestDir + QStringLiteral("/cache"));
+            QVERIFY(blocker.open(QIODevice::WriteOnly));
+            blocker.write("not a directory");
+        }
+
+        const auto savedHome = qgetenv("HOME");
+        qputenv("HOME", isolatedHome.path().toLocal8Bit());
+
         WekDiagnostics diag;
-        QVERIFY(diag.lastError().isEmpty());
-        (void)diag.saveBundle();
-        QVERIFY(true);
+        const auto     bundlePath = diag.saveBundle();
+
+        qputenv("HOME", savedHome);
+
+        QVERIFY2(bundlePath.isEmpty(), "saveBundle must fail when its cache dir cannot be created");
+        QVERIFY2(! diag.lastError().isEmpty(), "a failed saveBundle must leave a reason behind");
+        QVERIFY2(diag.lastError().contains(QStringLiteral("cache dir")),
+                 qPrintable(diag.lastError()));
+    }
+
+    void testSaveBundleReportsTarFailure() {
+        // Every fallible QVERIFY here has to run before HOME/PATH are
+        // mutated -- QVERIFY expands to a bare `return;` on failure
+        // (QTEST_THROW_ON_FAIL isn't defined anywhere under tests/), which
+        // would otherwise leave HOME/PATH pointed at a temp dir that's about
+        // to be destroyed for every later test in this binary run.
+        QTemporaryDir fakeBin;
+        QVERIFY(fakeBin.isValid());
+        {
+            QFile script(fakeBin.filePath(QStringLiteral("tar")));
+            QVERIFY(script.open(QIODevice::WriteOnly));
+            script.write("#!/bin/sh\necho fake tar failure >&2\nexit 1\n");
+            QVERIFY2(script.setPermissions(script.permissions() | QFile::ExeOwner | QFile::ExeUser),
+                     "the fake tar stub must be executable for PATH lookup to find it");
+        }
+
+        QTemporaryDir isolatedHome;
+        QVERIFY(isolatedHome.isValid());
+
+        const auto savedHome = qgetenv("HOME");
+        const auto savedPath = qgetenv("PATH");
+        qputenv("HOME", isolatedHome.path().toLocal8Bit());
+        qputenv("PATH", fakeBin.path().toLocal8Bit() + ':' + savedPath);
+
+        WekDiagnostics diag;
+        const auto     bundlePath = diag.saveBundle();
+
+        qputenv("PATH", savedPath);
+        qputenv("HOME", savedHome);
+
+        QVERIFY2(bundlePath.isEmpty(), "saveBundle must fail when tar fails");
+        QVERIFY2(diag.lastError().contains(QStringLiteral("tar failed")),
+                 qPrintable(diag.lastError()));
     }
 
     // The manifest used to walk QStandardPaths::CacheLocation +
@@ -348,13 +401,15 @@ WallpaperWorkShopId=1234567
         QVERIFY(! diag.lastError().isEmpty());
     }
 
-    void testGpuInfoNonCrashing() {
+    void testGpuInfoReportsBothSectionHeaders() {
         // The lspci / lsmod shell-outs may be missing in a stripped
-        // distrobox.  Per spec the collector returns a placeholder string;
-        // we assert non-crash + a non-null QString.
+        // distrobox, but the two section headers are written
+        // unconditionally before either shells out -- a fresh QString from
+        // any other code path could never carry them.
         WekDiagnostics diag;
         const auto     gpu = diag.collectGpuInfoForTest();
-        QVERIFY(! gpu.isNull());
+        QVERIFY2(gpu.contains(QStringLiteral("=== lspci -k")), qPrintable(gpu));
+        QVERIFY2(gpu.contains(QStringLiteral("=== lsmod (GPU modules) ===")), qPrintable(gpu));
     }
 };
 

@@ -11,13 +11,15 @@
 # Pipeline:
 #   1. cmake --build build/sub --target fuzz_<target>
 #   2. fuzz_<target> -merge=1 -reduce_inputs=1 <tmp-out> tests/fuzz_corpus/<target>/seed/ <hot>
-#   3. mv <tmp-out> tests/fuzz_corpus/<target>/seed/
-#   4. Report diff (added/removed/total bytes).
+#   3. Check <tmp-out> against the 200 KB / 50-file corpus budget, before it
+#      touches the committed seed dir.
+#   4. mv <tmp-out> tests/fuzz_corpus/<target>/seed/
+#   5. Report diff (added/removed/total bytes).
 
 set -euo pipefail
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 0
 fi
 
@@ -27,6 +29,7 @@ seed="tests/fuzz_corpus/$target/seed"
 
 WORK="$(git -C "$(dirname "${BASH_SOURCE[0]}")/../.." rev-parse --show-toplevel)"
 cd "$WORK"
+source tools/scripts/lib/fuzz_corpus_budget.sh
 
 [[ -d "$hot" ]] || { echo "hot corpus not found: $hot" >&2; exit 1; }
 
@@ -42,6 +45,14 @@ trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$seed"
 "$bin" -merge=1 -reduce_inputs=1 "$tmp" "$seed" "$hot" 2>&1 | tail -5
 
+# Check the merged result against the budget before it ever touches the
+# committed seed dir -- catching this after the mv means an oversized merge
+# already landed in the working tree.
+budget_msg=$(check_fuzz_corpus_budget "$tmp" 204800 50) || {
+    echo "$budget_msg. Re-run with -max_len clamp." >&2
+    exit 2
+}
+
 rm -rf "$seed"
 mv "$tmp" "$seed"
 trap - EXIT
@@ -49,9 +60,3 @@ trap - EXIT
 after_count=$(find "$seed" -type f | wc -l)
 after_bytes=$(du -bs "$seed" | cut -f1)
 echo "minimize $target: $before_count -> $after_count files, $before_bytes -> $after_bytes bytes"
-
-# Size budget guard.
-if [[ "$after_bytes" -gt 204800 ]]; then
-    echo "size budget exceeded: $after_bytes > 204800. Re-run with -max_len clamp." >&2
-    exit 2
-fi

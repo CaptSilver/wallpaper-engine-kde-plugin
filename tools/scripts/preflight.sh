@@ -75,6 +75,7 @@ set -euo pipefail
 _PF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_PF_DIR/lib/mem.sh"
 source "$_PF_DIR/lib/coverage_gate.sh"
+source "$_PF_DIR/lib/fuzz_corpus_budget.sh"
 
 # Resolve to the parent repo's working tree even when invoked from inside the
 # `src/backend_scene` submodule.  Plain --show-toplevel would land us in the
@@ -780,6 +781,21 @@ else
     warn "tools/scripts/tests/test-coverage-gate.sh missing or not executable — skipping"
 fi
 
+# ── 1d. Fuzz-gate self-test ────────────────────────────────────────────────────
+# Same reasoning as 1b/1c: run.sh's corpus paths and the shared budget check
+# have their own decision logic (which directory to read/write, whether a
+# corpus is over budget) that a stub-driven check can pin in a fraction of a
+# second, ahead of the multi-minute fuzz-smoke section that would otherwise be
+# the only way to exercise it.
+step "Fuzz-gate self-test"
+if [[ -x tools/scripts/tests/test-fuzz-run.sh ]]; then
+    if ! tools/scripts/tests/test-fuzz-run.sh; then
+        fail "fuzz gate self-test failed — run.sh/budget wiring is broken, fix it before trusting a fuzz run"
+    fi
+else
+    warn "tools/scripts/tests/test-fuzz-run.sh missing or not executable — skipping"
+fi
+
 # ── 2. Build submodule (with tests) ───────────────────────────────────────────
 # Only force -G Ninja on fresh dirs; otherwise reuse the existing generator so
 # we don't fight with manual build dirs the user already configured.
@@ -903,13 +919,14 @@ if [[ "$NO_FUZZ" == "0" ]]; then
                   WPParticleParser WPSoundParser WPJsonParse)
     step "Fuzz smoke (libFuzzer seeded, ${FUZZ_SECS}s × ${#FUZZ_TARGETS[@]} targets)"
 
-    # Size budget: each tests/fuzz_corpus/<target>/seed must be <= 200 KB.
+    # Size budget: each tests/fuzz_corpus/<target>/seed must be <= 200 KB and
+    # <= 50 files.
     for d in tests/fuzz_corpus/*/seed; do
         [[ -d "$d" ]] || continue
-        b=$(du -bs "$d" | cut -f1)
-        if [[ "$b" -gt 204800 ]]; then
-            fail "fuzz corpus size budget exceeded: $d ($b bytes > 204800)"
-        fi
+        # check_fuzz_corpus_budget's own $msg already starts with "budget
+        # exceeded: ..." -- prefixing the same words here read as "budget
+        # exceeded exceeded" to whoever hit the gate.
+        msg=$(check_fuzz_corpus_budget "$d" 204800 50) || fail "fuzz corpus $msg"
     done
 
     if [[ "$MODE" != "test-only" ]]; then

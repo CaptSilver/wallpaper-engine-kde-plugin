@@ -11,15 +11,17 @@
 # Modes:
 #   cold    Empty starting corpus. Tests robustness on arbitrary input —
 #           catches shallow bugs (header parsing, magic-byte gates, EOF).
-#           Findings accumulate in build/fuzz/corpus/<target>/found/.
-#   seeded  Starts from real .mdl / .tex inputs in <target>/seed/ (run
-#           build-corpus.sh first). Mutates from valid files — catches
-#           deeper bugs in version-branched parse paths.
+#           Findings accumulate in build/sub/fuzz-corpus-<target>/.
+#   seeded  Starts from the committed corpus in tests/fuzz_corpus/<target>/seed/
+#           (see tools/scripts/fuzz/build-corpus.sh for WPMdlParser/
+#           WPTexImageParser/WPPkgFs, or tests/fuzz_corpus/README.md for the
+#           others). Mutates from valid files — catches deeper bugs in
+#           version-branched parse paths.
 #   both    Splits duration evenly: cold first, then seeded. The cold
-#           phase populates found/, which seeded then uses too. Recommended.
+#           phase populates the corpus, which seeded then uses too. Recommended.
 #
-# Crashes from any phase land in build/fuzz/crashes/ as crash-<sha>; replay
-# with: build/fuzz/src/Test/fuzz_<target> build/fuzz/crashes/crash-<sha>
+# Crashes from any phase land in build/sub/fuzz-crashes/ as crash-<sha>; replay
+# with: build/sub/src/Test/fuzz_<target> build/sub/fuzz-crashes/crash-<sha>
 
 set -euo pipefail
 
@@ -27,12 +29,13 @@ target="${1:?usage: $0 <target> [duration_seconds=300] [mode=both]}"
 duration="${2:-300}"
 mode="${3:-both}"
 
-build_dir=build/fuzz
+# Same build/sub tree minimize.sh, pin-regression.sh and preflight.sh's fuzz
+# smoke gate all read and write -- configure it with -DBUILD_FUZZERS=ON.
+build_dir=build/sub
 binary="$build_dir/src/Test/fuzz_$target"
-corpus_root="$build_dir/corpus/$target"
-found_dir="$corpus_root/found"
-seed_dir="$corpus_root/seed"
-crash_dir="$build_dir/crashes"
+found_dir="$build_dir/fuzz-corpus-$target"
+seed_dir="tests/fuzz_corpus/$target/seed"
+crash_dir="$build_dir/fuzz-crashes"
 
 if [[ ! -x "$binary" ]]; then
     echo "Fuzz harness not built: $binary" >&2
@@ -69,7 +72,9 @@ case "$mode" in
     seeded)
         if [[ ! -d "$seed_dir" || -z "$(ls -A "$seed_dir" 2>/dev/null)" ]]; then
             echo "Seed corpus empty at $seed_dir" >&2
-            echo "Run tools/scripts/fuzz/build-corpus.sh first." >&2
+            echo "Populate tests/fuzz_corpus/$target/seed/ with real-world inputs" >&2
+            echo "(see tools/scripts/fuzz/build-corpus.sh for WPMdlParser/WPTexImageParser/WPPkgFs," >&2
+            echo "or tests/fuzz_corpus/README.md for the others)." >&2
             exit 1
         fi
         run_phase "seeded ($(find "$seed_dir" -type f | wc -l) seeds)" \
@@ -84,7 +89,9 @@ case "$mode" in
         else
             echo
             echo "Skipping seeded phase: seed corpus empty at $seed_dir"
-            echo "(Run tools/scripts/fuzz/build-corpus.sh to populate it.)"
+            echo "Populate tests/fuzz_corpus/$target/seed/ with real-world inputs"
+            echo "(see tools/scripts/fuzz/build-corpus.sh for WPMdlParser/WPTexImageParser/WPPkgFs,"
+            echo "or tests/fuzz_corpus/README.md for the others)."
         fi
         ;;
     *)

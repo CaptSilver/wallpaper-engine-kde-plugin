@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Extract .mdl and .tex files from installed Wallpaper Engine workshop content
-# into per-target seed corpora. Pulls from loose files under the workshop dir
-# and from .pkg archives via wp-pkg.
+# Extract .mdl and .tex files, plus raw .pkg archives, from installed
+# Wallpaper Engine workshop content into per-target seed corpora. Pulls .mdl/
+# .tex from loose files under the workshop dir and from inside .pkg archives
+# via wp-pkg; the .pkg archives themselves seed the WPPkgFs archive-header
+# fuzzer directly.
 #
 # Usage: tools/scripts/fuzz/build-corpus.sh [build_dir]
 #
@@ -12,13 +14,14 @@
 
 set -euo pipefail
 
-build_dir="${1:-build/fuzz}"
+build_dir="${1:-build/sub}"
 workshop="${WP_WORKSHOP:-$HOME/.local/share/Steam/steamapps/workshop/content/431960}"
 max_mdl="${MAX_MDL_BYTES:-1048576}"
 max_tex="${MAX_TEX_BYTES:-10485760}"
 
 mdl_seed="$build_dir/corpus/WPMdlParser/seed"
 tex_seed="$build_dir/corpus/WPTexImageParser/seed"
+pkgfs_seed="$build_dir/corpus/WPPkgFs/seed"
 wp_pkg="$build_dir/tools/wp-pkg"
 
 if [[ ! -d "$workshop" ]]; then
@@ -33,10 +36,10 @@ if [[ ! -x "$wp_pkg" ]]; then
     exit 1
 fi
 
-mkdir -p "$mdl_seed" "$tex_seed"
+mkdir -p "$mdl_seed" "$tex_seed" "$pkgfs_seed"
 
 echo "Workshop: $workshop"
-echo "Output:   $build_dir/corpus/{WPMdlParser,WPTexImageParser}/seed/"
+echo "Output:   $build_dir/corpus/{WPMdlParser,WPTexImageParser,WPPkgFs}/seed/"
 
 # 1. Loose files in workshop dir (uncompressed wallpapers store .mdl/.tex
 #    directly alongside scene.json).
@@ -57,6 +60,7 @@ for pkg in "$workshop"/*/scene.pkg; do
     wid=$(basename "$(dirname "$pkg")")
     pkg_out="$tmpdir/$wid"
     mkdir -p "$pkg_out"
+    cp -n "$pkg" "$pkgfs_seed/$wid.pkg"
     "$wp_pkg" extract "$pkg" "$pkg_out" >/dev/null 2>&1 || continue
     find "$pkg_out" -type f -name "*.mdl" -size "-${max_mdl}c" \
         -exec sh -c 'cp -n "$1" "$2/${3}_$(basename "$1")"' _ {} "$mdl_seed" "$wid" \; 2>/dev/null
@@ -66,7 +70,9 @@ done
 
 mdl_count=$(find "$mdl_seed" -type f | wc -l)
 tex_count=$(find "$tex_seed" -type f | wc -l)
+pkgfs_count=$(find "$pkgfs_seed" -type f | wc -l)
 echo
 echo "Corpus built:"
 printf "  WPMdlParser:      %4d inputs in %s\n" "$mdl_count" "$mdl_seed"
 printf "  WPTexImageParser: %4d inputs in %s\n" "$tex_count" "$tex_seed"
+printf "  WPPkgFs:          %4d inputs in %s\n" "$pkgfs_count" "$pkgfs_seed"

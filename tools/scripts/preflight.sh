@@ -29,12 +29,12 @@
 #                                      #   -Wall -Wextra clean and the default flow
 #                                      #   gates the same config in step 5a.  Set
 #                                      #   WERROR_FATAL=0 to run it advisory.
-#   tools/scripts/preflight.sh --coverage   # opt-in coverage leg (standalone, informational):
-#                                      #   builds parent + submodule with -DCOVERAGE=ON,
-#                                      #   runs llvm-cov + qmlcov, diffs totals vs
-#                                      #   tests/.coverage-baseline.json.  NON-FATAL when
-#                                      #   invoked standalone — for ad-hoc inspection or
-#                                      #   WEK_COVERAGE_REFRESH=1 baseline updates.
+#   tools/scripts/preflight.sh --coverage   # opt-in coverage leg: builds parent + submodule
+#                                      #   with -DCOVERAGE=ON, runs llvm-cov + qmlcov, diffs
+#                                      #   totals vs tests/.coverage-baseline.json.  FATAL by
+#                                      #   default on a >0.5pp regression — set COVERAGE_FATAL=0
+#                                      #   to run it advisory (ad-hoc inspection or
+#                                      #   WEK_COVERAGE_REFRESH=1 baseline updates).
 #                                      #   Runs in the default gate only when
 #                                      #   WEK_COVERAGE_IN_GATE=1 (RAM-bounded build).
 #   tools/scripts/preflight.sh --render-smoke # opt-in headless render smoke (D10a): builds the
@@ -74,6 +74,7 @@ set -euo pipefail
 # -j), resolved relative to this script before the cd below.
 _PF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_PF_DIR/lib/mem.sh"
+source "$_PF_DIR/lib/coverage_gate.sh"
 
 # Resolve to the parent repo's working tree even when invoked from inside the
 # `src/backend_scene` submodule.  Plain --show-toplevel would land us in the
@@ -427,11 +428,12 @@ fi
 # when Qt is present), no DISPLAY needed.  Build / profile dir is
 # build/impl-coverage-sub/.
 #
-# FATAL by default when wired into the default flow: a regression beyond the
-# 0.5pp tolerance fails the gate.  WEK_COVERAGE_REFRESH=1 rewrites
-# tests/.coverage-baseline.json from the current numbers (use after intentionally-
-# coverage-affecting changes).  Legacy COVERAGE_FATAL=0 escape hatch retained
-# only when invoked via the standalone --coverage flag (see header).
+# FATAL by default: a regression beyond the 0.5pp tolerance fails the gate.
+# WEK_COVERAGE_REFRESH=1 rewrites tests/.coverage-baseline.json from the
+# current numbers (use after intentionally-coverage-affecting changes).
+# COVERAGE_FATAL=0 is the escape hatch, read by the leg's own regression check
+# below regardless of which path invoked it (standalone or the in-gate
+# WEK_COVERAGE_IN_GATE=1 wrapper).
 if [[ "$MODE" == "coverage" ]]; then
     step "Coverage leg (-DCOVERAGE=ON, parent + submodule)"
 
@@ -637,7 +639,7 @@ if [[ "$MODE" == "coverage" ]]; then
         if [[ "${COVERAGE_FATAL:-1}" == "1" ]]; then
             fail "coverage leg failed (regression vs baseline)"
         fi
-        warn "non-fatal — set COVERAGE_FATAL=1 to gate, or WEK_COVERAGE_REFRESH=1 to update the baseline"
+        warn "advisory (COVERAGE_FATAL=0) — WEK_COVERAGE_REFRESH=1 to update the baseline"
         printf '\n%sCoverage leg complete (NON-FATAL regression noted).%s\n' "$YELLOW" "$RESET"
         exit 0
     fi
@@ -762,6 +764,20 @@ if [[ -x tools/scripts/tests/test-mutation-gate.sh ]]; then
     fi
 else
     warn "tools/scripts/tests/test-mutation-gate.sh missing or not executable — skipping"
+fi
+
+# ── 1c. Coverage-gate self-test ───────────────────────────────────────────────
+# Same reasoning as 1b, for the coverage gate wrapper's own pass/fail decision:
+# a stub-driven check that runs in a fraction of a second, ahead of the
+# ~3-minute real coverage build that would otherwise be the only way to
+# exercise this logic.
+step "Coverage-gate self-test"
+if [[ -x tools/scripts/tests/test-coverage-gate.sh ]]; then
+    if ! tools/scripts/tests/test-coverage-gate.sh; then
+        fail "coverage gate self-test failed — coverage_gate.sh wiring is broken, fix it before trusting the coverage leg"
+    fi
+else
+    warn "tools/scripts/tests/test-coverage-gate.sh missing or not executable — skipping"
 fi
 
 # ── 2. Build submodule (with tests) ───────────────────────────────────────────
@@ -956,15 +972,14 @@ fi
 # Run it as a nested --coverage invocation so the ~200-line leg isn't duplicated.
 if [[ "$MODE" == "full" && "${WEK_COVERAGE_IN_GATE:-0}" == "1" ]]; then
     step "Coverage gate (WEK_COVERAGE_IN_GATE=1)"
-    crc=0
-    tools/scripts/preflight.sh --coverage || crc=$?
-    if [[ "$crc" == "0" ]]; then
-        ok "coverage gate passed (no regression vs baseline)"
-    elif [[ "${COVERAGE_FATAL:-1}" == "1" ]]; then
-        fail "coverage gate failed — coverage regression vs tests/.coverage-baseline.json"
-    else
-        warn "coverage gate failed (non-fatal — COVERAGE_FATAL=0)"
-    fi
+    # The nested `--coverage` invocation shares this process's COVERAGE_FATAL,
+    # so its exit code already reflects the fatal-or-tolerated decision -- a
+    # second read of COVERAGE_FATAL here would just recompute a different
+    # answer from the same input the leg already used. (MUTATION_FATAL is
+    # read only inside preflight.sh, never inside mutation.sh, for the same
+    # reason: the wrapper that owns the decision should be the only one that
+    # makes it.)
+    run_coverage_gate tools/scripts/preflight.sh --coverage
 fi
 
 # ── 8. Mutation gate (Mull --diff-only --strict) — opt-in-to-fatal ───────────

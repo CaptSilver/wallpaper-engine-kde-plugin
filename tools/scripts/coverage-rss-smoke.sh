@@ -48,7 +48,7 @@ sampler=$!
 
 timefile=$(mktemp)
 "$TIME_BIN" -v -o "$timefile" \
-    env WEK_COVERAGE_REFRESH=0 tools/scripts/preflight.sh --coverage
+    env WEK_COVERAGE_REFRESH=0 COVERAGE_FATAL=0 tools/scripts/preflight.sh --coverage
 rc=$?
 kill "$sampler" 2>/dev/null
 wait "$sampler" 2>/dev/null

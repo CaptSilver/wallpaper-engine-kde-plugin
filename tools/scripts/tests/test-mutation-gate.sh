@@ -138,6 +138,30 @@ print(json.dumps({"files": files}))
 PYEOF
 }
 
+# Like report_json, but attaches a `source` field to the file entry (the whole
+# file's text, as Mull's Elements reporter embeds it) and an explicit
+# start/end line range per mutant, so the normalisation jq has something to
+# slice the mutated line's text out of.  Args are
+# "startline:endline:mutator" triples; all mutants land on the same file,
+# since that is the only shape these tests need.
+report_json_src() {  # report_json_src <root> <file> <source> <spec...>
+    local root="$1" file="$2" source="$3"; shift 3
+    python3 - "$root" "$file" "$source" "$@" <<'PY'
+import json, sys
+root, file, source = sys.argv[1], sys.argv[2], sys.argv[3]
+specs = sys.argv[4:]
+mutants = []
+for spec in specs:
+    startline, endline, mutator = spec.split(":")
+    mutants.append({
+        "id": f"{file}:{startline}", "mutatorName": mutator,
+        "location": {"start": {"line": int(startline)}, "end": {"line": int(endline)}},
+        "status": "Survived"})
+files = {f"{root}/{file}": {"source": source, "mutants": mutants}}
+print(json.dumps({"files": files}))
+PY
+}
+
 run_gate() {  # run_gate <root> <stub-report> <args...> ; echoes output, returns rc
     local root="$1" body="$2"; shift 2
     ( cd "$root" && MUTATION_SKIP_BUILD=1 STUB_REPORT="$body" \
@@ -266,6 +290,216 @@ root="$(make_root)"
 out="$(run_gate "$root" "nomutants" --target tst_filehelper --strict)"; rc=$?
 check "a run with no mutants in scope is a pass, not an unmeasurable run" \
       "" "$rc" 0 "$out" "no mutants"
+
+# 9. The baseline keys on line number alone, so an edit that inserts lines
+#    above a survivor shifts it out from under its own entry: reported as a
+#    brand-new survivor at the new line, while the stale entry never matches
+#    anything again.  Matching on the mutated line's own text, not just its
+#    number, survives the shift.
+root="$(make_root)"
+cat > "$root/tests/.mull-baseline.json" <<'EOF'
+{"survivors":[{"file":"src/FileHelper.cpp","line":10,"mutator":"cxx_gt_to_ge","line_text":"if (x > 0) {"}]}
+EOF
+src=$'l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\nl10\nl11\nl12\nl13\nl14\nl15\nif (x > 0) {'
+body="$(report_json_src "$root" "src/FileHelper.cpp" "$src" "16:16:cxx_gt_to_ge")"
+out="$(run_gate "$root" "$body" --target tst_filehelper --strict)"; rc=$?
+check "an inserted line above a survivor is matched by text, not reported new" \
+      "" "$rc" 0 "$out" "line 16, was line 10"
+
+# 10. The reverse of #9, and the test that stops the fix from collapsing to
+#     "match on {file,mutator}, ignore the line entirely": the SAME file,
+#     line and mutator, but a DIFFERENT expression, must still count as new.
+#     Today's {file,line,mutator} key already matches here and reports a
+#     false-negative "no new survivors" -- the shipped bug, not a crash.
+root="$(make_root)"
+cat > "$root/tests/.mull-baseline.json" <<'EOF'
+{"survivors":[{"file":"src/FileHelper.cpp","line":10,"mutator":"cxx_gt_to_ge","line_text":"if (x > 0) {"}]}
+EOF
+src=$'l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\nif (y > 0) {'
+body="$(report_json_src "$root" "src/FileHelper.cpp" "$src" "10:10:cxx_gt_to_ge")"
+out="$(run_gate "$root" "$body" --target tst_filehelper --strict)"; rc=$?
+check "a different mutation at the same file, line and mutator is still reported new" \
+      "" "$rc" 1 "$out" "new surviving mutant"
+
+# 11. --refresh-baseline used to be an unconditional overwrite of the whole
+#     file with this run's survivor set.  Scoping a refresh to one target
+#     (or a --diff-only run) must never touch a baseline entry for a file
+#     that target does not cover -- PlaylistManager.cpp here, which
+#     tst_filehelper never links.
+root="$(make_root)"
+cat > "$root/tests/.mull-baseline.json" <<'EOF'
+{"survivors":[
+  {"file":"src/FileHelper.cpp","line":10,"mutator":"cxx_gt_to_ge"},
+  {"file":"src/PlaylistManager.cpp","line":20,"mutator":"cxx_lt_to_le"}
+]}
+EOF
+body="$(report_json "$root" "src/FileHelper.cpp:10:cxx_gt_to_ge")"
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 STUB_REPORT="$body" MULL_WORKERS=1 \
+        "$GATE" --target tst_filehelper --refresh-baseline 2>&1 )"; rc=$?
+after="$(cat "$root/tests/.mull-baseline.json")"
+check "refreshing one target does not delete another target's baseline entries" \
+      "" "$rc" 0 "$(printf '%s\n---baseline after---\n%s\n' "$out" "$after")" \
+      '"file": "src/PlaylistManager.cpp"'
+
+# 12. The other half of #11: a target's refresh must still drop its OWN
+#     entries once they genuinely stop reproducing, or "scope-safe" would
+#     have overcorrected into "refresh never removes anything".
+root="$(make_root)"
+cat > "$root/tests/.mull-baseline.json" <<'EOF'
+{"survivors":[
+  {"file":"src/FileHelper.cpp","line":10,"mutator":"cxx_gt_to_ge"},
+  {"file":"src/PlaylistManager.cpp","line":20,"mutator":"cxx_lt_to_le"}
+]}
+EOF
+body="$(report_json_status "$root" "src/FileHelper.cpp:10:cxx_gt_to_ge:Killed")"
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 STUB_REPORT="$body" MULL_WORKERS=1 \
+        "$GATE" --target tst_filehelper --refresh-baseline 2>&1 )"; rc=$?
+after="$(cat "$root/tests/.mull-baseline.json")"
+combined="$(printf '%s\n---baseline after---\n%s\n' "$out" "$after")"
+if [[ "$rc" == "0" ]] \
+   && ! grep -q '"file": "src/FileHelper.cpp"' <<<"$after" \
+   && grep -q '"file": "src/PlaylistManager.cpp"' <<<"$after"; then
+    printf '  %sok%s   %s\n' "$GREEN" "$RESET" \
+        "refreshing after a genuine fix drops the now-dead entry, in scope"
+    PASS=$((PASS + 1))
+else
+    printf '  %sFAIL%s %s\n' "$RED" "$RESET" \
+        "refreshing after a genuine fix drops the now-dead entry, in scope"
+    sed 's/^/        | /' <<<"$combined" | tail -20
+    FAIL=$((FAIL + 1))
+fi
+
+# 13. Outside of a refresh, a survivor the baseline still lists but the
+#     current run no longer reproduces should be named as resolved -- not
+#     silently ignored, and not treated as a reason to fail the gate.
+root="$(make_root)"
+cat > "$root/tests/.mull-baseline.json" <<'EOF'
+{"survivors":[{"file":"src/FileHelper.cpp","line":10,"mutator":"cxx_gt_to_ge"}]}
+EOF
+body="$(report_json_status "$root" "src/FileHelper.cpp:10:cxx_gt_to_ge:Killed")"
+out="$(run_gate "$root" "$body" --target tst_filehelper --strict)"; rc=$?
+check "a survivor no longer reproduced is reported resolved without failing the gate" \
+      "" "$rc" 0 "$out" "no longer survives"
+
+# 14. clang-format reflows plenty of lines in this repo (`git log --oneline
+#     --grep="^clang-format$" -i` turns up several standalone commits) --
+#     reindentation or extra internal whitespace must not manufacture a new
+#     survivor.  A comparison that only trims the outer edges would still
+#     break on an internal reflow, so this pins collapsing internal runs too.
+root="$(make_root)"
+cat > "$root/tests/.mull-baseline.json" <<'EOF'
+{"survivors":[{"file":"src/FileHelper.cpp","line":10,"mutator":"cxx_gt_to_ge","line_text":"if (x > 0) {"}]}
+EOF
+src=$'l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\nl10\nl11\nl12\nl13\n        if (x   >   0)   {  '
+body="$(report_json_src "$root" "src/FileHelper.cpp" "$src" "14:14:cxx_gt_to_ge")"
+out="$(run_gate "$root" "$body" --target tst_filehelper --strict)"; rc=$?
+check "reindentation of an unrelated wrapping change does not manufacture a new survivor" \
+      "" "$rc" 0 "$out"
+
+# 15. Required, not optional: reachable today.  ThumbnailGrabber.cpp has the
+#     identical `else if (ev->event_id == MPV_EVENT_END_FILE) {` guard at two
+#     separate lines, both live cxx_eq_to_ne candidates.  Matching on text
+#     alone, with no tie-break, would fold both into one slot and silently
+#     swallow the second mutant.  The baseline's one entry must claim only
+#     its nearest twin; the other must still be reported new.
+root="$(make_root)"
+cat > "$root/tests/.mull-baseline.json" <<'EOF'
+{"survivors":[{"file":"src/backend_mpv/ThumbnailGrabber.cpp","line":80,"mutator":"cxx_eq_to_ne","line_text":"else if (ev->event_id == MPV_EVENT_END_FILE) {"}]}
+EOF
+line='else if (ev->event_id == MPV_EVENT_END_FILE) {'
+filler=""
+for i in $(seq 1 79); do filler+="f$i"$'\n'; done
+src="${filler}${line}"$'\n'
+for i in $(seq 81 104); do src+="f$i"$'\n'; done
+src+="${line}"
+body="$(report_json_src "$root" "src/backend_mpv/ThumbnailGrabber.cpp" "$src" \
+    "80:80:cxx_eq_to_ne" "105:105:cxx_eq_to_ne")"
+out="$(run_gate "$root" "$body" --target tst_filehelper --strict)"; rc=$?
+name="two identical-text mutants in the same file resolve by nearest line, not by first-match collision"
+if [[ "$rc" == "1" ]] && grep -q ':105 \[cxx_eq_to_ne\]' <<<"$out" \
+   && ! grep -q ':80 \[cxx_eq_to_ne\]' <<<"$out"; then
+    printf '  %sok%s   %s\n' "$GREEN" "$RESET" "$name"
+    PASS=$((PASS + 1))
+else
+    printf '  %sFAIL%s %s\n' "$RED" "$RESET" "$name"
+    sed 's/^/        | /' <<<"$out" | tail -20
+    FAIL=$((FAIL + 1))
+fi
+
+# 16. A line can look like a perfectly normal statement and still be the
+#     WRONG one: real baseline drift (found migrating the committed baseline
+#     for this task) puts a comparison mutator's recorded line on a
+#     statement with no comparison operator in it at all -- the code shifted
+#     and dragged a different, unrelated statement into that line number.
+#     "looks like a statement" alone waves that through; migrate must also
+#     check the mutator's own operator is textually present.
+root="$(make_root)"
+mkdir -p "$root/src"
+cat > "$root/src/Foo.cpp" <<'EOF'
+int compute(int value) {
+    const int cOpen = value;
+    return cOpen;
+}
+EOF
+cat > "$root/tests/.mull-baseline.json" <<'EOF'
+{"survivors":[{"file":"src/Foo.cpp","line":2,"mutator":"cxx_add_to_sub"}]}
+EOF
+out="$( cd "$root" && "$GATE" --migrate-baseline 2>&1 )"; rc=$?
+after="$(cat "$root/tests/.mull-baseline.json")"
+combined="$(printf '%s\n---baseline after---\n%s\n' "$out" "$after")"
+if [[ "$rc" == "1" ]] && grep -qi "no '" <<<"$out" && ! grep -q '"line_text"' <<<"$after"; then
+    printf '  %sok%s   %s\n' "$GREEN" "$RESET" \
+        "a line with no matching operator for its mutator is an orphan, not a migration"
+    PASS=$((PASS + 1))
+else
+    printf '  %sFAIL%s %s\n' "$RED" "$RESET" \
+        "a line with no matching operator for its mutator is an orphan, not a migration"
+    sed 's/^/        | /' <<<"$combined" | tail -20
+    FAIL=$((FAIL + 1))
+fi
+
+# 17. An operator character INSIDE a quoted literal must not count as the
+#     mutator's operator being present -- src/FileHelper.cpp:101 is exactly
+#     this: `after == QLatin1Char('>')` has a `'>'` character literal but no
+#     bare `>` comparison anywhere on the line, yet a plain substring test
+#     sees the `>` byte and "migrates" cxx_gt_to_ge/cxx_gt_to_le onto it. Both
+#     quoting styles have to be stripped before the check runs, and a sibling
+#     line with a real, un-quoted operator must still migrate normally.
+root="$(make_root)"
+mkdir -p "$root/src"
+cat > "$root/src/Foo.cpp" <<'EOF'
+int check(int value, const char *sym) {
+    bool q1 = (sym[0] == '>');
+    bool q2 = (strcmp(sym, ">") == 0);
+    if (value > 0) return 1;
+    return 0;
+}
+EOF
+cat > "$root/tests/.mull-baseline.json" <<'EOF'
+{"survivors":[
+  {"file":"src/Foo.cpp","line":2,"mutator":"cxx_gt_to_ge"},
+  {"file":"src/Foo.cpp","line":3,"mutator":"cxx_gt_to_ge"},
+  {"file":"src/Foo.cpp","line":4,"mutator":"cxx_gt_to_ge"}
+]}
+EOF
+out="$( cd "$root" && "$GATE" --migrate-baseline 2>&1 )"; rc=$?
+after="$(cat "$root/tests/.mull-baseline.json")"
+combined="$(printf '%s\n---baseline after---\n%s\n' "$out" "$after")"
+line2_text="$(jq -r '.survivors[] | select(.line==2) | .line_text // "MISSING"' <<<"$after")"
+line3_text="$(jq -r '.survivors[] | select(.line==3) | .line_text // "MISSING"' <<<"$after")"
+line4_text="$(jq -r '.survivors[] | select(.line==4) | .line_text // "MISSING"' <<<"$after")"
+name="an operator inside a quoted literal (either quote style) is not mistaken for the operator itself"
+if [[ "$rc" == "1" ]] && [[ "$line2_text" == "MISSING" ]] && [[ "$line3_text" == "MISSING" ]] \
+   && [[ "$line4_text" == "if (value > 0) return 1;" ]]; then
+    printf '  %sok%s   %s\n' "$GREEN" "$RESET" "$name"
+    PASS=$((PASS + 1))
+else
+    printf '  %sFAIL%s %s\n' "$RED" "$RESET" "$name"
+    printf '        line2 line_text=%s line3 line_text=%s line4 line_text=%s\n' \
+        "$line2_text" "$line3_text" "$line4_text"
+    sed 's/^/        | /' <<<"$combined" | tail -20
+    FAIL=$((FAIL + 1))
+fi
 
 echo
 if [[ "$FAIL" -gt 0 ]]; then

@@ -4,8 +4,9 @@
 # Usage:
 #   tools/scripts/mutation.sh                          # full run, diff vs baseline
 #   tools/scripts/mutation.sh --diff-only              # run only on changed-file binaries
-#   tools/scripts/mutation.sh --refresh-baseline       # rebuild + overwrite tests/.mull-baseline.json
+#   tools/scripts/mutation.sh --refresh-baseline       # rebuild + merge into tests/.mull-baseline.json
 #   tools/scripts/mutation.sh --target tst_filehelper  # one binary
+#   tools/scripts/mutation.sh --migrate-baseline       # backfill line_text on every existing entry
 #   tools/scripts/mutation.sh --list-targets           # print the instrumented binary names
 #   tools/scripts/mutation.sh --list-sources           # print the 'source<TAB>binary' map
 #   tools/scripts/mutation.sh --strict                 # treat new survivors as fatal (rc=1, default)
@@ -13,8 +14,22 @@
 #   tools/scripts/mutation.sh --help                   # this help
 #
 # Baseline diff:
-#   New survivors (in current run but not baseline) -> fail (rc=1) unless --no-strict.
-#   Killed previously-accepted survivors -> informational note (does not fail).
+#   Survivors are matched to the baseline on {file, mutator, line_text} --
+#   the mutated line's own trimmed, whitespace-collapsed text -- not on line
+#   number, with a nearest-line tie-break when two mutants share identical
+#   text in the same file (real in this codebase: ThumbnailGrabber.cpp has
+#   the same `else if (... MPV_EVENT_END_FILE)` guard twice).  A line number
+#   alone orphans a baseline entry the moment an edit inserts code above it.
+#   New (no baseline match) -> fail (rc=1) unless --no-strict.
+#   Moved (baseline match, but the line shifted) -> informational note.
+#   Killed (baseline entry no longer reproduced, for a file this run
+#     actually mutated) -> informational note (does not fail).
+#   --refresh-baseline merges this run's measured survivors into the files
+#   it actually covered, leaving every other file's baseline entries
+#   untouched -- a full run (no --target/--diff-only) covers every file, so
+#   this degrades to a plain overwrite in that case.  --migrate-baseline
+#   rewrites every existing entry in place, reading the mutated line back out
+#   of the current working tree, instead of running Mull at all.
 #
 # Builds (two trees, parallel):
 #   - Parent:    build/impl-mutation/      with -DMUTATION_TESTING=ON over tests/
@@ -40,7 +55,8 @@
 # invoking this without --diff-only, and see mull_config_for() for why the
 # diff scoping is load-bearing rather than a nicety.
 #
-# Exit codes: 0=clean / 1=new survivors / 2=arg error / 77=runner or build unavailable.
+# Exit codes: 0=clean / 1=new survivors (or a --migrate-baseline orphan) / 2=arg error /
+#             77=runner or build unavailable / 78=no target produced a report.
 set -euo pipefail
 
 # Shared RAM-aware parallelism helper (resolved before the cd below, since it is
@@ -68,9 +84,15 @@ bin_path() {
     esac
 }
 
-MODE="full"
+MODE="full"          # full | diff | migrate -- purely target/binary selection
+                     # (migrate short-circuits before any of that runs at all)
 TARGET=""
 STRICT=1
+REFRESH=0            # set only by --refresh-baseline.  Kept independent of
+                     # MODE so a --target or --diff-only run can refresh too --
+                     # the merge is scope-safe (see the refresh section below),
+                     # so refreshing from a partial run no longer means
+                     # silently deleting every baseline entry it didn't cover.
 # Chunked-sweep support.  A full sweep of backend_scene_tests is ~3700 mutants
 # that each re-run the whole suite -- many hours, on a desktop that will not
 # stay quiet that long.  These let a caller slice it into independently
@@ -92,12 +114,17 @@ while (( $# )); do
         --aggregate-only)   AGGREGATE_ONLY=1; shift ;;
         --list-targets)     LIST_TARGETS=1; shift ;;
         --list-sources)     LIST_SOURCES=1; shift ;;
-        --refresh-baseline) MODE="refresh"; shift ;;
+        --refresh-baseline) REFRESH=1; shift ;;
+        --migrate-baseline) MODE="migrate"; shift ;;
         --target)           TARGET="$2"; shift 2 ;;
         --strict)           STRICT=1; shift ;;
         --no-strict)        STRICT=0; shift ;;
         --help|-h)
-            sed -n '2,39p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+            # The header comment (line 2 through the last consecutive `#` line
+            # before `set -euo pipefail`) printed by its shape, not a hard-coded
+            # line range -- a fixed range rots the moment the header grows and
+            # silently truncates mid-sentence.
+            awk 'NR==1 {next} !/^#/ {exit} {print}' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
             exit 0 ;;
         *) echo "unknown arg: $1" >&2; exit 2 ;;
     esac
@@ -121,6 +148,136 @@ step() { printf '\n%s==>%s %s\n' "$BLUE" "$RESET" "$*"; }
 ok()   { printf '%s  ok%s  %s\n' "$GREEN" "$RESET" "$*"; }
 warn() { printf '%s  warn%s %s\n' "$YELLOW" "$RESET" "$*" >&2; }
 fail() { printf '\n%sFAIL:%s %s\n' "$RED" "$RESET" "$*" >&2; exit 1; }
+
+# ── --migrate-baseline: backfill line_text, no Mull involved ─────────────────
+# Reads every existing entry's file+line straight out of the current working
+# tree and records the trimmed, whitespace-collapsed text found there, so the
+# baseline diff below has something to match on besides a line number.  Pure
+# file reads against the tree Mull would otherwise mutate -- no build, no
+# runner, no distrobox.
+#
+# Known limitation: a pre-migration entry only ever recorded one line, not the
+# start/end span a real Mull report carries, so a mutant whose statement wraps
+# across lines (clang-format's 100-column wrap does this fairly often) gets a
+# truncated line_text here -- only the first physical line, not the whole
+# statement.  The next time Mull actually re-measures that exact mutant, its
+# line_text_of() reads the true span and won't match the truncated one,
+# reporting a one-time "new"/"killed" pair for a mutant that did not change.
+# That is a real, bounded gap: fixing it needs the true span, which only a
+# fresh Mull run provides, so it is left as a known cost of bootstrapping
+# line_text onto an already-drifted baseline rather than guessed at here.
+#
+# An entry whose recorded line no longer holds anything that looks like a
+# statement is a line that has already drifted -- exactly the case this
+# whole change exists to stop silently mismeasuring -- so it is reported as
+# an orphan rather than guessed at.  That is a per-entry decision, not an
+# all-or-nothing one: refusing to write anything just because one entry out
+# of a few hundred has drifted would make this unusable on any baseline that
+# is not freshly refreshed, which defeats the point of a permanent
+# subcommand meant to be re-run over time.  Entries that do resolve are
+# migrated and written; orphans are named and left exactly as they were
+# (still present, matching on {file,mutator} with a null line_text, same as
+# before this ran), and the run exits nonzero to say the baseline is not yet
+# fully migrated -- loud, not silent, without discarding the progress made.
+if [[ "$MODE" == "migrate" ]]; then
+    step "Migrating $BASELINE: recording each entry's mutated-line text"
+    command -v jq >/dev/null || fail "jq not found on host — required to rewrite $BASELINE"
+    command -v python3 >/dev/null || fail "python3 not found on host — required for --migrate-baseline's quoted-literal check"
+    [[ -s "$BASELINE" ]] || fail "no baseline to migrate: $BASELINE"
+    # Second check, beyond "is this a statement at all": does the line even
+    # contain the operator this specific mutator flips?  A drifted line can
+    # look like a perfectly ordinary statement and still be the WRONG one --
+    # real baseline drift did exactly this (found migrating the committed
+    # baseline: a cxx_add_to_sub entry landed on a line with no `+` or `-` at
+    # all, because the code had shifted and dragged an unrelated declaration
+    # into that line number).  Covers every mutator this project's mull.yml
+    # actually produces; a mutator not listed here is left unchecked rather
+    # than guessed at.
+    declare -A _mutator_op=(
+        [cxx_lt_to_ge]='<' [cxx_lt_to_le]='<'
+        [cxx_gt_to_ge]='>' [cxx_gt_to_le]='>'
+        [cxx_ge_to_gt]='>=' [cxx_ge_to_lt]='>='
+        [cxx_le_to_lt]='<=' [cxx_le_to_gt]='<='
+        [cxx_eq_to_ne]='==' [cxx_ne_to_eq]='!='
+        [cxx_add_to_sub]='+' [cxx_sub_to_add]='-'
+        [cxx_mul_to_div]='*' [cxx_div_to_mul]='/'
+        [cxx_rem_to_div]='%'
+        [cxx_pre_inc_to_pre_dec]='++' [cxx_post_inc_to_post_dec]='++'
+    )
+    # An operator character sitting inside a quoted string or char literal is
+    # not the operator Mull could mutate -- src/FileHelper.cpp:101 has exactly
+    # this shape, `after == QLatin1Char('>')`: the only `>` on the line is the
+    # character literal `'>'`, not a comparison, but a plain substring test
+    # can't tell the difference and "migrates" cxx_gt_to_ge/cxx_gt_to_le onto
+    # it. Blank out every quoted span (both quote styles, backslash-escapes
+    # respected) before testing for the operator's presence.
+    _strip_quoted_literals() {
+        WEK_STRIP_INPUT="$1" python3 -c '
+import os, re
+s = os.environ["WEK_STRIP_INPUT"]
+s = re.sub(r"\x27(?:[^\x27\\]|\\.)*\x27", "", s)
+s = re.sub(r"\x22(?:[^\x22\\]|\\.)*\x22", "", s)
+print(s)
+'
+    }
+    ORPHANS=()
+    MIGRATE_TSV="$(mktemp)"
+    trap 'rm -f "$MIGRATE_TSV"' EXIT
+    while IFS=$'\t' read -r idx file line mutator; do
+        [[ -z "$idx" ]] && continue
+        if [[ ! -f "$file" ]]; then
+            ORPHANS+=("$file:$line ($mutator) — file not found in working tree")
+            continue
+        fi
+        raw="$(sed -n "${line}p" "$file" 2>/dev/null || true)"
+        trimmed="$(printf '%s' "$raw" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g')"
+        # A blank line, a line that is nothing but braces/parens/semicolons,
+        # or a comment opener are never what Mull mutated -- the recorded
+        # line has moved and this entry is an orphan, not a mutable statement.
+        # (Regex kept in a variable, not inlined: an unquoted `(` or `;`
+        # inside [[ =~ ]] is parsed as shell syntax before it is a pattern.)
+        _orphan_re='^[(){};]*$'
+        if [[ -z "$trimmed" ]] || [[ "$trimmed" =~ $_orphan_re ]] \
+           || [[ "${trimmed:0:2}" == "//" ]] || [[ "${trimmed:0:2}" == "/*" ]]; then
+            ORPHANS+=("$file:$line ($mutator) — no plausible mutable statement (got: '$trimmed')")
+            continue
+        fi
+        _req_op="${_mutator_op[$mutator]:-}"
+        if [[ -n "$_req_op" ]]; then
+            _unquoted="$(_strip_quoted_literals "$trimmed")"
+            if [[ "$_unquoted" != *"$_req_op"* ]]; then
+                ORPHANS+=("$file:$line ($mutator) — text has no '$_req_op' outside quoted literals for this mutator (got: '$trimmed')")
+                continue
+            fi
+        fi
+        printf '%s\t%s\n' "$idx" "$trimmed" >> "$MIGRATE_TSV"
+    done < <(jq -r '.survivors | to_entries[] | [.key, .value.file, .value.line, .value.mutator] | @tsv' "$BASELINE")
+
+    if [[ ${#ORPHANS[@]} -gt 0 ]]; then
+        warn "orphaned baseline entries (recorded line no longer holds mutable code) — left unmigrated:"
+        printf '  %s\n' "${ORPHANS[@]}" >&2
+    fi
+
+    # Only entries $m actually resolved get a line_text key at all -- an
+    # orphan is left with no key rather than an explicit null, so it stays
+    # visibly unmigrated instead of looking like a deliberate "no text" call.
+    jq --rawfile _map "$MIGRATE_TSV" '
+      ( $_map | rtrimstr("\n") | split("\n") | map(select(length > 0) | split("\t"))
+        | map({(.[0]): .[1]}) | add // {}
+      ) as $m
+      | .survivors |= (
+          to_entries
+          | map(($m[(.key | tostring)]) as $t | if $t != null then (.value + {line_text: $t}) else .value end)
+        )
+    ' "$BASELINE" > "$BASELINE.tmp" && mv "$BASELINE.tmp" "$BASELINE"
+    MIGRATED_N=$(jq '[.survivors[] | select(has("line_text"))] | length' "$BASELINE")
+    TOTAL_N=$(jq '.survivors | length' "$BASELINE")
+    if [[ ${#ORPHANS[@]} -gt 0 ]]; then
+        fail "migrated $MIGRATED_N/$TOTAL_N entries; ${#ORPHANS[@]} orphaned (see above) — fix or drop them by hand, then re-run --migrate-baseline"
+    fi
+    ok "migrated $MIGRATED_N/$TOTAL_N baseline entries with line_text"
+    exit 0
+fi
 
 # ── Distrobox routing (mirrors preflight.sh) ─────────────────────────────────
 inside_fedora() {
@@ -353,6 +510,111 @@ ANY_REPORT=0
 # MOC ignore regex (jq test()) — Qt's autogen tree is constant churn and not
 # first-party code; mutants in moc_*.cpp / *.moc / *_autogen/ paths are noise.
 MOC_IGNORE='_autogen/|/moc_|\.moc$'
+
+# Shared jq function library, prepended (string-concatenated, not passed as a
+# separate program) to every jq filter below that needs it.  One definition of
+# "same mutant" for: extracting a mutant's own source text out of an Elements
+# report, matching survivors across a run against the baseline, and merging
+# survivor/killed lists that came from different targets or different chunks
+# of a sweep.
+#
+#   line_text_of(fileval; startline; endline) -- slice fileval.source (the
+#     whole file's text, as Elements embeds it) between the mutant's start
+#     and end line, trim, and collapse internal whitespace runs to one space.
+#     Collapsing (not just trimming) matters here: this repo lands standalone
+#     clang-format commits, and a plain trim still breaks on an internal
+#     reflow.  Returns null when fileval carries no source (the IDE-reporter
+#     fallback path) -- both sides of a comparison come back null then, and
+#     null equals null, so that path degrades to matching on {file,mutator}.
+#
+#   key_of(x) -- {file, mutator, line_text} as an array, used as the identity
+#     for "same mutant" everywhere below.  A line number is deliberately not
+#     part of it: inserting code above a survivor shifts its line without
+#     changing what it is, and re-keying on the raw line orphans the entry.
+#
+#   greedy_pairs(bs; cs) / match_all(base; cur) -- within one key, two
+#     mutants can share identical text at different lines (ThumbnailGrabber.cpp
+#     has the same `else if (... MPV_EVENT_END_FILE)` guard twice); pairing by
+#     nearest line distance, closest first, resolves that instead of the first
+#     candidate silently swallowing every later one.  match_all returns
+#     {pairs, leftover_b, leftover_c}: pairs are matched mutants (same
+#     identity, possibly a different line), leftover_c is "in cur but nothing
+#     in base matches" (new), leftover_b is "in base but nothing in cur
+#     matches" (killed, once restricted to files this run actually mutated).
+#
+#   fold_merge(arrs) -- folds a list of survivor/killed arrays (one per
+#     target, or one per chunk of a --no-wipe sweep) into one canonical array,
+#     collapsing matched entries into one.  Needed because a chunked sweep can
+#     span a code edit between chunks: without it, one physical mutant
+#     reported at two different lines by two chunks counts as two.
+#
+#   subtract_dead(cur; killed) -- survivors in cur with no matching identity
+#     in killed.  A mutant killed by one target's suite must not resurface as
+#     surviving because another target links the same translation unit
+#     without exercising that line.
+JQ_LIB='
+def line_text_of(fileval; startline; endline):
+  (fileval.source) as $src
+  | if ($src == null) then null
+    else
+      ($src | split("\n")) as $lines
+      | ((startline // 0) | if . < 1 then 1 else . end) as $s
+      | ((endline // $s) | if . < $s then $s else . end) as $e
+      | ($lines[($s - 1):$e] | join(" "))
+      | gsub("^\\s+|\\s+$"; "")
+      | gsub("\\s+"; " ")
+    end;
+
+def key_of(x): [x.file, x.mutator, (x.line_text // null)];
+
+def greedy_pairs(bs; cs):
+  if (bs | length) == 0 or (cs | length) == 0 then
+    {pairs: [], leftover_b: bs, leftover_c: cs}
+  else
+    ( [ range(0; bs | length) as $bi
+        | range(0; cs | length) as $ci
+        | {bi: $bi, ci: $ci,
+           d: ((bs[$bi].line // 0) - (cs[$ci].line // 0) | if . < 0 then -. else . end)}
+      ] | sort_by(.d) | .[0]
+    ) as $best
+    | (bs | to_entries | map(select(.key != $best.bi) | .value)) as $bs2
+    | (cs | to_entries | map(select(.key != $best.ci) | .value)) as $cs2
+    | greedy_pairs($bs2; $cs2) as $rest
+    | { pairs: ([{b: bs[$best.bi], c: cs[$best.ci]}] + $rest.pairs),
+        leftover_b: $rest.leftover_b,
+        leftover_c: $rest.leftover_c }
+  end;
+
+# base/cur are captured into $base/$cur immediately: jq function arguments are
+# filters, re-evaluated wherever the parameter name appears, not values frozen
+# at the call site.  The reduce below rebinds `.` to its own accumulator, so a
+# caller passing the bare `.` as base/cur (fold_merge does) would otherwise see
+# base/cur silently start meaning "the reduce accumulator" partway through.
+def match_all(base; cur):
+  (base) as $base
+  | (cur) as $cur
+  | ($base + $cur | map(key_of(.)) | unique) as $keys
+  | reduce $keys[] as $k (
+      {pairs: [], leftover_b: [], leftover_c: []};
+      . as $acc
+      | ($base | map(select(key_of(.) == $k))) as $bs
+      | ($cur  | map(select(key_of(.) == $k))) as $cs
+      | greedy_pairs($bs; $cs) as $r
+      | { pairs: ($acc.pairs + $r.pairs),
+          leftover_b: ($acc.leftover_b + $r.leftover_b),
+          leftover_c: ($acc.leftover_c + $r.leftover_c) }
+    );
+
+def fold_merge(arrs):
+  reduce arrs[] as $nxt ([];
+    . as $acc
+    | match_all($acc; $nxt) as $r
+    | $r.leftover_b + ($r.pairs | map(.b)) + $r.leftover_c
+  );
+
+def subtract_dead(cur; killed):
+  match_all(killed; cur).leftover_c;
+'
 # Parallelism + timeout: Mull defaults to serial, which makes a single Qt test
 # binary run ~15-20 min (a single tst_filehelper had ~155 mutants × ~7s each).
 # Default to all cores (nproc); the per-process HOME isolation in
@@ -521,31 +783,44 @@ for t in "${TARGETS[@]}"; do
             continue
         fi
         ANY_REPORT=1
-        # Normalise Elements: .files{path => {mutants: [{id, mutatorName, location.start.line, status}]}}
+        # Normalise Elements: .files{path => {source, mutants: [{id, mutatorName, location, status}]}}
         # MOC ignore applied here so the baseline never accumulates Qt autogen noise.
-        jq --arg leaf "$repo_leaf" --arg moc "$MOC_IGNORE" '
+        # line_text comes from $e.value.source, which Elements embeds per file;
+        # see line_text_of() in JQ_LIB for why it is trimmed and whitespace-collapsed.
+        jq --arg leaf "$repo_leaf" --arg moc "$MOC_IGNORE" "$JQ_LIB"'
           [ .files | to_entries[] as $e
             | $e.value.mutants[]
             | select(.status == "Survived" or .status == "survived")
             | {file: ($e.key | sub("^.*/"+$leaf+"/"; "")),
                line: (.location.start.line // 0),
-               mutator: (.mutatorName // .mutator // "unknown")}
+               mutator: (.mutatorName // .mutator // "unknown"),
+               line_text: line_text_of($e.value; .location.start.line;
+                                       (.location.end.line // .location.start.line // 0))}
             | select(.file | test($moc) | not) ]
         ' "$rpt" > "$target_dir/survivors.json"
         # The same mutant seen by a target that DOES cover it.  Timeout counts:
         # a mutant that hangs the suite has been detected just as surely as one
         # that fails an assertion.
-        jq --arg leaf "$repo_leaf" --arg moc "$MOC_IGNORE" '
+        jq --arg leaf "$repo_leaf" --arg moc "$MOC_IGNORE" "$JQ_LIB"'
           [ .files | to_entries[] as $e
             | $e.value.mutants[]
             | select((.status // "") | ascii_downcase | . == "killed" or . == "timeout")
             | {file: ($e.key | sub("^.*/"+$leaf+"/"; "")),
                line: (.location.start.line // 0),
-               mutator: (.mutatorName // .mutator // "unknown")}
+               mutator: (.mutatorName // .mutator // "unknown"),
+               line_text: line_text_of($e.value; .location.start.line;
+                                       (.location.end.line // .location.start.line // 0))}
             | select(.file | test($moc) | not) ]
         ' "$rpt" > "$target_dir/killed.json"
     else
-        # IDE reporter: prints "path/file.cpp:line:col: <mutator> Survived" lines.
+        # IDE reporter: prints "path/file.cpp:line:col: <mutator> Survived" lines,
+        # with no per-file source text to slice a line_text out of -- entries from
+        # this path carry {file,line,mutator} only, which degrades matching to the
+        # pre-line_text behaviour (null equals null on both sides of a comparison).
+        # Mull is pinned at 0.31.1 (src/backend_scene/cmake/FetchMull.cmake), which
+        # supports --reporters=Elements, so this fallback is not expected to fire
+        # in this project's build environments; it exists for a Mull that predates
+        # Elements support.
         out="$target_dir/ide.log"
         "$RUNNER" --workers "$MULL_WORKERS" \
                   --timeout "$MULL_TIMEOUT_MS" \
@@ -594,28 +869,30 @@ if [[ "$ANY_REPORT" == "0" ]]; then
 fi
 
 # ── Aggregate + dedupe survivors across targets ───────────────────────────────
-# Shape: { survivors: [ {file, line, mutator}, ... ] }
+# Shape: { survivors: [ {file, line, mutator, line_text}, ... ] }
 # A mutant is dead if ANY target killed it.  Several binaries link the same
 # translation unit -- a test for one class pulls in a helper .cpp for a single
 # function -- so the same mutant is offered to suites that never execute that
 # line.  Unioning the per-target survivor lists therefore reports mutants the
 # owning suite kills, which reads as a regression and is really a binary being
 # asked about code it does not test.  Subtract what was killed anywhere.
+#
+# Both this union and the killed union below merge via fold_merge/subtract_dead
+# (JQ_LIB) -- matching on {file, mutator, line_text} with a nearest-line
+# tie-break -- rather than an exact {file, line, mutator} key.  A chunked
+# sweep (--no-wipe / --aggregate-only) can span a code edit between chunks; an
+# exact-line key would then count one physical mutant, reported by two chunks
+# at two different lines, as two.
 KILLED_JSON="$OUT_DIR/killed-any.json"
 if compgen -G "$OUT_DIR/*/killed.json" >/dev/null; then
-    jq -s '[ .[][] ] | unique_by({file, line, mutator})' \
-       "$OUT_DIR"/*/killed.json > "$KILLED_JSON"
+    jq -s "$JQ_LIB"'fold_merge(.)' "$OUT_DIR"/*/killed.json > "$KILLED_JSON"
 else
     echo '[]' > "$KILLED_JSON"
 fi
-jq -s --slurpfile killed "$KILLED_JSON" '
-  ($killed[0] | map({key: "\(.file)|\(.line)|\(.mutator)", value: true}) | from_entries) as $dead
-  | [ .[][] ]
-  | unique_by({file, line, mutator})
-  | map(select($dead["\(.file)|\(.line)|\(.mutator)"] | not))
-  | sort_by([.file, .line, .mutator])
-  | {survivors: .}
-' "$OUT_DIR"/*/survivors.json > "$OUT_DIR/all.json"
+jq -s "$JQ_LIB"'
+  fold_merge(.) as $union
+  | { survivors: (subtract_dead($union; $killed[0]) | sort_by([.file, .line, .mutator])) }
+' --slurpfile killed "$KILLED_JSON" "$OUT_DIR"/*/survivors.json > "$OUT_DIR/all.json"
 COUNT=$(jq '.survivors | length' "$OUT_DIR/all.json")
 ok "aggregated $COUNT surviving mutant(s)"
 
@@ -637,35 +914,90 @@ if [[ -n "$STRAY" ]]; then
     fail "excluded paths were mutated — Mull did not read its config (MULL_CONFIG did not reach it)"
 fi
 
-# ── Refresh-or-diff ───────────────────────────────────────────────────────────
-if [[ "$MODE" == "refresh" ]]; then
-    jq '. + {_comment: "Surviving mutants accepted as baseline. Run tools/scripts/mutation.sh --refresh-baseline to update; new entries in a non-refresh run fail the gate."}' \
-        "$OUT_DIR/all.json" > "$BASELINE"
-    ok "baseline refreshed: $BASELINE ($COUNT survivors)"
-    exit 0
+# Files this run actually mutated (survived OR killed, by any target) -- used
+# both to scope --refresh-baseline (never touch a file no target here
+# measured) and to decide whether a stale baseline entry can honestly be
+# called "resolved" rather than merely unmeasured this run.
+SCOPE_FILES_JSON="$OUT_DIR/scope-files.json"
+if compgen -G "$OUT_DIR/*/survivors.json" >/dev/null; then
+    jq -s '[ .[][] | .file ] | unique' "$OUT_DIR"/*/survivors.json "$OUT_DIR"/*/killed.json \
+        > "$SCOPE_FILES_JSON"
+else
+    echo '[]' > "$SCOPE_FILES_JSON"
 fi
 
-if [[ ! -s "$BASELINE" ]]; then
+if [[ ! -s "$BASELINE" && "$REFRESH" != "1" ]]; then
     warn "no baseline yet — run tools/scripts/mutation.sh --refresh-baseline to seed"
     exit 0
 fi
 
-# New = in current run but not baseline (keyed on file+line+mutator).
-NEW=$(jq -s '
-  .[0].survivors as $base
-  | .[1].survivors
-  | map(. as $s
-        | select($base | map({file:.file, line:.line, mutator:.mutator})
-                      | index({file:$s.file, line:$s.line, mutator:$s.mutator}) | not))
-' "$BASELINE" "$OUT_DIR/all.json")
-N=$(jq 'length' <<<"$NEW")
+# ── Compare against the baseline: new / moved / killed ────────────────────────
+# Matches on {file, mutator, line_text} rather than {file, line, mutator}: an
+# edit that inserts a line above a baseline entry shifts its line number but
+# not its identity, and re-keying on the raw line orphans it -- reported as a
+# brand-new survivor at the shifted line while the stale entry rots at the old
+# one, unable to ever match anything again.  The reverse also happens: two
+# DIFFERENT mutants can legitimately share a line and mutator (an edit that
+# changes that exact expression's operands without moving it), and matching
+# on {file,mutator} alone -- ignoring the text -- would treat that as no
+# change at all.  Duplicate text at different lines (real in this codebase --
+# ThumbnailGrabber.cpp has the same `else if (... MPV_EVENT_END_FILE)` guard
+# twice) is resolved by nearest-line tie-break rather than by whichever one jq
+# sees first.
+BASE_SURVIVORS_JSON="$( [[ -s "$BASELINE" ]] && jq -c '.survivors // []' "$BASELINE" || echo '[]' )"
+CMP="$(jq -n "$JQ_LIB"'
+  match_all($base; $cur) as $m
+  | { new: $m.leftover_c,
+      moved: [ $m.pairs[] | select(.b.line != .c.line) ],
+      killed: [ $m.leftover_b[] | select(.file as $f | $scope | index($f) != null) ] }
+' --argjson base "$BASE_SURVIVORS_JSON" \
+  --argjson cur "$(jq -c '.survivors' "$OUT_DIR/all.json")" \
+  --argjson scope "$(cat "$SCOPE_FILES_JSON")")"
+
+# `|| true` on every head-piped listing below: head closes the pipe once it
+# has enough lines, jq takes SIGPIPE, and under `set -euo pipefail` that used
+# to kill the script with 141 before it reached its own verdict -- so a
+# strict run reported a signal instead of the survivor failure it had just
+# computed.
+MOVED_N=$(jq '.moved | length' <<<"$CMP")
+if [[ "$MOVED_N" -gt 0 ]]; then
+    warn "$MOVED_N baseline entry/entries moved (same mutant, different line):"
+    jq -r '.moved[] | "  moved: \(.b.file) [\(.b.mutator)] line \(.c.line), was line \(.b.line)"' \
+        <<<"$CMP" | head -25 || true
+fi
+
+KILLED_N=$(jq '.killed | length' <<<"$CMP")
+if [[ "$KILLED_N" -gt 0 ]]; then
+    ok "$KILLED_N baseline entry/entries no longer survive:"
+    jq -r '.killed[] | "  \(.file):\(.line) [\(.mutator)] no longer survives (baseline entry not reproduced)"' \
+        <<<"$CMP" | head -25 || true
+fi
+
+if [[ "$REFRESH" == "1" ]]; then
+    # Scope-safe merge: a baseline entry for a file this run did not mutate is
+    # left exactly as it was.  A full sweep (no --target/--diff-only) mutates
+    # every file the baseline could possibly cite, so $out_of_scope comes back
+    # empty and this degrades to the old whole-file overwrite -- the common
+    # case is unchanged.  A --target or --diff-only refresh instead merges:
+    # only the files it actually measured are replaced by what it measured.
+    OLD_JSON="$( [[ -s "$BASELINE" ]] && cat "$BASELINE" || echo '{}' )"
+    OLD_COUNT=$(jq '.survivors // [] | length' <<<"$OLD_JSON")
+    jq '
+      (.survivors // []) as $old
+      | ($old | map(select(.file as $f | ($scope | index($f)) == null))) as $out_of_scope
+      | . + {survivors: ($out_of_scope + $cur | sort_by([.file, .line, .mutator])),
+             _comment: "Surviving mutants accepted as baseline. Run tools/scripts/mutation.sh --refresh-baseline to update; new entries in a non-refresh run fail the gate."}
+    ' --argjson scope "$(cat "$SCOPE_FILES_JSON")" \
+      --argjson cur "$(jq -c '.survivors' "$OUT_DIR/all.json")" \
+      <<<"$OLD_JSON" > "$BASELINE"
+    ok "baseline refreshed (scope-safe): $BASELINE ($(jq '.survivors | length' "$BASELINE") survivors, $OLD_COUNT before)"
+    exit 0
+fi
+
+N=$(jq '.new | length' <<<"$CMP")
 if [[ "$N" -gt 0 ]]; then
     warn "$N new surviving mutant(s):"
-    # `|| true`: head closes the pipe at 25 lines, jq takes SIGPIPE, and under
-    # `set -euo pipefail` that killed the script with 141 before it could reach
-    # its own verdict below -- so a strict run reported a signal instead of the
-    # survivor failure it had just computed.
-    jq -r '.[] | "  \(.file):\(.line) [\(.mutator)]"' <<<"$NEW" | head -25 || true
+    jq -r '.new[] | "  \(.file):\(.line) [\(.mutator)]"' <<<"$CMP" | head -25 || true
     if [[ "$STRICT" == "1" ]]; then
         fail "$N new surviving mutant(s) — review and either fix code or run --refresh-baseline"
     fi

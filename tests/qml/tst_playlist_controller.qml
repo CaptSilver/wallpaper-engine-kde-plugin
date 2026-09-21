@@ -284,10 +284,6 @@ TestCase {
         ctrl.videoListModel = savedVid;
     }
 
-    function test_serveFilteredPickWithItems() {
-        ctrl._serveFilteredPick();
-    }
-
     function test_pauseGateFlipsTriggerHandlers() {
         ctrl.desktopOk = true;
         ctrl.noRandomWhilePaused = true;
@@ -337,15 +333,28 @@ TestCase {
             'import QtQuick; QtObject { property var model: ListModel{} }', tc);
         const saved = ctrl.wpListModel;
         ctrl.wpListModel = emptyModel;
+        ctrl.manager.acceptPickCount = 0;
+        ctrl.manager.lastAcceptPickArg = undefined;
         ctrl._serveFilteredPick();
+        // Restore before asserting: compare() returns out of the function on
+        // failure, which would otherwise leave every later test running
+        // against this throwaway model.
         ctrl.wpListModel = saved;
+        compare(ctrl.manager.acceptPickCount, 1,
+                "empty wpListModel must still serve a pick so the C++ timer re-arms");
+        compare(ctrl.manager.lastAcceptPickArg, "");
     }
 
     function test_nullWpListServesEmptyPick() {
         const saved = ctrl.wpListModel;
         ctrl.wpListModel = null;
+        ctrl.manager.acceptPickCount = 0;
+        ctrl.manager.lastAcceptPickArg = undefined;
         ctrl._serveFilteredPick();
         ctrl.wpListModel = saved;
+        compare(ctrl.manager.acceptPickCount, 1,
+                "null wpListModel must still serve a pick so the C++ timer re-arms");
+        compare(ctrl.manager.lastAcceptPickArg, "");
     }
 
     // _serveFilteredPick must forward _lastFilteredPickIdx as the `cur`

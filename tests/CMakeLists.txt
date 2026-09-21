@@ -715,8 +715,13 @@ endif()
 # resort fallback only.
 find_program(QMLTESTRUNNER NAMES qmltestrunner-qt6 qmltestrunner6 qmltestrunner)
 if(QMLTESTRUNNER)
+    # -maxwarnings 0: qmltestrunner's own cap on console output defaults to
+    # 2000 messages, after which it silently drops everything -- including
+    # any real QWARN a later test file emits. Without this, a noisy file
+    # (e.g. tst_pages_deep.qml's BFS walk) can eat the whole budget and hide
+    # failures/warnings in files that happen to run after it.
     add_test(NAME tst_qml
-        COMMAND ${QMLTESTRUNNER} -input ${CMAKE_CURRENT_SOURCE_DIR}/qml
+        COMMAND ${QMLTESTRUNNER} -input ${CMAKE_CURRENT_SOURCE_DIR}/qml -maxwarnings 0
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     # QML_XHR_ALLOW_FILE_READ=1: source-text-grep tests (e.g.
     # tst_main.qml::test_workshopid_isPureBinding_noSideEffectInDecl)
@@ -774,7 +779,10 @@ if(QMLTESTRUNNER)
                 QML_DISABLE_DISK_CACHE=1
                 QV4_DISABLE_DISK_CACHE=1
                 XDG_CACHE_HOME=${_qmlcov_dir}/cache
-                bash -c "${QMLTESTRUNNER} -input ${_qmlcov_tests} > ${_qmlcov_log} 2>&1; cat ${_qmlcov_log}; true"
+                # -maxwarnings 0: same reason as tst_qml above -- one noisy
+                # file mid-run must not zero out the __COV_TICK__ markers
+                # every file after it depends on.
+                bash -c "${QMLTESTRUNNER} -input ${_qmlcov_tests} -maxwarnings 0 > ${_qmlcov_log} 2>&1; cat ${_qmlcov_log}; true"
         COMMAND ${Python3_EXECUTABLE}
                 "${_wekde_repo_root}/tools/qmlcov/report.py"
                 --catalog   "${_qmlcov_cat}"
@@ -858,6 +866,17 @@ endif()
 # sandbox, runs in <1s.
 add_test(NAME test_mutation
          COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_mutation.sh)
+
+# Regression test for the qmltestrunner -maxwarnings truncation bug (see the
+# two -maxwarnings 0 additions above). Drives the real tst_qml invocation
+# resolved via `ctest --show-only`, so it needs the binary dir + this
+# directory as arguments. SKIP_RETURN_CODE covers a PATH that has no
+# qmltestrunner (or no python3) at test-run time, independent of whatever
+# QMLTESTRUNNER resolved to at configure time.
+add_test(NAME test_qmlcov_warning_budget
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_qmlcov_warning_budget.sh
+                 ${CMAKE_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(test_qmlcov_warning_budget PROPERTIES SKIP_RETURN_CODE 77)
 
 # ── Master test-target enumeration ────────────────────────────────────────────
 # The one place that names every tst_* target this file can define (each is

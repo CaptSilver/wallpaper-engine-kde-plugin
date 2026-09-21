@@ -165,4 +165,70 @@ TestCase {
         // 2 real entries + the skipped empty one; addReadRoot only fires twice.
         compare(fh.addReadRootCount, a0 + 2);
     }
+
+    // ── Cache GC / quota / workshop-manifest passthroughs ─────────────────
+    function test_prune_orphan_thumbnails_forwardsArgsAndDefaultsUndefinedToEmptyArrays() {
+        const fh = _findFileHelper();
+        verify(fh !== null);
+        const c0 = fh.pruneOrphanThumbnailsCount;
+        const freed = pyext.prune_orphan_thumbnails("/cache/root");
+        compare(fh.pruneOrphanThumbnailsCount, c0 + 1);
+        compare(fh.lastPruneOrphanThumbnailsArgs.cacheRoot, "/cache/root");
+        compare(fh.lastPruneOrphanThumbnailsArgs.installedDirs, []);
+        compare(fh.lastPruneOrphanThumbnailsArgs.videoDirs, []);
+        compare(freed, 0);
+    }
+
+    function test_enforce_cache_quota_forwardsRootsAndQuota() {
+        const fh = _findFileHelper();
+        verify(fh !== null);
+        const c0 = fh.enforceCacheQuotaCount;
+        pyext.enforce_cache_quota(["/cache/root"], 12345);
+        compare(fh.enforceCacheQuotaCount, c0 + 1);
+        compare(fh.lastEnforceCacheQuotaArgs.roots, ["/cache/root"]);
+        compare(fh.lastEnforceCacheQuotaArgs.quotaBytes, 12345);
+    }
+
+    function test_enforce_cache_quota_force_forwardsRootsAndQuota() {
+        const fh = _findFileHelper();
+        verify(fh !== null);
+        const c0 = fh.enforceCacheQuotaForceCount;
+        pyext.enforce_cache_quota_force(["/cache/root"], 999);
+        compare(fh.enforceCacheQuotaForceCount, c0 + 1);
+        compare(fh.lastEnforceCacheQuotaForceArgs.roots, ["/cache/root"]);
+        compare(fh.lastEnforceCacheQuotaForceArgs.quotaBytes, 999);
+    }
+
+    function test_video_thumb_dir_appendsVideoThumbsUnderNativeCacheRoot() {
+        compare(pyext.video_thumb_dir("file:///tmp/cache"), "/tmp/cache/video-thumbs");
+    }
+
+    function test_read_workshop_manifest_forwardsPathAndReturnsObject() {
+        const fh = _findFileHelper();
+        verify(fh !== null);
+        const c0 = fh.readWorkshopManifestCount;
+        const manifest = pyext.read_workshop_manifest("/steam/library");
+        compare(fh.readWorkshopManifestCount, c0 + 1);
+        compare(fh.lastReadWorkshopManifestPath, "/steam/library");
+        compare(typeof manifest, "object");
+    }
+
+    // The inner FileHelper's wallpaperDirChanged must forward through
+    // Pyext's own signal of the same name (onWallpaperDirChanged in the
+    // Connections block) — the QML-side WallpaperListModel connects to
+    // pyext, not to the C++ FileHelper directly.
+    SignalSpy {
+        id: wallpaperDirChangedSpy
+        target: pyext
+        signalName: "wallpaperDirChanged"
+    }
+
+    function test_onWallpaperDirChanged_forwardsFromInnerFileHelper() {
+        const fh = _findFileHelper();
+        verify(fh !== null);
+        wallpaperDirChangedSpy.clear();
+        fh.wallpaperDirChanged("/tmp/new-wallpaper-dir");
+        compare(wallpaperDirChangedSpy.count, 1);
+        compare(wallpaperDirChangedSpy.signalArguments[0][0], "/tmp/new-wallpaper-dir");
+    }
 }

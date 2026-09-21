@@ -1882,6 +1882,40 @@ TestCase {
              + "requestDirSize stayed at " + before);
     }
 
+    // "Run cache GC now" is a plain QtQuick.Controls Button (its clicked()
+    // signal takes no arguments) — fire it directly, same as the sibling
+    // buttons on this page above.
+    function _findRunCacheGcButton() {
+        return _firstByPredicate(c => c && typeof c.clicked === "function" &&
+                                      typeof c.text === "string" &&
+                                      c.text.indexOf("Run cache GC now") >= 0);
+    }
+
+    // cfg_CacheQuotaMB is a property alias declared directly on SettingPage
+    // (not re-aliased up through config.qml, unlike cfg_BackgroundColor), so
+    // finding SettingPage itself is how the test drives the quota input.
+    function _findSettingPageRoot() {
+        return _firstByPredicate(c => c && typeof c.cfg_CacheQuotaMB !== "undefined");
+    }
+
+    function test_runCacheGcNow_callsEnforceCacheQuotaForceWithMbConvertedToBytes() {
+        const btn = _findRunCacheGcButton();
+        verify(btn !== null, "'Run cache GC now' button unreachable from cfg tree");
+        const sp = _findSettingPageRoot();
+        verify(sp !== null, "SettingPage unreachable from cfg tree");
+        const fh = _findFileHelper();
+        verify(fh !== null);
+
+        if (cfg.plugin_info) cfg.plugin_info.cache_path = "file:///tmp/cache";
+        sp.cfg_CacheQuotaMB = 500;
+
+        const before = fh.enforceCacheQuotaForceCount;
+        btn.clicked();
+        compare(fh.enforceCacheQuotaForceCount, before + 1);
+        compare(fh.lastEnforceCacheQuotaForceArgs.quotaBytes, 500 * 1024 * 1024,
+                "quota must convert from MB (SpinBox) to bytes before forwarding");
+    }
+
     // Pointing the plugin at a different cache directory must re-read the
     // size too — same root cause as the wipe case above.
     function test_shaderCacheSize_reQueriesWhenTheCachePathChanges() {

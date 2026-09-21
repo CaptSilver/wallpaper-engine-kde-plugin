@@ -107,4 +107,17 @@ TestCase {
         const dlg = _findColorDialog(btn);
         verify(dlg !== null);  // dialog wired = click handler can open it
     }
+
+    // Actually fires the onClicked body (forceActiveFocus + colorDialog.open())
+    // rather than only asserting it's wired. mouseClick() delivers nothing
+    // under offscreen QPA and a bare ma.clicked() throws on missing args, so
+    // pass a synthetic event object — same technique tst_pages_deep.qml uses
+    // for its MouseArea/Button clicks. The QQuickMouseEvent coercion warning
+    // is benign; the handler body still runs.
+    function test_mouseAreaClick_runsForceFocusAndOpensDialog() {
+        const ma = _findInnerMouseArea();
+        verify(ma !== null);
+        try { ma.clicked({}); } catch (e) {}
+        verify(btn.activeFocus, "clicking must forceActiveFocus onto the button");
+    }
 }

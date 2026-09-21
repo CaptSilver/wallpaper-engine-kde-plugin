@@ -471,6 +471,83 @@ TestCase {
         compare(mgr.skipCurrentCount, 0, "Previous must not spend the skip budget");
     }
 
+    // ── mute / unmute / toggleMute / currentWorkshopId ───────────────────
+    // All four read/write `wallpaper.configuration` — a context property the
+    // real Plasma wallpaper package loader injects, absent under
+    // qmltestrunner (and in the config-dialog/editor context too, which is
+    // exactly why each guards on `typeof wallpaper !== "undefined"`). Here
+    // they must be safe, silent no-ops rather than a ReferenceError.
+    function test_mute_isSafeToCallWithoutWallpaperContext() {
+        ctrl.mute();
+    }
+
+    function test_unmute_isSafeToCallWithoutWallpaperContext() {
+        ctrl.unmute();
+    }
+
+    function test_toggleMute_isSafeToCallWithoutWallpaperContext() {
+        ctrl.toggleMute();
+    }
+
+    function test_currentWorkshopId_returnsEmptyStringWithoutWallpaperContext() {
+        compare(ctrl.currentWorkshopId(), "");
+    }
+
+    // ── activatePlaylistById / reload / current* getters ─────────────────
+    function test_activatePlaylistById_callsSetActivePlaylistId() {
+        tc.lastSet = {};
+        ctrl.activatePlaylistById("pl-42");
+        compare(tc.lastSet.fn, "setActivePlaylistId");
+        compare(tc.lastSet.id, "pl-42");
+    }
+
+    // Runtime mode (editorMode: false, the fixture's default): reload() both
+    // bumps the cross-context seq AND re-reads playlists.json via the
+    // manager.
+    function test_reload_bumpsSeqAndReloadsManagerInRuntimeMode() {
+        const savedBump = ctrl.bumpReloadSeq;
+        let bumpCount = 0;
+        ctrl.bumpReloadSeq = function() { bumpCount += 1; };
+        ctrl.manager.reloadCount = 0;
+        ctrl.reload();
+        compare(bumpCount, 1, "reload() must always bump the cross-context seq");
+        compare(ctrl.manager.reloadCount, 1, "runtime mode must re-read playlists.json");
+        ctrl.bumpReloadSeq = savedBump;
+    }
+
+    // Editor mode: the dialog's own mgr already reflects what it just wrote
+    // to playlists.json, so reload() must still bump the cross-context seq
+    // (the runtime side needs the nudge) but skip mgr.reload() on itself.
+    function test_reload_skipsManagerReloadInEditorMode() {
+        const savedBump = ctrl.bumpReloadSeq;
+        const savedEditorMode = ctrl.editorMode;
+        let bumpCount = 0;
+        ctrl.bumpReloadSeq = function() { bumpCount += 1; };
+        ctrl.editorMode = true;
+        ctrl.manager.reloadCount = 0;
+        ctrl.reload();
+        compare(bumpCount, 1, "reload() must always bump the cross-context seq");
+        compare(ctrl.manager.reloadCount, 0, "editor mode must not re-read playlists.json on itself");
+        ctrl.editorMode = savedEditorMode;
+        ctrl.bumpReloadSeq = savedBump;
+    }
+
+    function test_currentPlaylistId_reflectsActivePlaylistIdRead() {
+        const saved = ctrl.activePlaylistIdRead;
+        ctrl.activePlaylistIdRead = "pl-7";
+        compare(ctrl.currentPlaylistId(), "pl-7");
+        ctrl.activePlaylistIdRead = "";
+        compare(ctrl.currentPlaylistId(), "", "empty read must report the empty-string default");
+        ctrl.activePlaylistIdRead = saved;
+    }
+
+    function test_currentItemIndex_reflectsCurrentItemIndexRead() {
+        const saved = ctrl.currentItemIndexRead;
+        ctrl.currentItemIndexRead = 4;
+        compare(ctrl.currentItemIndex(), 4);
+        ctrl.currentItemIndexRead = saved;
+    }
+
     // Filtered Library has no stored item list, so "back" means re-serving
     // what was on screen before the last pick.
     function test_filteredPrevious_reservesTheItemBeforeTheCurrentOne() {

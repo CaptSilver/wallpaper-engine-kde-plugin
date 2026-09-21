@@ -128,9 +128,11 @@ QtObject {
     property var  lastSeedLastSeenVersionsPath: undefined
     property int  pruneOrphanThumbnailsCount: 0
     property int  enforceCacheQuotaCount:     0
+    property int  enforceCacheQuotaForceCount: 0
     property int  requestCacheGcCount:        0
     property var  lastPruneOrphanThumbnailsArgs: ({})
     property var  lastEnforceCacheQuotaArgs:     ({})
+    property var  lastEnforceCacheQuotaForceArgs: ({})
     property var  lastRequestCacheGcArgs:        ({})
 
     function readWorkshopManifest(steamLibraryPath) {
@@ -177,8 +179,8 @@ QtObject {
         return 0;
     }
     function enforceCacheQuotaForce(roots, quotaBytes) {
-        enforceCacheQuotaCount += 1;
-        lastEnforceCacheQuotaArgs = { roots: roots, quotaBytes: quotaBytes };
+        enforceCacheQuotaForceCount += 1;
+        lastEnforceCacheQuotaForceArgs = { roots: roots, quotaBytes: quotaBytes };
         return 0;
     }
     // Asynchronous in production (QThreadPool + a queued cacheGcFinished);

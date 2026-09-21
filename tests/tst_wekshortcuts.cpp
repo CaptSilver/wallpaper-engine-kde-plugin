@@ -1,19 +1,20 @@
 // Unit tests for wekde::WekShortcuts -- the KGlobalAccel-backed action
-// collection that routes user shortcuts to the WekControl D-Bus surface
-// (GAP-3 + GAP-4 chain).  Tests are routing + structural; they don't run
-// the global shortcut daemon end-to-end (that's a manual integration on a
-// live plasmashell).
+// collection that routes user shortcuts to the WekControl D-Bus surface.
+// Tests are routing + structural; they don't run the global shortcut daemon
+// end-to-end (that's a manual integration on a live plasmashell).
 //
-// Per feedback_distrobox_dbus_launch_missing -- when no session bus is
-// available, the action's async D-Bus call goes nowhere.  The triggered()
-// signal still fires; we assert that contract instead of the bus delivery.
+// When no session bus is available (a container without dbus-launch), the
+// action's async D-Bus call goes nowhere.  The triggered() signal still
+// fires; we assert that contract instead of the bus delivery.
 
 #include "../src/WekShortcuts.hpp"
 
 #include <KActionCollection>
+#include <KGlobalAccel>
 #include <QAction>
 #include <QDBusConnection>
 #include <QGuiApplication>
+#include <QHash>
 #include <QSignalSpy>
 #include <QtTest/QtTest>
 
@@ -27,6 +28,7 @@ private slots:
     void componentDisplayName_matchesSystemSettings();
     void allActionLabels_areNonEmpty();
     void allActions_areDefaultUnbound();
+    void dispatchTable_matchesExpectedDBusMembers();
     void triggerNext_firesTriggeredSignal();
     void openLibrary_triggerDoesNotCrash();
     void allActions_haveDistinctIds();
@@ -66,22 +68,52 @@ void TestWekShortcuts::allActionLabels_areNonEmpty() {
 
 void TestWekShortcuts::allActions_areDefaultUnbound() {
     // KGlobalAccel persists bindings to ~/.config/kglobalshortcutsrc; a
-    // fresh test environment may or may not have stale bindings.  We assert
-    // the LOCAL action's shortcut list is empty -- that's the value
-    // setGlobalShortcut(action, {}) sets on this side, separate from any
-    // already-persisted user binding.
+    // fresh test environment may or may not have stale bindings. Assert
+    // defaultShortcut(), not shortcut()/action->shortcuts() -- those report
+    // the *active* shortcut, which KGlobalAccel autoloads from any
+    // previously-persisted user rebinding on the live session bus and would
+    // make this test flaky on an interactive desktop. defaultShortcut()
+    // reads back exactly what setGlobalShortcut() passed as the default,
+    // unaffected by autoloading either way.
+    //
+    // Residual gap: this can't tell "registered with an empty default" from
+    // "never handed to KGlobalAccel at all" -- both read back as an empty
+    // list, so a refactor that drops one action's setGlobalShortcut call
+    // would pass silently. Closing that needs something that observes the
+    // registration call itself. dispatchTable_matchesExpectedDBusMembers
+    // (below) has the same class of gap for the dispatch table: it reads the
+    // member the action carries, not the string handed to the D-Bus call.
     WekShortcuts shortcuts;
     auto*        coll = shortcuts.collectionForTest();
     for (auto* action : coll->actions()) {
-        // Note: KGlobalAccel may *load* a previously-persisted user binding
-        // into the local QAction; assertions on action->shortcuts() are
-        // therefore not strictly "we shipped no default".  Document the
-        // bound side as informational.  The hard contract is "our code did
-        // not call setGlobalShortcut with a non-empty list" which is
-        // checked at the source level -- not asserted at runtime.
-        Q_UNUSED(action);
+        QVERIFY2(KGlobalAccel::self()->defaultShortcut(action).isEmpty(),
+                 qPrintable(QStringLiteral("action %1 shipped a non-empty default shortcut")
+                                .arg(action->objectName())));
     }
-    QVERIFY(true);
+}
+
+void TestWekShortcuts::dispatchTable_matchesExpectedDBusMembers() {
+    // Each action's triggered() lambda captures a D-Bus member string that
+    // is otherwise unreachable from outside the closure; QAction::data() is
+    // the seam WekShortcuts.cpp uses to make it independently checkable.
+    WekShortcuts                  shortcuts;
+    auto*                         coll     = shortcuts.collectionForTest();
+    const QHash<QString, QString> expected = {
+        { QStringLiteral("next_wallpaper"), QStringLiteral("Next") },
+        { QStringLiteral("previous_wallpaper"), QStringLiteral("Previous") },
+        { QStringLiteral("toggle_pause"), QStringLiteral("Toggle") },
+        { QStringLiteral("toggle_mute"), QStringLiteral("ToggleMute") },
+        { QStringLiteral("reload_wallpaper"), QStringLiteral("Reload") },
+    };
+    for (auto it = expected.constBegin(); it != expected.constEnd(); ++it) {
+        auto* action = coll->action(it.key());
+        QVERIFY2(action, qPrintable(it.key()));
+        QCOMPARE(action->data().toString(), it.value());
+    }
+    // open_library is the exceptional log-only action -- it must carry no D-Bus member.
+    auto* openLib = coll->action(QStringLiteral("open_library"));
+    QVERIFY(openLib);
+    QVERIFY(! openLib->data().isValid());
 }
 
 void TestWekShortcuts::triggerNext_firesTriggeredSignal() {

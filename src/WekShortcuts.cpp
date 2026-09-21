@@ -42,6 +42,9 @@ WekShortcuts::WekShortcuts(QObject* parent)
         [this](const QString& id, const QString& label, const QString& dbusMember) -> QAction* {
         auto* action = m_actions->addAction(id);
         action->setText(label);
+        // A stock QAction facility (not a test-only hook) so tests can read
+        // back the D-Bus member the trigger lambda captured, below.
+        action->setData(dbusMember);
         // Default-unbound -- KDE convention.  User binds via System Settings.
         KGlobalAccel::self()->setGlobalShortcut(action, QList<QKeySequence> {});
         QObject::connect(action, &QAction::triggered, this, [dbusMember]() {

@@ -50,12 +50,7 @@ TestCase {
     }
 
     function test_componentLoadsAtAll() {
-        if (loadError) {
-            console.warn("main.qml load error:", loadError);
-            // Reaching this branch means initTestCase set loadError; assert it.
-            verify(loadError !== "");
-            return;
-        }
+        verify(loadError === "", loadError);
         verify(mainItem !== null);
     }
 

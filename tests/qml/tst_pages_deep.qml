@@ -24,9 +24,9 @@ TestCase {
 
     function initTestCase() {
         const comp = Qt.createComponent("../../plugin/contents/ui/config.qml");
-        if (comp.status === Component.Error) return;
+        verify(comp.status !== Component.Error, comp.errorString());
         cfg = comp.createObject(configHost, {});
-        if (!cfg) return;
+        verify(cfg !== null, "config.qml createObject returned null");
         // libcheck.wallpaper = true so the "Scene Option" group + the Text
         // containing the cache_size IIFE instantiate eagerly.
         cfg.libcheck = { wallpaper: true, qtwebchannel: true };
@@ -72,6 +72,16 @@ TestCase {
             if (predicate(n)) out.push(n);
         }
         return out;
+    }
+
+    // The duck-typed finders below return null when their predicate stops
+    // matching — a renamed production function, or a node parked behind an
+    // inactive Loader. Route every finder result through this: a miss has to
+    // fail loudly and name the finder, otherwise the test asserts nothing.
+    function _requireNode(node, finderName) {
+        verify(node !== null,
+               finderName + " found no node — production element renamed or moved?");
+        return node;
     }
 
     // ── WallpaperPage: right_opts (per-wallpaper option group) ───────────────
@@ -164,9 +174,7 @@ TestCase {
     SignalSpy { id: propChangesSpy; signalName: "propChangesChanged" }
 
     function test_rightOpts_set_config_writesAndIncrements() {
-        if (!cfg) return;
-        const ro = _findRightOpts();
-        verify(ro !== null);
+        const ro = _requireNode(_findRightOpts(), "_findRightOpts");
         const fh = _findFileHelper();
         verify(fh !== null, "FileHelper stub unreachable from cfg tree");
         // set_config short-circuits on empty workshopid. ro.workshopid is
@@ -192,8 +200,7 @@ TestCase {
     }
 
     function test_rightOpts_reset_config_resetsWallpaperConfig() {
-        const ro = _findRightOpts();
-        if (!ro) return;
+        const ro = _requireNode(_findRightOpts(), "_findRightOpts");
         const fh = _findFileHelper();
         verify(fh !== null);
         // reset_config always calls pyext.reset_wallpaper_config(workshopid),
@@ -211,10 +218,8 @@ TestCase {
     // edits with it. Otherwise it keeps showing values that are no longer
     // saved and the next edit writes them straight back.
     function test_rightOpts_resetAlsoDropsStaleUserPropertyEdits() {
-        const ro = _findRightOpts();
-        if (!ro) return;
-        const upg = _findUserPropsGroup();
-        verify(upg !== null);
+        const ro = _requireNode(_findRightOpts(), "_findRightOpts");
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         const fh = _findFileHelper();
         verify(fh !== null);
         const rc = _findRightContent();
@@ -244,8 +249,7 @@ TestCase {
     // configChanged notify, so a severed binding freezes the panel on the
     // wallpaper that was selected when Reset was pressed.
     function test_rightOpts_resetKeepsOptionsFollowingTheSelectedWallpaper() {
-        const ro = _findRightOpts();
-        if (!ro) return;
+        const ro = _requireNode(_findRightOpts(), "_findRightOpts");
         const fh = _findFileHelper();
         verify(fh !== null);
         const rc = _findRightContent();
@@ -273,8 +277,7 @@ TestCase {
     }
 
     function test_rightOpts_workshopidChanged_loadsConfig() {
-        const ro = _findRightOpts();
-        if (!ro) return;
+        const ro = _requireNode(_findRightOpts(), "_findRightOpts");
         const fh = _findFileHelper();
         verify(fh !== null);
         // right_opts.config is now sourced from wallpaperPageRoot.
@@ -299,8 +302,7 @@ TestCase {
     // right_opts.config and user_props_group.propConfig are now bound to
     // wallpaperPageRoot.activeConfig.
     function test_rightOpts_initialMount_singleRead() {
-        const ro = _findRightOpts();
-        if (!ro) return;
+        const ro = _requireNode(_findRightOpts(), "_findRightOpts");
         const fh = _findFileHelper();
         verify(fh !== null, "FileHelper stub unreachable");
 
@@ -377,8 +379,7 @@ TestCase {
     // (qmltestrunner suppresses console output by default; the JS-side
     // console object is not patchable from inside the test).
     function test_setConfig_savesChangesQuietly_noDebugLogs() {
-        const ro = _findRightOpts();
-        if (!ro) return;
+        const ro = _requireNode(_findRightOpts(), "_findRightOpts");
         const fh = _findFileHelper();
         verify(fh !== null);
 
@@ -462,8 +463,7 @@ TestCase {
     // the list for a video wallpaper it writes postprocessing into <id>.json,
     // flags the row as changed, and changes nothing on screen.
     function test_rightOpts_postprocessingIsOfferedOnlyWhereItApplies() {
-        const ro = _findRightOpts();
-        if (!ro) return;
+        const ro = _requireNode(_findRightOpts(), "_findRightOpts");
         const rc = _findRightContent();
         verify(rc !== null);
         const fh = _findFileHelper();
@@ -501,8 +501,7 @@ TestCase {
 
     // ── WallpaperPage: user_props_group ──────────────────────────────────────
     function test_userPropsGroup_savePropChange_branchesOnEmpty() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         const fh = _findFileHelper();
         verify(fh !== null);
         const beforeWrites = fh.writeWallpaperConfigCount;
@@ -519,21 +518,18 @@ TestCase {
     }
 
     function test_userPropsGroup_getPropValue_returnsDefaults() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         compare(upg.getPropValue("nonexistent", "fallback"), "fallback");
     }
 
     function test_userPropsGroup_getPropValue_picksFromPropChanges() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         upg.propChanges = { my_prop: 99 };
         compare(upg.getPropValue("my_prop", -1), 99);
     }
 
     function test_userPropsGroup_getPropValue_picksFromPropConfig() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         const root = _findWallpaperPageRoot();
         verify(root !== null);
         upg.propChanges = {};
@@ -550,8 +546,7 @@ TestCase {
     // the on-disk write replaces the whole user_props object, the next edit
     // saves only the key that moved and erases the rest.
     function test_userPropsGroup_resetKeepsFollowingTheSelectedWallpaper() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         const fh = _findFileHelper();
         verify(fh !== null);
         const rc = _findRightContent();
@@ -582,8 +577,7 @@ TestCase {
     }
 
     function test_userPropsGroup_resetUserProps_clearsState() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         const root = _findWallpaperPageRoot();
         verify(root !== null);
         const fh = _findFileHelper();
@@ -613,8 +607,7 @@ TestCase {
     }
 
     function test_userPropsGroup_workshopidChanged_handlerFires() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         const fh = _findFileHelper();
         verify(fh !== null);
         // user_props_group.propConfig is now sourced from wallpaperPageRoot.
@@ -639,8 +632,7 @@ TestCase {
     }
 
     function test_userPropsRepeater_loadsAllPropertyTypes() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         upg.userProperties = [
             { key: "p_bool",       text: "Bool",   type: "bool",   value: true },
             { key: "p_slider_int", text: "S Int",  type: "slider", value: 5,   min: 0,   max: 10 },
@@ -705,8 +697,7 @@ TestCase {
     }
 
     function test_userPropsRepeater_pickerTypesProduceLoadedItems() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         upg.userProperties = [
             { key: "p_textinput", text: "T", type: "textinput", value: "hi" },
             { key: "p_file",      text: "F", type: "file",      value: "/x.png" },
@@ -735,8 +726,7 @@ TestCase {
     }
 
     function test_userPropsRepeater_savePropChange_textinputRoundTrips() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         // Direct invocation of savePropChange covers the persistence path
         // for string types — same code path the new pickers' onRes_valChanged
         // hook will hit.
@@ -745,8 +735,7 @@ TestCase {
     }
 
     function test_userPropsRepeater_fileTypePropagatesToPickerItem() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         upg.userProperties = [
             { key: "p_video", text: "V", type: "file", value: "/x.webm",
               fileType: "video" },
@@ -781,8 +770,7 @@ TestCase {
     // anyway writes the value to <id>.json, flags the row as changed, and
     // leaves the wallpaper exactly as it was.
     function test_userProps_videoWallpaperBuildsNoControlsAndSaysWhy() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         const rc = _findRightContent();
         verify(rc !== null);
         const fh = _findFileHelper();
@@ -829,8 +817,7 @@ TestCase {
     }
 
     function test_userPropsGroup_propChanges_isChangedFlagFires() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         propChangesSpy.target = upg;
         propChangesSpy.clear();
         upg.propChanges = { p1: 1 };
@@ -872,8 +859,7 @@ TestCase {
     // numbers happen to be written whole turns it into a two-position spin
     // box, which is what pushes people into editing project.json by hand.
     function test_userPropsSlider_fractionalRangeStaysContinuous() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         verify(typeof upg.sliderShape === "function",
                "slider geometry must come from one shared helper — the " +
                "component choice and the value wiring cannot disagree");
@@ -890,8 +876,7 @@ TestCase {
     // A plain count slider has no fractional hint anywhere, and whole units
     // are the right granularity for it.
     function test_userPropsSlider_wholeUnitRangeStaysInteger() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         verify(typeof upg.sliderShape === "function", "sliderShape helper missing");
         const s = upg.sliderShape({ min: 0, max: 100, value: 50 });
         verify(!s.continuous);
@@ -903,8 +888,7 @@ TestCase {
     // A span that doesn't divide into 100 whole steps is not evidence of
     // anything: 0..10 is a count, not a fractional range.
     function test_userPropsSlider_shortWholeRangeStaysInteger() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         verify(typeof upg.sliderShape === "function", "sliderShape helper missing");
         const s = upg.sliderShape({ min: 0, max: 10, value: 3 });
         verify(!s.continuous);
@@ -915,8 +899,7 @@ TestCase {
     // default anyway. The numbers win — rounding the default away loses the
     // author's setting.
     function test_userPropsSlider_fractionalDefaultOverridesTheFlag() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         verify(typeof upg.sliderShape === "function", "sliderShape helper missing");
         const s = upg.sliderShape({ min: 0, max: 1, value: 0.56, fraction: false });
         verify(s.continuous);
@@ -926,8 +909,7 @@ TestCase {
     // fractional gets the two-stop switch it asked for; the span alone is
     // not a reason to widen it.
     function test_userPropsSlider_declaredNonFractionalStaysTwoStop() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         verify(typeof upg.sliderShape === "function", "sliderShape helper missing");
         const s = upg.sliderShape({ min: 0, max: 1, value: 1, fraction: false });
         verify(!s.continuous);
@@ -937,8 +919,7 @@ TestCase {
     // A min of 0 is a real bound, not a missing one, and negative bounds are
     // ordinary. Reading either through JS truthiness loses it.
     function test_userPropsSlider_zeroAndNegativeBoundsSurvive() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         verify(typeof upg.sliderShape === "function", "sliderShape helper missing");
         const s = upg.sliderShape({ min: -4000, max: 0, value: 0,
                                     step: 0.5, fraction: true });
@@ -951,8 +932,7 @@ TestCase {
     // properties, so a range in the tens of millions has to give up decimals
     // rather than wrap the underlying int.
     function test_userPropsSlider_wideRangeKeepsScaledBoundsInsideInt() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         verify(typeof upg.sliderShape === "function", "sliderShape helper missing");
         const s = upg.sliderShape({ min: 0, max: 100000000, value: 0,
                                     step: 0.1, precision: 2, fraction: true });
@@ -962,8 +942,7 @@ TestCase {
     }
 
     function test_userPropsSlider_fractionalRangeLoadsAFractionalEditor() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         upg.userProperties = [
             { key: "clock_alpha", text: "Alpha", type: "slider",
               min: 0, max: 1, value: 0.4, step: 0.1, precision: 2, fraction: true },
@@ -989,8 +968,7 @@ TestCase {
     // panel has no editor for. A row that reaches the panel has to reach it
     // with a control attached; anything else is dropped at the parse.
     function test_userPropsParse_dropsTypesWithNoEditorAndIgnoresCase() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         const rc = _findRightContent();
         verify(rc !== null);
         const fh = _findFileHelper();
@@ -1034,8 +1012,7 @@ TestCase {
 
     // ── WallpaperPage: GridView delegate methods ─────────────────────────────
     function test_gridView_backtoBegin() {
-        const gv = _findGridView();
-        if (!gv) return;
+        const gv = _requireNode(_findGridView(), "_findGridView");
         // Mutate view.model to a custom ListModel so we can observe
         // backtoBegin restoring it to defaultModel.
         const customModel = Qt.createQmlObject(
@@ -1049,8 +1026,7 @@ TestCase {
     }
 
     function test_gridView_setCurIndex_walksModel() {
-        const gv = _findGridView();
-        if (!gv) return;
+        const gv = _requireNode(_findGridView(), "_findGridView");
         // Pin activeWorkshopId so the walk picks the matching row.
         const wasActive = gv.activeWorkshopId;
         gv.activeWorkshopId = "222";
@@ -1068,8 +1044,7 @@ TestCase {
     }
 
     function test_gridView_setCurIndex_emptyModel() {
-        const gv = _findGridView();
-        if (!gv) return;
+        const gv = _requireNode(_findGridView(), "_findGridView");
         gv.setCurIndex({ count: 0, get: function() { return null; } });
         // With count==0 and no match for activeWorkshopId, currentIndex
         // stays at its prior value (the loop body never runs and the
@@ -1099,8 +1074,7 @@ TestCase {
     }
 
     function test_gridView_toggleFavor_addsAndRemoves() {
-        const gv = _findGridView();
-        if (!gv) return;
+        const gv = _requireNode(_findGridView(), "_findGridView");
         // Write directly to gv.customConf — bypasses the cfg→picViewCom→gv
         // binding chain to keep the assertion independent of binding
         // propagation timing.
@@ -1131,8 +1105,7 @@ TestCase {
     // 0 into view.currentIndex, which stars an unrelated wallpaper and leaves
     // the favourites filter listing the wrong row.
     function test_gridView_toggleFavor_firstTileKeepsItsOwnIndex() {
-        const gv = _findGridView();
-        if (!gv) return;
+        const gv = _requireNode(_findGridView(), "_findGridView");
         const wasConf = gv.customConf;
         gv.customConf = { favor: new Set() };
         const stub = _makeFavorRecorderModel();
@@ -1154,8 +1127,7 @@ TestCase {
     // The detail-pane star button calls toggleFavor with no index at all; that
     // caller still has to resolve to whichever row is current.
     function test_gridView_toggleFavor_omittedIndexFallsBackToCurrent() {
-        const gv = _findGridView();
-        if (!gv) return;
+        const gv = _requireNode(_findGridView(), "_findGridView");
         const wasConf = gv.customConf;
         gv.customConf = { favor: new Set() };
         const stub = _makeFavorRecorderModel();
@@ -1174,8 +1146,7 @@ TestCase {
 
     // ── FolderDialog onAccepted ──────────────────────────────────────────────
     function test_folderDialog_acceptedSetsSteamLibrary() {
-        const dlg = _findFolderDialog();
-        if (!dlg) return;
+        const dlg = _requireNode(_findFolderDialog(), "_findFolderDialog");
         const before = cfg.cfg_SteamLibraryPath;
         // The setter strips the trailing slash via Utils.trimCharR.
         try { dlg.selectedFolder = "file:///tmp/steam/"; } catch (e) {}
@@ -1495,8 +1466,7 @@ TestCase {
         // .view is the GridView. Materialise a delegate by assigning a
         // model with one item, then walk it for the second (right-button)
         // MouseArea.
-        const gv = _findGridView();
-        if (!gv) return;
+        const gv = _requireNode(_findGridView(), "_findGridView");
         const model = Qt.createQmlObject(
             'import QtQuick; ListModel { ListElement { workshopid: "r1"; title: "R"; type: "scene"; preview: ""; path: "/p"; file: ""; modified: 0; favor: false } }',
             tc, "tst_grid_rightclick_model");
@@ -1570,8 +1540,7 @@ TestCase {
 
     // ── WallpaperPage: GridDelegate onClicked@278 ───────────────────────────
     function test_gridDelegate_clickPopulatesConfig() {
-        const gv = _findGridView();
-        if (!gv) return;
+        const gv = _requireNode(_findGridView(), "_findGridView");
         cfg.cfg_WallpaperSource = "";
         cfg.cfg_WallpaperWorkShopId = "";
         // Enable autoCommitOnIndexResolve so setCurIndex emits itemClicked
@@ -1620,8 +1589,7 @@ TestCase {
     // pyext.readfile to resolve with a real project.json containing
     // properties so formatLabel iterates each.
     function test_loadProps_formatLabel_firesViaWpmodel() {
-        const upg = _findUserPropsGroup();
-        if (!upg) return;
+        const upg = _requireNode(_findUserPropsGroup(), "_findUserPropsGroup");
         // Stub pyext.readfile to return a JSON string with properties.
         const projectJson = JSON.stringify({
             general: {
@@ -1724,7 +1692,6 @@ TestCase {
     // above. Fire it directly via .clicked() from both default and
     // modified states.
     function test_backgroundColor_colorPickedWritesCfg() {
-        if (!cfg) return;
         const cb = _firstByPredicate(c =>
             c && typeof c.colorPicked === "function" &&
             typeof c.colorValue !== "undefined" &&
@@ -1737,7 +1704,6 @@ TestCase {
     }
 
     function test_backgroundColor_resetButton_restoresBlackAndDisables() {
-        if (!cfg) return;
         // Find the Reset button: text=="Reset", has clicked + enabled,
         // not a Kirigami.Action (no `triggered` callable signal handler).
         const resets = _allByPredicate(c =>
@@ -1766,7 +1732,6 @@ TestCase {
     // state flips with it. The `!Qt.colorEqual(...)` predicate is a
     // one-char Mull mutation target (drop the !).
     function test_backgroundColor_resetButton_enabledStateCycles() {
-        if (!cfg) return;
         const resets = _allByPredicate(c =>
             c && String(c.text || "") === "Reset" &&
             typeof c.clicked === "function" &&
@@ -2198,7 +2163,6 @@ TestCase {
     }
 
     function test_aboutPageSaveBundle_acceptedWritesPickedDestination() {
-        if (!cfg) return;
         const diag = _findDiagnostics();
         verify(diag !== null, "WekDiagnostics unreachable from cfg tree");
         const dlg = _findSaveBundleDialog();
@@ -2229,7 +2193,6 @@ TestCase {
     }
 
     function test_aboutPageSaveBundle_createFailureIsVisibleInTheDialog() {
-        if (!cfg) return;
         const diag = _findDiagnostics();
         verify(diag !== null, "WekDiagnostics unreachable from cfg tree");
         const btn = _findSaveBundleButton();
@@ -2259,7 +2222,6 @@ TestCase {
         // '?' in XDG_CACHE_HOME is URL punctuation, so pasting the path
         // straight after "file://" makes the rest of it a fragment or query
         // and the picker opens on a truncated name.
-        if (!cfg) return;
         const diag = _findDiagnostics();
         verify(diag !== null, "WekDiagnostics unreachable from cfg tree");
         const dlg = _findSaveBundleDialog();

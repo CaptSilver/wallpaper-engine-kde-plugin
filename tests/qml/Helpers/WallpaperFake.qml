@@ -58,6 +58,9 @@ Item {
         "VideoFolderPath":     "",
         "ActivePlaylistId":    "",
         "CurrentItemIndex":    0,
-        "PlaylistsReloadSeq":  0
+        "PlaylistsReloadSeq":  0,
+        "CacheQuotaMB":        500,
+        "PlaylistNotifyOnAdvance": false,
+        "MsaaMode":            0
     })
 }

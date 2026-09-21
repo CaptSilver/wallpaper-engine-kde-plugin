@@ -20,6 +20,7 @@ TestCase {
     // ── instantiation + warning lock ────────────────────────────────────────
     function test_mainqml_instantiates_without_wallpaper_undefined() {
         failOnWarning(/wallpaper is not defined/);
+        failOnWarning(/Unable to assign \[undefined\]/);
         const rig = rigComp.createObject(tc, { screenGeometry: Qt.rect(0, 0, 1920, 1080) });
         verify(rig !== null);
         tryVerify(() => rig.mainItem !== null, 2000, "main.qml failed to load into the rig");
@@ -30,6 +31,7 @@ TestCase {
     // ── per-screen backdrop colour ──────────────────────────────────────────
     function test_backdrop_falls_back_to_cfg_background_color() {
         failOnWarning(/wallpaper is not defined/);
+        failOnWarning(/Unable to assign \[undefined\]/);
         const rig = rigComp.createObject(tc, { screenGeometry: Qt.rect(0, 0, 1920, 1080) });
         tryVerify(() => rig.background() !== null, 2000);
         verify(Qt.colorEqual(rig.background().color, "#0a0a0a"));   // WallpaperFake default
@@ -38,6 +40,7 @@ TestCase {
 
     function test_backdrop_uses_per_wallpaper_override() {
         failOnWarning(/wallpaper is not defined/);
+        failOnWarning(/Unable to assign \[undefined\]/);
         const rig = rigComp.createObject(tc, { screenGeometry: Qt.rect(0, 0, 1920, 1080) });
         tryVerify(() => rig.fileHelper() !== null, 2000);
         rig.fileHelper()._wallpaperConfigReturns = { background_color: "#11aa33" };
@@ -50,6 +53,7 @@ TestCase {
     // ── per-screen letterbox through full main.qml ──────────────────────────
     function _mkScene(w, h) {
         failOnWarning(/wallpaper is not defined/);
+        failOnWarning(/Unable to assign \[undefined\]/);
         const rig = rigComp.createObject(tc, { screenGeometry: Qt.rect(0, 0, w, h) });
         verify(rig !== null);
         tryVerify(() => rig.mainItem !== null, 2000);
@@ -70,6 +74,7 @@ TestCase {
     // while a source edit on the SAME wallpaper keeps the mounted view.
     function test_web_to_web_switch_mounts_fresh_backend() {
         failOnWarning(/wallpaper is not defined/);
+        failOnWarning(/Unable to assign \[undefined\]/);
         const rig = rigComp.createObject(tc, { screenGeometry: Qt.rect(0, 0, 1920, 1080) });
         verify(rig !== null);
         tryVerify(() => rig.mainItem !== null, 2000);
@@ -109,6 +114,7 @@ TestCase {
     // profile count must stay at two distinct wallpapers, not three.
     function test_web_to_web_to_web_aba_sharesOneProfilePerName() {
         failOnWarning(/wallpaper is not defined/);
+        failOnWarning(/Unable to assign \[undefined\]/);
         const rig = rigComp.createObject(tc, { screenGeometry: Qt.rect(0, 0, 1920, 1080) });
         verify(rig !== null);
         tryVerify(() => rig.mainItem !== null, 2000);
@@ -151,6 +157,7 @@ TestCase {
     // exists to rule out.
     function test_two_screens_sameWebWallpaper_shareOneProfile() {
         failOnWarning(/wallpaper is not defined/);
+        failOnWarning(/Unable to assign \[undefined\]/);
         const rigA = rigComp.createObject(tc, { screenGeometry: Qt.rect(0, 0, 1920, 1080) });
         const rigB = rigComp.createObject(tc, { screenGeometry: Qt.rect(1920, 0, 1920, 1080) });
         verify(rigA !== null);
@@ -190,6 +197,7 @@ TestCase {
     // one nobody asked for.
     function test_simultaneousIdAndSourceChange_neverLooksUpTheOldId() {
         failOnWarning(/wallpaper is not defined/);
+        failOnWarning(/Unable to assign \[undefined\]/);
         const rig = rigComp.createObject(tc, { screenGeometry: Qt.rect(0, 0, 1920, 1080) });
         verify(rig !== null);
         tryVerify(() => rig.mainItem !== null, 2000);

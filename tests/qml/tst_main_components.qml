@@ -19,6 +19,7 @@ TestCase {
     // ── PowerSource: battery discharge -> reqPause -> background.ok ──────────
     function test_powerSource_discharging_pauses_via_ok() {
         failOnWarning(/wallpaper is not defined/);
+        failOnWarning(/Unable to assign \[undefined\]/);
         const rig = rigComp.createObject(tc, { screenGeometry: Qt.rect(0, 0, 1920, 1080) });
         tryVerify(() => rig.powerSource() !== null, 2000);
         rig.setConfig({ PauseOnBatPower: true });
@@ -44,6 +45,7 @@ TestCase {
     // ── Item 01: percent-threshold arm of reqPause through background.ok ────
     function test_powerSource_lowPercent_pauses_via_ok() {
         failOnWarning(/wallpaper is not defined/);
+        failOnWarning(/Unable to assign \[undefined\]/);
         const rig = rigComp.createObject(tc, { screenGeometry: Qt.rect(0, 0, 1920, 1080) });
         tryVerify(() => rig.powerSource() !== null, 2000);
         // PauseOnBatPower stays false; only the percent threshold should drive it.
@@ -68,6 +70,7 @@ TestCase {
     // ── WindowModel: a non-minimized window in Any mode -> reqPause -> ok ────
     function test_windowModel_pauses_via_ok() {
         failOnWarning(/wallpaper is not defined/);
+        failOnWarning(/Unable to assign \[undefined\]/);
         const rig = rigComp.createObject(tc, { screenGeometry: Qt.rect(0, 0, 1920, 1080) });
         tryVerify(() => rig.windowModel() !== null, 2000);
         rig.setConfig({ PauseMode: Plugin.Common.PauseMode.Any });
@@ -89,6 +92,7 @@ TestCase {
     // ── PlaylistController: config wiring (active id + reload seq) ───────────
     function test_playlistController_reflects_config() {
         failOnWarning(/wallpaper is not defined/);
+        failOnWarning(/Unable to assign \[undefined\]/);
         const rig = rigComp.createObject(tc, { screenGeometry: Qt.rect(0, 0, 1920, 1080) });
         tryVerify(() => rig.playlistController() !== null, 2000);
         const pc = rig.playlistController();
@@ -113,6 +117,7 @@ TestCase {
 
     function test_backendFirstFrame_recordsManifestTimestampAsSeen() {
         failOnWarning(/wallpaper is not defined/);
+        failOnWarning(/Unable to assign \[undefined\]/);
         const rig = rigComp.createObject(tc, { screenGeometry: Qt.rect(0, 0, 1920, 1080) });
         tryVerify(() => rig.background() !== null, 2000);
         tryVerify(() => rig.fileHelper() !== null, 2000);
@@ -137,6 +142,7 @@ TestCase {
     // permanently suppress the badge once a real manifest shows up.
     function test_backendFirstFrame_withoutManifestEntry_recordsNothing() {
         failOnWarning(/wallpaper is not defined/);
+        failOnWarning(/Unable to assign \[undefined\]/);
         const rig = rigComp.createObject(tc, { screenGeometry: Qt.rect(0, 0, 1920, 1080) });
         tryVerify(() => rig.background() !== null, 2000);
         tryVerify(() => rig.fileHelper() !== null, 2000);

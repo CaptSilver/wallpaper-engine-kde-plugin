@@ -18,6 +18,7 @@ TestCase {
 
     function test_lockMonitorActive_pausesViaBackgroundOk() {
         failOnWarning(/wallpaper is not defined/);
+        failOnWarning(/Unable to assign \[undefined\]/);
         const rig = rigComp.createObject(tc, { screenGeometry: Qt.rect(0,0,1920,1080) });
         tryVerify(() => rig.background() !== null, 2000);
         const lock = _findLockMonitor(rig);

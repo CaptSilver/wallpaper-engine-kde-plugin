@@ -158,6 +158,24 @@ function ciJobBlock(jobId) {
     return block;
 }
 
+// The unit-tests job configures tests/ standalone (no packaging manifest feeds
+// it — see the MANIFESTS comment above), so it hand-lists its own dnf install
+// block instead of installing from a manifest like the package jobs do.
+function ciUnitTestsDnfInstall() {
+    const block = ciJobBlock('unit-tests');
+    // Assumes a single unbroken backslash-continued `dnf install` block ending
+    // at a blank line — if that shape ever changes, the assert below fails
+    // loudly instead of silently returning an empty set.
+    const m = /dnf install -y --skip-unavailable \\\n([\s\S]*?)\n\n/.exec(block);
+    assert.ok(m, 'unit-tests job in .github/workflows/ci.yml no longer has one dnf install block');
+    const out = new Set();
+    for (const line of m[1].split('\n')) {
+        const tok = line.replace(/\\$/, '').trim();
+        if (tok) out.add(tok);
+    }
+    return out;
+}
+
 test('every optional pkg-config probe is declared in every build-dependency list', () => {
     const missing = [];
     for (const manifest of MANIFESTS) {
@@ -200,4 +218,12 @@ test('no optional pkg-config probe escapes the dependency table', () => {
             `${module} is in the dependency table but no longer probed — drop the row`,
         );
     }
+});
+
+test("tst_activityhelper's live-Consumer case compiles wherever the standalone test build is provisioned", () => {
+    const pkg = 'plasma-activities-devel';
+    const missing = [];
+    if (!preflightDeps().has(pkg)) missing.push(`preflight.sh DEPS_FEDORA is missing ${pkg}`);
+    if (!ciUnitTestsDnfInstall().has(pkg)) missing.push(`.github/workflows/ci.yml unit-tests job is missing ${pkg}`);
+    assert.deepEqual(missing, [], missing.join('\n  '));
 });

@@ -76,6 +76,9 @@ if(TARGET KF6::GlobalAccel AND TARGET KF6::CoreAddons AND TARGET KF6::XmlGui)
         KF6::CoreAddons
         KF6::XmlGui)
     target_compile_definitions(${PROJECT_NAME} PRIVATE WEKDE_HAS_GLOBALACCEL)
+    message(STATUS "Global shortcuts (WekShortcuts): enabled (GlobalAccel + CoreAddons + XmlGui)")
+else()
+    message(STATUS "Global shortcuts (WekShortcuts): disabled (GlobalAccel/CoreAddons/XmlGui not found)")
 endif()
 # Plasma::Activities (KActivities::Consumer) is the live per-Activity source.
 # Optional, mirroring WekShortcuts: without plasma-activities-devel the
@@ -84,6 +87,9 @@ endif()
 if(TARGET Plasma::Activities)
     target_link_libraries(${PROJECT_NAME} PRIVATE Plasma::Activities)
     target_compile_definitions(${PROJECT_NAME} PRIVATE WEK_HAS_PLASMA_ACTIVITIES)
+    message(STATUS "Live per-Activity source (KActivities::Consumer): enabled")
+else()
+    message(STATUS "Live per-Activity source (KActivities::Consumer): disabled (plasma-activities-devel not found)")
 endif()
 target_compile_definitions(${PROJECT_NAME} PRIVATE WEKDE_HAS_MPV)
 target_compile_definitions(${PROJECT_NAME} PRIVATE

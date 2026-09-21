@@ -36,3 +36,6 @@ cmake-build-debug
 
 # Local Claude Code project instructions — kept out of git (per repo decision).
 /CLAUDE.md
+
+# Python bytecode from tools/scripts/lib helpers
+__pycache__/

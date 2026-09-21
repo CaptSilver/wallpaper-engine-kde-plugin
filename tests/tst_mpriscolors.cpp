@@ -715,11 +715,12 @@ void TestMprisColors::handlePropsChanged_sameArtUrl_doesNotReprocess() {
                Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
                Q_ARG(QVariantMap, c),
                Q_ARG(QStringList, QStringList()));
-    // Assert no stray queued emit arrives via spin-don't-wait: the predicate
-    // is already true (dedup blocks the second processArtUrl), so this exits
-    // immediately on the happy path. qWait(300) burned a full 300ms even
-    // when the dedup ran synchronously.
-    QTRY_VERIFY_WITH_TIMEOUT(spy.count() == before, 300);
+    // Assert no stray queued emit arrives: spy.wait() genuinely pumps the
+    // event loop for the full window, so a wrongly-requeued decode has a
+    // real chance to land and be caught. QTRY_VERIFY_WITH_TIMEOUT would not:
+    // its predicate (spy.count() == before) is already true here, so the
+    // macro short-circuits and never actually waits.
+    QVERIFY(! spy.wait(300));
 }
 
 void TestMprisColors::handleNameOwnerChanged_nonMprisName_ignored() {

@@ -24,11 +24,13 @@ public:
 
 // Captures events sent to the item it's installed on, so tests can verify
 // that MouseGrabber forwarded a synthesized event to its target.  Records
-// type + position for each mouse/hover event and lets them continue.
+// type, button and position for each mouse/hover event, plus the old
+// position of a hover, which MouseGrabber remaps separately from the new.
 class EventCapturingFilter : public QObject {
 public:
     QList<QEvent::Type>    types;
     QList<QPointF>         positions;
+    QList<QPointF>         oldPositions;
     QList<Qt::MouseButton> buttons;
 
     bool eventFilter(QObject* /*watched*/, QEvent* ev) override {
@@ -46,6 +48,7 @@ public:
         case QEvent::HoverMove: {
             auto* he = static_cast<QHoverEvent*>(ev);
             positions.append(he->position());
+            oldPositions.append(he->oldPosF());
             buttons.append(Qt::NoButton);
             break;
         }
@@ -309,6 +312,8 @@ void TestMouseGrabber::mousePress_forwardsToTarget() {
     TestableMouseGrabber g;
     QQuickItem           target;
     EventCapturingFilter filter;
+    g.setPosition(QPointF(10, 20));
+    target.setPosition(QPointF(3, 4));
     g.setTarget(&target);
     target.installEventFilter(&filter);
 
@@ -317,6 +322,9 @@ void TestMouseGrabber::mousePress_forwardsToTarget() {
     QCOMPARE(filter.types.size(), 1);
     QCOMPARE(filter.types.at(0), QEvent::MouseButtonPress);
     QCOMPARE(filter.buttons.at(0), Qt::LeftButton);
+    // The forwarded press carries the point in the target's coordinate
+    // space, not the grabber's: local + grabberPos - targetPos.
+    QCOMPARE(filter.positions.at(0), QPointF(14, 27)); // 7+10-3, 11+20-4
 }
 
 void TestMouseGrabber::mouseMove_forwardsToTarget() {
@@ -362,13 +370,19 @@ void TestMouseGrabber::hoverMove_forwardsToTarget() {
     TestableMouseGrabber g;
     QQuickItem           target;
     EventCapturingFilter filter;
+    g.setPosition(QPointF(10, 20));
+    target.setPosition(QPointF(3, 4));
     g.setTarget(&target);
     target.installEventFilter(&filter);
 
-    auto ev = mkHover(QPointF(3, 4));
+    auto ev = mkHover(QPointF(7, 11), QPointF(3, 4));
     g.hoverMoveEvent(&ev);
     QCOMPARE(filter.types.size(), 1);
     QCOMPARE(filter.types.at(0), QEvent::HoverMove);
+    // Both hover points are remapped into the target's coordinate space,
+    // and they are remapped independently of each other.
+    QCOMPARE(filter.positions.at(0), QPointF(14, 27));    // new position: 7+10-3, 11+20-4
+    QCOMPARE(filter.oldPositions.at(0), QPointF(10, 20)); // old position: 3+10-3, 4+20-4
 }
 
 // ---------------------------------------------------------------------------

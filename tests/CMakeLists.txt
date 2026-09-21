@@ -859,19 +859,30 @@ endif()
 add_test(NAME test_mutation
          COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_mutation.sh)
 
+# ── Master test-target enumeration ────────────────────────────────────────────
+# The one place that names every tst_* target this file can define (each is
+# guarded by its own optional-dependency check above, so not all of them
+# exist in every configuration).  The sanitizer loop and the coverage object
+# list both read it: a second hand-typed list goes stale the moment a target
+# is added, and a target missing from the coverage list is simply absent from
+# the report rather than an error.  Keep it literal text rather than
+# introspected from add_executable(), so tests/scripts/test_mutation.sh's
+# drift check can diff it with a plain grep and no configure step.
+set(_wek_all_test_targets
+    tst_filehelper tst_plugininfo tst_mpriscolors tst_mousegrabber tst_mpvbackend
+    tst_thumbnail_grabber tst_webaudio tst_activityhelper
+    tst_playlist_manager tst_main_integration tst_ttyswitchmonitor
+    tst_safewallpaperbridge tst_safewallpaperbridgecontroller tst_weburlinterceptor
+    tst_webprofileregistry tst_qmlcachepurge
+    tst_screensavermonitor
+    tst_wekcontrol tst_wekshortcuts tst_weknotifier tst_wekdiagnostics)
+
 # ── Apply opt-in sanitizers to every C++ test target ──────────────────────────
 # No-op unless -DWEK_SANITIZE=... is set.  Guarded by if(TARGET ...) because
 # several targets are conditional on optional Qt components / libmpv.  The
 # QML (tst_qml) and JS (tst_js) tests are add_test-only (qmltestrunner / node),
-# not C++ executables, so they are not listed.
-foreach(_wek_test_target
-        tst_filehelper tst_plugininfo tst_mpriscolors tst_mousegrabber tst_mpvbackend
-        tst_thumbnail_grabber tst_webaudio tst_activityhelper
-        tst_playlist_manager tst_main_integration tst_ttyswitchmonitor
-        tst_safewallpaperbridge tst_safewallpaperbridgecontroller tst_weburlinterceptor
-        tst_webprofileregistry tst_qmlcachepurge
-        tst_screensavermonitor
-        tst_wekcontrol tst_wekshortcuts tst_weknotifier tst_wekdiagnostics)
+# not C++ executables, so they are not in _wek_all_test_targets.
+foreach(_wek_test_target ${_wek_all_test_targets})
     if(TARGET ${_wek_test_target})
         wek_apply_sanitizers(${_wek_test_target})
     endif()
@@ -911,28 +922,33 @@ if(COVERAGE)
 
     set(_cov_dir  ${CMAKE_BINARY_DIR}/coverage)
     set(_cov_prof ${_cov_dir}/merged.profdata)
-    set(_cov_objs $<TARGET_FILE:tst_filehelper>)
-    set(_cov_tests tst_filehelper)
-    if(TARGET tst_mpriscolors)
-        list(APPEND _cov_objs -object=$<TARGET_FILE:tst_mpriscolors>)
-        list(APPEND _cov_tests tst_mpriscolors)
-    endif()
-    if(TARGET tst_mousegrabber)
-        list(APPEND _cov_objs -object=$<TARGET_FILE:tst_mousegrabber>)
-        list(APPEND _cov_tests tst_mousegrabber)
-    endif()
-    if(TARGET tst_mpvbackend)
-        list(APPEND _cov_objs -object=$<TARGET_FILE:tst_mpvbackend>)
-        list(APPEND _cov_tests tst_mpvbackend)
-    endif()
-    if(TARGET tst_thumbnail_grabber)
-        list(APPEND _cov_objs -object=$<TARGET_FILE:tst_thumbnail_grabber>)
-        list(APPEND _cov_tests tst_thumbnail_grabber)
-    endif()
-    if(TARGET tst_playlist_manager)
-        list(APPEND _cov_objs -object=$<TARGET_FILE:tst_playlist_manager>)
-        list(APPEND _cov_tests tst_playlist_manager)
-    endif()
+    # Built from _wek_all_test_targets (declared above the sanitizer loop) so
+    # a new test binary reaches llvm-cov without anyone editing a second list.
+    # tst_main_integration is deliberately skipped: tools/scripts/preflight.sh's
+    # coverage leg excludes it from the instrumented ctest run below (it needs
+    # the full project's native QML types the standalone tests build doesn't
+    # ship), so instrumenting it would only report its harness-only sources at
+    # a flat 0% for a binary that never runs under profiling.
+    set(_cov_objs "")
+    set(_cov_tests "")
+    set(_cov_obj_files "")
+    foreach(_wek_test_target ${_wek_all_test_targets})
+        if(TARGET ${_wek_test_target} AND NOT "${_wek_test_target}" STREQUAL "tst_main_integration")
+            if(_cov_objs STREQUAL "")
+                set(_cov_objs $<TARGET_FILE:${_wek_test_target}>)
+            else()
+                list(APPEND _cov_objs -object=$<TARGET_FILE:${_wek_test_target}>)
+            endif()
+            list(APPEND _cov_tests ${_wek_test_target})
+            list(APPEND _cov_obj_files $<TARGET_FILE:${_wek_test_target}>)
+        endif()
+    endforeach()
+
+    # One object path per line, no CLI-flag prefix: tools/scripts/preflight.sh
+    # reads this rather than keeping its own copy of the object list, which
+    # would diverge from this file the moment a target is added.
+    file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/coverage_objects.txt
+         CONTENT "$<JOIN:${_cov_obj_files},\n>\n")
 
     # Ignore everything outside the user-facing "main project" scope:
     #   - Qt / system headers, tests themselves, MOC-generated code, third_party

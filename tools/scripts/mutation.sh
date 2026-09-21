@@ -6,6 +6,8 @@
 #   tools/scripts/mutation.sh --diff-only              # run only on changed-file binaries
 #   tools/scripts/mutation.sh --refresh-baseline       # rebuild + overwrite tests/.mull-baseline.json
 #   tools/scripts/mutation.sh --target tst_filehelper  # one binary
+#   tools/scripts/mutation.sh --list-targets           # print the instrumented binary names
+#   tools/scripts/mutation.sh --list-sources           # print the 'source<TAB>binary' map
 #   tools/scripts/mutation.sh --strict                 # treat new survivors as fatal (rc=1, default)
 #   tools/scripts/mutation.sh --no-strict              # informational mode (rc=0 even with new survivors)
 #   tools/scripts/mutation.sh --help                   # this help
@@ -80,6 +82,7 @@ WIPE_OUT=1           # 0 keeps earlier chunks' reports in place
 AGGREGATE_ONLY=0     # skip build+mutate, just aggregate what is already there
 LIST_TARGETS=0       # print the target list and exit; keeps callers from
                      # duplicating it and drifting out of step with ALL_TARGETS
+LIST_SOURCES=0       # print the src-file -> target map and exit (same reason)
 while (( $# )); do
     case "$1" in
         --diff-only)        MODE="diff"; shift ;;
@@ -88,12 +91,13 @@ while (( $# )); do
         --no-wipe)          WIPE_OUT=0; shift ;;
         --aggregate-only)   AGGREGATE_ONLY=1; shift ;;
         --list-targets)     LIST_TARGETS=1; shift ;;
+        --list-sources)     LIST_SOURCES=1; shift ;;
         --refresh-baseline) MODE="refresh"; shift ;;
         --target)           TARGET="$2"; shift 2 ;;
         --strict)           STRICT=1; shift ;;
         --no-strict)        STRICT=0; shift ;;
         --help|-h)
-            sed -n '2,37p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+            sed -n '2,39p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
             exit 0 ;;
         *) echo "unknown arg: $1" >&2; exit 2 ;;
     esac
@@ -130,22 +134,57 @@ else
 fi
 dbox() { "${DBOX_PREFIX[@]}" bash -lc "$*"; }
 
-# ── Determine target list (BEFORE builds so we skip unneeded ones) ───────────
-# ALL_TARGETS lists every instrumented binary present in tests/CMakeLists.txt's
-# MUTATION_TESTING blocks PLUS the single submodule target (backend_scene_tests,
-# instrumented by src/backend_scene/src/Test/CMakeLists.txt:290).  Missing-on-
-# disk targets are skipped silently — gracefully handles optional deps (libmpv,
-# Qt6 components) that leave a target unbuilt.
-ALL_TARGETS=(
-    tst_filehelper tst_weburlinterceptor tst_plugininfo
-    tst_mpriscolors tst_mousegrabber tst_ttyswitchmonitor
-    tst_screensavermonitor tst_mpvbackend tst_thumbnail_grabber
-    tst_webaudio tst_safewallpaperbridge
-    tst_playlist_manager
-    backend_scene_tests
-)
+# ── Determine target/source lists (BEFORE builds so we skip unneeded ones) ───
+# tests/CMakeLists.txt already states which tst_* targets carry -fpass-plugin
+# and which src/*.cpp each of them compiles, so mutation_targets.py reads it
+# rather than this script keeping its own copy.  A hand copy here is worse
+# than stale documentation: a source that maps to no target reads as "nothing
+# to check" instead of "we don't know", so --diff-only reports green over code
+# it never mutated.  Landing a new instrumented target means adding its
+# add_executable()/-fpass-plugin block there and nowhere else.
+#
+# Resolved relative to this script, not the working tree: the --diff-only
+# self-test in tests/scripts/test_mutation.sh deliberately runs this script
+# against a throwaway synthetic git repo to exercise the diff-mapping logic in
+# isolation, and that repo has no tests/CMakeLists.txt of its own -- the
+# target/source lists must always come from the real one.
+MUTATION_TARGETS_PY="$_MUT_DIR/lib/mutation_targets.py"
+MUTATION_CMAKELISTS="$_MUT_DIR/../../tests/CMakeLists.txt"
+if ! command -v python3 >/dev/null; then
+    fail "python3 not found on host — required to read mutation.sh's target list out of tests/CMakeLists.txt"
+fi
+if ! ALL_TARGETS_TXT="$(python3 "$MUTATION_TARGETS_PY" "$MUTATION_CMAKELISTS" --targets)"; then
+    fail "mutation_targets.py failed to parse $MUTATION_CMAKELISTS"
+fi
+mapfile -t ALL_TARGETS <<< "$ALL_TARGETS_TXT"
+ALL_TARGETS+=(backend_scene_tests)  # submodule target; not in tests/CMakeLists.txt at all
+
+# Captured into a variable, not piped in through a process substitution: a
+# crash in there leaves SRC_TO_TARGETS empty without tripping `set -e`, and an
+# empty map is exactly what --diff-only reads as "nothing to check".
+if ! SRC_MAP_TXT="$(python3 "$MUTATION_TARGETS_PY" "$MUTATION_CMAKELISTS" --sources)"; then
+    fail "mutation_targets.py failed to map sources from $MUTATION_CMAKELISTS"
+fi
+declare -A SRC_TO_TARGETS=()
+while IFS=$'\t' read -r _mt_src _mt_tgt; do
+    [[ -z "$_mt_src" ]] && continue
+    if [[ -n "${SRC_TO_TARGETS[$_mt_src]:-}" ]]; then
+        SRC_TO_TARGETS[$_mt_src]+=" $_mt_tgt"
+    else
+        SRC_TO_TARGETS[$_mt_src]="$_mt_tgt"
+    fi
+done <<< "$SRC_MAP_TXT"
+
 if [[ "$LIST_TARGETS" == "1" ]]; then
     printf '%s\n' "${ALL_TARGETS[@]}"
+    exit 0
+fi
+if [[ "$LIST_SOURCES" == "1" ]]; then
+    for _mt_src in "${!SRC_TO_TARGETS[@]}"; do
+        for _mt_tgt in ${SRC_TO_TARGETS[$_mt_src]}; do
+            printf '%s\t%s\n' "$_mt_src" "$_mt_tgt"
+        done
+    done | sort
     exit 0
 fi
 
@@ -153,11 +192,9 @@ TARGETS=()
 if [[ -n "$TARGET" ]]; then
     TARGETS=("$TARGET")
 elif [[ "$MODE" == "diff" ]]; then
-    # Map changed source paths -> instrumented test target name.  Heuristic:
-    # tst_X.cpp tests src/X.{cpp,hpp/.h}; reuse the spec table.  Headers that a
-    # mutated TU sees will still trigger the test, but compile-time only sources
-    # need explicit mapping; keep this in sync with tests/CMakeLists.txt's
-    # MUTATION_TESTING blocks.  Any change anywhere under src/backend_scene/
+    # Map changed source paths -> instrumented test target name via
+    # SRC_TO_TARGETS (derived above from tests/CMakeLists.txt).  Any change
+    # anywhere under src/backend_scene/
     # (including the gitlink in the parent diff) triggers backend_scene_tests;
     # mutation is heavy enough that finer-grained submodule mapping isn't worth
     # the maintenance cost.
@@ -176,26 +213,15 @@ elif [[ "$MODE" == "diff" ]]; then
             git diff --name-only HEAD 2>/dev/null || true
         } | sort -u
     )"
-    declare -A SRC_TO_TARGET=(
-        [src/FileHelper.cpp]=tst_filehelper [src/FileHelper.hpp]=tst_filehelper
-        [src/PluginInfo.cpp]=tst_plugininfo [src/PluginInfo.hpp]=tst_plugininfo
-        [src/MprisMonitor.cpp]=tst_mpriscolors
-        [src/MouseGrabber.cpp]=tst_mousegrabber
-        [src/TTYSwitchMonitor.cpp]=tst_ttyswitchmonitor
-        [src/ScreenSaverMonitor.cpp]=tst_screensavermonitor
-        [src/backend_mpv/MpvBackend.cpp]=tst_mpvbackend
-        [src/backend_mpv/ThumbnailGrabber.cpp]=tst_thumbnail_grabber
-        [src/WebAudioBridge.cpp]=tst_webaudio
-        [src/SafeWallpaperBridge.cpp]=tst_safewallpaperbridge
-        [src/PlaylistManager.cpp]=tst_playlist_manager
-        [src/WebUrlInterceptor.cpp]=tst_weburlinterceptor
-    )
     declare -A SEEN=()
     while IFS= read -r f; do
         [[ -z "$f" ]] && continue
-        # Parent file → explicit target via SRC_TO_TARGET table.
-        t="${SRC_TO_TARGET[$f]:-}"
-        [[ -n "$t" ]] && SEEN[$t]=1
+        # Parent file → every instrumented target that compiles it (a source
+        # can feed more than one binary, e.g. FileHelper.cpp is linked into
+        # tst_filehelper, tst_thumbnail_grabber and tst_playlist_manager).
+        for t in ${SRC_TO_TARGETS[$f]:-}; do
+            SEEN[$t]=1
+        done
         # Submodule change (gitlink at src/backend_scene OR any path under it)
         # → backend_scene_tests.  Catches the parent's gitlink-bump commit
         # form, where individual submodule sources don't appear here.

@@ -83,6 +83,9 @@ BuildRequires: qt6-qtbase-private-devel
 BuildRequires: cmake(Qt6Test)
 BuildRequires: cmake(Qt6QuickTest)
 BuildRequires: nodejs
+# The mutation-tooling self-test under tests/scripts reads the test targets out
+# of tests/CMakeLists.txt with a python helper.
+BuildRequires: python3
 %endif
 
 # rpm derives the library dependencies from the plugin's DT_NEEDED entries, so

@@ -167,6 +167,83 @@ test_build_jobs_bounded() {
 }
 test_build_jobs_bounded
 
+# ── Drift checks: mutation.sh / tests/CMakeLists.txt must not silently diverge ─
+# All three are text-vs-text: no cmake configure, no Mull runner, sub-second.
+#
+# Each comparison starts with a floor on the grepped-from-CMakeLists side.
+# Without one, a marker these greps depend on going away takes both sides down
+# together -- nothing to compare is not a match, but comm over two empty
+# streams is silent, and the check would pass while measuring nothing.  The
+# floors sit far below the real counts, so only a collapse trips them.
+TARGET_FLOOR=12
+SOURCE_FLOOR=12
+
+# Reports red and returns true when a grep that should have seen the whole file
+# came back nearly empty, so a caller can `&& return` before comparing nothing.
+below_floor() { # <test name> <what> <count> <floor>
+    local name=$1 what=$2 n=$3 floor=$4
+    (( n >= floor )) && return 1
+    failure "$name" "only $n $what found in tests/CMakeLists.txt (floor $floor) \
+-- the grep that reads it is broken, so this check is comparing nothing"
+    return 0
+}
+
+test_targets_complete() {
+    local name="mutation.sh --list-targets matches every -fpass-plugin target in tests/CMakeLists.txt"
+    local truth listed diff
+    truth=$(grep -B2 -F -- '-fpass-plugin=${MULL_PLUGIN_PATH}' "$REPO_ROOT/tests/CMakeLists.txt" \
+        | grep -oE 'target_compile_options\(tst_[a-zA-Z_]+' \
+        | sed 's/target_compile_options(//' | sort -u)
+    below_floor "$name" "instrumented targets" "$(grep -c . <<< "$truth")" "$TARGET_FLOOR" && return
+    listed=$(WEK_IN_CI=1 "$MUTATION" --list-targets | grep -v '^backend_scene_tests$' | sort -u)
+    diff=$(comm -3 <(printf '%s\n' "$truth") <(printf '%s\n' "$listed"))
+    [[ -z "$diff" ]] && pass "$name" || failure "$name" "mismatch: $diff"
+}
+test_targets_complete
+
+test_src_map_complete() {
+    local name="mutation.sh --list-sources covers every src/*.cpp compiled into an instrumented target"
+    local instrumented truth listed diff
+    instrumented=$(WEK_IN_CI=1 "$MUTATION" --list-targets | grep -v '^backend_scene_tests$')
+    truth=$(
+        while IFS= read -r t; do
+            awk -v target="$t" '
+                BEGIN { insrc = 0 }
+                $0 ~ "add_executable\\(" target "([ \t)]|$)" { insrc = 1 }
+                insrc && /\$\{WEKDE_SRC_DIR\}\// {
+                    line = $0
+                    while (match(line, /\$\{WEKDE_SRC_DIR\}\/[a-zA-Z0-9_.\/]+\.cpp/)) {
+                        s = substr(line, RSTART, RLENGTH)
+                        sub(/^\$\{WEKDE_SRC_DIR\}\//, "src/", s)
+                        print s
+                        line = substr(line, RSTART + RLENGTH)
+                    }
+                }
+                insrc && /\)/ { insrc = 0 }
+            ' "$REPO_ROOT/tests/CMakeLists.txt"
+        done <<< "$instrumented"
+    )
+    truth=$(printf '%s\n' "$truth" | sort -u)
+    below_floor "$name" "compiled sources" "$(grep -c . <<< "$truth")" "$SOURCE_FLOOR" && return
+    listed=$(WEK_IN_CI=1 "$MUTATION" --list-sources | cut -f1 | grep '\.cpp$' | sort -u)
+    diff=$(comm -23 <(printf '%s\n' "$truth") <(printf '%s\n' "$listed"))
+    [[ -z "$diff" ]] && pass "$name" || failure "$name" "unmapped: $diff"
+}
+test_src_map_complete
+
+test_cmake_target_enumeration_complete() {
+    local name="_wek_all_test_targets lists every add_executable(tst_*) in tests/CMakeLists.txt"
+    local cmakelists="$REPO_ROOT/tests/CMakeLists.txt"
+    local truth listed diff
+    truth=$(grep -oE 'add_executable\(tst_[a-zA-Z_]+' "$cmakelists" \
+        | sed 's/add_executable(//' | sort -u)
+    listed=$(sed -n '/^set(_wek_all_test_targets$/,/)/p' "$cmakelists" \
+        | grep -oE 'tst_[a-zA-Z_]+' | sort -u)
+    diff=$(comm -3 <(printf '%s\n' "$truth") <(printf '%s\n' "$listed"))
+    [[ -z "$diff" ]] && pass "$name" || failure "$name" "mismatch: $diff"
+}
+test_cmake_target_enumeration_complete
+
 echo
 echo "Tests: $PASS passed, $FAIL failed."
 exit $FAIL

@@ -226,7 +226,8 @@ jobs:
             plasma-workspace-devel \
             freetype-devel \
             pulseaudio-libs-devel \
-            nodejs
+            nodejs \
+            python3
 
       - name: Configure (standalone test build)
         run: |

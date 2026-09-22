@@ -1,6 +1,3 @@
 module com.github.captsilver.wallpaperEngineKde
 plugin WallpaperEngineKde
-classname PluginInfo
-classname MouseGrabber
-classname SceneViewer
-classname Mpv
+classname Port

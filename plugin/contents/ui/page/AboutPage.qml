@@ -8,7 +8,6 @@ import "../components"
 
 import com.github.captsilver.wallpaperEngineKde
 
-import org.kde.plasma.core 2.0 as PlasmaCore
 import org.kde.plasma.components 3.0 as PlasmaComponents
 import org.kde.kirigami 2.4 as Kirigami
 

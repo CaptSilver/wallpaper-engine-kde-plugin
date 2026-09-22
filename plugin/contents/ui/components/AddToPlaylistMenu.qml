@@ -4,7 +4,6 @@
 // name and creates+adds.
 import QtQuick
 import QtQuick.Controls 2.3
-import org.kde.plasma.core 2.0 as PlasmaCore
 
 Menu {
     id: root

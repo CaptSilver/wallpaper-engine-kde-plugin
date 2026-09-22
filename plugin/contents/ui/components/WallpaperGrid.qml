@@ -8,7 +8,6 @@ import QtQuick.Window 2.0
 
 import ".."
 
-import org.kde.plasma.core 2.0 as PlasmaCore
 import org.kde.kcmutils as KCM
 import org.kde.kirigami 2.6 as Kirigami
 

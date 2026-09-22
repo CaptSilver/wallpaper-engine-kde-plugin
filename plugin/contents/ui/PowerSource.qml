@@ -1,6 +1,5 @@
 import QtQuick 2.1
 import QtQuick.Layouts 1.3
-import org.kde.plasma.core 2.0 as PlasmaCore
 import org.kde.plasma.plasma5support as Plasma5Support
 
 Item {

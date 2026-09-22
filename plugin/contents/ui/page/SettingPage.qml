@@ -1,13 +1,11 @@
 import QtQuick 2.6
 import QtQuick.Controls 2.3
-import QtQuick.Controls.Material 2.5 as QSMat
 import QtQuick.Layouts 1.5
 
 import ".."
 import "../components"
 import "../js/utils.mjs" as Utils
 
-import org.kde.plasma.core 2.0 as PlasmaCore
 import org.kde.plasma.components 3.0 as PlasmaComponents
 import org.kde.kirigami 2.6 as Kirigami
 

@@ -1,7 +1,6 @@
 import QtQuick
 import com.github.captsilver.wallpaperEngineKde
 import QtQuick.Window
-import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.plasmoid
 import org.kde.kirigami as Kirigami
 

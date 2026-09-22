@@ -89,7 +89,6 @@ const DECLARED_MODULES = {
 const PROVIDED_MODULES = {
     QtQuick: 'Qt Quick runtime the plugin .so links against',
     'QtQuick.Controls': 'Qt Quick runtime the plugin .so links against',
-    'QtQuick.Controls.Material': 'Qt Quick runtime the plugin .so links against',
     'QtQuick.Dialogs': 'Qt Quick runtime the plugin .so links against',
     'QtQuick.Layouts': 'Qt Quick runtime the plugin .so links against',
     'QtQuick.Templates': 'Qt Quick runtime the plugin .so links against',
@@ -98,7 +97,6 @@ const PROVIDED_MODULES = {
     'org.kde.kcmutils': 'plasma-workspace — every Plasma KCM imports it',
     'org.kde.kirigami': 'plasma-workspace — the whole Plasma UI is Kirigami',
     'org.kde.plasma.components': 'plasma-workspace — plasmashell renders with it',
-    'org.kde.plasma.core': 'plasma-workspace — plasmashell renders with it',
     'org.kde.plasma.plasmoid': 'plasma-workspace — the applet API itself',
     'org.kde.taskmanager': 'plasma-workspace — ships the task manager applet',
     'com.github.captsilver.wallpaperEngineKde': 'this package installs it',
@@ -259,4 +257,27 @@ test('no QML module is imported without being accounted for in the packaging tab
         [],
         `QML modules with no packaging entry:\n  ${unaccounted.join('\n  ')}`
     );
+});
+
+test('org.kde.plasma.core has no importers left', () => {
+    const files = importedModules().get('org.kde.plasma.core') ?? [];
+    assert.deepEqual(files, []);
+});
+
+test('WallpaperPage.qml does not import the QtQuick.Controls/Window/kcmutils aliases it never uses', () => {
+    const text = readFileSync(join(uiDir, 'page', 'WallpaperPage.qml'), 'utf8');
+    assert.ok(!/as QQC\b/.test(text));
+    assert.ok(!/QtQuick\.Window/.test(text));
+    assert.ok(!/org\.kde\.kcmutils/.test(text));
+});
+
+test('SettingPage.qml does not import the Material alias it never uses', () => {
+    const text = readFileSync(join(uiDir, 'page', 'SettingPage.qml'), 'utf8');
+    assert.ok(!/QtQuick\.Controls\.Material/.test(text));
+});
+
+test('every PROVIDED_MODULES entry is still imported by at least one shipped QML file', () => {
+    const imported = importedModules();
+    const stale = Object.keys(PROVIDED_MODULES).filter((m) => !imported.has(m));
+    assert.deepEqual(stale, []);
 });

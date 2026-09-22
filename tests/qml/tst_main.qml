@@ -61,32 +61,36 @@ TestCase {
         return null;
     }
 
-    function test_get_opt_value_fallsBackToDefault() {
+    // Every test below needs to know when main.qml failed to load, or when
+    // get_opt_value moved off the background item -- not just skip
+    // silently.
+    function _requireBg() {
         const bg = _findBackground();
-        if (!bg) {
-            verify(loadError !== "");  // OK: load failed, can't test
-            return;
-        }
+        verify(bg !== null,
+               "_findBackground found no node — main.qml failed to load or "
+               + "lost get_opt_value");
+        return bg;
+    }
+
+    function test_get_opt_value_fallsBackToDefault() {
+        const bg = _requireBg();
         compare(bg.get_opt_value("nonexistent_key", "fallback"), "fallback");
     }
 
     function test_get_opt_value_picksOverride() {
-        const bg = _findBackground();
-        if (!bg) return;
+        const bg = _requireBg();
         bg.curOpt = { my_key: 42 };
         compare(bg.get_opt_value("my_key", -1), 42);
     }
 
     function test_postProcessing_switchOn_mapsToUltra() {
-        const bg = _findBackground();
-        if (!bg) return;
+        const bg = _requireBg();
         bg.curOpt = { postprocessing: true };
         compare(bg.postProcessing, "ultra");
     }
 
     function test_postProcessing_switchOffOrUnset_mapsToEmpty() {
-        const bg = _findBackground();
-        if (!bg) return;
+        const bg = _requireBg();
         bg.curOpt = { postprocessing: false };
         compare(bg.postProcessing, "");
         bg.curOpt = {};
@@ -94,8 +98,7 @@ TestCase {
     }
 
     function test_curOptChanged_handlerFires() {
-        const bg = _findBackground();
-        if (!bg) return;
+        const bg = _requireBg();
         curOptSpy.target = bg;
         curOptSpy.clear();
         bg.curOpt = { display_mode: 2, mute_audio: true, volume: 75, speed: 1.5 };
@@ -106,8 +109,7 @@ TestCase {
     }
 
     function test_perOptChanged_handlerFires() {
-        const bg = _findBackground();
-        if (!bg) return;
+        const bg = _requireBg();
         perOptSpy.target = bg;
         perOptSpy.clear();
         bg.perOptChanged = bg.perOptChanged + 1;
@@ -115,8 +117,7 @@ TestCase {
     }
 
     function test_mouseInputChanged_branchToHookTimer() {
-        const bg = _findBackground();
-        if (!bg) return;
+        const bg = _requireBg();
         mouseInputSpy.target = bg;
         mouseInputSpy.clear();
         bg.mouseInput = !bg.mouseInput;
@@ -127,8 +128,7 @@ TestCase {
     }
 
     function test_hookMouseSlot_constructs() {
-        const bg = _findBackground();
-        if (!bg) return;
+        const bg = _requireBg();
         // No real Plasma Window in tests, so doHookMouse() returns false and
         // hookMouseSlot() restarts hookTimer (already running). The honest
         // assertion is that the function is callable on `background`.
@@ -137,16 +137,14 @@ TestCase {
     }
 
     function test_doHookMouse_returnsBool() {
-        const bg = _findBackground();
-        if (!bg) return;
+        const bg = _requireBg();
         // Without a real Plasma window/screen tree, doHookMouse returns false.
         const r = bg.doHookMouse();
         compare(typeof r, "boolean");
     }
 
     function test_autoPause_returnsEarlyWhenItemMissing() {
-        const bg = _findBackground();
-        if (!bg) return;
+        const bg = _requireBg();
         // backendLoader.item is null in tests (no scene/mpv/qtwebview backend
         // mounted), so autoPause() should hit the early-return path and yield
         // undefined cleanly. A regressed guard would attempt to call
@@ -155,8 +153,7 @@ TestCase {
     }
 
     function test_applySource_constructs() {
-        const bg = _findBackground();
-        if (!bg) return;
+        const bg = _requireBg();
         // `applySource` reaches `wallpaper.configuration.WallpaperWorkShopId`
         // on its first line, which throws ReferenceError under unit-test scope
         // (no Plasma `wallpaper` context). The honest assertion is that the
@@ -167,8 +164,7 @@ TestCase {
     }
 
     function test_loadBackend_branchesByWallpaperType() {
-        const bg = _findBackground();
-        if (!bg) return;
+        const bg = _requireBg();
         wallpaperTypeSpy.target = bg;
         wallpaperTypeSpy.clear();
         const types = ["video", "web", "scene", "unsupported"];
@@ -218,8 +214,7 @@ TestCase {
         // (300ms), playTimer (5000ms), sourcePauseTimer (200ms),
         // loadingHintDelay (600ms). Trigger each by emitting `triggered()`
         // and assert via SignalSpy that the emission was observed.
-        const bg = _findBackground();
-        if (!bg) return;
+        const bg = _requireBg();
         const all = _allDataItems(bg);
         let timersFound = 0;
         let timersObserved = 0;
@@ -243,8 +238,7 @@ TestCase {
     }
 
     function test_fireTtyMonitorSwitchSignal_bothSleepAndWake() {
-        const bg = _findBackground();
-        if (!bg) return;
+        const bg = _requireBg();
         const all = _allDataItems(bg);
         let monitorsFound = 0;
         let totalEmits = 0;
@@ -267,8 +261,7 @@ TestCase {
     }
 
     function test_sourceCallback_fires() {
-        const bg = _findBackground();
-        if (!bg) return;
+        const bg = _requireBg();
         verify(typeof bg.sourceCallback === "function");
         // sourceCallback() starts sourcePauseTimer (interval 200, repeat
         // false). Find it via _allDataItems by interval+repeat shape, mark
@@ -293,8 +286,7 @@ TestCase {
 
     function test_changeWallpaperOnList_handlesEmptyModel() {
         // wpListModel.changeWallpaper(0) early-returns when model.count === 0
-        const bg = _findBackground();
-        if (!bg) return;
+        const bg = _requireBg();
         const all = _allDataItems(bg);
         let listModels = 0;
         for (const item of all) {
@@ -404,15 +396,13 @@ TestCase {
     }
 
     function test_startupCacheGc_pluginInfoIsInScope() {
-        const bg = _findBackground();
-        if (!bg) { verify(loadError !== ""); return; }
+        const bg = _requireBg();
         verify(bg.plugin_info !== undefined && bg.plugin_info !== null,
                 "main.qml has no plugin_info — the startup cache GC never runs");
     }
 
     function test_runCacheGc_dispatchesAsyncWithFlatInstalledDirs() {
-        const bg = _findBackground();
-        if (!bg) { verify(loadError !== ""); return; }
+        const bg = _requireBg();
         const pyext = _findPyext(bg);
         verify(pyext !== null, "no Pyext exposing request_cache_gc under background");
         const fh = pyext.helper;
@@ -446,10 +436,9 @@ TestCase {
     }
 
     function test_runCacheGc_noopsWithoutCachePath() {
-        const bg = _findBackground();
-        if (!bg) { verify(loadError !== ""); return; }
+        const bg = _requireBg();
         const pyext = _findPyext(bg);
-        if (!pyext) return;
+        verify(pyext !== null, "no Pyext exposing request_cache_gc under background");
         const fh = pyext.helper;
         bg.plugin_info.cache_path = "";
         fh.requestCacheGcCount = 0;
@@ -462,8 +451,7 @@ TestCase {
     // fires from Component.onCompleted, so the count is whatever load left
     // behind — no test may reset it.
     function test_startup_seedsLastSeenVersionsOnce() {
-        const bg = _findBackground();
-        if (!bg) { verify(loadError !== ""); return; }
+        const bg = _requireBg();
         const pyext = _findPyext(bg);
         verify(pyext !== null, "no Pyext exposing request_cache_gc under background");
         const fh = pyext.helper;

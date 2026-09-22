@@ -101,6 +101,15 @@ TestCase {
                                        typeof c.setCurIndex === "function");
     }
 
+    function _wallpaperGridSource() {
+        const xhr = new XMLHttpRequest();
+        xhr.open("GET", Qt.resolvedUrl(
+            "../../plugin/contents/ui/components/WallpaperGrid.qml"), false);
+        xhr.send(null);
+        compare(xhr.status, 200, "could not read WallpaperGrid.qml source");
+        return xhr.responseText;
+    }
+
     function _findFolderDialog() {
         return _firstByPredicate(c => typeof c.selectedFolder !== "undefined" &&
                                        typeof c.accepted === "function");
@@ -169,7 +178,6 @@ TestCase {
 
     // SignalSpies — declared as children of the TestCase so lifetimes
     // stay clean across cases. `target` is set per-test in the body.
-    SignalSpy { id: rightClickSpy; signalName: "itemRightClicked" }
     SignalSpy { id: aboutMaSpy;    signalName: "clicked" }
     SignalSpy { id: propChangesSpy; signalName: "propChangesChanged" }
 
@@ -1485,34 +1493,18 @@ TestCase {
             for (const k of kids) { if (!rmb) findRightMA(k); }
         }
         if (gv.view && gv.view.currentItem) findRightMA(gv.view.currentItem);
-        if (rmb) {
-            // Wire a SignalSpy to the WallpaperGrid's itemRightClicked
-            // signal so we can observe the production route: MouseArea
-            // .onClicked → root.itemRightClicked(model, index, x, y).
-            rightClickSpy.target = gv;
-            rightClickSpy.clear();
-            // Calling clicked() with an empty event object causes a
-            // signature mismatch warning ("Cannot read property 'x' of
-            // null"). Production reads mouse.x/mouse.y but the IIFE
-            // catches the throw — the signal is still emitted only if
-            // the handler completes. Skip when delegate materialisation
-            // didn't produce a real currentItem.
-            try { rmb.clicked({ x: 10, y: 10 }); } catch (e) {}
-            // Whether the offscreen platform materialised a real
-            // currentItem with a working MouseArea event pipeline is
-            // best-effort. If the click did propagate, assert the
-            // forwarded signal fired with the model + index args.
-            if (rightClickSpy.count > 0) {
-                compare(rightClickSpy.signalArguments[0][1], 0,
-                        "index arg must equal the delegate's index");
-            }
-        } else {
-            // No right-button MouseArea was discoverable; the delegate
-            // didn't materialise under the offscreen platform. Record
-            // the structural gap rather than asserting a false positive.
-            verify(typeof gv.itemRightClicked === "function",
-                   "WallpaperGrid must expose an itemRightClicked signal");
-        }
+        _requireNode(rmb, "the right-click MouseArea inside WallpaperGrid's delegate");
+
+        // clicked's parameter is a QQuickMouseEvent* — a C++-only type
+        // with no JS-constructible literal, so a driven click can't reach
+        // this handler from a test. Assert the production wiring by
+        // contract instead: the right-click MouseArea's onClicked must
+        // forward exactly (model, index, mouse.x, mouse.y), in that
+        // order, to itemRightClicked.
+        const src = _wallpaperGridSource();
+        verify(/acceptedButtons:\s*Qt\.RightButton[\s\S]{0,200}?onClicked:\s*function\s*\(mouse\)\s*\{[\s\S]{0,200}?root\.itemRightClicked\(model,\s*index,\s*mouse\.x,\s*mouse\.y\);/.test(src),
+               "WallpaperGrid.qml's right-click MouseArea no longer forwards "
+               + "(model, index, mouse.x, mouse.y) to itemRightClicked in that order");
     }
 
     // ── WallpaperPage: filter chip onTriggered@72 ───────────────────────────

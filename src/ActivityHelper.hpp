@@ -66,7 +66,7 @@ public:
     // Test seam: override the value currentActivity() returns.  Production
     // wiring (when WEK_HAS_PLASMA_ACTIVITIES is on) drives this from the
     // Consumer signal; tests call it directly to simulate Activity switches.
-    Q_INVOKABLE void setCurrentActivityForTesting(const QString& activity);
+    void setCurrentActivityForTesting(const QString& activity);
 
 signals:
     void currentActivityChanged(const QString& activity);

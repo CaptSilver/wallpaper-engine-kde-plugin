@@ -1,7 +1,6 @@
 #include "ActivityHelper.hpp"
 
 #include <QLoggingCategory>
-#include <QStandardPaths>
 
 #include <KConfig>
 #include <KConfigGroup>
@@ -68,19 +67,16 @@ QString ActivityHelper::groupNameFor(const QString& activity) const {
 
 KConfig* ActivityHelper::config() const {
     if (! m_config) {
-        // Test ctor passes an absolute path; the default ctor would, in a real
-        // plasmashell deployment, locate the wallpaper plugin's `wekrc` (or
-        // appletsrc subkey) via KSharedConfig.  Tests are the only consumer of
-        // this code path today (no QML reader is wired to it yet), so we keep
-        // the default branch a best-effort guess rather than resolve the real
-        // containment config.
         if (m_configFile.isEmpty()) {
-            const QString cfg =
-                QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
-            // Best-effort default; safe to write because KConfig only creates
-            // the file on first sync().
-            m_config =
-                std::make_unique<KConfig>(cfg + QStringLiteral("/wekrc"), KConfig::SimpleConfig);
+            // The default ctor is the only one QML can construct (the
+            // string ctor below is test-only and never registered). No QML
+            // consumer resolves the real containment config yet, so refuse
+            // rather than guess a path and silently write into a file
+            // nothing else in the product reads.
+            qCCritical(lcWekActivity)
+                << "no config resolved for ActivityHelper: default ctor reached with no "
+                   "QML consumer wired; refusing to invent ~/.config/wekrc";
+            return nullptr;
         } else {
             m_config = std::make_unique<KConfig>(m_configFile, KConfig::SimpleConfig);
         }
@@ -89,7 +85,8 @@ KConfig* ActivityHelper::config() const {
 }
 
 QString ActivityHelper::readPerActivity(const QString& key) const {
-    KConfig*     cfg = config();
+    KConfig* cfg = config();
+    if (! cfg) return QString();
     KConfigGroup activityGroup(cfg, groupNameFor(m_currentActivity));
     if (activityGroup.hasKey(key)) {
         return activityGroup.readEntry(key, QString());
@@ -102,7 +99,8 @@ QString ActivityHelper::readPerActivity(const QString& key) const {
 }
 
 void ActivityHelper::setPerActivity(const QString& key, const QVariant& value) {
-    KConfig*     cfg = config();
+    KConfig* cfg = config();
+    if (! cfg) return;
     KConfigGroup group(cfg, groupNameFor(m_currentActivity));
     group.writeEntry(key, value);
     cfg->sync();
@@ -111,6 +109,7 @@ void ActivityHelper::setPerActivity(const QString& key, const QVariant& value) {
 void ActivityHelper::setForActivity(const QString& activity, const QString& key,
                                     const QVariant& value) {
     KConfig* cfg = config();
+    if (! cfg) return;
     // "all" is the affinity sentinel for "All Activities" — target [General].
     const QString groupName = (activity == QLatin1String("all")) ? QString::fromUtf8(kGeneralGroup)
                                                                  : groupNameFor(activity);
@@ -121,7 +120,8 @@ void ActivityHelper::setForActivity(const QString& activity, const QString& key,
 
 void ActivityHelper::dropActivity(const QString& activity) {
     if (isUnknownActivity(activity)) return; // never drop _default
-    KConfig*     cfg = config();
+    KConfig* cfg = config();
+    if (! cfg) return;
     KConfigGroup group(cfg, groupNameFor(activity));
     group.deleteGroup();
     cfg->sync();

@@ -7,17 +7,23 @@
 // asserts both the helper's return values and the on-disk group state.
 
 #include <QtTest>
+#include <QFile>
+#include <QRegularExpression>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 
 #include <KConfig>
 #include <KConfigGroup>
 
 #include "ActivityHelper.hpp"
+#include "TestSandbox.h"
 
 class TstActivityHelper : public QObject {
     Q_OBJECT
 private slots:
+    void initTestCase() { wek::test_sandbox::enableIsolated(); }
+
     // ── readPerActivity ──────────────────────────────────────────────────────
 
     void readPerActivity_returnsValue_whenGroupExists() {
@@ -227,6 +233,26 @@ private slots:
         wekde::ActivityHelper helper(cfgPath);
         helper.setCurrentActivityForTesting("00000000-0000-0000-0000-000000000000");
         QCOMPARE(helper.currentActivity(), QStringLiteral("_default"));
+    }
+
+    // ── QML-callable surface / config resolution ─────────────────────────────
+
+    void setCurrentActivityForTesting_isNotReachableFromQmlMetaObject() {
+        const QMetaObject* mo = &wekde::ActivityHelper::staticMetaObject;
+        const auto sig = QMetaObject::normalizedSignature("setCurrentActivityForTesting(QString)");
+        QVERIFY(mo->indexOfMethod(sig.constData()) < 0);
+    }
+
+    void defaultCtor_setPerActivity_doesNotInventConfigFile() {
+        wekde::ActivityHelper helper; // default ctor: the only one QML can construct
+
+        QTest::ignoreMessage(QtCriticalMsg,
+                             QRegularExpression("no config resolved for ActivityHelper"));
+        helper.setPerActivity("Probe", "value");
+
+        const QString invented =
+            QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/wekrc";
+        QVERIFY(! QFile::exists(invented));
     }
 
     // ── production Consumer wire ──────────────────────────────────────────────

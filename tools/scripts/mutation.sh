@@ -35,8 +35,19 @@
 #   - Parent:    build/impl-mutation/      with -DMUTATION_TESTING=ON over tests/
 #   - Submodule: build/impl-mutation-sub/  with -DBUILD_TESTS=ON -DMUTATION_TESTING=ON
 #                over src/backend_scene/.  Only backend_scene_tests is mutation-
-#                instrumented (per src/backend_scene/src/Test/CMakeLists.txt:290);
+#                instrumented (wek_apply_mull_instrumentation() in
+#                src/backend_scene/cmake/WekMullInstrument.cmake, called on the
+#                test executable AND every first-party library it links);
 #                scenescript_tests is excluded.
+#
+# Diff mode and added files:
+#   Mull's own gitDiffRef filter finds no delta for a path absent from the
+#   base tree, so a file added since the diff base is invisible to it no
+#   matter how much mutable logic it holds.  --diff-only compensates with a
+#   second pass per target: whatever first-party files `git diff
+#   --diff-filter=A` reports since the same base, mutated in full via
+#   includePaths (no gitDiffRef), reported into a second directory that
+#   aggregates alongside the primary pass.  Skipped when nothing was added.
 #
 # MOC ignore:
 #   Mutants in Qt-generated moc_*.cpp / *.moc / *_autogen/ files are dropped
@@ -55,7 +66,8 @@
 # invoking this without --diff-only, and see mull_config_for() for why the
 # diff scoping is load-bearing rather than a nicety.
 #
-# Exit codes: 0=clean / 1=new survivors (or a --migrate-baseline orphan) / 2=arg error /
+# Exit codes: 0=clean / 1=new survivors (a --migrate-baseline orphan, or a
+#             first-party TU built without Mull's instrumentation) / 2=arg error /
 #             77=runner or build unavailable / 78=no target produced a report.
 set -euo pipefail
 
@@ -81,6 +93,16 @@ bin_path() {
     case "$t" in
         backend_scene_tests) echo "$BUILD_SUB/src/Test/$t" ;;
         *) echo "$BUILD/$t" ;;
+    esac
+}
+
+# The ninja build-dir ROOT for a target (what `ninja -C <root>` wants), as
+# opposed to bin_path()'s full executable path.  Same split as bin_path().
+mull_build_root_for() {
+    local t="$1"
+    case "$t" in
+        backend_scene_tests) echo "$BUILD_SUB" ;;
+        *) echo "$BUILD" ;;
     esac
 }
 
@@ -664,6 +686,11 @@ fi
 MULL_TIMEOUT_MS="${MULL_TIMEOUT_MS:-300000}"
 MULL_MIN_TIMEOUT_MS="${MULL_MIN_TIMEOUT_MS:-5000}"
 ok "mull parallelism: $MULL_WORKERS workers (RAM-bounded, cap nproc), build -j$MULL_BUILD_JOBS, ${MULL_TIMEOUT_MS}ms ceiling / ${MULL_MIN_TIMEOUT_MS}ms floor"
+# Resolved via PATH by default (inside the box, same as clang/cmake); the
+# instrumentation-drift self-test overrides this to an absolute stub path so
+# it can pin canned `-t commands` output without a real ninja build or an
+# actual distrobox entry.
+MULL_NINJA_BIN="${MULL_NINJA_BIN:-ninja}"
 # Mull looks for its config as ./mull.yml, or wherever $MULL_CONFIG points.  We
 # run the runner from the superproject root and build from build/impl-mutation-sub,
 # and neither holds one -- so src/backend_scene/mull.yml has never been read, and
@@ -681,30 +708,66 @@ ok "mull parallelism: $MULL_WORKERS workers (RAM-bounded, cap nproc), build -j$M
 # which paths get mutated, not which mutators run.  Parent binaries need this as
 # much as the submodule one: they link submodule sources, so unconfigured they
 # mutate kissfft and vog/sha1.
-mull_config_for() {
-    local t="$1" src root ref cfg
+# _MULL_CFG_PATH / _MULL_CFG_ROOT / _MULL_CFG_REF: mull_config_for()'s result
+# is read from these globals, NOT from stdout -- a caller that captured it via
+# $(mull_config_for "$t") would run the whole function in a subshell, and
+# every one of these assignments would vanish the instant that subshell exits.
+# _MULL_CFG_ROOT/_MULL_CFG_REF exist so the added-files pass below
+# (mull_added_files_config_for(), below) can reuse the exact project root and
+# diff base this function just resolved -- an added file is meaningless
+# without knowing which ref it was added SINCE, and re-deriving that
+# separately would drift the moment one of the two picked a different
+# fallback (e.g. origin/main missing locally). All three are reset on every
+# call, including the early-return paths, so a target that doesn't reach the
+# diff branch (a full sweep, or one with no mull.yml) never leaves a previous
+# target's config/ref lying around for the next one to misread.
+# Which committed mull.yml a target's config derives from, and the project
+# root to run git/Mull operations against for it -- the
+# backend_scene_tests-vs-everything-else branch mull_config_for() and
+# mull_added_files_config_for() both need, factored out here so the two can't
+# quietly diverge on which target maps to which paths.  Writes into
+# _MULL_SRC_YML/_MULL_SRC_ROOT rather than returning via stdout, for the same
+# subshell reason _MULL_CFG_PATH exists below.
+_MULL_SRC_YML=""
+_MULL_SRC_ROOT=""
+mull_src_root_for() {
+    local t="$1"
     if [[ "$t" == "backend_scene_tests" ]]; then
-        src="$PWD/src/backend_scene/mull.yml"
-        root="$PWD/src/backend_scene"
+        _MULL_SRC_YML="$PWD/src/backend_scene/mull.yml"
+        _MULL_SRC_ROOT="$PWD/src/backend_scene"
     else
         # Parent binaries link submodule sources, so they need the exclusions
         # just as much: without a config they mutate kissfft and vog/sha1, which
         # is where ~98 of the committed baseline's entries came from.
-        src="$PWD/tests/mull.yml"
-        root="$PWD"
+        _MULL_SRC_YML="$PWD/tests/mull.yml"
+        _MULL_SRC_ROOT="$PWD"
     fi
-    [[ -f "$src" ]] || { printf ''; return; }
+}
+
+_MULL_CFG_PATH=""
+_MULL_CFG_ROOT=""
+_MULL_CFG_REF=""
+mull_config_for() {
+    local t="$1" src root ref cfg
+    _MULL_CFG_PATH=""
+    _MULL_CFG_REF=""
+    mull_src_root_for "$t"
+    src="$_MULL_SRC_YML"
+    root="$_MULL_SRC_ROOT"
+    _MULL_CFG_ROOT="$root"
+    [[ -f "$src" ]] || return 0
     # A chunked sweep needs its own derived config even outside diff mode, so
     # build one whenever includePaths are in play.
-    if [[ "$MODE" != "diff" && -z "$INCLUDE_PATHS" ]]; then printf '%s' "$src"; return; fi
+    if [[ "$MODE" != "diff" && -z "$INCLUDE_PATHS" ]]; then _MULL_CFG_PATH="$src"; return 0; fi
     # Diff base, resolved inside the submodule -- it has its own history, so the
     # parent's range says nothing about which submodule lines changed.
     ref=""
     [[ "$MODE" == "diff" ]] && ref="$(git -C "$root" rev-parse --verify --quiet origin/main 2>/dev/null || true)"
     if [[ "$MODE" == "diff" ]]; then
         [[ -z "$ref" ]] && ref="$(git -C "$root" rev-parse --verify --quiet HEAD~1 2>/dev/null || true)"
-        [[ -z "$ref" ]] && { printf '%s' "$src"; return; }
+        [[ -z "$ref" ]] && { _MULL_CFG_PATH="$src"; return 0; }
     fi
+    _MULL_CFG_REF="$ref"
     cfg="$OUT_DIR/mull-$t${OUT_SUFFIX:+-$OUT_SUFFIX}.yml"
     {
         cat "$src"
@@ -717,30 +780,188 @@ mull_config_for() {
         fi
         [[ "$MODE" == "diff" ]] && printf 'gitProjectRoot: %s\ngitDiffRef: %s\n' "$root" "$ref"
     } > "$cfg"
+    _MULL_CFG_PATH="$cfg"
+}
+
+# Escape a literal string for use inside an anchored (^...$) extended regex --
+# every ERE metacharacter neutralised so an absolute path with dots in it
+# (every path here has at least one, in the extension) matches itself and
+# nothing else.
+_mull_regex_escape() {
+    printf '%s' "$1" | sed -e 's/[.[\*^$()+?{}|\\]/\\&/g'
+}
+
+# Whether target t plausibly compiles first-party file f.  For a parent test
+# binary this reuses SRC_TO_TARGETS -- the same tests/CMakeLists.txt-derived
+# map the diff-only target-selection loop above already trusts for "which
+# targets does this changed file touch", companion-header inference and all
+# (FileHelper.hpp counts wherever FileHelper.cpp does).  Submodule paths
+# aren't in that map at all (mutation_targets.py only reads the parent's
+# tests/CMakeLists.txt), so backend_scene_tests keeps the same coarse "every
+# submodule path counts" policy the target-selection loop already applies to
+# it, rather than reading zero targets here and silently dropping the file.
+#
+# A file with NO entry in SRC_TO_TARGETS at all -- a genuinely new file that
+# isn't wired into any add_executable() yet, or a header the sibling-header
+# heuristic doesn't pair up -- counts for every target rather than none: the
+# map only ever narrows a KNOWN, already-mapped file to the targets that
+# actually compile it, it never becomes grounds to drop an unknown file from
+# every target's measurement (that would just resurrect the added-files
+# pass's original blind spot from the other direction).
+_mull_target_compiles() {
+    local t="$1" f="$2"
+    [[ "$t" == "backend_scene_tests" ]] && return 0
+    [[ -z "${SRC_TO_TARGETS[$f]:-}" ]] && return 0
+    local mapped
+    for mapped in ${SRC_TO_TARGETS[$f]:-}; do
+        [[ "$mapped" == "$t" ]] && return 0
+    done
+    return 1
+}
+
+# A file added since the diff base is invisible to Mull's own git filter:
+# gitDiffRef reads `git diff base_tree -> workdir`, which is blind to a path
+# absent from base_tree entirely -- a file added since the ref has no delta
+# and so no line ranges, and every mutant inside it is silently dropped from
+# a --diff-only run no matter how much arithmetic or comparison logic it
+# holds.  WPSceneHidePattern.hpp (added in ceda056) is the case that surfaced
+# this: `A` in `git diff --name-status origin/main`, mutants embedded in the
+# compiled object, none ever admitted.
+#
+# Requires mull_config_for() to have already run for this target THIS run --
+# reuses its resolved root/ref via _MULL_CFG_ROOT/_MULL_CFG_REF rather than
+# re-deriving them, so the two functions can never disagree about which ref
+# "added" means relative to.
+mull_added_files_config_for() {
+    local t="$1" src root ref cfg added
+    root="$_MULL_CFG_ROOT"
+    ref="$_MULL_CFG_REF"
+    [[ -z "$root" || -z "$ref" ]] && { printf ''; return; }
+    mull_src_root_for "$t"
+    src="$_MULL_SRC_YML"
+    [[ -f "$src" ]] || { printf ''; return; }
+    # First-party sources only: skip third_party (excludePaths drops it anyway,
+    # so a second pass over it would only cost a wasted runner invocation) and
+    # src/Test (doctest bodies + fuzz harnesses under src/Test/fuzz/ -- neither
+    # is product code, and mull.yml excludes the whole directory already).
+    # --no-renames: without it, --diff-filter=A depends on the machine's
+    # diff.renames config -- with rename detection on, a moved-and-edited
+    # first-party file shows up as `R`, not `A`, and this loop would never see
+    # it even though it is exactly the "new path Mull's git filter can't see"
+    # case this function exists to catch.
+    added="$(git -C "$root" diff --no-renames --name-only --diff-filter=A "$ref" -- . 2>/dev/null \
+        | grep -E '\.(cpp|cc|cxx|h|hpp)$' \
+        | grep -vE '(^|/)third_party/|(^|/)src/Test/' || true)"
+    [[ -z "$added" ]] && { printf ''; return; }
+    # Scope to files this target actually compiles.  Without this, an added
+    # file rides along in every target's includePaths merely because it
+    # shares the diff with an edited file that also maps to that target --
+    # e.g. FileHelper.cpp feeds three test binaries, so a diff that edits it
+    # and separately adds one new source used to run the (expensive) added-
+    # files pass three times, twice against binaries that never compiled the
+    # new file at all.
+    added="$(
+        while IFS= read -r f; do
+            [[ -z "$f" ]] && continue
+            _mull_target_compiles "$t" "$f" && printf '%s\n' "$f"
+        done <<< "$added"
+    )"
+    [[ -z "$added" ]] && { printf ''; return; }
+    cfg="$OUT_DIR/mull-$t${OUT_SUFFIX:+-$OUT_SUFFIX}-added.yml"
+    {
+        cat "$src"
+        # Anchored, escaped absolute paths -- not the `.*/name.*` wildcard style
+        # excludePaths uses -- because we want EXACTLY these newly-added files,
+        # and nothing else: an unanchored pattern would also match any other
+        # file in the tree whose path happens to contain the same substring.
+        printf '\nincludePaths:\n'
+        while IFS= read -r f; do
+            [[ -z "$f" ]] && continue
+            printf '  - ^%s$\n' "$(_mull_regex_escape "$root/$f")"
+        done <<< "$added"
+        # Deliberately no gitProjectRoot/gitDiffRef here: includePaths already
+        # narrows the sweep to exactly the added files, and the whole point is
+        # to measure them in full rather than through a diff filter that (per
+        # the defect this exists to close) cannot see them at all.
+    } > "$cfg"
     printf '%s' "$cfg"
 }
 
-[[ "$AGGREGATE_ONLY" == "1" ]] && TARGETS=()
-for t in "${TARGETS[@]}"; do
-    bin="$(bin_path "$t")"
-    if [[ ! -x "$bin" ]]; then
-        warn "missing $bin — skipping"
-        continue
+# A target's own -fpass-plugin block never reaches the static libraries it
+# links -- target_compile_options only ever touches the target it's called
+# on, so a first-party library could carry zero embedded mutants
+# while the binary linking it looked completely ordinary.  Catch a
+# recurrence the way this one was originally found: ask ninja for the
+# target's own compile commands (resolved transitively through every static
+# library it links) and look for a first-party TU with no -fpass-plugin.
+MULL_TU_EXCLUDE_RE='(^|/)third_party/|(^|/)src/Test/'
+
+# Pulls the argument to -c out of one ninja compile-command line, robust to a
+# path containing a space: ninja quotes such an argument (double or single
+# quotes) rather than leaving it bare, so the original parser -- split on
+# whitespace after a plain `grep -oE '-c [^ ]+\.ext'` -- truncated at the
+# first embedded space and matched an incomplete, wrong path.  Tries both
+# quoted forms before falling back to the bare unquoted one.  Always exits 0
+# (even on no match): a caller doing `var=$(_mull_extract_c_arg ...)` is a
+# simple command under this script's `set -e`, and the parser it replaces
+# crashed the whole script silently the moment it hit a line with no match
+# (see the `|| true` comment at the call site's history) -- a bash function
+# returning nonzero from a failed [[ =~ ]] test would trip the exact same trap.
+_mull_extract_c_arg() {
+    local line="$1"
+    if [[ "$line" =~ -c\ \"([^\"]+\.(cpp|cc|cxx|mm))\" ]]; then
+        printf '%s' "${BASH_REMATCH[1]}"
+    elif [[ "$line" =~ -c\ \'([^\']+\.(cpp|cc|cxx|mm))\' ]]; then
+        printf '%s' "${BASH_REMATCH[1]}"
+    elif [[ "$line" =~ -c\ ([^\ ]+\.(cpp|cc|cxx|mm)) ]]; then
+        printf '%s' "${BASH_REMATCH[1]}"
     fi
-    ANY_BIN=1
-    target_dir="$OUT_DIR/$t${OUT_SUFFIX:+-$OUT_SUFFIX}"
+    return 0
+}
+
+check_mull_instrumentation() {
+    local t="$1" bin="$2" root ninja_target cmds line src_file
+    local -a missing=()
+    root="$(mull_build_root_for "$t")"
+    # No build.ninja to ask -- either a non-Ninja generator, or (the hermetic
+    # self-test's synthetic root) no real build at all.  Nothing to check.
+    [[ -f "$root/build.ninja" ]] || return 0
+    ninja_target="${bin#"$root"/}"
+    if ! cmds="$(dbox "'$MULL_NINJA_BIN' -C '$root' -t commands '$ninja_target'" 2>/dev/null)"; then
+        warn "ninja -t commands failed for $t — skipping instrumentation-drift check"
+        return 0
+    fi
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        # Most lines in a ninja command dump are link/ar/ranlib steps with no
+        # `-c <file>` at all -- _mull_extract_c_arg prints nothing for those
+        # and this just moves on to the next line.
+        src_file="$(_mull_extract_c_arg "$line")"
+        [[ -z "$src_file" ]] && continue
+        [[ "$src_file" == *src/backend_scene/src/* || "$src_file" == *src/backend_scene/qml_helper/* ]] || continue
+        [[ "$src_file" =~ $MULL_TU_EXCLUDE_RE ]] && continue
+        [[ "$line" == *"-fpass-plugin"* ]] && continue
+        missing+=("$src_file")
+    done <<< "$cmds"
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        warn "first-party translation unit(s) built without Mull's -fpass-plugin for $t:"
+        printf '  %s\n' "${missing[@]}" >&2
+        fail "$t links first-party code Mull never instrumented — call wek_apply_mull_instrumentation() on the owning library target"
+    fi
+}
+
+# run_mull_pass <target> <bin> <target_dir> <mull-config> <label> -- runs one
+# Mull invocation against <bin> under MULL_CONFIG=<mull-config>, normalising
+# whatever it reports into <target_dir>/{survivors,killed}.json.  Split out of
+# the main per-target loop so the added-files pass (a second config, a
+# second report dir, same binary) can reuse it exactly rather than drifting
+# from the primary pass over time.  <label> is appended to log lines so the
+# two passes over one target are distinguishable in output.
+run_mull_pass() {
+    local t="$1" bin="$2" target_dir="$3" cfg="$4" label="${5:-}"
     mkdir -p "$target_dir"
-    step "mutating $t ($bin)"
-    if MULL_CONFIG="$(mull_config_for "$t")" && [[ -n "$MULL_CONFIG" ]]; then
-        export MULL_CONFIG
-        ok "mull config: $MULL_CONFIG"
-    else
-        # Without a config Mull mutates third_party and the test sources too:
-        # far more mutants, and a baseline full of entries for code we neither
-        # own nor test.  Refuse rather than quietly produce a different
-        # measurement that still looks like a clean run.
-        fail "no mull.yml resolved for $t — refusing to mutate it unfiltered"
-    fi
+    export MULL_CONFIG="$cfg"
+    ok "mull config: $MULL_CONFIG"
     # Strip whatever absolute prefix lands the path at the repo root so the
     # baseline survives different checkout locations and the Bazzite
     # /home <-> /var/home symlink (distrobox sees /home, host pwd lands at
@@ -748,6 +969,7 @@ for t in "${TARGETS[@]}"; do
     # which mull's report consistently embeds.  Survivors that don't match
     # the leaf (none expected today) pass through unchanged.  Submodule paths
     # come out as src/backend_scene/src/... after this substitution.
+    local repo_leaf rpt out
     repo_leaf="$(basename "$(pwd)")"
     if [[ "$USE_ELEMENTS" == "1" ]]; then
         # Elements writes <epoch>.json into --report-dir.
@@ -763,7 +985,7 @@ for t in "${TARGETS[@]}"; do
                        --report-dir "$target_dir" \
                        --report-name report \
                        "$bin" 2>&1 | tee "$target_dir/runner.log" | tail -8; then
-            warn "Mull exit nonzero for $t (survivors expected; output captured)"
+            warn "Mull exit nonzero for $t$label (survivors expected; output captured)"
         fi
         rpt=$(find "$target_dir" -maxdepth 1 -name '*.json' -type f 2>/dev/null | head -1 || true)
         if [[ -z "$rpt" || ! -s "$rpt" ]]; then
@@ -773,14 +995,14 @@ for t in "${TARGETS[@]}"; do
             # Mull's own message separates the two, so read it rather than
             # inferring from the missing file.
             if grep -qi 'No mutants found' "$target_dir/runner.log" 2>/dev/null; then
-                ok "$t: no mutants in scope for this diff — nothing to measure"
+                ok "$t$label: no mutants in scope for this diff — nothing to measure"
                 printf '[]\n' > "$target_dir/survivors.json"
                 printf '[]\n' > "$target_dir/killed.json"
                 ANY_REPORT=1
-                continue
+                return 0
             fi
-            warn "no Elements report for $t — skipping in aggregate"
-            continue
+            warn "no Elements report for $t$label — skipping in aggregate"
+            return 0
         fi
         ANY_REPORT=1
         # Normalise Elements: .files{path => {source, mutants: [{id, mutatorName, location, status}]}}
@@ -831,8 +1053,8 @@ for t in "${TARGETS[@]}"; do
         # error (a timed-out warmup being the usual one) must not surface as
         # "no new survivors".
         if [[ ! -s "$out" ]] || grep -q 'treated as fatal errors' "$out"; then
-            warn "Mull failed before reporting for $t — skipping in aggregate"
-            continue
+            warn "Mull failed before reporting for $t$label — skipping in aggregate"
+            return 0
         fi
         ANY_REPORT=1
         jq -nR --arg leaf "$repo_leaf" --arg moc "$MOC_IGNORE" '
@@ -843,6 +1065,53 @@ for t in "${TARGETS[@]}"; do
               mutator}
            | select(.file | test($moc) | not)]
         ' < "$out" > "$target_dir/survivors.json"
+    fi
+}
+
+[[ "$AGGREGATE_ONLY" == "1" ]] && TARGETS=()
+for t in "${TARGETS[@]}"; do
+    bin="$(bin_path "$t")"
+    if [[ ! -x "$bin" ]]; then
+        warn "missing $bin — skipping"
+        continue
+    fi
+    ANY_BIN=1
+    check_mull_instrumentation "$t" "$bin"
+
+    target_dir="$OUT_DIR/$t${OUT_SUFFIX:+-$OUT_SUFFIX}"
+    step "mutating $t ($bin)"
+    # Called directly, NOT as MULL_CONFIG="$(mull_config_for "$t")": a command
+    # substitution would run the function in a subshell, and _MULL_CFG_ROOT/
+    # _MULL_CFG_REF (which the added-files pass below depends on) would be
+    # lost the moment that subshell exited.
+    mull_config_for "$t"
+    MULL_CONFIG="$_MULL_CFG_PATH"
+    if [[ -z "$MULL_CONFIG" ]]; then
+        # Without a config Mull mutates third_party and the test sources too:
+        # far more mutants, and a baseline full of entries for code we neither
+        # own nor test.  Refuse rather than quietly produce a different
+        # measurement that still looks like a clean run.
+        fail "no mull.yml resolved for $t — refusing to mutate it unfiltered"
+    fi
+    run_mull_pass "$t" "$bin" "$target_dir" "$MULL_CONFIG" ""
+
+    # A diff-scoped run can't see a file the base ref never had -- Mull's own
+    # git filter finds no delta for a path absent from the base tree, so a
+    # brand-new file's mutants never reach the pass above no matter how much
+    # arithmetic/comparison logic it holds.  Measure those files in full, as a
+    # second pass into their own report dir; the aggregation glob below reads
+    # every subdirectory under $OUT_DIR, so both passes merge automatically.
+    if [[ "$MODE" == "diff" ]]; then
+        ADDED_CONFIG="$(mull_added_files_config_for "$t")"
+        if [[ -n "$ADDED_CONFIG" ]]; then
+            # Underscore, not hyphen: the report-dir basename becomes part of a
+            # bash variable name in the gate's own hermetic self-test (which
+            # picks a stub runner's canned report by ${!STUB_REPORT_<basename>}),
+            # and a hyphen there is not a legal identifier character.
+            added_dir="$OUT_DIR/$t${OUT_SUFFIX:+-$OUT_SUFFIX}_added"
+            step "mutating $t ($bin) — files added since the diff base"
+            run_mull_pass "$t" "$bin" "$added_dir" "$ADDED_CONFIG" " (added files)"
+        fi
     fi
 done
 

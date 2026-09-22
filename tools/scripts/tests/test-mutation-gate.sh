@@ -74,6 +74,35 @@ STUB
     chmod +x "$path"
 }
 
+# A stub standing in for `ninja -t commands <target>` -- the post-build
+# instrumentation check (mutation.sh's check_mull_instrumentation) invokes
+# this, not the real build, so a case can pin exactly what the "compile
+# commands" looked like without an actual cmake/ninja build.  Prints
+# $STUB_NINJA_COMMANDS verbatim; the check only cares about the text of each
+# line, never ninja's real dependency graph.
+write_stub_ninja() {
+    local path="$1"
+    mkdir -p "$(dirname "$path")"
+    cat > "$path" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "${STUB_NINJA_COMMANDS:-}"
+STUB
+    chmod +x "$path"
+}
+
+# Gives a make_root() sandbox what check_mull_instrumentation() needs to
+# actually run against it, instead of taking its "no build.ninja -- nothing
+# to check" early exit: a build.ninja placeholder (only its existence is
+# read; its content never is) under the target's build dir, plus MULL_NINJA_BIN
+# pointed at an absolute stub script so the check never touches PATH or a real
+# ninja/distrobox.
+prep_ninja_drift_root() {  # prep_ninja_drift_root <root> <build-dir-relative-to-root>
+    local root="$1" build_dir="$2"
+    mkdir -p "$root/$build_dir"
+    : > "$root/$build_dir/build.ninja"
+    write_stub_ninja "$root/stubbin/ninja"
+}
+
 # Build a synthetic repo root the gate can run against.
 make_root() {
     local root
@@ -500,6 +529,217 @@ else
     sed 's/^/        | /' <<<"$combined" | tail -20
     FAIL=$((FAIL + 1))
 fi
+
+# 18. A first-party TU behind a mutation-instrumented binary that carries no
+#     -fpass-plugin (the exact shape a static library linked but never
+#     instrumented left) must fail the run before any mutant is ever
+#     measured -- not quietly report "no mutants in scope" for code Mull
+#     never actually saw.  The ar/ranlib line ahead of the compile line is
+#     load-bearing, not decoration: a real `ninja -t commands` dump is mostly
+#     link/archive steps with no `-c <file>` in them at all, and a first draft
+#     of this check read one via `x="$(grep ... | awk ...)"` -- under this
+#     script's `set -o pipefail`, grep finding no match on that line exits 1,
+#     the assignment inherits it, and `set -e` kills the whole gate right
+#     there with no message at all.  A single-line stub never exercised that
+#     line shape and shipped it anyway.
+root="$(make_root)"
+prep_ninja_drift_root "$root" "build/impl-mutation"
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 WEK_IN_CI=1 MULL_WORKERS=1 \
+        MULL_NINJA_BIN="$root/stubbin/ninja" STUB_REPORT=nomutants \
+        STUB_NINJA_COMMANDS=$'/usr/bin/llvm-ar qc src/Utils/libwpUtils.a src/Utils/CMakeFiles/wpUtils.dir/Logging.cpp.o && /usr/bin/llvm-ranlib src/Utils/libwpUtils.a\nclang++ -Isomewhere -c /var/home/bazzite/build/wallpaper-engine-kde-plugin/src/backend_scene/src/Utils/FpsCounter.cpp -o CMakeFiles/wpUtils.dir/FpsCounter.cpp.o' \
+        "$GATE" --target tst_filehelper --strict 2>&1 )"; rc=$?
+check "a first-party TU built without -fpass-plugin fails before mutating" \
+      "" "$rc" 1 "$out" "never instrumented"
+
+# 19. The inverse of #18: the identical compile line (with the same leading
+#     ar/ranlib line), this time correctly carrying -fpass-plugin, must not
+#     trip the check -- proves #18 is testing the FLAG's presence, not merely
+#     a first-party path showing up in the compile commands at all.
+root="$(make_root)"
+prep_ninja_drift_root "$root" "build/impl-mutation"
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 WEK_IN_CI=1 MULL_WORKERS=1 \
+        MULL_NINJA_BIN="$root/stubbin/ninja" STUB_REPORT=nomutants \
+        STUB_NINJA_COMMANDS=$'/usr/bin/llvm-ar qc src/Utils/libwpUtils.a src/Utils/CMakeFiles/wpUtils.dir/Logging.cpp.o && /usr/bin/llvm-ranlib src/Utils/libwpUtils.a\nclang++ -Isomewhere -fpass-plugin=/plugin.so -c /var/home/bazzite/build/wallpaper-engine-kde-plugin/src/backend_scene/src/Utils/FpsCounter.cpp -o CMakeFiles/wpUtils.dir/FpsCounter.cpp.o' \
+        "$GATE" --target tst_filehelper --strict 2>&1 )"; rc=$?
+check "the same TU correctly instrumented does not trip the drift check" \
+      "" "$rc" 0 "$out" "no mutants"
+
+# 20. A diff range that ADDS a first-party file must get a second Mull pass
+#     scoped to exactly that file (includePaths, no gitDiffRef), merged into
+#     the same aggregate as the primary pass.  Mull's own git-diff filter has
+#     no delta for a path absent from the base tree, so without this second
+#     pass the added file's mutants are silently dropped no matter how much
+#     arithmetic/comparison logic they hold.
+root="$(make_root)"
+gitc20() { git -C "$root" -c user.email=t@t -c user.name=t "$@"; }
+mkdir -p "$root/src"
+printf 'int f(){return 0;}\n' > "$root/src/FileHelper.cpp"
+gitc20 add src/FileHelper.cpp; gitc20 commit -q -m base
+gitc20 update-ref refs/remotes/origin/main HEAD
+# FileHelper.cpp is also edited here, not just NewHelper.cpp added: target
+# selection maps changed files to binaries via tests/CMakeLists.txt, and
+# NewHelper.cpp (not a real project source) maps to nothing on its own --
+# without an edit to a file that DOES map to tst_filehelper, this diff would
+# select no target at all and the added-files pass would never be reached.
+printf 'int f(){return 1;}\n' > "$root/src/FileHelper.cpp"
+printf 'bool eq(int a,int b){return a==b;}\n' > "$root/src/NewHelper.cpp"
+gitc20 add src/FileHelper.cpp src/NewHelper.cpp
+gitc20 commit -q -m edits-filehelper-adds-new-helper
+primary_body="$(report_json "$root" "src/FileHelper.cpp:1:cxx_eq_to_ne")"
+added_body="$(report_json "$root" "src/NewHelper.cpp:1:cxx_eq_to_ne")"
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 MULL_WORKERS=1 \
+        STUB_REPORT_tst_filehelper="$primary_body" \
+        STUB_REPORT_tst_filehelper_added="$added_body" \
+        "$GATE" --diff-only --strict 2>&1 )"; rc=$?
+added_cfg="$root/build/impl-mutation/mull-out/mull-tst_filehelper-added.yml"
+name="an added first-party file gets its own includePaths pass with no gitDiffRef, merged into the aggregate"
+if [[ "$rc" == "1" ]] \
+   && grep -q 'src/FileHelper.cpp:1 \[cxx_eq_to_ne\]' <<<"$out" \
+   && grep -q 'src/NewHelper.cpp:1 \[cxx_eq_to_ne\]' <<<"$out" \
+   && [[ -f "$added_cfg" ]] \
+   && grep -q 'includePaths' "$added_cfg" \
+   && grep -q 'NewHelper' "$added_cfg" \
+   && ! grep -q 'gitDiffRef' "$added_cfg"; then
+    printf '  %sok%s   %s\n' "$GREEN" "$RESET" "$name"
+    PASS=$((PASS + 1))
+else
+    printf '  %sFAIL%s %s\n' "$RED" "$RESET" "$name"
+    printf '        added_cfg=%s exists=%s\n' "$added_cfg" "$( [[ -f "$added_cfg" ]] && echo yes || echo no )"
+    [[ -f "$added_cfg" ]] && sed 's/^/        cfg| /' "$added_cfg"
+    sed 's/^/        | /' <<<"$out" | tail -25
+    FAIL=$((FAIL + 1))
+fi
+
+# 21. The other half of #20: a diff range that only EDITS an existing file,
+#     adding nothing new, must run Mull once -- the added-files pass is
+#     additive on top of the existing diff-only behaviour, not an
+#     unconditional second invocation every diff-only run now pays for.
+root="$(make_root)"
+gitc21() { git -C "$root" -c user.email=t@t -c user.name=t "$@"; }
+mkdir -p "$root/src"
+printf 'int f(){return 0;}\n' > "$root/src/FileHelper.cpp"
+gitc21 add src/FileHelper.cpp; gitc21 commit -q -m base
+gitc21 update-ref refs/remotes/origin/main HEAD
+printf 'int f(){return 1;}\n' > "$root/src/FileHelper.cpp"
+gitc21 add src/FileHelper.cpp; gitc21 commit -q -m edits-filehelper
+body="$(report_json "$root" "src/FileHelper.cpp:1:cxx_eq_to_ne")"
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 MULL_WORKERS=1 \
+        STUB_REPORT_tst_filehelper="$body" \
+        "$GATE" --diff-only --strict 2>&1 )"; rc=$?
+added_dir="$root/build/impl-mutation/mull-out/tst_filehelper_added"
+name="a diff with no added files runs Mull once -- no added-files pass is attempted"
+if [[ "$rc" == "1" ]] && [[ ! -d "$added_dir" ]] && ! grep -qi 'added files' <<<"$out"; then
+    printf '  %sok%s   %s\n' "$GREEN" "$RESET" "$name"
+    PASS=$((PASS + 1))
+else
+    printf '  %sFAIL%s %s\n' "$RED" "$RESET" "$name"
+    printf '        added_dir=%s exists=%s\n' "$added_dir" "$( [[ -d "$added_dir" ]] && echo yes || echo no )"
+    sed 's/^/        | /' <<<"$out" | tail -25
+    FAIL=$((FAIL + 1))
+fi
+
+# 22. --no-renames: git's own similarity heuristic auto-detects renames (no
+#     -M flag or diff.renames config needed -- confirmed on this box's git)
+#     and reports the result as `R`, not `A`.  Under that default,
+#     --diff-filter=A shows NOTHING for a renamed-and-edited file, which is
+#     exactly the "new path Mull's own diff filter can't see" case the
+#     added-files pass exists to catch.  --no-renames forces git to report it
+#     as a plain add instead, regardless of what diff.renames is set to.
+root="$(make_root)"
+gitc22() { git -C "$root" -c user.email=t@t -c user.name=t "$@"; }
+mkdir -p "$root/src"
+printf 'int f(){return 0;}\n' > "$root/src/FileHelper.cpp"
+# Large body so a one-line tail edit still reads as a similarity-based rename
+# (>50%) rather than a delete+add -- a short file wouldn't trigger it.
+python3 -c "print('\n'.join(f'int line_{i}(){{return {i};}}' for i in range(60)))" \
+    > "$root/src/BigHelper.cpp"
+gitc22 add src/FileHelper.cpp src/BigHelper.cpp; gitc22 commit -q -m base
+gitc22 update-ref refs/remotes/origin/main HEAD
+gitc22 mv src/BigHelper.cpp src/RenamedHelper.cpp
+sed -i '1s/.*/int line_0(){return 999;}/' "$root/src/RenamedHelper.cpp"
+printf 'int f(){return 1;}\n' > "$root/src/FileHelper.cpp"
+gitc22 add -A; gitc22 commit -q -m edits-filehelper-renames-bighelper
+gitc22 diff --name-status origin/main -- . | grep -q '^R' \
+    || { echo "  [setup] git did not detect the rename in this environment -- skipping"; }
+primary_body="$(report_json "$root" "src/FileHelper.cpp:1:cxx_eq_to_ne")"
+added_body="$(report_json "$root" "src/RenamedHelper.cpp:1:cxx_eq_to_ne")"
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 MULL_WORKERS=1 \
+        STUB_REPORT_tst_filehelper="$primary_body" \
+        STUB_REPORT_tst_filehelper_added="$added_body" \
+        "$GATE" --diff-only --strict 2>&1 )"; rc=$?
+added_cfg="$root/build/impl-mutation/mull-out/mull-tst_filehelper-added.yml"
+name="a renamed-and-edited first-party file is still measured as added (--no-renames)"
+if [[ "$rc" == "1" ]] \
+   && [[ -f "$added_cfg" ]] \
+   && grep -q 'RenamedHelper' "$added_cfg"; then
+    printf '  %sok%s   %s\n' "$GREEN" "$RESET" "$name"
+    PASS=$((PASS + 1))
+else
+    printf '  %sFAIL%s %s\n' "$RED" "$RESET" "$name"
+    printf '        added_cfg=%s exists=%s\n' "$added_cfg" "$( [[ -f "$added_cfg" ]] && echo yes || echo no )"
+    [[ -f "$added_cfg" ]] && sed 's/^/        cfg| /' "$added_cfg"
+    sed 's/^/        | /' <<<"$out" | tail -25
+    FAIL=$((FAIL + 1))
+fi
+
+# 23. The added-files pass must be scoped to targets that actually compile the
+#     added file, not run once per target that merely shares the diff with an
+#     edited sibling source.  src/FileHelper.cpp (real tests/CMakeLists.txt
+#     mapping) feeds THREE binaries: tst_filehelper, tst_playlist_manager,
+#     tst_thumbnail_grabber.  src/backend_mpv/ThumbnailGrabber.cpp feeds only
+#     two of those three (not tst_playlist_manager).  Editing the former and
+#     adding the latter in the same diff must scope the added-files pass to
+#     exactly the two that compile it -- before this fix, mull_added_files_
+#     config_for() computed the added set once and handed the identical
+#     includePaths to every selected target regardless of whether that target
+#     ever compiled the file, so tst_playlist_manager got a wasted pass too.
+root="$(make_root)"
+printf '#!/bin/sh\nexit 0\n' > "$root/build/impl-mutation/tst_playlist_manager"
+printf '#!/bin/sh\nexit 0\n' > "$root/build/impl-mutation/tst_thumbnail_grabber"
+chmod +x "$root/build/impl-mutation/tst_playlist_manager" "$root/build/impl-mutation/tst_thumbnail_grabber"
+gitc23() { git -C "$root" -c user.email=t@t -c user.name=t "$@"; }
+mkdir -p "$root/src/backend_mpv"
+printf 'int f(){return 0;}\n' > "$root/src/FileHelper.cpp"
+gitc23 add src/FileHelper.cpp; gitc23 commit -q -m base
+gitc23 update-ref refs/remotes/origin/main HEAD
+printf 'int f(){return 1;}\n' > "$root/src/FileHelper.cpp"
+printf 'bool eq(int a,int b){return a==b;}\n' > "$root/src/backend_mpv/ThumbnailGrabber.cpp"
+gitc23 add src/FileHelper.cpp src/backend_mpv/ThumbnailGrabber.cpp
+gitc23 commit -q -m edits-filehelper-adds-thumbnailgrabber
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 MULL_WORKERS=1 STUB_REPORT=nomutants \
+        "$GATE" --diff-only --strict 2>&1 )"; rc=$?
+cfg_filehelper="$root/build/impl-mutation/mull-out/mull-tst_filehelper-added.yml"
+cfg_thumbnail="$root/build/impl-mutation/mull-out/mull-tst_thumbnail_grabber-added.yml"
+cfg_playlist="$root/build/impl-mutation/mull-out/mull-tst_playlist_manager-added.yml"
+name="the added-files pass runs only for targets that compile the added file, not every target sharing the diff"
+if [[ -f "$cfg_filehelper" ]] && [[ -f "$cfg_thumbnail" ]] && [[ ! -f "$cfg_playlist" ]]; then
+    printf '  %sok%s   %s\n' "$GREEN" "$RESET" "$name"
+    PASS=$((PASS + 1))
+else
+    printf '  %sFAIL%s %s\n' "$RED" "$RESET" "$name"
+    printf '        cfg_filehelper exists=%s cfg_thumbnail exists=%s cfg_playlist exists=%s (want: yes yes no)\n' \
+        "$( [[ -f "$cfg_filehelper" ]] && echo yes || echo no )" \
+        "$( [[ -f "$cfg_thumbnail" ]] && echo yes || echo no )" \
+        "$( [[ -f "$cfg_playlist" ]] && echo yes || echo no )"
+    sed 's/^/        | /' <<<"$out" | tail -25
+    FAIL=$((FAIL + 1))
+fi
+
+# 24. A compiled source path containing a space (ninja quotes such an
+#     argument rather than leaving it bare) must still be recognised as a
+#     first-party TU with no -fpass-plugin -- a parser that just splits the
+#     line on whitespace after finding `-c` (the original one did, via `grep
+#     -oE '-c [^ ]+\.cpp' | awk '{print $2}'`) truncates at the embedded
+#     space and never matches the real, quoted path at all, so a TU like this
+#     would silently pass the drift check uninstrumented.
+root="$(make_root)"
+prep_ninja_drift_root "$root" "build/impl-mutation"
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 WEK_IN_CI=1 MULL_WORKERS=1 \
+        MULL_NINJA_BIN="$root/stubbin/ninja" STUB_REPORT=nomutants \
+        STUB_NINJA_COMMANDS=$'/usr/bin/llvm-ar qc src/Utils/libwpUtils.a src/Utils/CMakeFiles/wpUtils.dir/Logging.cpp.o && /usr/bin/llvm-ranlib src/Utils/libwpUtils.a\nclang++ -Isomewhere -c "/var/home/bazzite/build/wallpaper-engine-kde-plugin/src/backend_scene/src/Utils/Fps Counter.cpp" -o "CMakeFiles/wpUtils.dir/Fps Counter.cpp.o"' \
+        "$GATE" --target tst_filehelper --strict 2>&1 )"; rc=$?
+check "a compiled path containing a space is still recognised as uninstrumented" \
+      "" "$rc" 1 "$out" "never instrumented"
 
 echo
 if [[ "$FAIL" -gt 0 ]]; then

@@ -9,7 +9,7 @@
 #                                      #   MUTATION_FATAL=1).  Coverage is a
 #                                      #   separate opt-in leg: --coverage
 #   tools/scripts/preflight.sh --fix        # auto-format then run the default gate
-#   tools/scripts/preflight.sh --lint-only  # just clang-format check (fast)
+#   tools/scripts/preflight.sh --lint-only  # clang-format + SECURITY.md staleness check (fast)
 #   tools/scripts/preflight.sh --no-build   # skip cmake builds, run existing tests only
 #   tools/scripts/preflight.sh --no-fuzz    # skip fuzz smoke (lint + tests + Werror +
 #                                      #   ASAN still run)
@@ -749,6 +749,17 @@ else
             ;;
     esac
 fi
+
+# ── 1a. SECURITY.md staleness check ───────────────────────────────────────────
+# SECURITY.md used to pin a specific "Supported versions" number in prose, with
+# no place in the four-file release-bump set and no check anywhere -- it drifted
+# two releases behind before anyone noticed. Fail loudly if a version number
+# ever gets pinned back in, instead of trusting the next editor to catch it.
+step "SECURITY.md staleness check"
+if grep -qE '[0-9]+\.[0-9]+\.x' SECURITY.md; then
+    fail "SECURITY.md pins a specific version number in its supported-versions text (it drifts every release -- state the policy without a version instead)"
+fi
+ok "SECURITY.md has no pinned version token"
 
 [[ "$MODE" == "lint" ]] && { printf '\n%sLint passed.%s\n' "$GREEN" "$RESET"; exit 0; }
 

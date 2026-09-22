@@ -31,8 +31,5 @@ We commit to:
 
 ## Supported versions
 
-| Version | Supported                                    |
-|---------|----------------------------------------------|
-| 1.3.x   | Yes (current)                                |
-| 1.2.x   | No — upgrade; settings do not carry over     |
-| < 1.2   | No — catsout fork; unmaintained              |
+Only the latest tagged release gets security fixes. If you're on an older one, upgrade — the
+pre-rename catsout fork (anything before 1.2) is unmaintained and won't be patched either.

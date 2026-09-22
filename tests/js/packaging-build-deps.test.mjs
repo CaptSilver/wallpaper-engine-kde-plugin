@@ -227,3 +227,41 @@ test("tst_activityhelper's live-Consumer case compiles wherever the standalone t
     if (!ciUnitTestsDnfInstall().has(pkg)) missing.push(`.github/workflows/ci.yml unit-tests job is missing ${pkg}`);
     assert.deepEqual(missing, [], missing.join('\n  '));
 });
+
+// The Plasma::Activities gate is duplicated between the plugin target
+// (src/CMakeLists.txt) and the standalone test target (tests/CMakeLists.txt) --
+// same find_package/if(TARGET) shape, each defining WEK_HAS_PLASMA_ACTIVITIES on
+// its own target. Extracts one gate block by scanning from a line that must occur
+// exactly once in the file (enforced below, so a second matching line added later
+// fails loudly instead of silently grabbing the wrong block) through the next bare
+// `endif()` line -- neither gate nests another `if`, confirmed by reading both
+// blocks directly.
+function activitiesGateBlock(relPath, openLineRe) {
+    const lines = readFileSync(join(repoRoot, relPath), 'utf8').split('\n');
+    const opens = lines.filter((l) => openLineRe.test(l)).length;
+    assert.equal(opens, 1, `${relPath}: expected exactly one line matching ${openLineRe}, found ${opens}`);
+    const start = lines.findIndex((l) => openLineRe.test(l));
+    const end = lines.findIndex((l, i) => i >= start && l === 'endif()');
+    assert.ok(end !== -1, `${relPath}: no endif() found on its own line after line ${start + 1}`);
+    return lines.slice(start, end + 1).join('\n');
+}
+
+test("tests/CMakeLists.txt's Plasma::Activities gate is missing the enabled/disabled STATUS pair src/CMakeLists.txt's has", () => {
+    const statusRe = /message\(STATUS "Live per-Activity source \(KActivities::Consumer\):/g;
+    const srcBlock = activitiesGateBlock('src/CMakeLists.txt', /^if\(TARGET Plasma::Activities\)$/);
+    const testsBlock = activitiesGateBlock('tests/CMakeLists.txt', /^find_package\(PlasmaActivities QUIET\)$/);
+    const srcCount = (srcBlock.match(statusRe) || []).length;
+    const testsCount = (testsBlock.match(statusRe) || []).length;
+    assert.equal(
+        srcCount,
+        2,
+        `src/CMakeLists.txt's gate should print one enabled + one disabled STATUS line, found ${srcCount}`,
+    );
+    assert.equal(
+        testsCount,
+        2,
+        `tests/CMakeLists.txt's gate is missing the enabled/disabled STATUS pair src/CMakeLists.txt's has ` +
+            `(found ${testsCount}) -- a tests-only configure has no way to tell whether ` +
+            'WEK_HAS_PLASMA_ACTIVITIES was actually defined',
+    );
+});

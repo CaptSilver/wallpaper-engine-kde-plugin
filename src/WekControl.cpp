@@ -3,6 +3,7 @@
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDebug>
+#include <QList>
 #include <QMetaObject>
 #include <QVariant>
 
@@ -13,6 +14,25 @@ namespace
 {
 constexpr const char* kServiceName = "com.github.captsilver.WallpaperEngine";
 constexpr const char* kObjectPath  = "/WallpaperEngine";
+
+// Process-wide: every WekControl instance -- winner and losers alike --
+// registers its own screen's controller here, so a write action reaches
+// every screen even though only one instance answers the D-Bus call.
+QList<QPointer<QObject>>& controllerRegistry() {
+    static QList<QPointer<QObject>> registry;
+    return registry;
+}
+
+void broadcast(const char* method) {
+    for (const QPointer<QObject>& ctrl : controllerRegistry())
+        if (ctrl) QMetaObject::invokeMethod(ctrl, method, Qt::QueuedConnection);
+}
+
+void broadcast(const char* method, const QString& arg) {
+    for (const QPointer<QObject>& ctrl : controllerRegistry())
+        if (ctrl)
+            QMetaObject::invokeMethod(ctrl, method, Qt::QueuedConnection, Q_ARG(QString, arg));
+}
 } // namespace
 
 WekControl::WekControl(QObject* parent): QObject(parent), m_bus(QDBusConnection::sessionBus()) {
@@ -28,6 +48,15 @@ WekControl::WekControl(QObject* parent, QDBusConnection bus)
     : QObject(parent), m_bus(std::move(bus)) {}
 
 WekControl::~WekControl() {
+    // Drop this instance's own registry entry, and opportunistically purge
+    // any already-null entries left by a controller that died before its
+    // WekControl sibling did -- otherwise the process-wide registry grows by
+    // one dead entry every such pair, for the life of the plasmashell
+    // process.
+    controllerRegistry().removeIf([this](const QPointer<QObject>& p) {
+        return p.isNull() || p == m_controller;
+    });
+
     // Release only what this instance actually took.  The name belongs to the
     // shared session-bus connection, so a non-owning secondary that released
     // it would kill the owner's control surface; Qt unregisters our own
@@ -86,57 +115,30 @@ bool WekControl::registerOn(QDBusConnection& bus) {
     return true;
 }
 
-void WekControl::setPlaylistController(QObject* controller) { m_controller = controller; }
+void WekControl::setPlaylistController(QObject* controller) {
+    if (m_controller) controllerRegistry().removeAll(m_controller);
+    m_controller = controller;
+    if (m_controller) controllerRegistry().append(m_controller);
+}
 
 // -- Playlist navigation --
 
-void WekControl::Next() {
-    if (! m_controller) return;
-    QMetaObject::invokeMethod(m_controller, "next", Qt::QueuedConnection);
-}
-void WekControl::Previous() {
-    if (! m_controller) return;
-    QMetaObject::invokeMethod(m_controller, "previous", Qt::QueuedConnection);
-}
-void WekControl::Pause() {
-    if (! m_controller) return;
-    QMetaObject::invokeMethod(m_controller, "pause", Qt::QueuedConnection);
-}
-void WekControl::Resume() {
-    if (! m_controller) return;
-    QMetaObject::invokeMethod(m_controller, "resume", Qt::QueuedConnection);
-}
-void WekControl::Toggle() {
-    if (! m_controller) return;
-    QMetaObject::invokeMethod(m_controller, "togglePause", Qt::QueuedConnection);
-}
+void WekControl::Next() { broadcast("next"); }
+void WekControl::Previous() { broadcast("previous"); }
+void WekControl::Pause() { broadcast("pause"); }
+void WekControl::Resume() { broadcast("resume"); }
+void WekControl::Toggle() { broadcast("togglePause"); }
 
 // -- Audio --
 
-void WekControl::Mute() {
-    if (! m_controller) return;
-    QMetaObject::invokeMethod(m_controller, "mute", Qt::QueuedConnection);
-}
-void WekControl::Unmute() {
-    if (! m_controller) return;
-    QMetaObject::invokeMethod(m_controller, "unmute", Qt::QueuedConnection);
-}
-void WekControl::ToggleMute() {
-    if (! m_controller) return;
-    QMetaObject::invokeMethod(m_controller, "toggleMute", Qt::QueuedConnection);
-}
+void WekControl::Mute() { broadcast("mute"); }
+void WekControl::Unmute() { broadcast("unmute"); }
+void WekControl::ToggleMute() { broadcast("toggleMute"); }
 
 // -- Activation --
 
-void WekControl::ActivatePlaylist(const QString& id) {
-    if (! m_controller) return;
-    QMetaObject::invokeMethod(
-        m_controller, "activatePlaylistById", Qt::QueuedConnection, Q_ARG(QString, id));
-}
-void WekControl::Reload() {
-    if (! m_controller) return;
-    QMetaObject::invokeMethod(m_controller, "reload", Qt::QueuedConnection);
-}
+void WekControl::ActivatePlaylist(const QString& id) { broadcast("activatePlaylistById", id); }
+void WekControl::Reload() { broadcast("reload"); }
 
 // -- Query (sync) --
 

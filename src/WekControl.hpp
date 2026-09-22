@@ -1,6 +1,7 @@
 #pragma once
 #include <QDBusConnection>
 #include <QObject>
+#include <QPointer>
 #include <QString>
 
 namespace wekde
@@ -16,12 +17,24 @@ namespace wekde
 // PlaylistController.qml for the QML-side export layer that this class
 // invokes.
 //
-// Ownership is first-instance-wins. On multi-monitor every wallpaper
-// plasmoid lives in the same plasmashell process on one session-bus
-// connection, so the winner is whoever exports /WallpaperEngine first —
-// the losers log and go silent, and the winner handles "Next" for every
-// screen. The owner hands the name back when it is destroyed, so a later
-// instance can take over. There is no per-monitor D-Bus surface.
+// Bus/object ownership is first-instance-wins: on multi-monitor, every
+// wallpaper plasmoid lives in the same plasmashell process on one
+// session-bus connection, so whichever WekControl exports /WallpaperEngine
+// first owns the surface; the losers log and go silent (see registerOn()).
+// But every instance -- winner and loser alike -- registers its own
+// screen's PlaylistController into a process-wide registry the moment
+// setPlaylistController() is called, and the write actions (Next,
+// Previous, Pause, Resume, Toggle, Mute, Unmute, ToggleMute,
+// ActivatePlaylist, Reload) broadcast to every registered controller, not
+// just the exporting instance's own screen. A D-Bus Pause therefore pauses
+// every screen, even though only one instance answers the D-Bus call.
+//
+// CurrentWorkshopId/CurrentPlaylistId/CurrentItemIndex and the
+// WallpaperChanged signal are the one place this stays single-screen: they
+// answer for the exporting instance's own screen only. There's no way to
+// return "every screen's answer" from a single scalar value or an
+// unlabeled signal without a wider API change, so this is a deliberate
+// scope line, not an oversight.
 class WekControl : public QObject {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "com.github.captsilver.WallpaperEngine")
@@ -96,9 +109,9 @@ private:
 
     bool registerOn(QDBusConnection& bus);
 
-    QObject*        m_controller = nullptr;
-    QDBusConnection m_bus;
-    bool            m_registered = false;
+    QPointer<QObject> m_controller;
+    QDBusConnection   m_bus;
+    bool              m_registered = false;
 };
 
 } // namespace wekde

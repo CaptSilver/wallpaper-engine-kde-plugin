@@ -13,9 +13,13 @@
       qdbus com.github.captsilver.WallpaperEngine /WallpaperEngine \
             ActivatePlaylist "favorites"
 
-  Multi-monitor: first-plasmoid-wins service ownership.  The second
-  plasmoid logs "service already registered" and goes silent.  Per-monitor
-  multi-instance D-Bus is a future spec.
+  Multi-monitor: first-plasmoid-wins service ownership. The second
+  plasmoid logs "service already registered" and goes silent, but every
+  write method below (Next/Previous/Pause/Resume/Toggle/Mute/Unmute/
+  ToggleMute/ActivatePlaylist/Reload) reaches every screen -- the owning
+  plasmoid broadcasts to every registered controller in the process.
+  CurrentWorkshopId/CurrentPlaylistId/CurrentItemIndex and
+  WallpaperChanged answer for the owning plasmoid's own screen only.
 
   See src/WekControl.{hpp,cpp} for the C++ implementation.
 -->

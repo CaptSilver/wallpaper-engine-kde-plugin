@@ -12,11 +12,13 @@ namespace wekde
 //
 // On trigger, each action sends a D-Bus call to the WekControl interface
 // (com.github.captsilver.WallpaperEngine) -- see WekControl.{hpp,cpp}.
-// Decoupling here means multi-monitor installs work: the first plasmoid to
-// register the D-Bus service handles the trigger; the other plasmoids'
-// shortcut actions are silent owners of the same KActionCollection rows,
-// which is harmless because KGlobalAccel dedupes by action id within a
-// component name.
+// Only one plasmoid answers the D-Bus call (multi-monitor: first to
+// register the service), but that instance broadcasts the action to
+// every screen's PlaylistController, so the shortcut reaches the whole
+// desktop. The other plasmoids' shortcut actions are silent owners of
+// the same KActionCollection rows -- harmless, since KGlobalAccel dedupes
+// by action id within a component name, and the trigger still reaches
+// every screen through the one instance that answers.
 //
 // Component id:           "wallpaper_engine"
 // Component display name: "Wallpaper Engine"

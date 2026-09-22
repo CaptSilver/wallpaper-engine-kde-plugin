@@ -21,6 +21,8 @@
 #include <QSignalSpy>
 #include <QtTest/QtTest>
 
+#include <functional>
+
 using namespace wekde;
 
 // Stub QObject mimicking the QML PlaylistController. Records the last
@@ -55,6 +57,38 @@ public slots:
     QVariant currentItemIndex() const { return 7; }
 };
 
+namespace
+{
+// Registers two independent WekControl/stub pairs (simulating two screens),
+// fires trigger on the first, and asserts both stubs saw the call. One
+// helper instead of five near-identical fifteen-line bodies.
+void expectBroadcastReachesBothStubs(const std::function<void(WekControl&)>& trigger,
+                                     const QString&                          expectedMethod) {
+    PlaylistControllerStub stubA, stubB;
+    auto                   controlA = std::make_unique<WekControl>();
+    auto                   controlB = std::make_unique<WekControl>();
+    controlA->setPlaylistController(&stubA);
+    controlB->setPlaylistController(&stubB);
+    trigger(*controlA);
+    QTRY_COMPARE(stubA.lastMethod, expectedMethod);
+    QTRY_COMPARE(stubB.lastMethod, expectedMethod);
+}
+
+void expectBroadcastArgReachesBothStubs(
+    const std::function<void(WekControl&, const QString&)>& trigger, const QString& arg) {
+    PlaylistControllerStub stubA, stubB;
+    auto                   controlA = std::make_unique<WekControl>();
+    auto                   controlB = std::make_unique<WekControl>();
+    controlA->setPlaylistController(&stubA);
+    controlB->setPlaylistController(&stubB);
+    trigger(*controlA, arg);
+    QTRY_COMPARE(stubA.lastMethod, QString("activatePlaylistById"));
+    QTRY_COMPARE(stubB.lastMethod, QString("activatePlaylistById"));
+    QCOMPARE(stubA.lastArg, arg);
+    QCOMPARE(stubB.lastArg, arg);
+}
+} // namespace
+
 class TestWekControl : public QObject {
     Q_OBJECT
 
@@ -80,6 +114,22 @@ private slots:
     void currentWorkshopId_returnsStubValue();
     void currentPlaylistId_returnsStubValue();
     void currentItemIndex_returnsStubValue();
+
+    // -- Broadcast tests (every registered controller, not just the caller's own) --
+    void next_broadcastsToEveryRegisteredController();
+    void previous_broadcastsToEveryRegisteredController();
+    void pause_broadcastsToEveryRegisteredController();
+    void resume_broadcastsToEveryRegisteredController();
+    void toggle_broadcastsToEveryRegisteredController();
+    void mute_broadcastsToEveryRegisteredController();
+    void unmute_broadcastsToEveryRegisteredController();
+    void toggleMute_broadcastsToEveryRegisteredController();
+    void activatePlaylist_broadcastsArgumentToEveryRegisteredController();
+    void reload_broadcastsToEveryRegisteredController();
+
+    // -- Registry lifetime safety net (not TDD-red; see the comment below) --
+    void destroyedController_isSkippedByBroadcastNotCrashed();
+    void destroyedWekControl_removesOnlyItsOwnRegistryEntry();
 
     // -- No-controller safety --------------------------------------------
     void allSlots_areNoOpsWhenControllerIsNull();
@@ -206,6 +256,117 @@ void TestWekControl::currentItemIndex_returnsStubValue() {
     PlaylistControllerStub stub;
     control->setPlaylistController(&stub);
     QCOMPARE(control->CurrentItemIndex(), 7);
+}
+
+// -- Broadcast tests ---------------------------------------------------------
+
+void TestWekControl::next_broadcastsToEveryRegisteredController() {
+    expectBroadcastReachesBothStubs(
+        [](WekControl& c) {
+            c.Next();
+        },
+        QStringLiteral("next"));
+}
+void TestWekControl::previous_broadcastsToEveryRegisteredController() {
+    expectBroadcastReachesBothStubs(
+        [](WekControl& c) {
+            c.Previous();
+        },
+        QStringLiteral("previous"));
+}
+void TestWekControl::pause_broadcastsToEveryRegisteredController() {
+    expectBroadcastReachesBothStubs(
+        [](WekControl& c) {
+            c.Pause();
+        },
+        QStringLiteral("pause"));
+}
+void TestWekControl::resume_broadcastsToEveryRegisteredController() {
+    expectBroadcastReachesBothStubs(
+        [](WekControl& c) {
+            c.Resume();
+        },
+        QStringLiteral("resume"));
+}
+void TestWekControl::toggle_broadcastsToEveryRegisteredController() {
+    expectBroadcastReachesBothStubs(
+        [](WekControl& c) {
+            c.Toggle();
+        },
+        QStringLiteral("togglePause"));
+}
+void TestWekControl::mute_broadcastsToEveryRegisteredController() {
+    expectBroadcastReachesBothStubs(
+        [](WekControl& c) {
+            c.Mute();
+        },
+        QStringLiteral("mute"));
+}
+void TestWekControl::unmute_broadcastsToEveryRegisteredController() {
+    expectBroadcastReachesBothStubs(
+        [](WekControl& c) {
+            c.Unmute();
+        },
+        QStringLiteral("unmute"));
+}
+void TestWekControl::toggleMute_broadcastsToEveryRegisteredController() {
+    expectBroadcastReachesBothStubs(
+        [](WekControl& c) {
+            c.ToggleMute();
+        },
+        QStringLiteral("toggleMute"));
+}
+void TestWekControl::activatePlaylist_broadcastsArgumentToEveryRegisteredController() {
+    expectBroadcastArgReachesBothStubs(
+        [](WekControl& c, const QString& id) {
+            c.ActivatePlaylist(id);
+        },
+        QStringLiteral("my_playlist"));
+}
+void TestWekControl::reload_broadcastsToEveryRegisteredController() {
+    expectBroadcastReachesBothStubs(
+        [](WekControl& c) {
+            c.Reload();
+        },
+        QStringLiteral("reload"));
+}
+
+// -- Registry lifetime safety net --------------------------------------------
+// Not TDD-red: a genuinely dangling registry entry can't be driven red/green
+// reliably -- the failure mode of a raw dangling pointer depends on allocator
+// reuse timing and whether ASAN is active. These pin the QPointer auto-null
+// and destructor cleanup that setPlaylistController() and ~WekControl()
+// already provide.
+
+void TestWekControl::destroyedController_isSkippedByBroadcastNotCrashed() {
+    // Pins that a controller destroyed before a broadcast doesn't crash the
+    // broadcast to the survivor.
+    auto                   controlA = std::make_unique<WekControl>();
+    PlaylistControllerStub stubB;
+    {
+        PlaylistControllerStub stubA;
+        controlA->setPlaylistController(&stubA);
+    } // stubA destroyed; its QPointer registry entry auto-nulls
+    auto controlB = std::make_unique<WekControl>();
+    controlB->setPlaylistController(&stubB);
+    controlB->Pause(); // must not crash despite stubA's stale entry
+    QTRY_COMPARE(stubB.lastMethod, QString("pause"));
+}
+
+void TestWekControl::destroyedWekControl_removesOnlyItsOwnRegistryEntry() {
+    // Pins that a WekControl's own destructor cleanup is scoped correctly:
+    // destroying controlA must not touch controlB's live entry, and
+    // controlA's own still-alive stub must not receive a later broadcast.
+    PlaylistControllerStub stubA, stubB;
+    auto                   controlB = std::make_unique<WekControl>();
+    controlB->setPlaylistController(&stubB);
+    {
+        auto controlA = std::make_unique<WekControl>();
+        controlA->setPlaylistController(&stubA);
+    } // controlA destroyed; stubA itself is still alive
+    controlB->Next();
+    QTRY_COMPARE(stubB.lastMethod, QString("next"));
+    QCOMPARE(stubA.lastMethod, QString()); // never invoked after controlA died
 }
 
 // -- No-controller safety --------------------------------------------------

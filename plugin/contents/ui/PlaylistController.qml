@@ -269,7 +269,7 @@ Item {
         // on a 5-min cycle would be ~288 popups/day.
         if (root.notifyOnAdvance && root.notifier
             && Window.screen?.primary !== false) {
-            const playlistName = mgr.activePlaylistId === "__filtered_library__"
+            const playlistName = mgr.activePlaylistId === Common.filteredLibraryId
                 ? "Filtered Library" : (mgr.activePlaylistId || "");
             const title = item.title || workshopId;
             const total = (root.wpListModel && root.wpListModel.model)
@@ -384,10 +384,10 @@ Item {
         // the Filtered Library.
         if (root.randomizeWallpaperRead && !root.activePlaylistIdRead) {
             mgr.setFilteredLibraryIntervalMin(root.switchTimerRead || 15);
-            mgr.activate("__filtered_library__");
+            mgr.activate(Common.filteredLibraryId);
         } else if (root.activePlaylistIdRead) {
             // Re-activate previously-active playlist on plasmashell startup.
-            if (root.activePlaylistIdRead === "__filtered_library__")
+            if (root.activePlaylistIdRead === Common.filteredLibraryId)
                 mgr.setFilteredLibraryIntervalMin(root.switchTimerRead || 15);
             mgr.activate(root.activePlaylistIdRead);
         }
@@ -410,7 +410,7 @@ Item {
         if (root.activePlaylistIdRead === "") {
             mgr.deactivate();
         } else {
-            if (root.activePlaylistIdRead === "__filtered_library__")
+            if (root.activePlaylistIdRead === Common.filteredLibraryId)
                 mgr.setFilteredLibraryIntervalMin(root.switchTimerRead || 15);
             mgr.activate(root.activePlaylistIdRead);
         }
@@ -418,16 +418,16 @@ Item {
 
     // Re-arm Filtered Library when SwitchTimer or RandomizeWallpaper change.
     onSwitchTimerReadChanged: {
-        if (mgr.activePlaylistId === "__filtered_library__")
+        if (mgr.activePlaylistId === Common.filteredLibraryId)
             mgr.setFilteredLibraryIntervalMin(root.switchTimerRead || 15);
     }
     onRandomizeWallpaperReadChanged: {
         if (root.randomizeWallpaperRead) {
             if (!mgr.activePlaylistId) {
                 mgr.setFilteredLibraryIntervalMin(root.switchTimerRead || 15);
-                mgr.activate("__filtered_library__");
+                mgr.activate(Common.filteredLibraryId);
             }
-        } else if (mgr.activePlaylistId === "__filtered_library__") {
+        } else if (mgr.activePlaylistId === Common.filteredLibraryId) {
             mgr.deactivate();
         }
     }

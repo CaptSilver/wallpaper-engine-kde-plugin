@@ -6,6 +6,7 @@ import QtTest
 import QtQuick.Controls 2.3
 
 import "../../plugin/contents/ui/components" as Components
+import "../../plugin/contents/ui" as Plugin
 
 TestCase {
     id: tc
@@ -118,7 +119,7 @@ TestCase {
         // collapses the Filtered Library row to height=0 + visible=false
         // so it can't be invoked.
         fakeManager.playlistsModel.append({
-            id: "__filtered_library__", name: "Filtered Library",
+            id: Plugin.Common.filteredLibraryId, name: "Filtered Library",
             mode: "shuffle", intervalMin: 15, itemCount: 0
         });
         let visibleHit = null;

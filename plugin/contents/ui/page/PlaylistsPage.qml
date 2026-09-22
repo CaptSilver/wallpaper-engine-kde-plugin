@@ -75,7 +75,7 @@ Item {
                     ToolTip.text: i18nc("@info:tooltip delete selected playlist", "Delete the selected playlist")
                     ToolTip.visible: hovered
                     ToolTip.delay: 500
-                    enabled: root._selectedId !== "" && root._selectedId !== "__filtered_library__"
+                    enabled: root._selectedId !== "" && root._selectedId !== Common.filteredLibraryId
                     // Confirm before deleting — a single mis-click should not
                     // wipe a curated playlist. Tip: rename inline by
                     // double-clicking the row instead.
@@ -102,7 +102,7 @@ Item {
                 header: Rectangle {
                     width: lvPlaylists.width
                     height: 32
-                    color: root._selectedId === "__filtered_library__"
+                    color: root._selectedId === Common.filteredLibraryId
                            ? Kirigami.Theme.highlightColor
                            : "transparent"
                     RowLayout {
@@ -110,7 +110,7 @@ Item {
                         anchors.leftMargin: 8
                         spacing: 4
                         Label {
-                            text: root.cfg_ActivePlaylistId === "__filtered_library__"
+                            text: root.cfg_ActivePlaylistId === Common.filteredLibraryId
                                   ? "▶" : ""
                             color: Kirigami.Theme.positiveTextColor
                             Layout.preferredWidth: 12
@@ -119,13 +119,14 @@ Item {
                             Layout.fillWidth: true
                             text: i18nc("@item:inlistbox built-in filtered-library playlist row", "Filtered Library")
                             font.italic: true
-                            font.bold: root.cfg_ActivePlaylistId === "__filtered_library__"
+                            font.bold: root.cfg_ActivePlaylistId === Common.filteredLibraryId
                             verticalAlignment: Text.AlignVCenter
                         }
                     }
                     MouseArea {
+                        objectName: "filteredLibraryHeaderMouseArea"
                         anchors.fill: parent
-                        onClicked: root._selectedId = "__filtered_library__"
+                        onClicked: root._selectedId = Common.filteredLibraryId
                     }
                 }
 
@@ -235,7 +236,7 @@ Item {
 
             // Filtered Library read-only explanation
             ColumnLayout {
-                visible: root._selectedId === "__filtered_library__"
+                visible: root._selectedId === Common.filteredLibraryId
                 Layout.fillWidth: true
                 spacing: 8
                 Label {
@@ -249,13 +250,13 @@ Item {
                     text: i18nc("@info filtered library description", "Cycles through wallpapers passing the filter chips on the Wallpapers tab. Mode is shuffle. Interval is set by 'Randomize Timer' on the Settings tab.")
                 }
                 Button {
-                    text: root.cfg_ActivePlaylistId === "__filtered_library__"
+                    text: root.cfg_ActivePlaylistId === Common.filteredLibraryId
                           ? i18nc("@action:button deactivate playlist", "Deactivate") : i18nc("@action:button activate playlist", "Activate")
                     onClicked: {
                         if (!root.manager) return;
-                        if (root.cfg_ActivePlaylistId === "__filtered_library__")
+                        if (root.cfg_ActivePlaylistId === Common.filteredLibraryId)
                             root.manager.deactivate();
-                        else root.manager.activate("__filtered_library__");
+                        else root.manager.activate(Common.filteredLibraryId);
                     }
                 }
             }
@@ -263,7 +264,7 @@ Item {
             // User-playlist editor
             ColumnLayout {
                 id: editor
-                visible: root._selectedId !== "" && root._selectedId !== "__filtered_library__"
+                visible: root._selectedId !== "" && root._selectedId !== Common.filteredLibraryId
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 

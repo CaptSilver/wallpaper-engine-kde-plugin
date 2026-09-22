@@ -28,6 +28,7 @@ QtObject {
     }
 
     readonly property string repo_url: 'https://github.com/CaptSilver/wallpaper-engine-kde-plugin'
+    readonly property string filteredLibraryId: "__filtered_library__"
 
     readonly property var wpitem_template: ({
         workshopid: "",

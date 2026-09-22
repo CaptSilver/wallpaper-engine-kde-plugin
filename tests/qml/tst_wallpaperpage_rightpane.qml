@@ -6,6 +6,7 @@
 import QtQuick
 import QtTest
 import org.kde.kirigami 2.6 as Kirigami
+import "../../plugin/contents/ui" as Plugin
 
 TestCase {
     id: tc
@@ -155,5 +156,15 @@ TestCase {
         const img = _findAnimatedPreview();
         verify(img !== null, "detail-pane preview not found");
         compare(img.width, rc.image_size);
+    }
+
+    function test_activePlaylistBannerShowsFilteredLibraryLabel() {
+        page.cfg_ActivePlaylistId = Plugin.Common.filteredLibraryId;
+        const banner = _findFirstByPredicate(page, n =>
+            n && n.objectName === "activePlaylistBannerLabel");
+        verify(banner !== null, "active-playlist banner label not found");
+        verify(banner.text.indexOf("Filtered Library") >= 0,
+               "banner must read 'Filtered Library is active', got: " + banner.text);
+        page.cfg_ActivePlaylistId = "";
     }
 }

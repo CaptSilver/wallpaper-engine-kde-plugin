@@ -324,9 +324,10 @@ RowLayout {
                     anchors.fill: parent
                     anchors.margins: 4
                     Label {
+                        objectName: "activePlaylistBannerLabel"
                         Layout.fillWidth: true
                         verticalAlignment: Text.AlignVCenter
-                        text: wallpaperPageRoot.cfg_ActivePlaylistId === "__filtered_library__"
+                        text: wallpaperPageRoot.cfg_ActivePlaylistId === Common.filteredLibraryId
                             ? i18nc("@info:status filtered library active, %1=1-based item index", "Filtered Library is active · Item %1", wallpaperPageRoot.cfg_CurrentItemIndex + 1)
                             : i18nc("@info:status playlist active, %1=1-based item index", "Playlist is active · Item %1", wallpaperPageRoot.cfg_CurrentItemIndex + 1)
                     }

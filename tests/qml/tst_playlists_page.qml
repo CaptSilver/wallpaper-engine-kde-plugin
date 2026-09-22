@@ -4,6 +4,7 @@ import QtQuick
 import QtTest
 
 import "../../plugin/contents/ui/page" as Pages
+import "../../plugin/contents/ui" as Plugin
 
 TestCase {
     id: tc
@@ -209,10 +210,10 @@ TestCase {
     }
 
     function test_filteredLibraryHeaderClickSelects() {
-        // The header is a Rectangle with a MouseArea — exercise via _selectedId
-        // since header MouseArea isn't traversed by _findButton.
-        page._selectedId = "__filtered_library__";
-        compare(page._selectedId, "__filtered_library__");
+        tryVerify(() => _findById(page, "filteredLibraryHeaderMouseArea") !== null, 2000);
+        const mouseArea = _findById(page, "filteredLibraryHeaderMouseArea");
+        try { mouseArea.clicked({}); } catch (e) {}
+        compare(page._selectedId, Plugin.Common.filteredLibraryId);
     }
 
     function test_namePromptCreateAcceptedCallsCreate() {

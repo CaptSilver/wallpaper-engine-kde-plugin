@@ -5,6 +5,8 @@
 import QtQuick
 import QtQuick.Controls 2.3
 
+import ".."
+
 Menu {
     id: root
 
@@ -21,7 +23,7 @@ Menu {
             // PlaylistsModel today, but guarding the delegate keeps the
             // promise the file header makes: Filtered Library is not a
             // manual-add target. height: 0 collapses the menu row cleanly.
-            visible: id !== "__filtered_library__"
+            visible: id !== Common.filteredLibraryId
             height: visible ? implicitHeight : 0
             // Show "(added)" when the wallpaper is already in this
             // playlist, and disable the row so clicking it doesn't

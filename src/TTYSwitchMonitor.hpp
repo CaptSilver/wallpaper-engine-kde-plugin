@@ -1,13 +1,19 @@
 #pragma once
 #include <QQuickItem>
 #include <QDBusConnection>
+#include <QStringList>
+#include <QVariantMap>
 
 namespace wekde
 {
 
-// Listens for org.freedesktop.login1.Manager.PrepareForSleep(bool) on the
-// system bus and forwards it to a single ttySwitch(bool) signal. The
-// renderer uses this via main.qml's pause-on-suspend chain (alongside
+// Listens for org.freedesktop.login1.Manager.PrepareForSleep(bool), and
+// separately watches our own logind session's Active property for VT
+// switches (Ctrl+Alt+Fn away/back, or a display manager's fast user
+// switch) -- there is no PrepareForSleep-shaped broadcast for those, so
+// Active is the only signal logind offers. The two sources are
+// independent and OR'd together into a single ttySwitch(bool) signal.
+// The renderer uses this via main.qml's pause-on-suspend chain (alongside
 // ScreenSaverMonitor's pause-on-lock, the focus-window pause, and the
 // battery-discharge pause).
 class TTYSwitchMonitor : public QQuickItem {
@@ -32,10 +38,21 @@ signals:
 
 public slots:
     void handlePrepareForSleep(bool sleep);
+    void handleSessionActiveChanged(bool active);
+    void handleSessionPropertiesChanged(const QString&     interfaceName,
+                                        const QVariantMap& changedProperties,
+                                        const QStringList& invalidatedProperties);
 
 private:
     void wireUp(QDBusConnection bus);
+    void resolveSessionByPid(QDBusConnection bus);
+    void resolveSessionByXdgSessionId(QDBusConnection bus);
+    void subscribeToSessionActive(QDBusConnection bus, const QString& sessionPath);
+    void updateSleeping();
+
     bool m_sleeping;
+    bool m_suspending;    // from PrepareForSleep
+    bool m_sessionActive; // from our logind session's Active property
 };
 
 } // namespace wekde

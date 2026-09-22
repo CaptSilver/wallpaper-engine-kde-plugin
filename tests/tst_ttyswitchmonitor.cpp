@@ -29,6 +29,12 @@ private slots:
     // existing handlePrepareForSleep_* cases.
     void ctor_injectable_disconnectedBus_doesNotCrash();
     void ctor_injectable_systemBus_doesNotCrash();
+    void handleSessionActiveChanged_falseTriggersPause();
+    void handleSessionActiveChanged_trueRestoresAfterFalse();
+    void handleSessionActiveChanged_sameStateIsIdempotent();
+    void sessionActiveAndPrepareForSleep_combineWithOrSemantics();
+    void sessionPropertiesChangedConnect_signatureCompilesWithMatchingSlot();
+    void handleSessionPropertiesChanged_filtersInterfaceAndExtractsActive();
 };
 
 void TestTTYSwitchMonitor::initialState_isAwake() {
@@ -56,9 +62,9 @@ void TestTTYSwitchMonitor::handlePrepareForSleep_falseFlipsBackAndEmits() {
 }
 
 void TestTTYSwitchMonitor::handlePrepareForSleep_sameStateIsIdempotent() {
-    // The dedupe guard at TTYSwitchMonitor.cpp:31 prevents duplicate emits
-    // when systemd repeats PrepareForSleep — pause-on-suspend would
-    // otherwise toggle the render state twice per real event.
+    // The dedupe guard in updateSleeping() prevents duplicate emits when
+    // systemd repeats PrepareForSleep — pause-on-suspend would otherwise
+    // toggle the render state twice per real event.
     TTYSwitchMonitor mon;
     QSignalSpy       spy(&mon, &TTYSwitchMonitor::ttySwitch);
     mon.handlePrepareForSleep(false); // already false → no emit
@@ -140,6 +146,81 @@ void TestTTYSwitchMonitor::ctor_injectable_systemBus_doesNotCrash() {
     QDBusConnection  bus = QDBusConnection::systemBus();
     TTYSwitchMonitor mon(bus, /*parent=*/nullptr);
     QVERIFY(true); // ctor returned without crashing
+}
+
+void TestTTYSwitchMonitor::handleSessionActiveChanged_falseTriggersPause() {
+    TTYSwitchMonitor mon;
+    QSignalSpy       spy(&mon, &TTYSwitchMonitor::ttySwitch);
+    mon.handleSessionActiveChanged(false); // simulated VT switch away
+    QCOMPARE(mon.isSleeping(), true);
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.at(0).at(0).toBool(), true);
+}
+
+void TestTTYSwitchMonitor::handleSessionActiveChanged_trueRestoresAfterFalse() {
+    TTYSwitchMonitor mon;
+    QSignalSpy       spy(&mon, &TTYSwitchMonitor::ttySwitch);
+    mon.handleSessionActiveChanged(false); // switch away
+    mon.handleSessionActiveChanged(true);  // switch back
+    QCOMPARE(mon.isSleeping(), false);
+    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.at(1).at(0).toBool(), false);
+}
+
+void TestTTYSwitchMonitor::handleSessionActiveChanged_sameStateIsIdempotent() {
+    // m_sessionActive defaults to true (assume foregrounded until told otherwise);
+    // calling true again must not emit.
+    TTYSwitchMonitor mon;
+    QSignalSpy       spy(&mon, &TTYSwitchMonitor::ttySwitch);
+    mon.handleSessionActiveChanged(true); // already active -> no emit
+    QCOMPARE(spy.count(), 0);
+}
+
+void TestTTYSwitchMonitor::sessionActiveAndPrepareForSleep_combineWithOrSemantics() {
+    // The one case that actually exercises the merge -- fails under a naive
+    // implementation that writes m_sleeping directly from either handler
+    // instead of OR-ing two independent flags.
+    TTYSwitchMonitor mon;
+    QSignalSpy       spy(&mon, &TTYSwitchMonitor::ttySwitch);
+    mon.handleSessionActiveChanged(false); // VT switch away -> pause (emit #1, true)
+    mon.handlePrepareForSleep(true);       // also suspending -> still paused, no new edge
+    QCOMPARE(mon.isSleeping(), true);
+    QCOMPARE(spy.count(), 1);
+    mon.handleSessionActiveChanged(true); // back on our VT, but system still asleep -> still paused
+    QCOMPARE(mon.isSleeping(), true);
+    QCOMPARE(spy.count(), 1);
+    mon.handlePrepareForSleep(
+        false); // actual wake, and our VT is active -> resume (emit #2, false)
+    QCOMPARE(mon.isSleeping(), false);
+    QCOMPARE(spy.count(), 2);
+}
+
+void TestTTYSwitchMonitor::sessionPropertiesChangedConnect_signatureCompilesWithMatchingSlot() {
+    // Compile-time pin, same rationale as pmfConnect_signatureCompilesWithMatchingSlot
+    // above: QDBusConnection::connect's SLOT() string isn't compile-checked at the
+    // connect site, so pin the member-pointer shape instead.
+    using SlotPtr =
+        void (TTYSwitchMonitor::*)(const QString&, const QVariantMap&, const QStringList&);
+    SlotPtr p = &TTYSwitchMonitor::handleSessionPropertiesChanged;
+    QVERIFY(p != nullptr);
+}
+
+void TestTTYSwitchMonitor::handleSessionPropertiesChanged_filtersInterfaceAndExtractsActive() {
+    TTYSwitchMonitor mon;
+    QSignalSpy       spy(&mon, &TTYSwitchMonitor::ttySwitch);
+    // wrong interface: must not touch sleeping state
+    mon.handleSessionPropertiesChanged(
+        "org.freedesktop.login1.Manager", { { "SomeProp", true } }, {});
+    QCOMPARE(spy.count(), 0);
+    // right interface, Active=false: must pause
+    mon.handleSessionPropertiesChanged(
+        "org.freedesktop.login1.Session", { { "Active", false } }, {});
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(mon.isSleeping(), true);
+    // right interface, unrelated changed property: must not re-fire
+    mon.handleSessionPropertiesChanged(
+        "org.freedesktop.login1.Session", { { "IdleHint", true } }, {});
+    QCOMPARE(spy.count(), 1);
 }
 
 QTEST_MAIN(TestTTYSwitchMonitor)

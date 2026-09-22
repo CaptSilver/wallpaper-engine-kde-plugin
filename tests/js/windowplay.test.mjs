@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { PauseMode, countWindows, shouldPlay } from '../../plugin/contents/ui/js/windowplay.mjs';
+import { PauseMode, countWindows, shouldPlay, coversScreen } from '../../plugin/contents/ui/js/windowplay.mjs';
 
 // Window descriptor helper: defaults everything false, override per case.
 // Matches the shape WindowModel.qml builds from tasksModel.data(idx, role):
@@ -109,4 +109,44 @@ test('mixed set (active+maximized, fullscreen, minimized) matches every mode', (
     assert.equal(shouldPlay(set, PauseMode.FocusOrMax), false); // active or max
     assert.equal(shouldPlay(set, PauseMode.FullScreen), false); // 1 fullscreen
     assert.equal(shouldPlay(set, PauseMode.Never), true);       // never pauses
+});
+
+// ── coversScreen: does a window's own rect contain the screen's rect? ────────
+const screen = { x: 0, y: 0, width: 1920, height: 1080 };
+
+test('coversScreen: an exact-match window rect covers the screen', () => {
+    assert.equal(coversScreen({ x: 0, y: 0, width: 1920, height: 1080 }, screen), true);
+});
+test('coversScreen: a window rect larger than the screen still covers it (decoration/rounding slop)', () => {
+    assert.equal(coversScreen({ x: -4, y: -4, width: 1930, height: 1090 }, screen), true);
+});
+test('coversScreen: a window smaller than the screen does not cover it', () => {
+    assert.equal(coversScreen({ x: 0, y: 0, width: 800, height: 600 }, screen), false);
+});
+test('coversScreen: a task with no reported geometry does not cover the screen', () => {
+    assert.equal(coversScreen(undefined, screen), false);
+});
+test('coversScreen: no screen geometry to compare against does not cover the screen', () => {
+    assert.equal(coversScreen({ x: 0, y: 0, width: 1920, height: 1080 }, undefined), false);
+});
+
+// ── a screen-covering window with neither WM state flag set (borderless / ────
+// windowed-fullscreen games are ordinary, undecorated windows as far as
+// IsMaximized/IsFullScreen go) must still be treated as full/maximized.
+const borderless = w({ geometry: { x: 0, y: 0, width: 1920, height: 1080 } });
+
+test('Max: a screen-covering window with no isMaximized/isFullScreen flags still pauses', () => {
+    assert.equal(shouldPlay([borderless], PauseMode.Max, screen), false);
+});
+test('FullScreen: same screen-covering window still pauses', () => {
+    assert.equal(shouldPlay([borderless], PauseMode.FullScreen, screen), false);
+});
+test('FocusOrMax: same screen-covering window still pauses', () => {
+    assert.equal(shouldPlay([borderless], PauseMode.FocusOrMax, screen), false);
+});
+test('Focus: a screen-covering window without isActive does not pause (geometry trigger never reached)', () => {
+    assert.equal(shouldPlay([borderless], PauseMode.Focus, screen), true);
+});
+test('Max: omitting the screenGeometry argument matches the pre-geometry behavior (no false pause)', () => {
+    assert.equal(shouldPlay([borderless], PauseMode.Max), true);
 });

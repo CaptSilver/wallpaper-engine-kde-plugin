@@ -167,6 +167,20 @@ TestCase {
         compare(wm.reqPause, false);
     }
 
+    function test_updateMaxMode_pausesWhenGeometryCoversScreenButNoWmFlagsSet() {
+        wm.modePlay = Plugin.Common.PauseMode.Max;
+        _setWindows([{
+            isWindow: true, isActive: false, isMaximized: false, isFullScreen: false,
+            isMinimized: false, activities: [],
+            geometry: { x: 0, y: 0, width: 1920, height: 1080 }, appName: "borderless",
+        }]);
+        _runUpdate();
+        // A window with neither WM flag set, but whose geometry covers the
+        // TestCase's screenGeometry (also 1920x1080, set at Plugin.WindowModel
+        // instantiation above) -> pause.
+        compare(wm.reqPause, true);
+    }
+
     function test_updateFullScreenMode_pausesWhenFullscreen() {
         wm.modePlay = Plugin.Common.PauseMode.FullScreen;
         _setWindows([{

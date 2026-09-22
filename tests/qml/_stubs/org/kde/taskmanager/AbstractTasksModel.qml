@@ -1,6 +1,6 @@
 // Test stub — see tests/qml/_stubs/README.md for contract.
 // Real source: libtaskmanager (Plasma framework)
-// Last contract review: 2026-05-27
+// Last contract review: 2026-09-22
 
 // AbstractTasksModel exposes role enum constants used as `data()` keys.
 // In real Qt code these come from a C++ enum; we mirror the same integer
@@ -21,7 +21,8 @@ QtObject {
         IsMinimized            = 265,
         SkipTaskbar            = 266,
         SkipPager              = 267,
-        IsWindow               = 268
+        IsWindow               = 268,
+        Geometry               = 269
     }
 
     // Production code reads `TaskManager.AbstractTasksModel.AppName`.
@@ -39,4 +40,5 @@ QtObject {
     readonly property int screenGeometry:         AbstractTasksModel.ScreenGeometry
     readonly property int isMinimized:            AbstractTasksModel.IsMinimized
     readonly property int isWindow:               AbstractTasksModel.IsWindow
+    readonly property int geometry:               AbstractTasksModel.Geometry
 }

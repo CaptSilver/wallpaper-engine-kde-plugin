@@ -198,10 +198,11 @@ Item {
                 isMaximized:  tasksModel.data(idx, TaskManager.AbstractTasksModel.IsMaximized)  === true,
                 isFullScreen: tasksModel.data(idx, TaskManager.AbstractTasksModel.IsFullScreen) === true,
                 isActive:     tasksModel.data(idx, TaskManager.AbstractTasksModel.IsActive)     === true,
+                geometry:     tasksModel.data(idx, TaskManager.AbstractTasksModel.Geometry),
             });
         }
 
-        playBy(WindowPlay.shouldPlay(windows, modePlay));
+        playBy(WindowPlay.shouldPlay(windows, modePlay, wModel.screenGeometry));
 
         if(logging) {
             // Keep the diagnostic dump (gated on `logging`, off the hot path).

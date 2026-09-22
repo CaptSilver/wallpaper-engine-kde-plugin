@@ -28,7 +28,7 @@
     </entry>
     <entry name="PauseMode" type="Int">
       <label>Video Pause mode</label>
-      <default>0</default>
+      <default>2</default>
     </entry>
     <entry name="PauseFilterByScreen" type="Bool">
       <label>Filter By Screen</label>

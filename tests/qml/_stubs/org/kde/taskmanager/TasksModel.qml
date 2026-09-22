@@ -1,6 +1,6 @@
 // Test stub — see tests/qml/_stubs/README.md for contract.
 // Real source: libtaskmanager (Plasma framework)
-// Last contract review: 2026-05-27
+// Last contract review: 2026-09-22
 
 // Stub for TaskManager.TasksModel — backs WindowModel.qml's window-aware
 // pause logic. Production code calls makeModelIndex(i) + data(idx, role)
@@ -8,7 +8,7 @@
 import QtQuick
 QtObject {
     // Test fixtures: array of window dicts {appName, isActive, isMaximized,
-    //   isFullScreen, isOnAllVirtualDesktops, virtualDesktops, activities, screenGeometry}
+    //   isFullScreen, isOnAllVirtualDesktops, virtualDesktops, activities, screenGeometry, geometry}
     property var _windows: []
 
     property int    count: _windows.length
@@ -45,6 +45,7 @@ QtObject {
             case 266: return !!w.skipTaskbar;
             case 267: return !!w.skipPager;
             case 268: return !!w.isWindow;
+            case 269: return w.geometry;                    // Geometry
         }
         return undefined;
     }

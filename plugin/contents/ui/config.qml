@@ -144,6 +144,7 @@ ColumnLayout {
 
     WallpaperListModel {
         id: wpListModel
+        pyext: root.pyext
         workshopDirs: Common.getProjectDirs(cfg_SteamLibraryPath)
         globalConfigPath: Common.getGlobalConfigPath(cfg_SteamLibraryPath)
         filterStr: cfg_FilterStr

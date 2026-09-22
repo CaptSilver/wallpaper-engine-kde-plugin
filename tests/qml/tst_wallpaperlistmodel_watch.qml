@@ -63,6 +63,7 @@ TestCase {
     Plugin.WallpaperListModel {
         id: wpModel
         loadEnabled: true
+        pyext: pyext
         workshopDirs: ["/fake/workshop"]
         globalConfigPath: "/fake/global.json"
         initItemOp: function(item) {}
@@ -76,6 +77,7 @@ TestCase {
     Plugin.WallpaperListModel {
         id: gateModel
         loadEnabled: false
+        pyext: pyext
         workshopDirs: ["/gate/workshop"]
         globalConfigPath: "/fake/global.json"
         initItemOp: function(item) {}

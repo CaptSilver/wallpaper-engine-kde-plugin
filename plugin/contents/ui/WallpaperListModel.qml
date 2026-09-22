@@ -24,8 +24,9 @@ Item {
 
     property var initItemOp: null
     property var _initItemOp: Boolean(initItemOp) ? initItemOp : function(){ }
-    property var readfile: null 
+    property var readfile: null
     property var _readfile: Boolean(readfile) ? readfile : function(){ return Promise.reject("read file func not available"); }
+    property var pyext: null
 
     signal modelStartSync
     signal modelRefreshed
@@ -253,6 +254,10 @@ Item {
 
         root.scanning = true;
         return loadPlaylists().then(() => {
+            if (! pyext) {
+                root.scanning = false;
+                return Promise.resolve();
+            }
             this.workshopDirs.forEach(el => {
                 const dirs = (Array.isArray(el) ? el : [el]).map(Common.urlNative);
                 p_list.push(pyext.get_folder_list(
@@ -393,15 +398,15 @@ Item {
     }
 
     // scan once
+    function _scanIfEmpty() {
+        if (root.model.count === 0) return root.refresh();
+        return Promise.resolve();
+    }
     Timer {
         running: true
         interval: 10000
         repeat: false   //run once
-        onTriggered: {
-            if(wpListModel.model.count === 0)
-                return wpListModel.refresh();  //refresh to scan
-            return Promise.resolve();
-        }
+        onTriggered: root._scanIfEmpty()
     }
 
 }

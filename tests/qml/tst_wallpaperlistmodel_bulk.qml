@@ -53,9 +53,10 @@ TestCase {
 
     property string fakeFileContent: '{"general":{"playlists":[]}}'
 
-    // pyext stub — refresh() makes a bare `pyext.get_folder_list` reference.
-    // Returning empty items makes refresh a no-op on loadEnabledChanged; tests
-    // drive loadFolderLists directly. Pattern mirrors tst_filter_playlist_integration.
+    // pyext stub — kept for parity with tst_filter_playlist_integration.qml, but
+    // WallpaperListModel now declares its own `pyext` property (defaulting to
+    // null), which shadows this ambient one. refresh() never reaches this stub;
+    // tests drive loadFolderLists directly instead.
     property var pyext: ({
         get_folder_list: function(dir, opts) {
             return tc._thenable({ folder: dir, items: [] });

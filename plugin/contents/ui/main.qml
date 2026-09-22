@@ -356,6 +356,7 @@ Rectangle {
     }
     WallpaperListModel {
         id: wpListModel
+        pyext: pyext
         // Load the model whenever any playlist is active OR the legacy
         // randomize toggle is on. Without this, custom playlists with
         // ActivePlaylistId set but RandomizeWallpaper=false leave the

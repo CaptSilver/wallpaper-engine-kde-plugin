@@ -53,12 +53,10 @@ TestCase {
                                  : '{"general":{"playlists":[]}}');
     }
 
-    // pyext stub — WallpaperListModel makes a bare `pyext.get_folder_list`
-    // reference inside refresh(). With enabled=true (needed so filterStr
-    // changes actually refilter), refresh fires on construction and on
-    // every enabledChanged. The stub returns an empty folder so refresh
-    // is a no-op without crashing; tests then drive loadFolderLists
-    // directly with the data they want.
+    // pyext stub — kept for parity with tst_wallpaperlistmodel_bulk.qml, but
+    // WallpaperListModel now declares its own `pyext` property (defaulting to
+    // null), which shadows this ambient one. refresh() never reaches this stub;
+    // tests drive loadFolderLists directly instead.
     property var pyext: ({
         get_folder_list: function(dir, opts) {
             return tc._thenable({ folder: dir, items: [] });

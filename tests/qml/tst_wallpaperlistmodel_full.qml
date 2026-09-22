@@ -445,4 +445,39 @@ TestCase {
         wpModel.loadEnabled = false;
     }
 
+    function test_attachWatchers_doesNotThrowWhenPyextUnset() {
+        let caught = null;
+        try {
+            wpModel._attachWatchers();
+        } catch (e) {
+            caught = e;
+        }
+        verify(caught === null,
+               "_attachWatchers() must not throw when pyext is unset (declared, defaulting to null)");
+    }
+
+    function test_refresh_doesNotStickScanningTrueWhenPyextUnset() {
+        wpModel.loadEnabled = true;
+        wpModel.refresh();
+        tryVerify(() => wpModel.scanning === false, 2000,
+                  "refresh() must not leave scanning stuck true when pyext is unset");
+        wpModel.loadEnabled = false;
+    }
+
+    function test_scanIfEmpty_operatesOnSelfRegardlessOfHostId() {
+        // Force the "empty -> refresh" branch regardless of what earlier tests
+        // left in wpModel.model, so this test actually reaches the internal
+        // self-reference (root vs. an external host id) instead of silently
+        // taking the no-op branch on a model some other test already populated.
+        wpModel.model.clear();
+        let caught = null;
+        try {
+            wpModel._scanIfEmpty();
+        } catch (e) {
+            caught = e;
+        }
+        verify(caught === null,
+               "_scanIfEmpty() must resolve itself via `root`, not assume the host named it `wpListModel`");
+    }
+
 }

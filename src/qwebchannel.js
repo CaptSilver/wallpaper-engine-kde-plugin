@@ -455,6 +455,11 @@ if (typeof module === 'object') {
     };
 }
 
+// Vendored from qt6-qtwebchannel 6.11.1 (upstream: github.com/qt/qtwebchannel,
+// src/webchannel/api/qwebchannel.js). Byte-identical to upstream except for this
+// appended block, which WebEngine's IIFE-wrapped user-script injection needs (the
+// module isn't otherwise reachable as `window.QWebChannel`). To refresh: copy the
+// new qwebchannel.js from qt6-qtwebchannel over this file, then re-append this block.
 // Ensure global visibility when injected as a WebEngine user script
 if (typeof window !== 'undefined') {
     window.QWebChannel = QWebChannel;

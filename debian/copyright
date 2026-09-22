@@ -48,6 +48,19 @@ Copyright: 2017-2022 Advanced Micro Devices, Inc.
 License: Expat
  MIT-style permission grant in header.
 
+Files: src/qwebchannel.js
+Copyright: 2016 The Qt Company Ltd.
+ 2016 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com,
+ author Milian Wolff <milian.wolff@kdab.com>
+License: GPL-2.0-only
+ Vendored from Qt's qwebchannel.js (qtwebchannel module). Dual/triple-
+ licensed upstream (LGPL-3.0-only or GPL-2.0-only or GPL-3.0-only, plus a
+ commercial alternative); this GPL-2.0-only project distributes it under
+ the GPL-2.0-only alternative (see License: GPL-2.0-only paragraph
+ above). Embedded as a Qt resource compiled via AUTORCC into the plugin
+ binary, not installed as a standalone file — see src/qwebchannel.js for
+ the full upstream SPDX expression.
+
 Files: src/backend_scene/third_party/argparse/*
  src/backend_scene/third_party/effolkronium/*
  src/backend_scene/third_party/glad/*

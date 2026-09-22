@@ -451,6 +451,16 @@ private slots:
         QCOMPARE(helper.readFile("file://" + p), QByteArray(5, 'u'));
     }
 
+    void readFile_bareFileSchemeStripped() {
+        // Common.urlNative strips both file:// and the bare file: form; the C++
+        // side only ever checked the double-slash form until now.
+        const QString p = m_tmp.filePath("bareform.txt");
+        QVERIFY(writeBytes(p, 5, 'u'));
+        FileHelper helper;
+        helper.addReadRoot(m_tmp.path());
+        QCOMPARE(helper.readFile("file:" + p), QByteArray(5, 'u'));
+    }
+
     void addReadRoot_nonexistentPath_warnsAndNoOps() {
         FileHelper helper;
         helper.addReadRoot("/does/not/exist/zzz"); // canonical is empty -> reject
@@ -1039,6 +1049,16 @@ private slots:
         }
     }
 
+    void getFolderList_stripsFileUrlPrefix() {
+        QTemporaryDir d;
+        QDir(d.path()).mkdir("wallA");
+
+        FileHelper  helper;
+        QVariantMap result = helper.getFolderList("file://" + d.path());
+        QVERIFY(! result.isEmpty());
+        QCOMPARE(result["folder"].toString(), d.path());
+    }
+
     void getFolderList_fallbackUsedWhenPrimaryMissing() {
         QTemporaryDir d;
         QDir(d.path()).mkdir("fallback");
@@ -1366,6 +1386,18 @@ private slots:
         QVERIFY(result.contains("<body></body>"));
     }
 
+    void patchedHtml_stripsFileUrlPrefix() {
+        const QString path = m_tmp.filePath("urlform.html");
+        QFile         f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("<html><head></head><body></body></html>");
+        f.close();
+
+        FileHelper    helper;
+        const QString result = helper.patchedHtml("file://" + path);
+        QVERIFY(result.contains("history.replaceState"));
+    }
+
     void patchedHtml_caseInsensitiveHead() {
         QString path = m_tmp.filePath("upper.html");
         QFile   f(path);
@@ -1629,6 +1661,16 @@ private slots:
         FileHelper   helper;
         QVariantList result = helper.scanVideoFolder(d.path());
         QCOMPARE(result.size(), 0);
+    }
+
+    void scanVideoFolder_stripsFileUrlPrefix() {
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        QFile::copy("/dev/null", d.filePath("a.mp4"));
+
+        FileHelper   helper;
+        QVariantList result = helper.scanVideoFolder("file://" + d.path());
+        QCOMPARE(result.size(), 1);
     }
 
     void scanVideoFolder_filtersByExtensionAllowlist() {

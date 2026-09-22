@@ -112,6 +112,17 @@ static int headInsertPos(const QString& html) {
     }
 }
 
+// Every FileHelper entry point needs the same rule: a QML caller may hand in
+// an already-native path or a QUrl::toString() form (file:// or the bare
+// file: Qt also emits), and both have to resolve to the same file. Mirrors
+// Common.qml's urlNative() -- check the longer prefix first, since "file://x"
+// also starts with "file:".
+QString nativePath(const QString& path) {
+    if (path.startsWith(QLatin1String("file://"))) return path.mid(7);
+    if (path.startsWith(QLatin1String("file:"))) return path.mid(5);
+    return path;
+}
+
 // Read a file the plugin was handed by a wallpaper, refusing anything that is
 // not a regular file and stopping at kMaxReadSize. `who` names the caller in
 // the warnings; nullopt means "refused", and the caller decides what an empty
@@ -203,8 +214,7 @@ QString FileHelper::wallpaperConfigFile(const QString& id) const {
 QByteArray FileHelper::readFile(const QString& path) {
     // Strip file:// once, up front, and open the stripped form — requestReadFile
     // does the same, and QML callers pass both shapes.
-    QString native = path;
-    if (native.startsWith("file://")) native = native.mid(7);
+    const QString native = nativePath(path);
 
     // Allowlist check (fail-closed when seeded, permissive when empty for
     // first-run back-compat). Canonicalisation resolves symlinks + ".." +
@@ -227,9 +237,8 @@ QByteArray FileHelper::readFile(const QString& path) {
 void FileHelper::addReadRoot(const QString& path) {
     // Strip file:// so QML callers passing Common.urlNative()-style URLs
     // OR raw QUrls both work — mirrors clearCacheDir's pre-canon strip.
-    QString native = path;
-    if (native.startsWith("file://")) native = native.mid(7);
-    const QString canon = QFileInfo(native).canonicalFilePath();
+    const QString native = nativePath(path);
+    const QString canon  = QFileInfo(native).canonicalFilePath();
     if (canon.isEmpty()) {
         // Non-existent path: refuse loudly. Inserting an empty string here
         // would silently poison the set (canon.startsWith("") is true for
@@ -254,7 +263,7 @@ QString FileHelper::qwebChannelSource() {
 QString FileHelper::patchedHtml(const QString& path) {
     // Same gate as readFile: the path comes from a wallpaper directory, and a
     // fifo here would park the GUI thread inside open(2) forever.
-    const auto bytes = readRegularFileCapped(path, "FileHelper::patchedHtml");
+    const auto bytes = readRegularFileCapped(nativePath(path), "FileHelper::patchedHtml");
     if (! bytes) return QString();
 
     QString html = QString::fromUtf8(*bytes);
@@ -381,8 +390,7 @@ void FileHelper::requestReadFile(const QString& path) {
 
         // Strip file:// to match readFile() / addReadRoot() — QML callers
         // sometimes pass through Common.urlNative, sometimes not.
-        QString native = path;
-        if (native.startsWith("file://")) native = native.mid(7);
+        const QString native = nativePath(path);
 
         // Canonicalise; non-existent paths canonicalise to empty string.
         const QString canon = QFileInfo(native).canonicalFilePath();
@@ -412,8 +420,7 @@ void FileHelper::watchWallpaperDir(const QString& path) {
     // Strip file:// to match the other path-taking entry points (addReadRoot,
     // clearCacheDir). QML callers often pass through Common.urlNative which
     // already strips it, but not always.
-    QString native = path;
-    if (native.startsWith("file://")) native = native.mid(7);
+    const QString native = nativePath(path);
 
     // QFileSystemWatcher::addPath silently logs a warning + returns false on
     // non-existent paths; do the existence check up-front so the warning is
@@ -451,7 +458,7 @@ QVariantMap FileHelper::getFolderList(const QString& path, const QVariantMap& op
     QStringList fallbacks = opt.value("fallbacks", QStringList()).toStringList();
 
     // Find first existing directory
-    QString folder = path;
+    QString folder = nativePath(path);
     QDir    dir(folder);
 
     if (! dir.exists()) {
@@ -618,8 +625,7 @@ bool FileHelper::clearCacheDir(const QString& path) {
     // Safety belt: refuse anything that is not a strict descendant of the
     // user cache root. Strip file:// if present and resolve symlinks to
     // defeat path tricks.
-    QString native = path;
-    if (native.startsWith("file://")) native = native.mid(7);
+    const QString native    = nativePath(path);
     const QString cacheRoot = cache_paths::userCacheRoot();
     if (cacheRoot.isEmpty()) return false;
     // Path may not exist (nothing to clear) — canonicalize what we have:
@@ -744,7 +750,7 @@ void FileHelper::generateThumbnail(const QString& videoPath, const QString& outP
 QVariantList FileHelper::scanVideoFolder(const QString& path) {
     static const QStringList kExtensions = { "mp4", "mkv", "webm", "mov", "avi", "m4v" };
     QVariantList             out;
-    QDir                     root(path);
+    QDir                     root(nativePath(path));
     if (! root.exists()) return out;
 
     // FollowSymlinks: users commonly curate their Videos folder with symlinks
@@ -801,8 +807,7 @@ bool sourceStillLive(const QString& src, const QSet<QString>& roots) {
 
 QString FileHelper::videoThumbDir(const QString& cacheRoot) {
     if (cacheRoot.isEmpty()) return {};
-    QString native = cacheRoot;
-    if (native.startsWith("file://")) native = native.mid(7);
+    QString native = nativePath(cacheRoot);
     while (native.size() > 1 && native.endsWith(QLatin1Char('/'))) native.chop(1);
     return native + QStringLiteral("/video-thumbs");
 }
@@ -813,8 +818,7 @@ qint64 FileHelper::pruneOrphanThumbnails(const QString&     cacheRoot,
     if (cacheRoot.isEmpty()) return 0;
     // Safety belt: refuse anything that is not a strict descendant of the
     // user cache root. Mirrors clearCacheDir.
-    QString native = cacheRoot;
-    if (native.startsWith("file://")) native = native.mid(7);
+    const QString native         = nativePath(cacheRoot);
     const QString cacheRootCanon = cache_paths::userCacheRoot();
     if (cacheRootCanon.isEmpty()) return 0;
     const QString canon = QFileInfo(native).canonicalFilePath();
@@ -832,8 +836,7 @@ qint64 FileHelper::pruneOrphanThumbnails(const QString&     cacheRoot,
     QSet<QString> roots;
     auto          addRoot = [&](const QString& p) {
         if (p.isEmpty()) return;
-        QString s = p;
-        if (s.startsWith("file://")) s = s.mid(7);
+        const QString s = nativePath(p);
         roots.insert(QDir::cleanPath(s));
     };
     for (const QString& p : installedWallpaperDirs) addRoot(p);
@@ -890,9 +893,8 @@ qint64 FileHelper::sweepCacheQuota(const QStringList& roots, qint64 quotaBytes) 
     qint64       total = 0;
     for (const QString& root : roots) {
         if (root.isEmpty()) continue;
-        QString native = root;
-        if (native.startsWith("file://")) native = native.mid(7);
-        const QString canon = QFileInfo(native).canonicalFilePath();
+        const QString native = nativePath(root);
+        const QString canon  = QFileInfo(native).canonicalFilePath();
         if (canon.isEmpty()) continue;
         if (! isStrictlyUnderRoot(canon, cacheRootCanon)) {
             qWarning() << "FileHelper::enforceCacheQuota refused root outside cache:" << root;
@@ -1128,8 +1130,7 @@ std::optional<QVariantMap> parseValveKV(const QString& text) {
 QVariantMap FileHelper::readWorkshopManifest(const QString& steamLibraryPath) {
     QVariantMap empty;
     if (steamLibraryPath.isEmpty()) return empty;
-    QString lib = steamLibraryPath;
-    if (lib.startsWith("file://")) lib = lib.mid(7);
+    const QString lib     = nativePath(steamLibraryPath);
     const QString acfPath = lib + "/steamapps/workshop/appworkshop_431960.acf";
     QFile         f(acfPath);
     if (! f.exists() || ! f.open(QIODevice::ReadOnly | QIODevice::Text)) return empty;

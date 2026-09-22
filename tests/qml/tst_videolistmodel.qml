@@ -86,6 +86,12 @@ TestCase {
         });
     }
 
+    function test_localCacheRoot_stripsBareFileScheme() {
+        const m = modelComp.createObject(host, { folderPath: "", cachePath: "file:/tmp/cache" });
+        compare(m._localCacheRoot(), "/tmp/cache");
+        m.destroy();
+    }
+
     // PlaylistController's _pendingWorkshopId queue depends on this signal
     // firing once the async folder scan resolves — otherwise a runtime
     // plain-video playlist that activates before the scan completes would

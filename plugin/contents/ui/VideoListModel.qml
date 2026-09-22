@@ -41,12 +41,12 @@ Item {
         return ("0000000000000000" + h.toString(16)).slice(-16);
     }
 
-    // Strip "file://" if cachePath is a URL (PluginInfo gives a QUrl).
+    // cachePath arrives from PluginInfo.cache_path (a QUrl coerced to string),
+    // so it needs the same file:// / file: strip every other FileHelper
+    // caller applies -- reuse Common's copy instead of a third.
     function _localCacheRoot() {
         if (! cachePath) return "";
-        return cachePath.indexOf("file://") === 0
-            ? cachePath.substring(7)
-            : cachePath;
+        return Common.urlNative(cachePath);
     }
 
     function _thumbPathFor(workshopid) {

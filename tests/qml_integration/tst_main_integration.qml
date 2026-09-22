@@ -81,6 +81,48 @@ TestCase {
         m.destroy();
     }
 
+    // ── curOpt override vs config fallback (the path onCurOptChanged used to own
+    // imperatively, and the one thing nothing end-to-end exercised before this) ──
+    function test_curOpt_override_winsOverConfig() {
+        failOnWarning(/Unable to assign QJSValue|wallpaper is not defined/);
+        _resetCfg();
+        wallpaper.configuration.DisplayMode = 1;
+        const m = _mkMain(1920, 1080);
+        const bg = _bg(m);
+        bg.curOpt = { display_mode: 2 };
+        tryCompare(bg, "displayMode", 2);
+        wallpaper.configuration.DisplayMode = 3;
+        wait(200);
+        compare(bg.displayMode, 2, "a curOpt override must keep winning over a later config change");
+        m.destroy();
+    }
+
+    function test_curOpt_override_removed_fallsBackToConfig() {
+        failOnWarning(/Unable to assign QJSValue|wallpaper is not defined/);
+        _resetCfg();
+        wallpaper.configuration.DisplayMode = 1;
+        const m = _mkMain(1920, 1080);
+        const bg = _bg(m);
+        bg.curOpt = { display_mode: 2 };
+        tryCompare(bg, "displayMode", 2);
+        wallpaper.configuration.DisplayMode = 3;
+        bg.curOpt = {};
+        tryCompare(bg, "displayMode", 3);
+        m.destroy();
+    }
+
+    function test_userPropsJson_reactsToCurOpt() {
+        failOnWarning(/Unable to assign QJSValue|wallpaper is not defined/);
+        _resetCfg();
+        const m = _mkMain(1920, 1080);
+        const bg = _bg(m);
+        bg.curOpt = { user_props: { foo: 1 } };
+        tryCompare(bg, "userPropsJson", JSON.stringify({ foo: 1 }));
+        bg.curOpt = {};
+        tryCompare(bg, "userPropsJson", "");
+        m.destroy();
+    }
+
     // ── per-screen letterbox through main.qml-as-root, full fidelity ────────
     function _mkScene(w, h) {
         failOnWarning(/Unable to assign QJSValue|wallpaper is not defined/);

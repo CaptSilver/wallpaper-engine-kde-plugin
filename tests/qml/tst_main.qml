@@ -27,17 +27,9 @@ TestCase {
     SignalSpy { id: perOptSpy;            signalName: "perOptChangedChanged" }
     SignalSpy { id: mouseInputSpy;        signalName: "mouseInputChanged" }
     SignalSpy { id: wallpaperTypeSpy;     signalName: "wallpaperTypeChanged" }
-    SignalSpy { id: muteSpy;              signalName: "muteChanged" }
-    SignalSpy { id: displayModeSpy;       signalName: "displayModeChanged" }
-    SignalSpy { id: volumeSpy;            signalName: "volumeChanged" }
-    SignalSpy { id: speedSpy;             signalName: "speedChanged" }
 
     // SignalSpies on ad-hoc sub-objects (TtyMonitor signal, fake config emits).
     SignalSpy { id: ttySwitchSpy;         signalName: "ttySwitch" }
-    SignalSpy { id: fakeDisplayModeSpy;   signalName: "displayModeChanged"; target: fakeConfig }
-    SignalSpy { id: fakeMuteAudioSpy;     signalName: "muteAudioChanged";   target: fakeConfig }
-    SignalSpy { id: fakeVolumeSpy;        signalName: "volumeChanged";      target: fakeConfig }
-    SignalSpy { id: fakeSpeedSpy;         signalName: "speedChanged";       target: fakeConfig }
 
     function initTestCase() {
         const comp = Qt.createComponent("../../plugin/contents/ui/main.qml");
@@ -107,10 +99,9 @@ TestCase {
         curOptSpy.target = bg;
         curOptSpy.clear();
         bg.curOpt = { display_mode: 2, mute_audio: true, volume: 75, speed: 1.5 };
-        // The `onCurOptChanged` handler body throws on `wallpaper.configuration.*`
-        // ReferenceError in unit-test scope, but the signal still fires — that's
-        // the observable for "handler entered." A silently-dropped curOpt
-        // assignment would leave count at 0.
+        // curOptChanged is a Qt-generated NOTIFY signal, auto-emitted on every
+        // property write regardless of whether any onCurOptChanged handler
+        // exists -- so this fires even though main.qml declares no such handler.
         verify(curOptSpy.count >= 1);
     }
 
@@ -322,22 +313,6 @@ TestCase {
         compare(listModels, 1);
     }
 
-    // ── wallpaper.configuration.onChanged handlers ──────────────────────────
-    // The `Connections { target: wallpaper.configuration; ... }` block in
-    // main.qml fails to bind in tests (no Plasma `wallpaper` context). We
-    // find the Connections object at runtime and re-target it to a fake
-    // QtObject that emits the right signals.
-    Item {
-        id: fakeConfigHost
-        QtObject {
-            id: fakeConfig
-            property int  displayMode: 0
-            property bool muteAudio:   false
-            property real volume:      50
-            property real speed:       1.0
-        }
-    }
-
     function _mainQmlSource() {
         const xhr = new XMLHttpRequest();
         xhr.open("GET", Qt.resolvedUrl("../../plugin/contents/ui/main.qml"), false);
@@ -380,55 +355,33 @@ TestCase {
                + "moves out of the workshopid binding into this handler");
     }
 
-    function test_wallpaperConfigChange_handlersFireOnFakeTarget() {
-        const bg = _findBackground();
-        if (!bg) return;
-        const all = _allDataItems(bg);
-        const conns = [];
-        for (const item of all) {
-            if (item && typeof item.target !== "undefined" &&
-                typeof item.toString === "function" &&
-                String(item).indexOf("Connections") >= 0) {
-                conns.push(item);
-            }
-        }
-        verify(conns.length >= 1);  // main.qml has at least one Connections block
-        let retargeted = 0;
-        for (const c of conns) {
-            try { c.target = fakeConfig; if (c.target === fakeConfig) retargeted++; } catch(e) {}
-        }
-        verify(retargeted >= 1);
+    // curOpt-derived properties (displayMode, backgroundColor, mute, volume, speed,
+    // userPropsJson) used to be reassigned imperatively from an onCurOptChanged
+    // handler, which silently converts a QML property's live binding into a static
+    // value the moment it fires once. A Connections block targeting
+    // wallpaper.configuration existed only to claw back the config-change
+    // reactivity that assignment destroyed. Source-text contract: neither the
+    // handler nor that Connections block may exist, and userPropsJson must read
+    // curOpt directly rather than sit on a permanent "" default.
+    function test_curOptDerivedProps_areBindingsNotImperativeAssignments() {
+        const src = _mainQmlSource();
 
-        // Spy on the fake's auto-generated propertyChanged signals; each
-        // emission below routes through the retargeted Connections handler.
-        // The handler body throws on `wallpaper.configuration.X` ReferenceError
-        // (no Plasma scope), but the signal-fire count is the observable that
-        // the rewired path is live.
-        fakeDisplayModeSpy.clear();
-        fakeMuteAudioSpy.clear();
-        fakeVolumeSpy.clear();
-        fakeSpeedSpy.clear();
+        verify(!/onCurOptChanged\s*:/.test(src),
+               "main.qml still has an onCurOptChanged handler -- imperative "
+               + "assignment inside it converts displayMode/backgroundColor/mute/"
+               + "volume/speed from live bindings into static values the first "
+               + "time curOpt changes");
 
-        for (const m of [0, 1, 2]) {
-            fakeConfig.displayMode = m;
-            try { fakeConfig.displayModeChanged(); } catch(e) {}
-        }
-        fakeConfig.muteAudio = !fakeConfig.muteAudio;
-        try { fakeConfig.muteAudioChanged(); } catch(e) {}
-        fakeConfig.volume = 75;
-        try { fakeConfig.volumeChanged(); } catch(e) {}
-        fakeConfig.speed = 2.0;
-        try { fakeConfig.speedChanged(); } catch(e) {}
+        verify(!/Connections\s*\{[^}]*target:\s*wallpaper\.configuration/.test(src),
+               "main.qml still has a Connections block re-targeting "
+               + "wallpaper.configuration -- that block exists only to hand-roll "
+               + "reactivity an ordinary binding provides for free");
 
-        // 3 sets to displayMode (0→1→2; initial was 0 so first set is a no-op,
-        // but the explicit displayModeChanged() forces an emit each iteration)
-        // + 1 muteAudio + 1 volume + 1 speed = mix of property-change auto
-        // emits and explicit emits. Counts are the union; we only assert the
-        // explicit emissions reached the spy.
-        verify(fakeDisplayModeSpy.count >= 3);
-        verify(fakeMuteAudioSpy.count   >= 1);
-        verify(fakeVolumeSpy.count      >= 1);
-        verify(fakeSpeedSpy.count       >= 1);
+        const decl = src.match(/property\s+string\s+userPropsJson\s*:\s*([^\n]+)/);
+        verify(decl !== null, "userPropsJson declaration not found in main.qml");
+        const rhs = decl[1].trim();
+        verify(/curOpt/.test(rhs),
+               "userPropsJson's declaration must read curOpt directly -- found: " + rhs);
     }
 
     // ── startup cache GC ──────────────────────────────────────────────────

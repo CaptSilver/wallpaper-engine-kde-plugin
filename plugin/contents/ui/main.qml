@@ -77,44 +77,13 @@ Rectangle {
         return def;
     }
 
-    // Update all derived properties when curOpt changes
-    onCurOptChanged: {
-        displayMode = get_opt_value('display_mode', wallpaper.configuration.DisplayMode);
-        backgroundColor = get_opt_value('background_color', wallpaper.configuration.BackgroundColor);
-        mute = get_opt_value('mute_audio', wallpaper.configuration.MuteAudio);
-        volume = get_opt_value('volume', wallpaper.configuration.Volume);
-        speed = get_opt_value('speed', wallpaper.configuration.Speed);
-        const userProps = curOpt['user_props'];
-        userPropsJson = userProps ? JSON.stringify(userProps) : "";
-    }
-
     property int    displayMode: get_opt_value('display_mode', wallpaper.configuration.DisplayMode)
     property string backgroundColor: get_opt_value('background_color', wallpaper.configuration.BackgroundColor)
     property bool   mute: get_opt_value('mute_audio', wallpaper.configuration.MuteAudio)
     property int    volume: get_opt_value('volume', wallpaper.configuration.Volume)
     property real   speed: get_opt_value('speed', wallpaper.configuration.Speed)
     // User properties for scene wallpapers (JSON string format)
-    property string userPropsJson: ""
-
-    // Reactive bindings for configuration changes
-    Connections {
-        target: wallpaper.configuration
-        function onDisplayModeChanged() {
-            background.displayMode = background.get_opt_value('display_mode', wallpaper.configuration.DisplayMode);
-        }
-        function onBackgroundColorChanged() {
-            background.backgroundColor = background.get_opt_value('background_color', wallpaper.configuration.BackgroundColor);
-        }
-        function onMuteAudioChanged() {
-            background.mute = background.get_opt_value('mute_audio', wallpaper.configuration.MuteAudio);
-        }
-        function onVolumeChanged() {
-            background.volume = background.get_opt_value('volume', wallpaper.configuration.Volume);
-        }
-        function onSpeedChanged() {
-            background.speed = background.get_opt_value('speed', wallpaper.configuration.Speed);
-        }
-    }
+    property string userPropsJson: curOpt['user_props'] ? JSON.stringify(curOpt['user_props']) : ""
 
     property int    perOptChanged: wallpaper.configuration.PerOptChanged
     onPerOptChangedChanged: {

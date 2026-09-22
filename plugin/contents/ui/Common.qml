@@ -29,8 +29,6 @@ QtObject {
 
     readonly property string repo_url: 'https://github.com/CaptSilver/wallpaper-engine-kde-plugin'
 
-    readonly property var videoExtensions: [".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v"]
-
     readonly property var wpitem_template: ({
         workshopid: "",
         path: "", // need convert to qurl

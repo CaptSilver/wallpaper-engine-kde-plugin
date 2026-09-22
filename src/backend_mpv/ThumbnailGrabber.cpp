@@ -8,10 +8,6 @@ namespace wekde
 
 struct ThumbnailGrabber::Impl {
     mpv_handle* mpv { nullptr };
-    // Once-per-instance latch for ctor-failure qCritical lines so a repeated
-    // construct/destruct loop (test harnesses, future per-grab Impls) doesn't
-    // muzzle the next instance's log. Intentionally NOT process-global.
-    bool m_ctorLogged { false };
 
     Impl() {
         // libmpv requires LC_NUMERIC=C — pinned process-wide at plugin
@@ -24,7 +20,6 @@ struct ThumbnailGrabber::Impl {
         if (! mpv) {
             qCritical() << "ThumbnailGrabber: mpv_create() returned null "
                            "— video thumbnail subsystem disabled";
-            m_ctorLogged = true;
             return;
         }
         mpv_set_option_string(mpv, "vo", "null");
@@ -38,7 +33,6 @@ struct ThumbnailGrabber::Impl {
         if (mpv_initialize(mpv) < 0) {
             qCritical() << "ThumbnailGrabber: mpv_initialize() failed "
                            "— video thumbnail subsystem disabled";
-            m_ctorLogged = true;
             mpv_destroy(mpv);
             mpv = nullptr;
         }

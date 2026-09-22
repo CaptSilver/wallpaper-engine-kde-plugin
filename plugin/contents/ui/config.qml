@@ -1,7 +1,6 @@
 import QtQuick 2.6
 import QtQuick.Controls 2.2
 import QtQuick.Layouts 1.5
-import org.kde.plasma.core 2.0 as PlasmaCore
 import org.kde.plasma.components 3.0 as PlasmaComponents
 import org.kde.kirigami 2.4 as Kirigami
 import com.github.captsilver.wallpaperEngineKde 1.2 as WEKde
@@ -76,25 +75,6 @@ ColumnLayout {
     // silently killed reactivity for the cfg_CustomConf dep the binding read.
     // Mirrors main.qml:124's customConf form for parity.
     property var customConf: Common.loadCustomConf(cfg_CustomConf)
-
-    property var iconSizes: {
-        if(PlasmaCore.Units) {
-            iconSizes = PlasmaCore.Units.iconSizes;
-        } else {
-            iconSizes = {
-                large: 48
-            }
-        }
-    }
-    // property var themeWidth: {
-    //     if(PlasmaCore.Theme && PlasmaCore.Theme.mSize) {
-    //         themeWidth = PlasmaCore.Theme.mSize(theme.defaultFont).width;
-    //     } else if(theme) {
-    //         themeWidth = theme.mSize(theme.defaultFont).width;
-    //     } else {
-    //         themeWidth = font.pixelSize;
-    //     }
-    // }
 
     // One-shot capability probes, NOT live bindings. Common.checklib* calls
     // Qt.createQmlObject, and invoking that DURING binding evaluation (i.e.

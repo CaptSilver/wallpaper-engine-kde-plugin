@@ -1,7 +1,5 @@
 import QtQuick 2.6
 import QtQuick.Controls 2.3
-import QtQuick.Controls 2.3 as QQC
-import QtQuick.Window 2.0 // for Screen
 import QtQuick.Dialogs
 import QtQuick.Layouts 1.5
 
@@ -11,10 +9,7 @@ import "../components"
 import "../js/utils.mjs" as Utils
 import "../js/bbcode.mjs" as BBCode
 
-import org.kde.plasma.core 2.0 as PlasmaCore
 import org.kde.plasma.components 3.0 as PlasmaComponents
-// for kcm gridview
-import org.kde.kcmutils as KCM
 import org.kde.kirigami 2.6 as Kirigami
 
 RowLayout {
@@ -396,7 +391,7 @@ RowLayout {
                     anchors.fill: parent
 
                     activeWorkshopId: cfg_WallpaperWorkShopId
-                    iconSize: root.iconSizes.large
+                    iconSize: Kirigami.Units.iconSizes.large
                     animatedPreviewActive: cfg_AnimatedPreview
                     showFavorites: true
                     showWorkshopLink: true

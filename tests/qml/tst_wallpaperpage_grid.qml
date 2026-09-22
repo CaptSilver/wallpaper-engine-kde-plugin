@@ -6,6 +6,7 @@ import QtQuick
 import QtTest
 
 import "../../plugin/contents/ui" as Plugin
+import org.kde.kirigami 2.6 as Kirigami
 
 TestCase {
     id: tc
@@ -203,5 +204,9 @@ TestCase {
         verify(presetBadge !== null);
         verify(presetBadge.indexOf("Preset") >= 0);
         compare(_findBadgeText(grid.view.itemAtIndex(3)), null);  // web → no badge
+    }
+
+    function test_grid_iconSize_isKirigamiIconSizesLarge() {
+        compare(grid.iconSize, Kirigami.Units.iconSizes.large);
     }
 }

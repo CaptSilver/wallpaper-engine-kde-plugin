@@ -253,4 +253,17 @@ TestCase {
                "expected a deferred `libcheck = { ... }` assignment in config.qml");
     }
 
+    function test_iconSizesPropertyRemoved() {
+        compare(cfg.iconSizes, undefined,
+            "config.qml's dead PlasmaCore.Units probe (iconSizes) should be deleted, "
+            + "not merely unused");
+    }
+
+    function test_config_qml_hasNoPlasmaCoreImport() {
+        const src = _configQmlSource();
+        verify(src.indexOf("org.kde.plasma.core") === -1,
+            "config.qml still imports org.kde.plasma.core — the dead Plasma-5.18 "
+            + "compat probe (or its import) was not fully removed");
+    }
+
 }

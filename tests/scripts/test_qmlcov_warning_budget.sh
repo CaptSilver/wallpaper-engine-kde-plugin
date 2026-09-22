@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-# Regression test for qmltestrunner's own -maxwarnings cap (default 2000):
-# once a noisy early test file exhausts the budget, qmltestrunner silently
-# drops every later console message for the rest of the run -- including
-# every __COV_TICK__ marker the qmlcov coverage tracer depends on, and any
-# real QWARN a normal tst_qml run would otherwise report.
+# Regression test for the QML test runner's own -maxwarnings cap (default
+# 2000): once a noisy early test file exhausts the budget, the runner
+# silently drops every later console message for the rest of the run --
+# including every __COV_TICK__ marker the qmlcov coverage tracer depends
+# on, and any real QWARN a normal tst_qml run would otherwise report.
 #
 # This drives the REAL invocation resolved from tests/CMakeLists.txt (via
 # `ctest --show-only`), with only the -input directory swapped to a
-# throwaway fixture, rather than a private reimplementation of the
-# qmltestrunner call -- a self-contained reimplementation would pass even if
-# tests/CMakeLists.txt's actual COMMAND regressed.
+# throwaway fixture, rather than a private reimplementation of that call --
+# a self-contained reimplementation would pass even if tests/CMakeLists.txt's
+# actual COMMAND regressed. tst_qml runs through wek_qml_test_runner, a
+# binary this same build configures and builds (not something resolved from
+# PATH), so whether it exists is answered by asking ctest, not by probing
+# PATH for a qmltestrunner binary that tst_qml no longer invokes.
 set -uo pipefail
 
 SKIP_CODE=77
@@ -22,18 +25,6 @@ BUILD_DIR=$(cd "$1" && pwd)
 TESTS_SRC_DIR=$(cd "$2" && pwd)
 CMAKELISTS="$TESTS_SRC_DIR/CMakeLists.txt"
 
-QMLTESTRUNNER=""
-for candidate in qmltestrunner-qt6 qmltestrunner6 qmltestrunner; do
-    if command -v "$candidate" >/dev/null 2>&1; then
-        QMLTESTRUNNER=$candidate
-        break
-    fi
-done
-if [[ -z "$QMLTESTRUNNER" ]]; then
-    echo "qmltestrunner not found on PATH -- skipping"
-    exit "$SKIP_CODE"
-fi
-
 if ! command -v python3 >/dev/null 2>&1; then
     echo "python3 not found on PATH -- skipping"
     exit "$SKIP_CODE"
@@ -42,11 +33,11 @@ fi
 fail=0
 
 # Structural check: both real invocations must carry the flag. On its own
-# this would pass on a source-text match that never reaches qmltestrunner
-# (a typo'd COMMAND list, say), so it's paired below with actually driving
-# the resolved, live tst_qml command against a budget-exhausting fixture.
+# this would pass on a source-text match that never reaches the runner (a
+# typo'd COMMAND list, say), so it's paired below with actually driving the
+# resolved, live tst_qml command against a budget-exhausting fixture.
 if ! awk '/add_custom_target\(qmlcov/,/USES_TERMINAL/' "$CMAKELISTS" | grep -q -- '-maxwarnings 0'; then
-    echo "FAIL: qmlcov custom target's qmltestrunner invocation is missing -maxwarnings 0"
+    echo "FAIL: qmlcov custom target's QML test runner invocation is missing -maxwarnings 0"
     fail=1
 fi
 
@@ -99,6 +90,21 @@ if ! ctest --test-dir "$BUILD_DIR" --show-only=json-v1 -R '^tst_qml$' > "$SHOW_J
     echo "FAIL: ctest --show-only could not resolve tst_qml (is $BUILD_DIR configured from tests/CMakeLists.txt?)"
     cat "$SHOW_JSON"
     exit 1
+fi
+
+# `ctest --show-only -R` matching nothing is not itself an error -- it exits
+# 0 with an empty tests list -- so a missing tst_qml means wek_qml_test_runner
+# wasn't configured (its own deps, Qt6 QuickTest/Qml or KF6I18n, are absent
+# from this build), the same kind of environment gap the old PATH-qmltestrunner
+# check used to catch. That's a skip, not a failure of this script's own logic.
+if ! python3 -c '
+import json, sys
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+sys.exit(0 if any(t.get("name") == "tst_qml" for t in data.get("tests", [])) else 1)
+' "$SHOW_JSON"; then
+    echo "tst_qml is not configured in $BUILD_DIR -- skipping"
+    exit "$SKIP_CODE"
 fi
 
 RUN_SCRIPT="$SCRATCH_DIR/run_swapped.sh"

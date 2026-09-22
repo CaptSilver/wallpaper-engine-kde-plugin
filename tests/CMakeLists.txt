@@ -708,20 +708,34 @@ else()
     message(STATUS "KF6GlobalAccel / KF6CoreAddons / KF6XmlGui not found — skipping tst_wekshortcuts")
 endif()
 
-# ── QML tests (qmltestrunner) ─────────────────────────────────────────────────
-# Prefer Qt6-specific binary names. The bare `qmltestrunner` on some Debian/
-# Ubuntu images is a qtchooser proxy that fails at runtime when no default Qt
-# is selected ("could not find a Qt installation of ''") — keep it as a last-
-# resort fallback only.
-find_program(QMLTESTRUNNER NAMES qmltestrunner-qt6 qmltestrunner6 qmltestrunner)
-if(QMLTESTRUNNER)
-    # -maxwarnings 0: qmltestrunner's own cap on console output defaults to
+# ── QML tests (Quick Test runner) ─────────────────────────────────────────────
+# The stock qmltestrunner has no equivalent of the localized context that
+# plasmashell installs on a real engine's root context (PlasmaCore's own
+# corebindingsplugin does the same, via KLocalizedQmlContext), so
+# i18n()/i18nc()/i18np()/i18ncp() only ever worked here because some test
+# file's own `import org.kde.plasma.core` happened to trigger that context
+# object as a load-time side effect -- not because the harness wired
+# anything up. qml_test_runner.cpp builds a QUICK_TEST_MAIN_WITH_SETUP
+# binary that installs a context object itself (the deprecated
+# KLocalizedContext, not KLocalizedQmlContext -- see the comment in that
+# file for why), so QML i18n calls work here for the same reason they work
+# in production, independent of which files import what. It takes the same
+# command line as qmltestrunner (-input, -import, -maxwarnings) since it's
+# built from the same QUICK_TEST_MAIN family of macros.
+find_package(Qt6 6.7 COMPONENTS QuickTest Qml QUIET)
+find_package(KF6I18n QUIET)
+if(Qt6QuickTest_FOUND AND Qt6Qml_FOUND AND KF6I18n_FOUND)
+    add_executable(wek_qml_test_runner qml_test_runner.cpp)
+    target_link_libraries(wek_qml_test_runner PRIVATE Qt6::QuickTest Qt6::Qml KF6::I18n)
+    set(QML_TEST_RUNNER "$<TARGET_FILE:wek_qml_test_runner>")
+
+    # -maxwarnings 0: the runner's own cap on console output defaults to
     # 2000 messages, after which it silently drops everything -- including
     # any real QWARN a later test file emits. Without this, a noisy file
     # (e.g. tst_pages_deep.qml's BFS walk) can eat the whole budget and hide
     # failures/warnings in files that happen to run after it.
     add_test(NAME tst_qml
-        COMMAND ${QMLTESTRUNNER} -input ${CMAKE_CURRENT_SOURCE_DIR}/qml -maxwarnings 0
+        COMMAND ${QML_TEST_RUNNER} -input ${CMAKE_CURRENT_SOURCE_DIR}/qml -maxwarnings 0
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     # QML_XHR_ALLOW_FILE_READ=1: source-text-grep tests (e.g.
     # tst_main.qml::test_workshopid_isPureBinding_noSideEffectInDecl)
@@ -761,7 +775,7 @@ if(QMLTESTRUNNER)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
                 "${CMAKE_CURRENT_SOURCE_DIR}/qml" "${_qmlcov_tests}"
         # Point the QML disk cache to a fresh per-run dir, then run.
-        # QML_DISABLE_DISK_CACHE alone isn't enough — qmltestrunner-qt6 still
+        # QML_DISABLE_DISK_CACHE alone isn't enough — the runner still
         # consults its cache dir on read, so we redirect it to a clean dir.
         # QML2_IMPORT_PATH order:
         #   _stubs/    — fake versions of native modules (wek-plugin, plasma5support,
@@ -782,7 +796,7 @@ if(QMLTESTRUNNER)
                 # -maxwarnings 0: same reason as tst_qml above -- one noisy
                 # file mid-run must not zero out the __COV_TICK__ markers
                 # every file after it depends on.
-                bash -c "${QMLTESTRUNNER} -input ${_qmlcov_tests} -maxwarnings 0 > ${_qmlcov_log} 2>&1; cat ${_qmlcov_log}; true"
+                bash -c "${QML_TEST_RUNNER} -input ${_qmlcov_tests} -maxwarnings 0 > ${_qmlcov_log} 2>&1; cat ${_qmlcov_log}; true"
         COMMAND ${Python3_EXECUTABLE}
                 "${_wekde_repo_root}/tools/qmlcov/report.py"
                 --catalog   "${_qmlcov_cat}"
@@ -795,7 +809,7 @@ if(QMLTESTRUNNER)
         USES_TERMINAL
     )
 else()
-    message(STATUS "qmltestrunner not found — skipping QML tests")
+    message(STATUS "Qt6 QuickTest/Qml or KF6I18n not found — skipping QML tests (all three build the i18n-aware Quick Test runner)")
 endif()
 
 # ── JavaScript tests (Node.js) ────────────────────────────────────────────────
@@ -867,12 +881,13 @@ endif()
 add_test(NAME test_mutation
          COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_mutation.sh)
 
-# Regression test for the qmltestrunner -maxwarnings truncation bug (see the
-# two -maxwarnings 0 additions above). Drives the real tst_qml invocation
+# Regression test for the -maxwarnings truncation bug (see the two
+# -maxwarnings 0 additions above). Drives the real tst_qml invocation
 # resolved via `ctest --show-only`, so it needs the binary dir + this
-# directory as arguments. SKIP_RETURN_CODE covers a PATH that has no
-# qmltestrunner (or no python3) at test-run time, independent of whatever
-# QMLTESTRUNNER resolved to at configure time.
+# directory as arguments. SKIP_RETURN_CODE covers a tst_qml that isn't
+# configured at all (no python3, or the runner's own deps missing) at
+# test-run time, independent of what tests/CMakeLists.txt resolved at
+# configure time.
 add_test(NAME test_qmlcov_warning_budget
          COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_qmlcov_warning_budget.sh
                  ${CMAKE_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
@@ -898,9 +913,13 @@ set(_wek_all_test_targets
 
 # ── Apply opt-in sanitizers to every C++ test target ──────────────────────────
 # No-op unless -DWEK_SANITIZE=... is set.  Guarded by if(TARGET ...) because
-# several targets are conditional on optional Qt components / libmpv.  The
-# QML (tst_qml) and JS (tst_js) tests are add_test-only (qmltestrunner / node),
-# not C++ executables, so they are not in _wek_all_test_targets.
+# several targets are conditional on optional Qt components / libmpv.  JS
+# (tst_js) is add_test-only (node), not a C++ executable.  QML (tst_qml) now
+# runs through wek_qml_test_runner, a C++ executable, but it isn't in
+# _wek_all_test_targets: that list only names tst_* targets (see the drift
+# check in tests/scripts/test_mutation.sh), and sanitizing the whole Quick
+# Test / KI18n machinery the runner links against is not what this loop is
+# for.
 foreach(_wek_test_target ${_wek_all_test_targets})
     if(TARGET ${_wek_test_target})
         wek_apply_sanitizers(${_wek_test_target})

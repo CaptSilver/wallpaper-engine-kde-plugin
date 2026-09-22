@@ -11,7 +11,6 @@
 // scoped by initTestCase/cleanupTestCase and managed by Qt itself.
 
 #include <QtTest>
-#include <QTemporaryDir>
 #include <QStandardPaths>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -32,11 +31,9 @@
 class TstPlaylistManager : public QObject {
     Q_OBJECT
 private:
-    // Compute the playlists.json path under the (test-mode-redirected)
-    // generic config location. The QTemporaryDir arg is retained for
-    // call-site compatibility but is no longer used to redirect config —
-    // setTestModeEnabled handles that process-wide in initTestCase().
-    QString setupConfigHome(QTemporaryDir&) {
+    // The playlists.json path under the (test-mode-redirected) generic config
+    // location. Isolation across tests is initTestCase()'s job (setTestModeEnabled).
+    QString playlistsJsonPath() {
         return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
                "/wekde/playlists.json";
     }
@@ -64,18 +61,14 @@ private slots:
     }
 
     void emptyOnFreshConstruction() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        const QString          path = setupConfigHome(d);
+        const QString          path = playlistsJsonPath();
         wekde::PlaylistManager mgr;
         QVERIFY(mgr.playlists().isEmpty());
         QVERIFY(QFileInfo::exists(path));
     }
 
     void createPlaylistPersists() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        const QString          path = setupConfigHome(d);
+        const QString          path = playlistsJsonPath();
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("Morning rotation");
         QVERIFY(! id.isEmpty());
@@ -94,10 +87,6 @@ private slots:
     }
 
     void roundtripAcrossConstructions() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
-
         QString id;
         {
             wekde::PlaylistManager mgr;
@@ -122,9 +111,7 @@ private slots:
     }
 
     void corruptJsonMovesAsideAndDefaults() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        const QString path = setupConfigHome(d);
+        const QString path = playlistsJsonPath();
         QDir().mkpath(QFileInfo(path).absolutePath());
         QFile pre(path);
         QVERIFY(pre.open(QIODevice::WriteOnly));
@@ -139,9 +126,7 @@ private slots:
     }
 
     void schemaVersionTooNewLeavesFile() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        const QString path = setupConfigHome(d);
+        const QString path = playlistsJsonPath();
         QDir().mkpath(QFileInfo(path).absolutePath());
         QFile pre(path);
         QVERIFY(pre.open(QIODevice::WriteOnly));
@@ -156,9 +141,7 @@ private slots:
     }
 
     void deletePlaylistRemovesFromDisk() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        const QString          path = setupConfigHome(d);
+        const QString          path = playlistsJsonPath();
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("To delete");
         mgr.deletePlaylist(id);
@@ -173,9 +156,6 @@ private slots:
     }
 
     void renameUpdatesAndPersists() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("Before");
         mgr.renamePlaylist(id, "After");
@@ -183,9 +163,6 @@ private slots:
     }
 
     void intervalIsClamped() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("X");
         mgr.setIntervalMin(id, -5);
@@ -196,9 +173,6 @@ private slots:
 
     // ── cycle ─────────────────────────────────────────────────────────────────
     void sequentialAdvancesAndWraps() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("Seq");
         mgr.addItem(id, "A");
@@ -220,9 +194,6 @@ private slots:
     }
 
     void shuffleNoImmediateRepeatAndCovers() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("Shuf");
         for (const QString& w : { "A", "B", "C", "D" }) mgr.addItem(id, w);
@@ -244,9 +215,6 @@ private slots:
     }
 
     void nextIntervalUsesPlaylistDefault() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("D");
         mgr.setIntervalMin(id, 15);
@@ -263,9 +231,6 @@ private slots:
     }
 
     void activateUnknownIdFails() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         QSignalSpy             fail(&mgr, &wekde::PlaylistManager::activationFailed);
         QCOMPARE(mgr.activate("nonexistent"), false);
@@ -274,9 +239,6 @@ private slots:
     }
 
     void activateEmptyPlaylistSuppressesTick() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("Empty");
         QSignalSpy             spy(&mgr, &wekde::PlaylistManager::tick);
@@ -285,9 +247,6 @@ private slots:
     }
 
     void deactivateClearsActiveId() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("X");
         mgr.addItem(id, "A");
@@ -297,9 +256,6 @@ private slots:
     }
 
     void deletingActivePlaylistDeactivatesFirst() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("X");
         mgr.addItem(id, "A");
@@ -310,9 +266,6 @@ private slots:
     }
 
     void filteredLibraryRequestsPickAndAcceptsIt() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
 
         QSignalSpy reqSpy(&mgr, &wekde::PlaylistManager::requestFilteredPick);
@@ -326,9 +279,6 @@ private slots:
     }
 
     void skipCurrentAdvancesAndImmediatelyTicks() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("X");
         mgr.addItem(id, "A");
@@ -343,9 +293,6 @@ private slots:
     }
 
     void skipBailsAfter8ConsecutiveSkips() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("X");
         for (int i = 0; i < 5; ++i) mgr.addItem(id, QString("W%1").arg(i));
@@ -366,9 +313,6 @@ private slots:
     // Consecutive skip counter resets on a successful tick — a playlist
     // with one bad item out of many shouldn't accumulate toward bail.
     void skipCounterResetsOnSuccessfulTick() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("X");
         for (int i = 0; i < 3; ++i) mgr.addItem(id, QString("W%1").arg(i));
@@ -391,9 +335,6 @@ private slots:
     // must never spend the consecutive-skip budget that exists to shut down a
     // playlist whose items can't be loaded.
     void manualStepForwardNeverDeactivatesThePlaylist() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("X");
         for (int i = 0; i < 5; ++i) mgr.addItem(id, QString("W%1").arg(i));
@@ -411,9 +352,6 @@ private slots:
     // A manual step is not evidence that a broken item became loadable, so it
     // must leave the resolve-failure budget exactly where it was.
     void manualStepLeavesResolveFailureBudgetIntact() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("X");
         for (int i = 0; i < 5; ++i) mgr.addItem(id, QString("W%1").arg(i));
@@ -430,9 +368,6 @@ private slots:
     }
 
     void manualStepBackwardWalksSequentialPlaylistInReverse() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("X");
         mgr.addItem(id, "A");
@@ -457,9 +392,6 @@ private slots:
     // pick can legitimately land on the next index — so walk two full cycles:
     // the shuffle picker reproducing that exact order does not happen.
     void forwardStepInSequentialModeWalksTheStoredOrder() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("X");
         const QStringList      order { "A", "B", "C", "D", "E", "F" };
@@ -481,9 +413,6 @@ private slots:
     // The Filtered Library has no item list of its own — QML owns the picks —
     // so a manual step has to ask QML for one instead of quietly doing nothing.
     void manualStepOnFilteredLibraryAsksQmlForAPick() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         QVERIFY(mgr.activate(wekde::kFilteredLibraryId));
         mgr.acceptPick("workshop-1");
@@ -503,9 +432,6 @@ private slots:
     // Same invariant from the other direction: the dialog's manager must not
     // switch the desktop wallpaper when an item fails to resolve either.
     void skipIsInertInEditorMode() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("X");
         mgr.addItem(id, "A");
@@ -523,9 +449,6 @@ private slots:
     // The editor-mode manager is a UI shadow; only the runtime one drives the
     // wallpaper. A stray Next from the dialog must not tick.
     void manualStepIsInertInEditorMode() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("X");
         mgr.addItem(id, "A");
@@ -543,9 +466,7 @@ private slots:
 
     // ── migration + pause/resume ──────────────────────────────────────────────
     void migrationFiresOnFirstRunWithRandomizeOn() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        const QString path = setupConfigHome(d);
+        const QString path = playlistsJsonPath();
         QVERIFY(! QFileInfo::exists(path)); // truly fresh
 
         wekde::PlaylistManager mgr;
@@ -559,9 +480,7 @@ private slots:
     }
 
     void migrationDoesNotFireWhenFileAlreadyExists() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        const QString path = setupConfigHome(d);
+        const QString path = playlistsJsonPath();
         QDir().mkpath(QFileInfo(path).absolutePath());
         QFile pre(path);
         QVERIFY(pre.open(QIODevice::WriteOnly));
@@ -582,10 +501,6 @@ private slots:
     // any future "buffered playlist edits" refactor has to consciously
     // change it.
     void moveItemPersistsImmediatelyNoCancelGate() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
-
         QString id;
         {
             wekde::PlaylistManager mgr;
@@ -613,9 +528,7 @@ private slots:
     // real file and treat the orphan as benign clutter (next persist
     // overwrites it cleanly).
     void orphanTmpDoesNotPoisonLoad() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        const QString path = setupConfigHome(d);
+        const QString path = playlistsJsonPath();
         QDir().mkpath(QFileInfo(path).absolutePath());
 
         // Write a valid playlists.json with one entry.
@@ -664,9 +577,7 @@ private slots:
     // disk-full failures or third-party config editors that produce
     // syntactically valid JSON with semantically wrong fields.
     void schemaShapeWrong_doesNotCrash() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        const QString path = setupConfigHome(d);
+        const QString path = playlistsJsonPath();
         QDir().mkpath(QFileInfo(path).absolutePath());
 
         // playlists is a STRING instead of an array — must not crash on load.
@@ -683,9 +594,7 @@ private slots:
     // Schema corruption: entry missing required fields. The reader should
     // skip or default rather than produce a half-formed Playlist.
     void schemaEntryMissingFields_doesNotCrash() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        const QString path = setupConfigHome(d);
+        const QString path = playlistsJsonPath();
         QDir().mkpath(QFileInfo(path).absolutePath());
 
         QFile pre(path);
@@ -794,9 +703,6 @@ private slots:
     // natural tick — invisible to the user. Anchors the
     // `m_activeId == kFilteredLibraryId && m_timer.isActive()` branch.
     void setFilteredLibraryIntervalMin_reArmsActiveTimer() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
 
         // Arm: filtered library + initial interval.
@@ -821,9 +727,6 @@ private slots:
     // setFilteredLibraryIntervalMin on an INACTIVE filtered library only
     // stores the value — it doesn't try to arm a timer that has no source.
     void setFilteredLibraryIntervalMin_inactiveStoresOnly() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         mgr.setFilteredLibraryIntervalMin(30);
         // No active playlist → nextIntervalMsForTest reports 0 regardless.
@@ -843,9 +746,6 @@ private slots:
     // invariants that protect callers.
 
     void pauseTicks_isNoOpWhenTimerNotActive() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         // No active playlist → timer never armed.
         mgr.pauseTicks();
@@ -859,9 +759,6 @@ private slots:
     }
 
     void resumeTicks_earlyReturnWhenNoPriorPause() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("X");
         mgr.addItem(id, "A");
@@ -874,9 +771,6 @@ private slots:
     }
 
     void pauseThenResume_restoresActiveState() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("X");
         mgr.setIntervalMin(id, 15);
@@ -897,9 +791,6 @@ private slots:
     // Hammer the path with many ticks: across N runs the result must
     // NEVER equal the previous index (the no-immediate-repeat guarantee).
     void shuffle_neverImmediatelyRepeats_evenAtSize2() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("Two");
         mgr.addItem(id, "A");
@@ -1049,9 +940,6 @@ private slots:
     // crashes the dialog on a corrupted-on-disk playlist.
 
     void playlistsModel_roleNames_exactlyMatchQmlContract() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const auto*            model = mgr.playlistsModel();
         QVERIFY(model != nullptr);
@@ -1067,9 +955,6 @@ private slots:
     }
 
     void playlistsModel_dataInvalidIndex_returnsInvalid() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const auto*            model = mgr.playlistsModel();
         // Invalid QModelIndex, negative row, past-end row, unknown role —
@@ -1082,9 +967,6 @@ private slots:
     }
 
     void playlistsModel_rowCountWithValidParent_returnsZero() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const auto*            model = mgr.playlistsModel();
         mgr.createPlaylist("X");
@@ -1096,9 +978,6 @@ private slots:
     }
 
     void playlistsModel_notifyRowChanged_outOfRangeIsNoOp() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         auto*                  model = mgr.playlistsModel();
         QSignalSpy             spy(model, &QAbstractListModel::dataChanged);
@@ -1110,9 +989,6 @@ private slots:
     }
 
     void playlistItemsModel_roleNames_exactlyMatchQmlContract() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id    = mgr.createPlaylist("X");
         const auto*            model = mgr.itemsModel(id);
@@ -1124,9 +1000,6 @@ private slots:
     }
 
     void playlistItemsModel_unknownPlaylistId_rowCountZero() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         // itemsModel on an id that doesn't exist still returns a valid
         // model pointer (cached); rowCount on it must be 0, not crash.
@@ -1138,9 +1011,6 @@ private slots:
     }
 
     void playlistItemsModel_itemsCache_returnsSamePointer() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id     = mgr.createPlaylist("X");
         auto*                  first  = mgr.itemsModel(id);
@@ -1157,9 +1027,6 @@ private slots:
     //    or drop a bounds check entirely).
 
     void unhappyPaths_returnFalseWithoutSideEffect() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("X");
         mgr.addItem(id, "A");
@@ -1198,9 +1065,6 @@ private slots:
     // Q_PROPERTY(activePlaylistId WRITE setActivePlaylistId) — uncovered
     // early-return + delegation branches.
     void setActivePlaylistId_idempotentAndDelegating() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("X");
         mgr.addItem(id, "A");
@@ -1225,9 +1089,6 @@ private slots:
     // playlistContains — Q_INVOKABLE used by AddToPlaylistMenu to disable
     // already-added rows. Locks every documented branch.
     void playlistContains_allBranches() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("X");
         mgr.addItem(id, "wp-A");
@@ -1257,9 +1118,7 @@ private slots:
     // A single addItem must NOT write to disk synchronously — the debounce
     // window holds the write back so the burst case can coalesce.
     void persistDebounce_addItemDoesNotWriteSync() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        const QString          path = setupConfigHome(d);
+        const QString          path = playlistsJsonPath();
         wekde::PlaylistManager mgr;
         // ctor's load() runs persist() once for the fresh-file path (init
         // sync path stays sync per spec). Attach spy AFTER ctor and create
@@ -1279,9 +1138,6 @@ private slots:
     // A burst of 20 moveItem calls must collapse to exactly ONE write after
     // the debounce window — the canonical drag-reorder scenario.
     void persistDebounce_20MoveItemBurstCollapsesToOneWrite() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("Burst");
         for (int i = 0; i < 30; ++i) mgr.addItem(id, QString("W%1").arg(i));
@@ -1302,9 +1158,7 @@ private slots:
     // Dtor flush: a mutator within the debounce window plus immediate
     // destruction must NOT lose data — flushPersist runs in ~PlaylistManager.
     void persistDebounce_dtorFlushesPending() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        const QString path = setupConfigHome(d);
+        const QString path = playlistsJsonPath();
         QString       id;
         {
             wekde::PlaylistManager mgr;
@@ -1332,9 +1186,6 @@ private slots:
     // animation state. begin{Insert,Remove,Move}Rows preserves view state.
 
     void granular_createPlaylist_emitsRowsInsertedNotModelReset() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         auto*                  model = mgr.playlistsModel();
         QVERIFY(model != nullptr);
@@ -1350,9 +1201,6 @@ private slots:
     }
 
     void granular_deletePlaylist_emitsRowsRemovedNotModelReset() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id1   = mgr.createPlaylist("Keep");
         const QString          id2   = mgr.createPlaylist("Drop");
@@ -1368,9 +1216,6 @@ private slots:
     }
 
     void granular_addItem_emitsRowsInsertedOnItemsModelNotModelReset() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id    = mgr.createPlaylist("X");
         auto*                  items = mgr.itemsModel(id);
@@ -1386,9 +1231,6 @@ private slots:
     }
 
     void granular_removeItem_emitsRowsRemovedOnItemsModelNotModelReset() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("X");
         mgr.addItem(id, "A");
@@ -1409,9 +1251,6 @@ private slots:
     // target on FORWARD moves (the QAbstractItemModel docs require this);
     // for backward moves the dest equals toRow.
     void granular_moveItem_forward_emitsRowsMovedWithDestPlusOne() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("X");
         for (int i = 0; i < 10; ++i) mgr.addItem(id, QString("W%1").arg(i));
@@ -1430,9 +1269,6 @@ private slots:
     }
 
     void granular_moveItem_backward_emitsRowsMovedWithDestEqualToRow() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("X");
         for (int i = 0; i < 10; ++i) mgr.addItem(id, QString("W%1").arg(i));
@@ -1452,9 +1288,6 @@ private slots:
     // captures the signal AFTER begin/end completes, so we can verify the
     // model now sees the new row count.
     void granular_addItem_modelRowCountReflectsNewItem() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id    = mgr.createPlaylist("X");
         auto*                  items = mgr.itemsModel(id);
@@ -1470,9 +1303,6 @@ private slots:
     // model's findPlaylist(m_playlistId) returned nullptr, leaving a
     // dangling row-signal target for any in-flight add/remove dispatch.
     void itemsModelCache_evictedOnDeletePlaylist() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id    = mgr.createPlaylist("to-evict");
         auto*                  model = mgr.itemsModel(id);
@@ -1508,9 +1338,7 @@ private slots:
     // dangling cache entry could later receive row signals for a playlist
     // id that no longer exists.
     void itemsModelCache_prunedOnReloadWhenPlaylistDisappears() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        const QString          cfg = setupConfigHome(d);
+        const QString          cfg = playlistsJsonPath();
         wekde::PlaylistManager mgr;
         const QString          id    = mgr.createPlaylist("ephemeral");
         auto*                  model = mgr.itemsModel(id);
@@ -1534,9 +1362,7 @@ private slots:
     // that lets older "disk-state-after-mutate" assertions keep working
     // without a 250ms wait.
     void persistDebounce_flushPersistForTestRunsSync() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        const QString          path = setupConfigHome(d);
+        const QString          path = playlistsJsonPath();
         wekde::PlaylistManager mgr;
         QSignalSpy             spy(&mgr, &wekde::PlaylistManager::persisted);
 
@@ -1553,9 +1379,6 @@ private slots:
     }
 
     void pauseAndResumeKeepsStateConsistent() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         const QString          id = mgr.createPlaylist("X");
         mgr.setIntervalMin(id, 1); // 1 min = 60000 ms
@@ -1583,9 +1406,6 @@ private slots:
     // racing the runtime mgr's playback cycle (different shuffle picks +
     // independent timers writing to CurrentItemIndex).
     void editorMode_activateDoesNotTickOrArm() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         mgr.setEditorMode(true);
         QCOMPARE(mgr.editorMode(), true);
@@ -1618,9 +1438,6 @@ private slots:
     // spurious activePlaylistIdChanged + reset currentItemIndex (which
     // would race the runtime if the runtime had advanced past 0).
     void editorMode_activateIdempotent() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         mgr.setEditorMode(true);
         const QString id = mgr.createPlaylist("E");
@@ -1636,9 +1453,6 @@ private slots:
     // (already not armed). Mirrors the runtime deactivate signal pattern
     // so the controller's onActivePlaylistIdChanged still fires.
     void editorMode_deactivate() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         mgr.setEditorMode(true);
         const QString id = mgr.createPlaylist("E");
@@ -1658,9 +1472,6 @@ private slots:
     // acceptPick + onTimerTick in editor mode must NOT emit tick — the
     // editor is forbidden from driving the wallpaper cycle.
     void editorMode_acceptPickAndTickAreInert() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         mgr.setEditorMode(true);
         mgr.setFilteredLibraryIntervalMin(10);
@@ -1678,9 +1489,6 @@ private slots:
 
     // setEditorMode is idempotent + emits editorModeChanged on flip.
     void editorMode_setterFires() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         QSignalSpy             spy(&mgr, &wekde::PlaylistManager::editorModeChanged);
         QCOMPARE(mgr.editorMode(), false);
@@ -1703,9 +1511,6 @@ private slots:
     // UI4.1: persist is now debounced; flush after each mutator so the
     // signal fires synchronously for assertion.
     void persisted_emittedAfterEveryCrud() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         QSignalSpy             spy(&mgr, &wekde::PlaylistManager::persisted);
 
@@ -1759,9 +1564,7 @@ private slots:
     // mkpaths the (unrelated) wallpaper config dir as a side effect. A
     // playlist save must not create ".../wekde/wallpaper/".
     void persist_doesNotCreateWallpaperConfigDirSideEffect() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        const QString path = setupConfigHome(d); // redirects XDG_CONFIG_HOME
+        const QString path = playlistsJsonPath();
         // The wallpaper config dir lives beside playlists.json under wekde/.
         const QString wallpaperDir = QFileInfo(path).absolutePath() + "/wallpaper";
 
@@ -1776,12 +1579,9 @@ private slots:
     // reload() re-reads playlists.json + preserves the active playlist /
     // index when possible. The runtime ctrl calls this after the dialog
     // bumps the reload-seq so user edits propagate without a plasmashell
-    // restart. Uses two mgrs sharing the same XDG_CONFIG_HOME so that
+    // restart. Uses two mgrs sharing the same test-mode-redirected config location so that
     // editor mgr A's persist is visible to runtime mgr B's reload.
     void reload_picksUpDialogEditedInterval() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         QString id;
         {
             wekde::PlaylistManager dialogMgr; // editorMode=false, fine here
@@ -1811,9 +1611,6 @@ private slots:
     // dialog removed items past it. This is the "user removed items
     // while runtime was mid-cycle" case.
     void reload_clampsIndexWhenItemsRemoved() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         QString id;
         {
             wekde::PlaylistManager initMgr;
@@ -1844,9 +1641,6 @@ private slots:
     // reload clears active state when the dialog deleted the active
     // playlist outright. Runtime can't keep ticking a stale id.
     void reload_clearsWhenActivePlaylistDeleted() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         QString id;
         {
             wekde::PlaylistManager initMgr;
@@ -1871,9 +1665,6 @@ private slots:
     // reload on an inactive mgr is a clean no-op (no signals, no crash).
     // Anchors the savedActiveId.isEmpty() early-return.
     void reload_inactiveIsNoOp() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         QSignalSpy             idSpy(&mgr, &wekde::PlaylistManager::activePlaylistIdChanged);
         QSignalSpy             idxSpy(&mgr, &wekde::PlaylistManager::currentItemIndexChanged);
@@ -1887,9 +1678,6 @@ private slots:
     // (the dialog may have changed SwitchTimer in between). Anchors the
     // `savedActiveId == kFilteredLibraryId` branch.
     void reload_filteredLibraryRePicksUpInterval() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager mgr;
         mgr.setFilteredLibraryIntervalMin(10);
         QVERIFY(mgr.activate(wekde::kFilteredLibraryId));
@@ -1907,9 +1695,6 @@ private slots:
     // reload in editorMode does NOT try to re-arm the timer — editor never
     // had one. Just re-pulls disk data for UI display.
     void reload_editorModeJustRefreshesData() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         QString id;
         {
             wekde::PlaylistManager initMgr;
@@ -1923,7 +1708,7 @@ private slots:
         QCOMPARE(editorMgr.playlists().first().intervalMin, 5);
 
         // Out-of-band edit (simulating a second editor session writing
-        // through the same XDG_CONFIG_HOME).
+        // through the same test-mode-redirected config location).
         {
             wekde::PlaylistManager otherMgr;
             otherMgr.setEditorMode(true);
@@ -1939,9 +1724,7 @@ private slots:
     // the file from its own stale snapshot: a playlist the other one created
     // after this manager loaded has to survive.
     void writingFromAStaleSnapshotKeepsTheOtherEditorsNewPlaylist() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        const QString          path = setupConfigHome(d);
+        const QString          path = playlistsJsonPath();
         wekde::PlaylistManager a;
         const QString          baseId = a.createPlaylist("Base");
         a.flushPersistForTest();
@@ -1976,9 +1759,6 @@ private slots:
     // bumps lives in the per-screen wallpaper config, so it never reaches
     // another containment's manager.
     void anOutOfBandWriteIsPickedUpWithoutAnExplicitReload() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager editorMgr;
         editorMgr.setEditorMode(true);
         const QString id = editorMgr.createPlaylist("Shared");
@@ -2001,9 +1781,7 @@ private slots:
     // empty list straight over it. A file we cannot parse must survive: the
     // write fails loudly instead.
     void anEditHereDoesNotOverwriteANewerVersionFile() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        const QString path = setupConfigHome(d);
+        const QString path = playlistsJsonPath();
         QVERIFY(QDir().mkpath(QFileInfo(path).absolutePath()));
         const QByteArray future =
             R"({"version":7,"playlists":[{"id":"x","name":"From the future"}]})";
@@ -2031,9 +1809,7 @@ private slots:
     // starting point get carried over — a plain union of the two lists would
     // hand the user back the playlist they just removed.
     void foldingInAConcurrentWriteKeepsALocalDeleteDeleted() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        const QString          path = setupConfigHome(d);
+        const QString          path = playlistsJsonPath();
         wekde::PlaylistManager a;
         const QString          doomed = a.createPlaylist("Doomed");
         const QString          keep   = a.createPlaylist("Keep");
@@ -2068,9 +1844,6 @@ private slots:
     // here — so the running manager notices the file itself. And it folds the
     // edit in rather than restarting: same active playlist, same slot.
     void aRunningPlaylistPicksUpAnEditMadeFromAnotherScreen() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        setupConfigHome(d);
         wekde::PlaylistManager runtime;
         const QString          id = runtime.createPlaylist("Rotation");
         runtime.addItem(id, "A");
@@ -2102,9 +1875,7 @@ private slots:
     // the order this manager happens to hold would undo their reorder with
     // nothing gained.
     void aPendingWriteWithNothingLeftToSaveKeepsTheOtherWritersOrder() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        const QString          path = setupConfigHome(d);
+        const QString          path = playlistsJsonPath();
         wekde::PlaylistManager a;
         a.createPlaylist("One");
         a.createPlaylist("Two");
@@ -2149,9 +1920,7 @@ private slots:
     // and taking the other writer's file verbatim would hand the playlist
     // straight back to the user.
     void foldingInAConcurrentWriteKeepsADeleteOfTheLastPlaylistDeleted() {
-        QTemporaryDir d;
-        QVERIFY(d.isValid());
-        const QString          path = setupConfigHome(d);
+        const QString          path = playlistsJsonPath();
         wekde::PlaylistManager a;
         const QString          keep   = a.createPlaylist("Keep");
         const QString          doomed = a.createPlaylist("Doomed");

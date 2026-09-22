@@ -52,11 +52,6 @@ TestCase {
         }
     }
 
-    QtObject {
-        id: fakeCommon
-        function packWallpaperSource(item) { return "packed-" + item.workshopid; }
-    }
-
     // Empty wp/video models for the cold-start race test. Declared at
     // TestCase scope (instead of via Qt.createQmlObject) so the modelRefreshed
     // signal can be declared properly — dynamic QML doesn't support `signal`.
@@ -82,7 +77,6 @@ TestCase {
         id: ctrl
         wpListModel: fakeWpModel
         videoListModel: fakeVideoModel
-        common: fakeCommon
         noRandomWhilePaused: false
         desktopOk: true
 

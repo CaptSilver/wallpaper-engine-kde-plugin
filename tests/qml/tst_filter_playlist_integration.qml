@@ -76,17 +76,11 @@ TestCase {
         Component.onCompleted: { wpModel.playlists = {}; }
     }
 
-    QtObject {
-        id: fakeCommon
-        function packWallpaperSource(item) { return "src-" + item.workshopid; }
-    }
-
     property var lastSet: ({})
 
     PluginUi.PlaylistController {
         id: ctrl
         wpListModel: wpModel
-        common: fakeCommon
         activePlaylistIdRead: ""
         currentItemIndexRead: 0
         randomizeWallpaperRead: false

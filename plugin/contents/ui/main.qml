@@ -268,10 +268,6 @@ Rectangle {
         sourceCallback();
     }
 
-    function getWorkshopIDPath() {
-        return Common.getWorkshopDir(this.steamlibrary) + `/${this.workshopid}`;
-    }
-
     onMouseInputChanged: {
         if(this.mouseInput) {
             hookTimer.start();
@@ -455,7 +451,6 @@ Rectangle {
         id: playlistController
         wpListModel: wpListModel
         videoListModel: runtimeVideoListModel
-        common: Common
         noRandomWhilePaused: background.noRandomWhilePaused
         desktopOk: background.ok
         notifier: notifier

@@ -10,11 +10,6 @@ TestCase {
     AsyncUtil { id: asyncUtil }
 
     // ── Steam path builders ───────────────────────────────────────────────────
-    function test_getWorkshopDir() {
-        compare(Plugin.Common.getWorkshopDir("/steam"),
-                "/steam/steamapps/workshop/content/431960");
-    }
-
     function test_getWorkshopDirs_returnsCaseFallbacks() {
         const dirs = Plugin.Common.getWorkshopDirs("/steam");
         compare(dirs.length, 4);
@@ -65,18 +60,6 @@ TestCase {
     function test_getWpModelPreviewSource_emptyPreview() {
         compare(Plugin.Common.getWpModelPreviewSource(
                     { path: "/wp/123", preview: "" }),
-                "");
-    }
-
-    function test_getWpModelFileSource_packsTypeSuffix() {
-        compare(Plugin.Common.getWpModelFileSource(
-                    { path: "/wp/123", file: "scene.pkg", type: "scene" }),
-                "/wp/123/scene.pkg+scene");
-    }
-
-    function test_getWpModelFileSource_emptyPathReturnsEmpty() {
-        compare(Plugin.Common.getWpModelFileSource(
-                    { path: "", file: "x", type: "y" }),
                 "");
     }
 
@@ -433,11 +416,6 @@ TestCase {
     function test_cbCurrentValue_returnsValueAtCurrentIndex() {
         const combo = { currentIndex: 1, model: _cbModel() };
         compare(Plugin.Common.cbCurrentValue(combo), "beta");
-    }
-
-    function test_cbValueOfIndex_returnsValueAtGivenIndex() {
-        const combo = { model: _cbModel() };
-        compare(Plugin.Common.cbValueOfIndex(combo, 2), "gamma");
     }
 
     function test_cbIndexOfValue_returnsIndexOrMinusOne() {

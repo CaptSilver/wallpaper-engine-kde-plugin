@@ -46,7 +46,6 @@ TestCase {
     PluginUi.PlaylistController {
         id: ctrl
         wpListModel: fakeWpModel
-        common: fakeCommon
         noRandomWhilePaused: false
         desktopOk: true
 

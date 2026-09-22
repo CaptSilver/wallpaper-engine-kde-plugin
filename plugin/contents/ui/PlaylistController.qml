@@ -18,7 +18,6 @@ Item {
     // Inputs (set by parent — main.qml or config.qml)
     property var wpListModel:    null   // WallpaperListModel
     property var videoListModel: null   // VideoListModel
-    property var common:          null  // Common namespace (DI)
     property bool noRandomWhilePaused: false
     property bool desktopOk: true
     // Optional notifier — set by main.qml to fire tray notifications on

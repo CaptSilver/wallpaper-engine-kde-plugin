@@ -192,13 +192,6 @@ TestCase {
         compare(bg.wallpaperType, "unsupported");
     }
 
-    function test_getWorkshopIDPath_returnsString() {
-        const bg = _findBackground();
-        if (!bg) return;
-        const p = bg.getWorkshopIDPath();
-        compare(typeof p, "string");
-    }
-
     // main.qml both declares `sig_backendFirstFrame` and sinks it locally.
     // Only the declarative `onSig_backendFirstFrame:` binding is auto-connected
     // — a like-named `function on…()` in the object body is just an ordinary

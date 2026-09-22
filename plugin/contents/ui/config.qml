@@ -189,7 +189,6 @@ ColumnLayout {
         id: playlistController
         wpListModel: wpListModel
         videoListModel: videoPage.videoListModel
-        common: Common
 
         // editorMode=true: this mgr does CRUD + tracks activeId for UI but
         // does NOT tick the wallpaper or arm a timer. The runtime mgr (in

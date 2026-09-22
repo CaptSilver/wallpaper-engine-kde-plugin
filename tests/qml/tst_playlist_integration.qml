@@ -87,7 +87,6 @@ TestCase {
     PluginUi.PlaylistController {
         id: dialogCtrl
         wpListModel: fakeWpModel
-        common: fakeCommon
         activePlaylistIdRead: tc.wallpaperConfiguration.ActivePlaylistId
         currentItemIndexRead: tc.wallpaperConfiguration.CurrentItemIndex
         randomizeWallpaperRead: tc.wallpaperConfiguration.RandomizeWallpaper
@@ -107,7 +106,6 @@ TestCase {
     PluginUi.PlaylistController {
         id: runtimeCtrl
         wpListModel: fakeWpModel
-        common: fakeCommon
         activePlaylistIdRead: tc.wallpaperConfiguration.ActivePlaylistId
         currentItemIndexRead: tc.wallpaperConfiguration.CurrentItemIndex
         randomizeWallpaperRead: tc.wallpaperConfiguration.RandomizeWallpaper
@@ -233,7 +231,6 @@ TestCase {
     PluginUi.PlaylistController {
         id: monitorAOctrl
         wpListModel: fakeWpModel
-        common: fakeCommon
         activePlaylistIdRead: tc.wallpaperConfiguration.ActivePlaylistId
         currentItemIndexRead: tc.wallpaperConfiguration.CurrentItemIndex
         randomizeWallpaperRead: tc.wallpaperConfiguration.RandomizeWallpaper
@@ -251,7 +248,6 @@ TestCase {
     PluginUi.PlaylistController {
         id: monitorBCtrl
         wpListModel: fakeWpModel
-        common: fakeCommon
         activePlaylistIdRead: tc.wallpaperConfiguration.ActivePlaylistId
         currentItemIndexRead: tc.wallpaperConfiguration.CurrentItemIndex
         randomizeWallpaperRead: tc.wallpaperConfiguration.RandomizeWallpaper

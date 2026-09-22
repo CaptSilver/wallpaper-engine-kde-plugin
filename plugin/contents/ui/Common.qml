@@ -199,9 +199,6 @@ QtObject {
     readonly property var regex_path_check: new RegExp('^file://.+?(431960/[0-9]+$|wallpaper_engine/projects/[a-z]+/.+)', 'g');
     readonly property var regex_source: new RegExp('^(.+)\\+([a-z]+)$', '');
 
-    function getWorkshopDir(steamLibraryPath) {
-        return steamLibraryPath + "/steamapps/workshop/content/431960";
-    }
     function getWorkshopDirs(steamLibraryPath) {
         return [
             "/steamapps/workshop/content/431960",
@@ -243,9 +240,6 @@ QtObject {
             return model.preview;
         // Relative — join under model.path (WE wallpaper convention).
         return `${model.path}/${model.preview}`;
-    }
-    function getWpModelFileSource(model) {
-        return model.path ? `${model.path}/${model.file}+${model.type}` : '';
     }
     function getWpModelProjectPath(model) {
         return model.path ? `${model.path}/project.json` : '';
@@ -327,9 +321,6 @@ QtObject {
 
     function cbCurrentValue(combo) {
         return combo.model[combo.currentIndex].value;
-    }
-    function cbValueOfIndex(combo, index) {
-        return combo.model[index].value;
     }
     function cbIndexOfValue(combo, value) {
         return modelIndexOfValue(combo.model,value);

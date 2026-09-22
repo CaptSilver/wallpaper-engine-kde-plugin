@@ -50,10 +50,6 @@
       <label>Sort mode</label>
       <default>0</default>
     </entry>
-    <entry name="FilterMode" type="Int">
-      <label>Filter mode</label>
-      <default>0</default>
-    </entry>
     <entry name="VideoBackend" type="Int">
       <label>Video Backend</label>
       <default>1</default>

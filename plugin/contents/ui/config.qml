@@ -63,9 +63,6 @@ ColumnLayout {
 
     property int    cfg_PerOptChanged: 0
 
-    //property alias  cfg_UseMpv
-    //property alias  cfg_FilterMode: wallpaperPage.cfg_FilterMode
-
     property string cfg_CustomConf
     // Pure value binding (no self-assign): `customConf` is the decoded form
     // of `cfg_CustomConf` and recomputes whenever the encoded string changes.

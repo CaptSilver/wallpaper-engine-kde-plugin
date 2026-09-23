@@ -66,6 +66,10 @@
       <label>Prevent randomization while wallpapers are paused</label>
       <default>false</default>
     </entry>
+    <entry name="UserPaused" type="Bool">
+      <label>Wallpaper paused by the user (persists across plasmashell restarts)</label>
+      <default>false</default>
+    </entry>
     <entry name="MpvStats" type="Bool">
       <label>Mpv Stats</label>
       <default>false</default>

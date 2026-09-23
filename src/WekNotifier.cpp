@@ -78,4 +78,15 @@ void WekNotifier::backendUnavailable(const QString& backendName, const QString& 
     notification->sendEvent();
 }
 
+void WekNotifier::wallpaperStillPaused() {
+    auto* notification = new KNotification(QStringLiteral("wallpaperStillPaused"));
+    notification->setComponentName(componentName());
+    notification->setTitle(QStringLiteral("Wallpaper still paused"));
+    notification->setText(
+        QStringLiteral("The wallpaper was paused before the last restart and is still paused."));
+    notification->setIconName(QStringLiteral("media-playback-pause"));
+    QObject::connect(notification, &KNotification::closed, notification, &QObject::deleteLater);
+    notification->sendEvent();
+}
+
 } // namespace wekde

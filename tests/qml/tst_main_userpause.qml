@@ -138,4 +138,17 @@ TestCase {
                 "rotation restarted while the user pause was still in effect");
         rig.destroy();
     }
+
+    function test_userPauseRestoresFromConfigOnStartup() {
+        const rig = rigComp.createObject(tc, {
+            screenGeometry: Qt.rect(0, 0, 1920, 1080),
+            initialConfig:  { UserPaused: true },
+        });
+        tryVerify(() => rig.background() !== null, 2000);
+        compare(rig.background().ok, false,
+                "a wallpaper paused before a plasmashell restart came back running");
+        compare(rig.notifier().lastEvent, "wallpaperStillPaused",
+                "restoring a persisted pause did not notify the user");
+        rig.destroy();
+    }
 }

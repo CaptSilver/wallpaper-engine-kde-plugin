@@ -31,3 +31,9 @@ Name=Wallpaper backend unavailable
 Comment=A wallpaper backend (Scene / MPV / Web) failed to initialise or is missing
 Action=Popup
 DefaultAction=Popup
+
+[Event/wallpaperStillPaused]
+Name=Wallpaper still paused
+Comment=A wallpaper pause from before a plasmashell restart has been restored
+Action=Popup
+DefaultAction=Popup

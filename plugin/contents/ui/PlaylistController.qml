@@ -51,6 +51,9 @@ Item {
     // CRUD bumped it → re-read playlists.json). Editor side ignores its own
     // bumps. Default 0 means "untracked" for callers that don't wire it.
     property int    playlistsReloadSeqRead: 0
+    // Persists userPaused across a plasmashell restart — see setUserPaused
+    // for the write side and the Component.onCompleted restore step below.
+    property bool   userPausedRead: false
 
     // Writes — parent provides setters. Setters are responsible for
     // routing the value to the correct config field in their scope.
@@ -62,6 +65,7 @@ Item {
     // to re-read playlists.json. Default no-op for runtime (which never
     // persists from QML — only the dialog's CRUD triggers writes).
     property var bumpReloadSeq: function() { }
+    property var setUserPaused: function(v) { }
 
     // editorMode flips this ctrl's mgr into a UI-only shadow: it still
     // tracks activeId / does CRUD / persists, but never ticks the wallpaper
@@ -131,10 +135,12 @@ Item {
         // keeps them stopped if a second pause source (desktop not ok) is
         // already holding them.
         root.userPaused = true;
+        root.setUserPaused(root.userPaused);
     }
 
     function resume() {
         root.userPaused = false;
+        root.setUserPaused(root.userPaused);
     }
 
     function togglePause() {
@@ -390,6 +396,22 @@ Item {
             if (root.activePlaylistIdRead === Common.filteredLibraryId)
                 mgr.setFilteredLibraryIntervalMin(root.switchTimerRead || 15);
             mgr.activate(root.activePlaylistIdRead);
+        }
+        // Restore a user pause across a plasmashell restart — see setUserPaused
+        // for the write side. Runs after the migration/re-activate above, not
+        // before: pause() only actually stops the manager's timer through
+        // _pauseGate → mgr.pauseTicks(), and pauseTicks() is a no-op unless
+        // the timer is already armed. Seeding userPaused first would call
+        // pauseTicks() before any playlist had been activated (a harmless
+        // no-op), then activate() would arm the timer right after with
+        // nothing left to catch it — rotation would keep ticking behind a
+        // supposedly-paused wallpaper. Assigning here (not binding) matches
+        // activePlaylistIdRead's restore above; later pause()/resume() calls
+        // are plain writes from then on.
+        if (root.userPausedRead) {
+            root.userPaused = true;
+            if (root.notifier && Window.screen?.primary !== false)
+                root.notifier.wallpaperStillPaused();
         }
     }
 

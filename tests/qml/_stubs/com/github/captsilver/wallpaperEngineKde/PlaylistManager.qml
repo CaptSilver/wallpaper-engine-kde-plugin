@@ -1,6 +1,6 @@
 // Test stub — see tests/qml/_stubs/README.md for contract.
 // Real source: src/PlaylistManager.hpp + src/PlaylistManager.cpp
-// Last contract review: 2026-09-04
+// Last contract review: 2026-09-22
 
 // Stub of wekde::PlaylistManager for QML tests. Doesn't persist anything;
 // just satisfies the import + the Q_INVOKABLE / Q_PROPERTY surface area
@@ -14,6 +14,17 @@ QtObject {
     // Mirrors the real C++ Q_PROPERTY so production QML files (and tests
     // exercising the editor-vs-runtime split) can bind it.
     property bool editorMode: false
+    // Minimal model of the real m_timer.isActive() — just enough for a test
+    // to tell whether rotation is actually running. Set by activate() (the
+    // filtered-library sentinel excepted, which defers arming to
+    // acceptPick, same as the real class); cleared by pauseTicks()/
+    // deactivate(). skipCurrent()/stepBy()/acceptPick() don't touch it —
+    // nothing exercises that path through this property yet.
+    property bool timerActive: false
+    // Mirrors m_remainingMs >= 0: true only right after pauseTicks() found
+    // the timer armed, so resumeTicks() can tell "was paused" from "was
+    // never running" the same way the real early-return does.
+    property bool _hasPausedRemaining: false
 
     signal tick(string workshopId)
     signal requestFilteredPick()
@@ -125,17 +136,35 @@ QtObject {
         // Track state minimally so deletePlaylist's "deactivate first if
         // currently active" path can fire activePlaylistIdChanged.
         if (activePlaylistId !== id) activePlaylistId = id;
+        // Real armTimerForCurrent() has no pause check — activate() arms
+        // unconditionally for every id except the filtered-library
+        // sentinel, which waits for acceptPick before arming.
+        if (id !== "__filtered_library__") timerActive = true;
         return true;
     }
     function deactivate() {
         deactivateCount += 1;
         activePlaylistId = "";
+        timerActive = false;
+        _hasPausedRemaining = false;
     }
     function skipCurrent() { skipCurrentCount += 1; }
     function stepBy(delta) { stepByCount += 1; lastStepByDelta = delta; }
     function acceptPick(workshopId) { acceptPickCount += 1; lastAcceptPickArg = workshopId; }
-    function pauseTicks() { pauseTicksCount += 1; }
-    function resumeTicks() { resumeTicksCount += 1; }
+    function pauseTicks() {
+        pauseTicksCount += 1;
+        // Mirrors `if (!m_timer.isActive()) return;` — pausing before
+        // anything is armed is a no-op, not a state change.
+        if (!timerActive) return;
+        timerActive = false;
+        _hasPausedRemaining = true;
+    }
+    function resumeTicks() {
+        resumeTicksCount += 1;
+        if (!_hasPausedRemaining || activePlaylistId === "") return;
+        timerActive = true;
+        _hasPausedRemaining = false;
+    }
     function setFilteredLibraryIntervalMin(m) {
         setFilteredLibraryIntervalMinCount += 1;
         lastSetFilteredLibraryIntervalMinArg = m;

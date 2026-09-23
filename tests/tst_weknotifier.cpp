@@ -41,7 +41,13 @@ private slots:
         QVERIFY(true);
     }
 
-    // Verify the four event ids match wek.notifyrc.  Parse the notifyrc
+    void testWallpaperStillPausedDoesNotCrash() {
+        WekNotifier notifier;
+        notifier.wallpaperStillPaused();
+        QVERIFY(true);
+    }
+
+    // Verify the event ids match wek.notifyrc.  Parse the notifyrc
     // and assert each [Event/<id>] is referenced.
     void testEventIdsMatchNotifyrc() {
         QFile f(QStringLiteral(WEK_SOURCE_DIR "/data/wek.notifyrc"));
@@ -52,6 +58,7 @@ private slots:
         QVERIFY(contents.contains(QStringLiteral("[Event/playlistAdvanced]")));
         QVERIFY(contents.contains(QStringLiteral("[Event/assetsMissing]")));
         QVERIFY(contents.contains(QStringLiteral("[Event/backendUnavailable]")));
+        QVERIFY(contents.contains(QStringLiteral("[Event/wallpaperStillPaused]")));
     }
 
     // Verify playlistAdvanced defaults to Action=None (no popup) so a

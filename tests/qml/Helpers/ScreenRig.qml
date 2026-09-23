@@ -14,11 +14,18 @@ Item {
     width:  screenGeometry.width
     height: screenGeometry.height
     property var mainItem: null
+    // Config overrides applied before main.qml loads, for tests that need
+    // wallpaper.configuration.X seeded on main.qml's very first read (rather
+    // than a live rebind after load — see setConfig()).
+    property var initialConfig: null
 
     WallpaperFake {
         id: wallpaper
         anchors.fill: parent
-        Component.onCompleted: rig._loadMain()
+        Component.onCompleted: {
+            if (rig.initialConfig) rig.setConfig(rig.initialConfig);
+            rig._loadMain();
+        }
     }
     property alias ctx: wallpaper
 
@@ -60,6 +67,7 @@ Item {
     function windowModel()        { return _find(mainItem, o => typeof o.filterByScreen !== "undefined" && typeof o.modePlay !== "undefined"); }
     function powerSource()        { return _find(mainItem, o => typeof o.st_battery_state !== "undefined"); }
     function playlistController() { return _find(mainItem, o => typeof o.activePlaylistIdRead !== "undefined"); }
+    function notifier()           { return _find(mainItem, o => typeof o.wallpaperLoadFailed === "function"); }
     function pyext()              { return _find(mainItem, o => typeof o.read_wallpaper_config === "function"); }
     function fileHelper()         { return _find(pyext(),  o => typeof o.readWallpaperConfig === "function"); }
 }

@@ -23,6 +23,7 @@ public:
                                       int itemIndex, int totalItems, const QString& playlistName);
     Q_INVOKABLE void assetsMissing(const QString& workshopId, const QString& path);
     Q_INVOKABLE void backendUnavailable(const QString& backendName, const QString& reason);
+    Q_INVOKABLE void wallpaperStillPaused();
 
     // Exposed so the .cpp's anon-ns helper can wrap the C-string in a
     // QString — KNotification::setComponentName takes QString, and

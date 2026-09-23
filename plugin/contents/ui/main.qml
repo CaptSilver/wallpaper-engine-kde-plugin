@@ -435,6 +435,7 @@ Rectangle {
         // watches this and calls mgr.reload() so dialog-side edits propagate
         // to the runtime mgr without a plasmashell restart.
         playlistsReloadSeqRead:    wallpaper.configuration.PlaylistsReloadSeq
+        userPausedRead:            wallpaper.configuration.UserPaused
 
         // Writes happen here so `wallpaper.configuration` is in lexical scope —
         // QML can resolve Q_PROPERTY assignments correctly.
@@ -447,6 +448,9 @@ Rectangle {
         setWallpaperFromItem: function(item) {
             wallpaper.configuration.WallpaperWorkShopId = item.workshopid;
             wallpaper.configuration.WallpaperSource = Common.packWallpaperSource(item);
+        }
+        setUserPaused: function(v) {
+            wallpaper.configuration.UserPaused = v;
         }
     }
 

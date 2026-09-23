@@ -52,6 +52,38 @@ TestCase {
         }
     }
 
+    // Freshly-constructed controllers for the startup-seed tests below — the
+    // shared `ctrl` instance below is already past Component.onCompleted by
+    // the time any test function runs, so seeding behaviour needs its own
+    // instances built per test.
+    Component {
+        id: freshCtrlComp
+        PluginUi.PlaylistController {}
+    }
+
+    // activePlaylistIdRead must be a static declarative binding here, not a
+    // createObject() properties-map entry — main.qml wires it that way
+    // (`activePlaylistIdRead: wallpaper.configuration.ActivePlaylistId`),
+    // and only a static binding's initial value skips
+    // onActivePlaylistIdReadChanged the way a real startup does. Assigning
+    // it through createObject's properties map instead fires that live
+    // handler an extra time (it behaves like a post-construction write),
+    // which activates the manager twice and doesn't reproduce what
+    // Component.onCompleted actually races against on a real restart.
+    Component {
+        id: freshCtrlWithActivePlaylistComp
+        PluginUi.PlaylistController {
+            activePlaylistIdRead: "pl-startup"
+            userPausedRead: true
+        }
+    }
+
+    QtObject {
+        id: fakeNotifierSpy
+        property int wallpaperStillPausedCalls: 0
+        function wallpaperStillPaused() { wallpaperStillPausedCalls += 1; }
+    }
+
     // Empty wp/video models for the cold-start race test. Declared at
     // TestCase scope (instead of via Qt.createQmlObject) so the modelRefreshed
     // signal can be declared properly — dynamic QML doesn't support `signal`.
@@ -88,9 +120,84 @@ TestCase {
         setActivePlaylistId: function(id) { tc.lastSet = { fn: "setActivePlaylistId", id: id }; }
         setCurrentItemIndex: function(idx) { tc.lastSet = { fn: "setCurrentItemIndex", idx: idx }; }
         setWallpaperFromItem: function(item) { tc.lastSet = { fn: "setWallpaperFromItem", item: item }; }
+        setUserPaused: function(v) { tc.lastSet = { fn: "setUserPaused", v: v }; }
     }
 
     function init() { tc.lastSet = {}; }
+
+    function test_userPausedSeedsFromConfigOnStartup() {
+        fakeNotifierSpy.wallpaperStillPausedCalls = 0;
+        const freshCtrl = freshCtrlComp.createObject(tc, {
+            wpListModel:    fakeWpModel,
+            videoListModel: fakeVideoModel,
+            notifier:       fakeNotifierSpy,
+            userPausedRead: true,
+        });
+        verify(freshCtrl !== null);
+        compare(freshCtrl.userPaused, true,
+                "a wallpaper paused before restart did not come back paused");
+        compare(fakeNotifierSpy.wallpaperStillPausedCalls, 1,
+                "restoring a user pause did not notify");
+        freshCtrl.destroy();
+    }
+
+    function test_userPausedDoesNotSeedOrNotifyWhenConfigFalse() {
+        fakeNotifierSpy.wallpaperStillPausedCalls = 0;
+        const freshCtrl = freshCtrlComp.createObject(tc, {
+            wpListModel:    fakeWpModel,
+            videoListModel: fakeVideoModel,
+            notifier:       fakeNotifierSpy,
+            userPausedRead: false,
+        });
+        verify(freshCtrl !== null);
+        compare(freshCtrl.userPaused, false);
+        compare(fakeNotifierSpy.wallpaperStillPausedCalls, 0,
+                "fired a still-paused notification on a normal, not-paused startup");
+        freshCtrl.destroy();
+    }
+
+    // A restart with both a persisted pause AND an active playlist is the
+    // realistic case: onCompleted must leave the playlist's rotation timer
+    // stopped, not just userPaused set — otherwise it keeps ticking behind
+    // the closed render gate and swaps the wallpaper while the user thinks
+    // everything is frozen.
+    function test_userPausedSeedHoldsAlreadyActivePlaylistRotation() {
+        fakeNotifierSpy.wallpaperStillPausedCalls = 0;
+        const freshCtrl = freshCtrlWithActivePlaylistComp.createObject(tc, {
+            wpListModel:    fakeWpModel,
+            videoListModel: fakeVideoModel,
+            notifier:       fakeNotifierSpy,
+        });
+        verify(freshCtrl !== null);
+        compare(freshCtrl.userPaused, true);
+        // Not asserting an exact call count: activePlaylistIdRead's own
+        // static-binding evaluation independently fires
+        // onActivePlaylistIdReadChanged before Component.onCompleted even
+        // runs, so mgr.activate() legitimately fires more than once here
+        // (a separate, pre-existing redundancy — see the task report's
+        // Extras). What this test cares about is the end state: did the
+        // startup path actually activate a playlist, and did the pause
+        // seed actually stop it ticking.
+        verify(freshCtrl.manager.activateCount >= 1,
+               "startup never activated the persisted playlist at all");
+        compare(freshCtrl.manager.timerActive, false,
+                "playlist rotation kept running under a restored pause");
+        freshCtrl.destroy();
+    }
+
+    function test_pauseCallsSetUserPaused() {
+        ctrl.pause();
+        compare(tc.lastSet.fn, "setUserPaused");
+        compare(tc.lastSet.v, true);
+        ctrl.resume(); // leave ctrl unpaused for tests that run after this one
+    }
+
+    function test_resumeCallsSetUserPaused() {
+        ctrl.pause();
+        ctrl.resume();
+        compare(tc.lastSet.fn, "setUserPaused");
+        compare(tc.lastSet.v, false);
+    }
 
     function test_resolvesFromWpListModel() {
         const item = ctrl._resolveItem("wid-A");

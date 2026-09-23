@@ -30,4 +30,9 @@ QtObject {
         lastEvent = "backendUnavailable";
         lastArgs = [backendName, reason];
     }
+
+    function wallpaperStillPaused() {
+        lastEvent = "wallpaperStillPaused";
+        lastArgs = [];
+    }
 }

@@ -38,6 +38,7 @@ Item {
         "MuteAudio":           false,
         "RandomizeWallpaper":  false,
         "NoRandomWhilePaused": false,
+        "UserPaused":          false,
         "MpvStats":            false,
         "MouseInput":          false,
         "AnimatedPreview":     false,

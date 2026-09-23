@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: wallpaper-engine-kde-plugin\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-28 06:19-0500\n"
+"POT-Creation-Date: 2026-09-22 19:43-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -18,138 +18,694 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
-#: ../plugin/contents/ui/backend/InfoShow.qml:53
+#: ../plugin/contents/ui/backend/InfoShow.qml:52
 #, kde-format
 msgctxt "@info wallpaper load failure heading"
 msgid "Wallpaper failed to load"
 msgstr ""
 
-#: ../plugin/contents/ui/backend/InfoShow.qml:75
+#: ../plugin/contents/ui/backend/InfoShow.qml:74
 #, kde-format
 msgctxt "@label workshop id row"
 msgid "Workshop ID:"
 msgstr ""
 
-#: ../plugin/contents/ui/backend/InfoShow.qml:82
+#: ../plugin/contents/ui/backend/InfoShow.qml:81
 #, kde-format
 msgctxt "@label wallpaper type row"
 msgid "Type:"
 msgstr ""
 
-#: ../plugin/contents/ui/backend/InfoShow.qml:95
+#: ../plugin/contents/ui/backend/InfoShow.qml:94
 #, kde-format
 msgctxt "@action:button copy workshop id to clipboard"
 msgid "Copy ID"
 msgstr ""
 
-#: ../plugin/contents/ui/backend/InfoShow.qml:100
+#: ../plugin/contents/ui/backend/InfoShow.qml:99
 #, kde-format
 msgctxt "@action:button open wallpaper workshop page"
 msgid "Open Workshop"
 msgstr ""
 
-#: ../plugin/contents/ui/backend/InfoShow.qml:106
+#: ../plugin/contents/ui/backend/InfoShow.qml:105
 #, kde-format
 msgctxt "@action:button open wallpaper folder in file manager"
 msgid "Open Folder"
 msgstr ""
 
-#: ../plugin/contents/ui/backend/InfoShow.qml:114
+#: ../plugin/contents/ui/backend/InfoShow.qml:113
 #, kde-format
 msgctxt "@action:button pick a different wallpaper"
 msgid "Pick another wallpaper"
 msgstr ""
 
-#: ../plugin/contents/ui/components/WallpaperGrid.qml:84
-#: ../plugin/contents/ui/page/WallpaperPage.qml:628
-#, kde-format
-msgctxt "@info:tooltip remove wallpaper from favorites"
-msgid "Remove from favorites"
-msgstr ""
-
-#: ../plugin/contents/ui/components/WallpaperGrid.qml:84
-#: ../plugin/contents/ui/page/WallpaperPage.qml:629
-#, kde-format
-msgctxt "@info:tooltip add wallpaper to favorites"
-msgid "Add to favorites"
-msgstr ""
-
-#: ../plugin/contents/ui/components/WallpaperGrid.qml:92
-#: ../plugin/contents/ui/page/WallpaperPage.qml:634
-#, kde-format
-msgctxt "@info:tooltip open workshop link in browser"
-msgid "Open Workshop Link"
-msgstr ""
-
-#: ../plugin/contents/ui/components/WallpaperGrid.qml:146
-#, kde-format
-msgid "Updated since you last loaded it"
-msgstr ""
-
-#: ../plugin/contents/ui/components/WallpaperGrid.qml:182
-#, kde-format
-msgctxt "@info badge unsupported application wallpaper"
-msgid "Application (unsupported)"
-msgstr ""
-
-#: ../plugin/contents/ui/components/WallpaperGrid.qml:183
-#, kde-format
-msgctxt "@info badge unsupported preset wallpaper"
-msgid "Preset (unsupported)"
-msgstr ""
-
-#: ../plugin/contents/ui/components/ColorButton.qml:62
+#: ../plugin/contents/ui/components/ColorButton.qml:61
 #, kde-format
 msgctxt "@title:window color picker"
 msgid "Select Color"
 msgstr ""
 
-#: ../plugin/contents/ui/components/AddToPlaylistMenu.qml:36
+#: ../plugin/contents/ui/components/AddToPlaylistMenu.qml:37
 #, kde-format
 msgctxt "@item:inmenu playlist already contains wallpaper, %1=name"
 msgid "%1  (added)"
 msgstr ""
 
-#: ../plugin/contents/ui/components/AddToPlaylistMenu.qml:45
+#: ../plugin/contents/ui/components/AddToPlaylistMenu.qml:46
 #, kde-format
 msgctxt "@action:inmenu create new playlist"
 msgid "New playlist…"
 msgstr ""
 
-#: ../plugin/contents/ui/components/AddToPlaylistMenu.qml:52
+#: ../plugin/contents/ui/components/AddToPlaylistMenu.qml:53
 #: ../plugin/contents/ui/page/PlaylistsPage.qml:549
 #, kde-format
 msgctxt "@title:window new playlist name prompt"
 msgid "New playlist"
 msgstr ""
 
-#: ../plugin/contents/ui/components/AddToPlaylistMenu.qml:57
-#: ../plugin/contents/ui/page/WallpaperPage.qml:438
+#: ../plugin/contents/ui/components/AddToPlaylistMenu.qml:58
 #: ../plugin/contents/ui/page/PlaylistsPage.qml:554
+#: ../plugin/contents/ui/page/WallpaperPage.qml:435
 #, kde-format
 msgctxt "@info:placeholder playlist name input"
 msgid "Playlist name"
 msgstr ""
 
-#: ../plugin/contents/ui/page/AboutPage.qml:30
+#: ../plugin/contents/ui/components/WallpaperGrid.qml:83
+#: ../plugin/contents/ui/page/WallpaperPage.qml:643
+#, kde-format
+msgctxt "@info:tooltip remove wallpaper from favorites"
+msgid "Remove from favorites"
+msgstr ""
+
+#: ../plugin/contents/ui/components/WallpaperGrid.qml:83
+#: ../plugin/contents/ui/page/WallpaperPage.qml:644
+#, kde-format
+msgctxt "@info:tooltip add wallpaper to favorites"
+msgid "Add to favorites"
+msgstr ""
+
+#: ../plugin/contents/ui/components/WallpaperGrid.qml:91
+#: ../plugin/contents/ui/page/WallpaperPage.qml:649
+#, kde-format
+msgctxt "@info:tooltip open workshop link in browser"
+msgid "Open Workshop Link"
+msgstr ""
+
+#: ../plugin/contents/ui/components/WallpaperGrid.qml:145
+#, kde-format
+msgid "Updated since you last loaded it"
+msgstr ""
+
+#: ../plugin/contents/ui/components/WallpaperGrid.qml:181
+#, kde-format
+msgctxt "@info badge unsupported application wallpaper"
+msgid "Application (unsupported)"
+msgstr ""
+
+#: ../plugin/contents/ui/components/WallpaperGrid.qml:182
+#, kde-format
+msgctxt "@info badge unsupported preset wallpaper"
+msgid "Preset (unsupported)"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:62
+#, kde-format
+msgctxt "@title:group settings section common options"
+msgid "Common Option"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:68
+#, kde-format
+msgctxt "@label playback pause setting"
+msgid "Pause"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:75
+#, kde-format
+msgctxt "@item:inlistbox pause mode"
+msgid "Focus or Maximized Window"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:79
+#, kde-format
+msgctxt "@item:inlistbox pause mode"
+msgid "Focus Window"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:83
+#, kde-format
+msgctxt "@item:inlistbox pause mode"
+msgid "Maximized Window"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:87
+#, kde-format
+msgctxt "@item:inlistbox pause mode"
+msgid "FullScreen"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:91
+#, kde-format
+msgctxt "@item:inlistbox pause mode"
+msgid "Any Window"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:95
+#, kde-format
+msgctxt "@item:inlistbox pause mode"
+msgid "Never"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:107
+#, kde-format
+msgctxt "@info pause mode help text"
+msgid "Automatically pauses playback if any/focus/maximized window detected"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:113
+#, kde-format
+msgctxt "@label settings option"
+msgid "Only check window on current screen"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:120
+#, kde-format
+msgctxt "@label settings option"
+msgid "Pause if PC is on battery power"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:127
+#, kde-format
+msgctxt "@label settings option"
+msgid "Pause if battery level is below"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:137
+#, kde-format
+msgctxt "@label settings option"
+msgid "When screen is locked"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:143
+#, kde-format
+msgctxt "@item:inlistbox screensaver policy"
+msgid "Keep running"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:144
+#, kde-format
+msgctxt "@item:inlistbox screensaver policy"
+msgid "Pause (recommended)"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:145
+#, kde-format
+msgctxt "@item:inlistbox screensaver policy"
+msgid "Load alternate wallpaper (coming soon)"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:155
+#, kde-format
+msgctxt "@info screensaver policy help text"
+msgid ""
+"Lock-screen state is session-wide on Plasma; every screen pauses together. "
+"There is no per-screen lock policy."
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:161
+#, kde-format
+msgctxt "@label settings option"
+msgid "Render resolution"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:167
+#, kde-format
+msgctxt "@item:inlistbox render resolution"
+msgid "Native (100%)"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:168
+#, kde-format
+msgctxt "@item:inlistbox render resolution"
+msgid "75%"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:169
+#, kde-format
+msgctxt "@item:inlistbox render resolution"
+msgid "50%"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:170
+#, kde-format
+msgctxt "@item:inlistbox render resolution"
+msgid "25%"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:180
+#, kde-format
+msgctxt "@info render resolution help text"
+msgid ""
+"Draws the wallpaper smaller and lets the desktop scale it up. Almost all of "
+"a scene's cost is per-pixel, so 50% is roughly a quarter of the GPU work — "
+"the largest saving available on a heavy wallpaper, at the price of a softer "
+"picture. Changing this reloads the wallpaper."
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:186
+#, kde-format
+msgctxt "@label settings option"
+msgid "Anti-aliasing"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:192
+#, kde-format
+msgctxt "@item:inlistbox anti-aliasing"
+msgid "Automatic (recommended)"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:193
+#, kde-format
+msgctxt "@item:inlistbox anti-aliasing"
+msgid "Off"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:194
+#, kde-format
+msgctxt "@item:inlistbox anti-aliasing"
+msgid "2x"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:195
+#, kde-format
+msgctxt "@item:inlistbox anti-aliasing"
+msgid "4x"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:205
+#, kde-format
+msgctxt "@info anti-aliasing help text"
+msgid ""
+"Smooths edges on thin, bright shapes like rain streaks and sparks. Its cost "
+"is paid once per layer a wallpaper draws, so a busy scene on a large screen "
+"pays it hundreds of times per frame. Automatic lowers it as the screen gets "
+"larger and as more screens run wallpapers; pick a value yourself to override "
+"that. Changing this reloads the wallpaper."
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:211
+#, kde-format
+msgctxt "@label settings option"
+msgid "Display"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:218
+#: ../plugin/contents/ui/page/WallpaperPage.qml:917
+#, kde-format
+msgctxt "@item:inlistbox display mode"
+msgid "Keep Aspect Ratio"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:222
+#: ../plugin/contents/ui/page/WallpaperPage.qml:921
+#, kde-format
+msgctxt "@item:inlistbox display mode"
+msgid "Scale and Crop"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:226
+#: ../plugin/contents/ui/page/WallpaperPage.qml:925
+#, kde-format
+msgctxt "@item:inlistbox display mode"
+msgid "Scale to Fill"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:240
+#, kde-format
+msgctxt "@label settings option"
+msgid "Background Color"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:251
+#, kde-format
+msgctxt "@action:button reset background color"
+msgid "Reset"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:263
+#, kde-format
+msgctxt "@info background color help text"
+msgid ""
+"Color drawn in the letterbox/pillarbox bars when the wallpaper's aspect "
+"ratio doesn't match the screen."
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:270
+#, kde-format
+msgctxt "@label settings option"
+msgid "Resume Time"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:282
+#, kde-format
+msgctxt "@label suffix milliseconds, with leading space"
+msgid " ms"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:289
+#, kde-format
+msgctxt "@info resume time help text"
+msgid "Time to wait to resume playback from pause"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:294
+#, kde-format
+msgctxt "@label settings option"
+msgid "Randomize Timer"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:304
+#, kde-format
+msgctxt "@info randomize timer help text"
+msgid ""
+"Equivalent to activating the built-in 'Filtered Library' playlist. Cycles "
+"through wallpapers passing the filter chips on the Wallpapers page."
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:312
+#, kde-format
+msgctxt "@label prefix for randomize-every spinner, with trailing space"
+msgid "Randomize every "
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:322
+#, kde-format
+msgctxt "@label suffix minutes, with leading space"
+msgid " min"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:330
+#, kde-format
+msgctxt "@label settings option"
+msgid "Skip randomizing while wallpaper is paused  "
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:341
+#, kde-format
+msgctxt "@label settings option"
+msgid "Notify on playlist advance"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:351
+#, kde-format
+msgctxt "@info playlist notify help text"
+msgid ""
+"Show a tray notification when the playlist advances to a new wallpaper. Off "
+"by default — enable if you want to confirm which wallpaper just appeared."
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:358
+#, kde-format
+msgctxt "@label settings option"
+msgid "Playback Speed"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:373
+#, kde-format
+msgctxt "@label settings option"
+msgid "Mute Audio"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:383
+#, kde-format
+msgctxt "@label settings option"
+msgid "Volume"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:405
+#, kde-format
+msgctxt "@label settings option"
+msgid "System Audio Capture"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:414
+#, kde-format
+msgctxt "@info system audio capture help text"
+msgid ""
+"When enabled, audio-reactive wallpapers respond to all system audio (music, "
+"videos, games). When disabled, only the wallpaper's own background music is "
+"used."
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:426
+#, kde-format
+msgctxt "@label settings option"
+msgid "Mouse Input"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:435
+#, kde-format
+msgctxt "@label settings option"
+msgid "Animated Preview"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:453
+#, kde-format
+msgctxt "@info reduced motion hint banner"
+msgid ""
+"Reduced motion is enabled system-wide. Consider disabling Animated Preview "
+"for less motion in this plugin."
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:461
+#, kde-format
+msgctxt "@title:group settings section video options"
+msgid "Video Option"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:467
+#, kde-format
+msgctxt "@label settings option"
+msgid "Video Backend"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:473
+#, kde-format
+msgctxt "@item:inlistbox video backend"
+msgid "QtMultimedia"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:478
+#, kde-format
+msgctxt "@item:inlistbox video backend"
+msgid "Mpv"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:490
+#, kde-format
+msgctxt "@label settings option"
+msgid "Show Mpv Stats"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:502
+#, kde-format
+msgctxt "@title:group settings section scene options"
+msgid "Scene Option"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:509
+#, kde-format
+msgctxt "@label settings option frames per second"
+msgid "Fps"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:531
+#, kde-format
+msgctxt "@info fps preset help text"
+msgid "Low: 10, Medium: 15, High: 25, Ultra High: 30"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:537
+#, kde-format
+msgctxt "@label settings option swapchain present mode"
+msgid "Present mode"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:546
+#, kde-format
+msgctxt "@item present mode auto"
+msgid "Auto (recommended)"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:547
+#, kde-format
+msgctxt "@item present mode fifo"
+msgid "Strict vsync (FIFO)"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:548
+#, kde-format
+msgctxt "@item present mode fifo relaxed"
+msgid "Relaxed vsync (FIFO_RELAXED)"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:549
+#, kde-format
+msgctxt "@item present mode mailbox"
+msgid "Unthrottled (MAILBOX)"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:550
+#, kde-format
+msgctxt "@item present mode immediate"
+msgid "Immediate (no vsync)"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:558
+#, kde-format
+msgctxt "@info present mode help text"
+msgid "Auto picks based on Fps vs the monitor's refresh rate. "
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:568
+#, kde-format
+msgctxt "@label settings option HDR output"
+msgid "HDR Output"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:577
+#, kde-format
+msgctxt "@info HDR output help text"
+msgid ""
+"Pass HDR colors to the compositor without tonemapping. Requires Plasma HDR "
+"support."
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:584
+#, kde-format
+msgctxt "@label settings option cache disk quota"
+msgid "Cache disk quota"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:596
+#: ../plugin/contents/ui/page/SettingPage.qml:599
+#, kde-format
+msgid "Unlimited"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:603
+#, kde-format
+msgid ""
+"Cache quota in MB; 0 = unlimited. Renderer + thumbnail caches are auto-"
+"evicted LRU when this is exceeded."
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:606
+#, kde-format
+msgid "Run cache GC now"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:627
+#, kde-format
+msgid "Last GC: %1 MB freed"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:635
+#, kde-format
+msgctxt "@label settings option shader cache"
+msgid "Shader cache"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:645
+#, kde-format
+msgctxt "@info shader cache size placeholder while loading"
+msgid "? MB"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:664
+#, kde-format
+msgctxt "@action:button show shader cache"
+msgid "Show"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:665
+#, kde-format
+msgctxt "@info:tooltip show shader cache"
+msgid "Show in file manager"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:672
+#, kde-format
+msgctxt "@action:button clear shader cache"
+msgid "Clear"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:673
+#, kde-format
+msgctxt "@info:tooltip clear shader cache"
+msgid "Delete cached compiled shaders"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:684
+#, kde-format
+msgctxt "@info shader cache path - size, %1=path, %2=size"
+msgid "%1 - %2"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:686
+#, kde-format
+msgctxt "@info shader cache not available"
+msgid "Not available"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:702
+#, kde-format
+msgctxt "@title:window clear shader cache confirmation"
+msgid "Clear shader cache"
+msgstr ""
+
+#: ../plugin/contents/ui/page/SettingPage.qml:707
+#, kde-format
+msgctxt "@info confirmation message for clearing shader cache"
+msgid ""
+"Delete all cached compiled shaders? They will be regenerated on the next "
+"wallpaper load (first frame may be slower)."
+msgstr ""
+
+#: ../plugin/contents/ui/page/AboutPage.qml:43
 #, kde-format
 msgctxt "@title:window save diagnostic bundle"
 msgid "Save diagnostic bundle as..."
 msgstr ""
 
-#: ../plugin/contents/ui/page/AboutPage.qml:32
+#: ../plugin/contents/ui/page/AboutPage.qml:45
 #, kde-format
 msgctxt "@item:inlistbox file dialog name filter"
 msgid "Tar gzip (*.tar.gz)"
 msgstr ""
 
-#: ../plugin/contents/ui/page/AboutPage.qml:48
+#: ../plugin/contents/ui/page/AboutPage.qml:52
+#, kde-format
+msgctxt "@info diagnostic bundle saved, %1=destination path"
+msgid "Saved to %1"
+msgstr ""
+
+#: ../plugin/contents/ui/page/AboutPage.qml:57
+#, kde-format
+msgctxt "@info diagnostic bundle export failed, %1=reason"
+msgid "Could not save bundle: %1"
+msgstr ""
+
+#: ../plugin/contents/ui/page/AboutPage.qml:77
 #, kde-format
 msgctxt "@label about page section"
 msgid "Requirements"
 msgstr ""
 
-#: ../plugin/contents/ui/page/AboutPage.qml:56
+#: ../plugin/contents/ui/page/AboutPage.qml:85
 #, kde-format
 msgctxt "@info about page requirements section, rich text"
 msgid ""
@@ -161,13 +717,13 @@ msgid ""
 "to be installed in this <i>steamlibrary</i></li></ul></li></ol>"
 msgstr ""
 
-#: ../plugin/contents/ui/page/AboutPage.qml:65
+#: ../plugin/contents/ui/page/AboutPage.qml:94
 #, kde-format
 msgctxt "@label about page section fix crashes"
 msgid "Fix Crashes"
 msgstr ""
 
-#: ../plugin/contents/ui/page/AboutPage.qml:72
+#: ../plugin/contents/ui/page/AboutPage.qml:101
 #, kde-format
 msgctxt "@info about page fix crashes section, rich text"
 msgid ""
@@ -175,13 +731,13 @@ msgid ""
 "org.kde.plasma.desktop-appletsrc</b></li><li>Restart KDE</li></ol>"
 msgstr ""
 
-#: ../plugin/contents/ui/page/AboutPage.qml:79
+#: ../plugin/contents/ui/page/AboutPage.qml:108
 #, kde-format
 msgctxt "@label about page section multi-monitor"
 msgid "Multi-monitor"
 msgstr ""
 
-#: ../plugin/contents/ui/page/AboutPage.qml:86
+#: ../plugin/contents/ui/page/AboutPage.qml:115
 #, kde-format
 msgctxt "@info about page multi-monitor section, rich text"
 msgid ""
@@ -200,67 +756,73 @@ msgid ""
 "cycles to the same wallpaper on the same tick.</p>"
 msgstr ""
 
-#: ../plugin/contents/ui/page/AboutPage.qml:95
+#: ../plugin/contents/ui/page/AboutPage.qml:124
 #, kde-format
 msgctxt "@label about page section github repo"
 msgid "Github Repo"
 msgstr ""
 
-#: ../plugin/contents/ui/page/AboutPage.qml:102
+#: ../plugin/contents/ui/page/AboutPage.qml:131
 #, kde-format
 msgctxt "@info:whatsthis accessible name for github link"
 msgid "Open Github repository"
 msgstr ""
 
-#: ../plugin/contents/ui/page/AboutPage.qml:134
+#: ../plugin/contents/ui/page/AboutPage.qml:163
 #, kde-format
 msgctxt "@label about page section version"
 msgid "Version"
 msgstr ""
 
-#: ../plugin/contents/ui/page/AboutPage.qml:146
+#: ../plugin/contents/ui/page/AboutPage.qml:175
 #, kde-format
 msgctxt "@info native plugin lib not loaded warning"
 msgid "warning: Native plugin lib not loaded — version unavailable"
 msgstr ""
 
-#: ../plugin/contents/ui/page/AboutPage.qml:151
+#: ../plugin/contents/ui/page/AboutPage.qml:180
 #, kde-format
 msgctxt "@info version row plugin qml, %1=version"
 msgid "plugin (qml): %1"
 msgstr ""
 
-#: ../plugin/contents/ui/page/AboutPage.qml:153
+#: ../plugin/contents/ui/page/AboutPage.qml:182
 #, kde-format
 msgctxt "@info version row plugin lib, %1=version"
 msgid "plugin (lib): %1"
 msgstr ""
 
-#: ../plugin/contents/ui/page/AboutPage.qml:156
+#: ../plugin/contents/ui/page/AboutPage.qml:185
 #, kde-format
 msgctxt "@info version row kde, %1=version"
 msgid "kde: %1"
 msgstr ""
 
-#: ../plugin/contents/ui/page/AboutPage.qml:158
+#: ../plugin/contents/ui/page/AboutPage.qml:187
 #, kde-format
 msgctxt "@info version row file helper backend"
 msgid "file helper: native"
 msgstr ""
 
-#: ../plugin/contents/ui/page/AboutPage.qml:168
+#: ../plugin/contents/ui/page/AboutPage.qml:198
 #, kde-format
 msgctxt "@label about page section diagnostic bundle"
 msgid "Diagnostic bundle"
 msgstr ""
 
-#: ../plugin/contents/ui/page/AboutPage.qml:173
+#: ../plugin/contents/ui/page/AboutPage.qml:207
 #, kde-format
 msgctxt "@action:button save diagnostic bundle"
 msgid "Save diagnostic bundle..."
 msgstr ""
 
-#: ../plugin/contents/ui/page/AboutPage.qml:196
+#: ../plugin/contents/ui/page/AboutPage.qml:220
+#, kde-format
+msgctxt "@info diagnostic bundle creation failed, %1=reason"
+msgid "Could not create bundle: %1"
+msgstr ""
+
+#: ../plugin/contents/ui/page/AboutPage.qml:230
 #, kde-format
 msgctxt "@info diagnostic bundle help text"
 msgid ""
@@ -269,801 +831,81 @@ msgid ""
 "to &lt;HOME&gt; before saving; review the bundle before posting publicly."
 msgstr ""
 
-#: ../plugin/contents/ui/page/AboutPage.qml:204
+#: ../plugin/contents/ui/page/AboutPage.qml:249
 #, kde-format
 msgctxt "@label about page section lib checking"
 msgid "Lib Checking"
 msgstr ""
 
-#: ../plugin/contents/ui/page/AboutPage.qml:216
+#: ../plugin/contents/ui/page/AboutPage.qml:261
 #, kde-format
 msgctxt "@item lib checking row qtwebchannel"
 msgid "qtwebchannel (qml) (for web)"
 msgstr ""
 
-#: ../plugin/contents/ui/page/AboutPage.qml:220
+#: ../plugin/contents/ui/page/AboutPage.qml:265
 #, kde-format
 msgctxt "@item lib checking row plugin lib"
 msgid "plugin lib (for scene,mpv)"
 msgstr ""
 
-#: ../plugin/contents/ui/page/SettingPage.qml:64
+#: ../plugin/contents/ui/page/VideoPage.qml:76
 #, kde-format
-msgctxt "@title:group settings section common options"
-msgid "Common Option"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:70
-#, kde-format
-msgctxt "@label playback pause setting"
-msgid "Pause"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:77
-#, kde-format
-msgctxt "@item:inlistbox pause mode"
-msgid "Focus or Maximized Window"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:81
-#, kde-format
-msgctxt "@item:inlistbox pause mode"
-msgid "Focus Window"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:85
-#, kde-format
-msgctxt "@item:inlistbox pause mode"
-msgid "Maximized Window"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:89
-#, kde-format
-msgctxt "@item:inlistbox pause mode"
-msgid "FullScreen"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:93
-#, kde-format
-msgctxt "@item:inlistbox pause mode"
-msgid "Any Window"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:97
-#, kde-format
-msgctxt "@item:inlistbox pause mode"
-msgid "Never"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:109
-#, kde-format
-msgctxt "@info pause mode help text"
-msgid "Automatically pauses playback if any/focus/maximized window detected"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:115
-#, kde-format
-msgctxt "@label settings option"
-msgid "Only check window on current screen"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:122
-#, kde-format
-msgctxt "@label settings option"
-msgid "Pause if PC is on battery power"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:129
-#, kde-format
-msgctxt "@label settings option"
-msgid "Pause if battery level is below"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:139
-#, kde-format
-msgctxt "@label settings option"
-msgid "When screen is locked"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:145
-#, kde-format
-msgctxt "@item:inlistbox screensaver policy"
-msgid "Keep running"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:146
-#, kde-format
-msgctxt "@item:inlistbox screensaver policy"
-msgid "Pause (recommended)"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:147
-#, kde-format
-msgctxt "@item:inlistbox screensaver policy"
-msgid "Load alternate wallpaper (coming soon)"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:157
-#, kde-format
-msgctxt "@info screensaver policy help text"
-msgid ""
-"Lock-screen state is session-wide on Plasma; every screen pauses together. "
-"There is no per-screen lock policy."
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:163
-#, kde-format
-msgctxt "@label settings option"
-msgid "Display"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:170
-#: ../plugin/contents/ui/page/WallpaperPage.qml:882
-#, kde-format
-msgctxt "@item:inlistbox display mode"
-msgid "Keep Aspect Ratio"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:174
-#: ../plugin/contents/ui/page/WallpaperPage.qml:886
-#, kde-format
-msgctxt "@item:inlistbox display mode"
-msgid "Scale and Crop"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:178
-#: ../plugin/contents/ui/page/WallpaperPage.qml:890
-#, kde-format
-msgctxt "@item:inlistbox display mode"
-msgid "Scale to Fill"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:192
-#, kde-format
-msgctxt "@label settings option"
-msgid "Background Color"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:203
-#, kde-format
-msgctxt "@action:button reset background color"
-msgid "Reset"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:215
-#, kde-format
-msgctxt "@info background color help text"
-msgid ""
-"Color drawn in the letterbox/pillarbox bars when the wallpaper's aspect "
-"ratio doesn't match the screen."
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:222
-#, kde-format
-msgctxt "@label settings option"
-msgid "Resume Time"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:234
-#, kde-format
-msgctxt "@label suffix milliseconds, with leading space"
-msgid " ms"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:241
-#, kde-format
-msgctxt "@info resume time help text"
-msgid "Time to wait to resume playback from pause"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:246
-#, kde-format
-msgctxt "@label settings option"
-msgid "Randomize Timer"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:256
-#, kde-format
-msgctxt "@info randomize timer help text"
-msgid ""
-"Equivalent to activating the built-in 'Filtered Library' playlist. Cycles "
-"through wallpapers passing the filter chips on the Wallpapers page."
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:264
-#, kde-format
-msgctxt "@label prefix for randomize-every spinner, with trailing space"
-msgid "Randomize every "
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:274
-#, kde-format
-msgctxt "@label suffix minutes, with leading space"
-msgid " min"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:282
-#, kde-format
-msgctxt "@label settings option"
-msgid "Skip randomizing while wallpaper is paused  "
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:293
-#, kde-format
-msgctxt "@label settings option"
-msgid "Notify on playlist advance"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:303
-#, kde-format
-msgctxt "@info playlist notify help text"
-msgid ""
-"Show a tray notification when the playlist advances to a new wallpaper. Off "
-"by default — enable if you want to confirm which wallpaper just appeared."
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:310
-#, kde-format
-msgctxt "@label settings option"
-msgid "Playback Speed"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:325
-#, kde-format
-msgctxt "@label settings option"
-msgid "Mute Audio"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:335
-#, kde-format
-msgctxt "@label settings option"
-msgid "Volume"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:357
-#, kde-format
-msgctxt "@label settings option"
-msgid "System Audio Capture"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:366
-#, kde-format
-msgctxt "@info system audio capture help text"
-msgid ""
-"When enabled, audio-reactive wallpapers respond to all system audio (music, "
-"videos, games). When disabled, only the wallpaper's own background music is "
-"used."
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:378
-#, kde-format
-msgctxt "@label settings option"
-msgid "Mouse Input"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:387
-#, kde-format
-msgctxt "@label settings option"
-msgid "Animated Preview"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:405
-#, kde-format
-msgctxt "@info reduced motion hint banner"
-msgid ""
-"Reduced motion is enabled system-wide. Consider disabling Animated Preview "
-"for less motion in this plugin."
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:413
-#, kde-format
-msgctxt "@title:group settings section video options"
-msgid "Video Option"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:419
-#, kde-format
-msgctxt "@label settings option"
-msgid "Video Backend"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:425
-#, kde-format
-msgctxt "@item:inlistbox video backend"
-msgid "QtMultimedia"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:430
-#, kde-format
-msgctxt "@item:inlistbox video backend"
-msgid "Mpv"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:442
-#, kde-format
-msgctxt "@label settings option"
-msgid "Show Mpv Stats"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:454
-#, kde-format
-msgctxt "@title:group settings section scene options"
-msgid "Scene Option"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:461
-#, kde-format
-msgctxt "@label settings option frames per second"
-msgid "Fps"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:483
-#, kde-format
-msgctxt "@info fps preset help text"
-msgid "Low: 10, Medium: 15, High: 25, Ultra High: 30"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:489
-#, kde-format
-msgctxt "@label settings option swapchain present mode"
-msgid "Present mode"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:498
-#, kde-format
-msgctxt "@item present mode auto"
-msgid "Auto (recommended)"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:499
-#, kde-format
-msgctxt "@item present mode fifo"
-msgid "Strict vsync (FIFO)"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:500
-#, kde-format
-msgctxt "@item present mode fifo relaxed"
-msgid "Relaxed vsync (FIFO_RELAXED)"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:501
-#, kde-format
-msgctxt "@item present mode mailbox"
-msgid "Unthrottled (MAILBOX)"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:502
-#, kde-format
-msgctxt "@item present mode immediate"
-msgid "Immediate (no vsync)"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:510
-#, kde-format
-msgctxt "@info present mode help text"
-msgid "Auto picks based on Fps vs the monitor's refresh rate. "
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:520
-#, kde-format
-msgctxt "@label settings option HDR output"
-msgid "HDR Output"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:529
-#, kde-format
-msgctxt "@info HDR output help text"
-msgid ""
-"Pass HDR colors to the compositor without tonemapping. Requires Plasma HDR "
-"support."
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:536
-#, kde-format
-msgctxt "@label settings option cache disk quota"
-msgid "Cache disk quota"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:548
-#: ../plugin/contents/ui/page/SettingPage.qml:551
-#, kde-format
-msgid "Unlimited"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:555
-#, kde-format
-msgid ""
-"Cache quota in MB; 0 = unlimited. Renderer + thumbnail caches are auto-"
-"evicted LRU when this is exceeded."
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:558
-#, kde-format
-msgid "Run cache GC now"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:579
-#, kde-format
-msgid "Last GC: %1 MB freed"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:587
-#, kde-format
-msgctxt "@label settings option shader cache"
-msgid "Shader cache"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:599
-#, kde-format
-msgctxt "@action:button show shader cache"
-msgid "Show"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:600
-#, kde-format
-msgctxt "@info:tooltip show shader cache"
-msgid "Show in file manager"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:607
-#, kde-format
-msgctxt "@action:button clear shader cache"
-msgid "Clear"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:608
-#, kde-format
-msgctxt "@info:tooltip clear shader cache"
-msgid "Delete cached compiled shaders"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:624
-#, kde-format
-msgctxt "@info shader cache path - size, %1=path, %2=size"
-msgid "%1 - %2"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:625
-#, kde-format
-msgctxt "@info shader cache not available"
-msgid "Not available"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:635
-#, kde-format
-msgctxt "@info shader cache size placeholder while loading"
-msgid "? MB"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:648
-#, kde-format
-msgctxt "@title:window clear shader cache confirmation"
-msgid "Clear shader cache"
-msgstr ""
-
-#: ../plugin/contents/ui/page/SettingPage.qml:653
-#, kde-format
-msgctxt "@info confirmation message for clearing shader cache"
-msgid ""
-"Delete all cached compiled shaders? They will be regenerated on the next "
-"wallpaper load (first frame may be slower)."
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:61
-#, kde-format
-msgctxt "@title:window reset scene options confirmation"
-msgid "Reset scene options"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:66
-#, kde-format
-msgctxt "@info confirmation message for resetting scene options"
-msgid ""
-"Reset all per-wallpaper scene options to defaults? This cannot be undone."
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:79
-#, kde-format
-msgctxt "@title:window reset wallpaper properties confirmation"
-msgid "Reset wallpaper properties"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:84
-#, kde-format
-msgctxt "@info confirmation message for resetting user properties"
-msgid ""
-"Reset this wallpaper's user properties to defaults? Any tuning you've done "
-"will be lost."
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:121
-#, kde-format
-msgctxt "@info active wallpaper info banner, %1=workshop id, %2=type"
-msgid "Shopid: %1  Type: %2"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:155
-#, kde-format
-msgctxt "@action:button steam library picker"
-msgid "Library"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:156
-#, kde-format
-msgctxt "@info:tooltip steam library picker default text"
-msgid "Select steam library dir"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:161
-#, kde-format
-msgctxt "@action:button filter wallpapers"
-msgid "Filter"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:180
-#, kde-format
-msgctxt "@item:inmenu sort wallpapers by workshop id"
-msgid "Sort By Workshop Id"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:181
-#, kde-format
-msgctxt "@action:button short sort label, workshop id"
-msgid "Id"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:185
-#, kde-format
-msgctxt "@item:inmenu sort wallpapers alphabetically"
-msgid "Sort Alphabetically By Name"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:186
-#, kde-format
-msgctxt "@action:button short sort label, alphabetical"
-msgid "Alphabetical"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:190
-#, kde-format
-msgctxt "@item:inmenu sort newest modified first"
-msgid "Show Newest Modified First"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:191
-#, kde-format
-msgctxt "@action:button short sort label, modified"
-msgid "Modified"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:205
-#, kde-format
-msgctxt "@action:button refresh in progress"
-msgid "Refreshing…"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:205
-#, kde-format
-msgctxt "@action:button refresh wallpaper list"
-msgid "Refresh"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:211
-#, kde-format
-msgctxt "@action:button save filter as playlist"
-msgid "Save filter as playlist…"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:258
-#, kde-format
-msgctxt "@title:group filters popup"
-msgid "Filters"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:262
-#, kde-format
-msgctxt "@action:button reset filters"
-msgid "Reset"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:263
-#, kde-format
-msgctxt "@info:tooltip reset filters"
-msgid "Reset to default filters"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:272
-#, kde-format
-msgctxt "@action:button close filters popup"
-msgid "Close"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:334
-#, kde-format
-msgctxt "@info:status filtered library active, %1=1-based item index"
-msgid "Filtered Library is active · Item %1"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:335
-#, kde-format
-msgctxt "@info:status playlist active, %1=1-based item index"
-msgid "Playlist is active · Item %1"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:338
-#, kde-format
-msgctxt "@action:button stop active playlist"
-msgid "Stop"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:380
-#, kde-format
-msgctxt "@info:status python helper failure, %1=log output"
-msgid "Python helper run failed: %1"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:383
-#, kde-format
-msgctxt "@info:status no steam library selected"
-msgid "Select your steam library through the folder selecting button above"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:385
-#, kde-format
-msgctxt "@info:status filter excludes all wallpapers, %1=total count"
-msgid "Found %1 wallpapers, but none of them matched filters"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:386
-#, kde-format
-msgctxt "@info:status no wallpapers found in steam library"
-msgid "There are no wallpapers in steam library"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:421
-#, kde-format
-msgctxt "@title:window steam library folder picker"
-msgid "Select steamlibrary folder"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:433
-#, kde-format
-msgctxt "@title:window save filter as playlist"
-msgid "Save filter as playlist"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:548
-#, kde-format
-msgctxt "@info pre-apply warning unsupported application wallpaper"
-msgid ""
-"Application wallpapers ship a native Windows .exe host and cannot be "
-"rendered by this plugin. Apply will fail."
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:549
-#, kde-format
-msgctxt "@info pre-apply warning unsupported preset wallpaper"
-msgid ""
-"Preset wallpapers reference another workshop entry; they are not standalone "
-"and cannot be rendered by this plugin. Apply will fail."
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:640
-#, kde-format
-msgctxt "@info:tooltip open wallpaper containing folder"
-msgid "Open Containing Folder"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:855
-#, kde-format
-msgctxt "@title:group per-wallpaper options panel"
-msgid "Option"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:866
-#, kde-format
-msgctxt "@action:button reset per-wallpaper options"
-msgid "Reset"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:876
-#, kde-format
-msgctxt "@label per-wallpaper display option"
-msgid "Display"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:903
-#, kde-format
-msgctxt "@label per-wallpaper background color option"
-msgid "Background Color"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:911
-#, kde-format
-msgctxt "@label per-wallpaper mute audio option"
-msgid "Mute Audio"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:919
-#, kde-format
-msgctxt "@label per-wallpaper volume option"
-msgid "Volume"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:930
-#, kde-format
-msgctxt "@label per-wallpaper speed option"
-msgid "Speed"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:944
-#, kde-format
-msgctxt "@label per-wallpaper postprocessing option"
-msgid "Postprocessing (Ultra, experimental)"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:1025
-#, kde-format
-msgctxt "@info:placeholder no file picked yet"
-msgid "(no file selected)"
-msgstr ""
-
-#: ../plugin/contents/ui/page/WallpaperPage.qml:1028
-#, kde-format
-msgctxt "@action:button browse for file"
-msgid "Browse…"
-msgstr ""
+msgctxt "@info video count badge, %1=count"
+msgid "(%1 video)"
+msgid_plural "(%1 videos)"
+msgstr[0] ""
+msgstr[1] ""
 
-#: ../plugin/contents/ui/page/WallpaperPage.qml:1052
+#: ../plugin/contents/ui/page/VideoPage.qml:88
 #, kde-format
-msgctxt "@info:placeholder no folder picked yet"
-msgid "(no folder selected)"
+msgctxt "@action:button change video folder"
+msgid "Change folder…"
 msgstr ""
 
-#: ../plugin/contents/ui/page/WallpaperPage.qml:1055
+#: ../plugin/contents/ui/page/VideoPage.qml:92
 #, kde-format
-msgctxt "@action:button browse for folder"
-msgid "Browse…"
+msgctxt "@action:button rescan video folder"
+msgid "Rescan"
 msgstr ""
 
-#: ../plugin/contents/ui/page/WallpaperPage.qml:1175
+#: ../plugin/contents/ui/page/VideoPage.qml:107
 #, kde-format
-msgctxt "@title:group per-wallpaper user properties panel"
-msgid "User Properties"
+msgctxt "@info video page empty state"
+msgid "No video folder selected"
 msgstr ""
 
-#: ../plugin/contents/ui/page/WallpaperPage.qml:1186
+#: ../plugin/contents/ui/page/VideoPage.qml:112
 #, kde-format
-msgctxt "@action:button reset user properties"
-msgid "Reset"
+msgctxt "@action:button choose video folder"
+msgid "Choose folder…"
 msgstr ""
 
-#: ../plugin/contents/ui/page/PlaylistsPage.qml:67
+#: ../plugin/contents/ui/page/PlaylistsPage.qml:66
 #, kde-format
 msgctxt "@action:button plus sign new-playlist button"
 msgid "+"
 msgstr ""
 
-#: ../plugin/contents/ui/page/PlaylistsPage.qml:68
+#: ../plugin/contents/ui/page/PlaylistsPage.qml:67
 #, kde-format
 msgctxt "@info:tooltip new playlist"
 msgid "New playlist"
 msgstr ""
 
-#: ../plugin/contents/ui/page/PlaylistsPage.qml:75
+#: ../plugin/contents/ui/page/PlaylistsPage.qml:74
 #, kde-format
 msgctxt "@action:button delete playlist"
 msgid "Delete"
 msgstr ""
 
-#: ../plugin/contents/ui/page/PlaylistsPage.qml:76
+#: ../plugin/contents/ui/page/PlaylistsPage.qml:75
 #, kde-format
 msgctxt "@info:tooltip delete selected playlist"
 msgid "Delete the selected playlist"
 msgstr ""
 
-#: ../plugin/contents/ui/page/PlaylistsPage.qml:121
+#: ../plugin/contents/ui/page/PlaylistsPage.qml:120
 #, kde-format
 msgctxt "@item:inlistbox built-in filtered-library playlist row"
 msgid "Filtered Library"
@@ -1199,101 +1041,536 @@ msgctxt "@info confirmation message for deleting playlist, %1=name"
 msgid "Delete the playlist \"%1\"?"
 msgstr ""
 
-#: ../plugin/contents/ui/page/VideoPage.qml:77
+#: ../plugin/contents/ui/page/WallpaperPage.qml:55
 #, kde-format
-msgctxt "@info video count badge, %1=count"
-msgid "(%1 video)"
-msgid_plural "(%1 videos)"
-msgstr[0] ""
-msgstr[1] ""
-
-#: ../plugin/contents/ui/page/VideoPage.qml:89
-#, kde-format
-msgctxt "@action:button change video folder"
-msgid "Change folder…"
+msgctxt "@title:window reset scene options confirmation"
+msgid "Reset scene options"
 msgstr ""
 
-#: ../plugin/contents/ui/page/VideoPage.qml:93
+#: ../plugin/contents/ui/page/WallpaperPage.qml:60
 #, kde-format
-msgctxt "@action:button rescan video folder"
-msgid "Rescan"
+msgctxt "@info confirmation message for resetting scene options"
+msgid ""
+"Reset all per-wallpaper scene options to defaults? This cannot be undone."
 msgstr ""
 
-#: ../plugin/contents/ui/page/VideoPage.qml:108
+#: ../plugin/contents/ui/page/WallpaperPage.qml:73
 #, kde-format
-msgctxt "@info video page empty state"
-msgid "No video folder selected"
+msgctxt "@title:window reset wallpaper properties confirmation"
+msgid "Reset wallpaper properties"
 msgstr ""
 
-#: ../plugin/contents/ui/page/VideoPage.qml:113
+#: ../plugin/contents/ui/page/WallpaperPage.qml:78
 #, kde-format
-msgctxt "@action:button choose video folder"
-msgid "Choose folder…"
+msgctxt "@info confirmation message for resetting user properties"
+msgid ""
+"Reset this wallpaper's user properties to defaults? Any tuning you've done "
+"will be lost."
 msgstr ""
 
-#: ../plugin/contents/ui/config.qml:249
+#: ../plugin/contents/ui/page/WallpaperPage.qml:115
+#, kde-format
+msgctxt "@info active wallpaper info banner, %1=workshop id, %2=type"
+msgid "Shopid: %1  Type: %2"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:149
+#, kde-format
+msgctxt "@action:button steam library picker"
+msgid "Library"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:150
+#, kde-format
+msgctxt "@info:tooltip steam library picker default text"
+msgid "Select steam library dir"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:155
+#, kde-format
+msgctxt "@action:button filter wallpapers"
+msgid "Filter"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:177
+#, kde-format
+msgctxt "@item:inmenu sort wallpapers by workshop id"
+msgid "Sort By Workshop Id"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:178
+#, kde-format
+msgctxt "@action:button short sort label, workshop id"
+msgid "Id"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:182
+#, kde-format
+msgctxt "@item:inmenu sort wallpapers alphabetically"
+msgid "Sort Alphabetically By Name"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:183
+#, kde-format
+msgctxt "@action:button short sort label, alphabetical"
+msgid "Alphabetical"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:187
+#, kde-format
+msgctxt "@item:inmenu sort newest modified first"
+msgid "Show Newest Modified First"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:188
+#, kde-format
+msgctxt "@action:button short sort label, modified"
+msgid "Modified"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:202
+#, kde-format
+msgctxt "@action:button refresh in progress"
+msgid "Refreshing…"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:202
+#, kde-format
+msgctxt "@action:button refresh wallpaper list"
+msgid "Refresh"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:208
+#, kde-format
+msgctxt "@action:button save filter as playlist"
+msgid "Save filter as playlist…"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:254
+#, kde-format
+msgctxt "@title:group filters popup"
+msgid "Filters"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:258
+#, kde-format
+msgctxt "@action:button reset filters"
+msgid "Reset"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:259
+#, kde-format
+msgctxt "@info:tooltip reset filters"
+msgid "Reset to default filters"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:268
+#, kde-format
+msgctxt "@action:button close filters popup"
+msgid "Close"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:331
+#, kde-format
+msgctxt "@info:status filtered library active, %1=1-based item index"
+msgid "Filtered Library is active · Item %1"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:332
+#, kde-format
+msgctxt "@info:status playlist active, %1=1-based item index"
+msgid "Playlist is active · Item %1"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:335
+#, kde-format
+msgctxt "@action:button stop active playlist"
+msgid "Stop"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:377
+#, kde-format
+msgctxt "@info:status python helper failure, %1=log output"
+msgid "Python helper run failed: %1"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:380
+#, kde-format
+msgctxt "@info:status no steam library selected"
+msgid "Select your steam library through the folder selecting button above"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:382
+#, kde-format
+msgctxt "@info:status filter excludes all wallpapers, %1=total count"
+msgid "Found %1 wallpapers, but none of them matched filters"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:383
+#, kde-format
+msgctxt "@info:status no wallpapers found in steam library"
+msgid "There are no wallpapers in steam library"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:418
+#, kde-format
+msgctxt "@title:window steam library folder picker"
+msgid "Select steamlibrary folder"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:430
+#, kde-format
+msgctxt "@title:window save filter as playlist"
+msgid "Save filter as playlist"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:563
+#, kde-format
+msgctxt "@info pre-apply warning unsupported application wallpaper"
+msgid ""
+"Application wallpapers ship a native Windows .exe host and cannot be "
+"rendered by this plugin. Apply will fail."
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:564
+#, kde-format
+msgctxt "@info pre-apply warning unsupported preset wallpaper"
+msgid ""
+"Preset wallpapers reference another workshop entry; they are not standalone "
+"and cannot be rendered by this plugin. Apply will fail."
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:655
+#, kde-format
+msgctxt "@info:tooltip open wallpaper containing folder"
+msgid "Open Containing Folder"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:882
+#, kde-format
+msgctxt "@title:group per-wallpaper options panel"
+msgid "Option"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:893
+#, kde-format
+msgctxt "@action:button reset per-wallpaper options"
+msgid "Reset"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:911
+#, kde-format
+msgctxt "@label per-wallpaper display option"
+msgid "Display"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:938
+#, kde-format
+msgctxt "@label per-wallpaper background color option"
+msgid "Background Color"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:946
+#, kde-format
+msgctxt "@label per-wallpaper mute audio option"
+msgid "Mute Audio"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:954
+#, kde-format
+msgctxt "@label per-wallpaper volume option"
+msgid "Volume"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:965
+#, kde-format
+msgctxt "@label per-wallpaper speed option"
+msgid "Speed"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:980
+#, kde-format
+msgctxt "@label per-wallpaper postprocessing option"
+msgid "Postprocessing (Ultra, experimental)"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:1061
+#, kde-format
+msgctxt "@info:placeholder no file picked yet"
+msgid "(no file selected)"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:1064
+#, kde-format
+msgctxt "@action:button browse for file"
+msgid "Browse…"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:1088
+#, kde-format
+msgctxt "@info:placeholder no folder picked yet"
+msgid "(no folder selected)"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:1091
+#, kde-format
+msgctxt "@action:button browse for folder"
+msgid "Browse…"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:1310
+#, kde-format
+msgctxt "@title:group per-wallpaper user properties panel"
+msgid "User Properties"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:1321
+#, kde-format
+msgctxt "@action:button reset user properties"
+msgid "Reset"
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:1347
+#, kde-format
+msgctxt ""
+"@info placeholder when the wallpaper's player ignores its declared properties"
+msgid ""
+"Video playback ignores this wallpaper's properties, so they aren't offered "
+"here. "
+msgstr ""
+
+#: ../plugin/contents/ui/page/WallpaperPage.qml:1350
+#, kde-format
+msgctxt "@info placeholder when a wallpaper exposes no adjustable properties"
+msgid "This wallpaper doesn't expose any adjustable properties."
+msgstr ""
+
+#: ../plugin/contents/ui/config.qml:238
 #, kde-format
 msgctxt "@title:tab wallpapers list"
 msgid "Wallpapers"
 msgstr ""
 
-#: ../plugin/contents/ui/config.qml:252
+#: ../plugin/contents/ui/config.qml:241
 #, kde-format
 msgctxt "@title:tab videos list"
 msgid "Videos"
 msgstr ""
 
-#: ../plugin/contents/ui/config.qml:255
+#: ../plugin/contents/ui/config.qml:244
 #, kde-format
 msgctxt "@title:tab playlists list"
 msgid "Playlists"
 msgstr ""
 
-#: ../plugin/contents/ui/config.qml:258
+#: ../plugin/contents/ui/config.qml:247
 #, kde-format
 msgctxt "@title:tab settings panel"
 msgid "Settings"
 msgstr ""
 
-#: ../plugin/contents/ui/config.qml:261
+#: ../plugin/contents/ui/config.qml:250
 #, kde-format
 msgctxt "@title:tab about info"
 msgid "About"
 msgstr ""
 
-#: ../plugin/contents/ui/main.qml:597
+#: ../plugin/contents/ui/main.qml:620
 #, kde-format
 msgctxt "@info:status recovery copy first-run missing steam library"
 msgid "Open the wallpaper settings (right-click the desktop → "
 msgstr ""
 
-#: ../plugin/contents/ui/main.qml:604
+#: ../plugin/contents/ui/main.qml:627
 #, kde-format
 msgctxt "@info:status recovery copy no wallpaper selected"
 msgid "No wallpaper selected. Open the wallpaper settings "
 msgstr ""
 
-#: ../plugin/contents/ui/main.qml:627
+#: ../plugin/contents/ui/main.qml:667
 #, kde-format
 msgctxt "@info:status recovery copy scene plugin lib missing"
 msgid "Plugin lib not found. To support scene, please compile and install it."
 msgstr ""
 
-#: ../plugin/contents/ui/main.qml:635
+#: ../plugin/contents/ui/main.qml:675
 #, kde-format
 msgctxt "@info:status recovery copy application wallpaper unsupported"
 msgid "Application wallpapers ship a native Windows .exe "
 msgstr ""
 
-#: ../plugin/contents/ui/main.qml:641
+#: ../plugin/contents/ui/main.qml:681
 #, kde-format
 msgctxt "@info:status recovery copy preset wallpaper not standalone"
 msgid "Preset wallpapers are configuration overlays on "
 msgstr ""
 
-#: ../plugin/contents/ui/main.qml:648
+#: ../plugin/contents/ui/main.qml:688
 #, kde-format
 msgctxt "@info:status recovery copy unsupported wallpaper type, %1=type"
 msgid ""
 "Wallpaper type '%1' is not supported (recognized types: scene, web, video)."
+msgstr ""
+
+#: ../src/WekNotifier.cpp:26
+#, kde-format
+msgctxt "@title notification, wallpaper failed to load"
+msgid "Wallpaper could not be loaded"
+msgstr ""
+
+#: ../src/WekNotifier.cpp:28
+#, kde-format
+msgctxt "@info notification, %1=workshop id, %2=reason"
+msgid "Workshop entry %1 — %2"
+msgstr ""
+
+#: ../src/WekNotifier.cpp:36
+#, kde-format
+msgctxt "@action:button"
+msgid "Open wallpaper settings"
+msgstr ""
+
+#: ../src/WekNotifier.cpp:57
+#, kde-format
+msgctxt "@title notification, %1=playlist name"
+msgid "Wallpaper changed in %1"
+msgstr ""
+
+#: ../src/WekNotifier.cpp:60
+#, kde-format
+msgctxt "@info notification, %1=wallpaper title, %2=item index, %3=total items"
+msgid "%1 (item %2 of %3)"
+msgstr ""
+
+#: ../src/WekNotifier.cpp:73
+#, kde-format
+msgctxt "@title notification, wallpaper assets missing"
+msgid "Wallpaper assets missing"
+msgstr ""
+
+#: ../src/WekNotifier.cpp:75
+#, kde-format
+msgctxt "@info notification, %1=workshop id, %2=path"
+msgid ""
+"Workshop %1 — expected file not found at %2. Re-subscribe from Steam "
+"Workshop, or remove from playlist."
+msgstr ""
+
+#: ../src/WekNotifier.cpp:88
+#, kde-format
+msgctxt "@title notification, wallpaper backend not available"
+msgid "Wallpaper backend not available"
+msgstr ""
+
+#: ../src/WekNotifier.cpp:90
+#, kde-format
+msgctxt "@info notification, %1=backend name, %2=reason"
+msgid "%1 backend disabled: %2"
+msgstr ""
+
+#: ../src/WekNotifier.cpp:102
+#, kde-format
+msgctxt "@title notification, wallpaper still paused after restart"
+msgid "Wallpaper still paused"
+msgstr ""
+
+#: ../src/WekNotifier.cpp:105
+#, kde-format
+msgctxt "@info notification, wallpaper still paused after restart"
+msgid "The wallpaper was paused before the last restart and is still paused."
+msgstr ""
+
+#: ../src/WekShortcuts.cpp:38
+#, kde-format
+msgctxt "@title shortcuts category"
+msgid "Wallpaper Engine"
+msgstr ""
+
+#: ../src/WekShortcuts.cpp:58
+#, kde-format
+msgctxt "@action shortcut label"
+msgid "Next wallpaper in playlist"
+msgstr ""
+
+#: ../src/WekShortcuts.cpp:62
+#, kde-format
+msgctxt "@action shortcut label"
+msgid "Previous wallpaper in playlist"
+msgstr ""
+
+#: ../src/WekShortcuts.cpp:66
+#, kde-format
+msgctxt "@action shortcut label"
+msgid "Pause / resume wallpaper"
+msgstr ""
+
+#: ../src/WekShortcuts.cpp:70
+#, kde-format
+msgctxt "@action shortcut label"
+msgid "Toggle wallpaper audio mute"
+msgstr ""
+
+#: ../src/WekShortcuts.cpp:74
+#, kde-format
+msgctxt "@action shortcut label"
+msgid "Reload current wallpaper"
+msgstr ""
+
+#: ../src/WekShortcuts.cpp:83
+#, kde-format
+msgctxt "@action shortcut label"
+msgid "Open wallpaper library (configuration dialog)"
+msgstr ""
+
+#: ../data/wek.notifyrc:7
+msgid "Wallpaper Engine"
+msgstr ""
+
+#: ../data/wek.notifyrc:8
+msgid "Wallpaper Engine for KDE Plasma 6"
+msgstr ""
+
+#: ../data/wek.notifyrc:11
+msgid "Wallpaper failed to load"
+msgstr ""
+
+#: ../data/wek.notifyrc:12
+msgid ""
+"A wallpaper could not be loaded (corrupt file, missing assets, or "
+"unsupported type)"
+msgstr ""
+
+#: ../data/wek.notifyrc:17
+msgid "Playlist advanced"
+msgstr ""
+
+#: ../data/wek.notifyrc:18
+msgid "The next wallpaper in an active playlist has been activated"
+msgstr ""
+
+#: ../data/wek.notifyrc:24
+msgid "Wallpaper assets missing"
+msgstr ""
+
+#: ../data/wek.notifyrc:25
+msgid ""
+"A wallpaper's expected files are missing on disk (e.g., after Steam Workshop "
+"unsubscribe)"
+msgstr ""
+
+#: ../data/wek.notifyrc:30
+msgid "Wallpaper backend unavailable"
+msgstr ""
+
+#: ../data/wek.notifyrc:31
+msgid ""
+"A wallpaper backend (Scene / MPV / Web) failed to initialise or is missing"
+msgstr ""
+
+#: ../data/wek.notifyrc:36
+msgid "Wallpaper still paused"
+msgstr ""
+
+#: ../data/wek.notifyrc:37
+msgid "A wallpaper pause from before a plasmashell restart has been restored"
 msgstr ""

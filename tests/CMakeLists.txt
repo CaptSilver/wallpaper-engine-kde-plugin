@@ -529,6 +529,19 @@ endif()
 # KF6::ConfigCore comes from the component package directly — no umbrella
 # `find_package(KF6 …)`, because the standalone test build doesn't pull in ECM.
 find_package(KF6Config REQUIRED)
+
+# KF6::I18n + msgfmt: both tst_weknotifier and tst_wekshortcuts compile
+# WekNotifier.cpp/WekShortcuts.cpp as their own translation units (not by
+# linking the plugin .so), so each needs its own TRANSLATION_DOMAIN +
+# KF6::I18n wiring below to actually exercise the i18nc() call the
+# production code makes rather than silently falling back to the
+# domain-less path.
+find_package(KF6I18n REQUIRED)
+find_program(MSGFMT_EXECUTABLE msgfmt REQUIRED)
+# Reused by po/Messages.sh's CATALOG and plugin/metadata.json.in's
+# X-Plasma-MainScriptDomain -- must stay byte-identical to both.
+set(WEK_TRANSLATION_DOMAIN "plasma_wallpaper_com.github.captsilver.wallpaperEngineKde")
+
 add_executable(tst_activityhelper
     tst_activityhelper.cpp
     ${WEKDE_SRC_DIR}/ActivityHelper.cpp
@@ -571,9 +584,11 @@ if(KF6Notifications_FOUND AND Qt6DBus_FOUND)
     target_include_directories(tst_weknotifier PRIVATE ${WEKDE_SRC_DIR})
     target_link_libraries(tst_weknotifier PRIVATE
         Qt6::Test Qt6::Core Qt6::DBus
-        KF6::Notifications)
+        KF6::Notifications
+        KF6::I18n)
     target_compile_definitions(tst_weknotifier PRIVATE
-        WEK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/..")
+        WEK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/.."
+        TRANSLATION_DOMAIN="${WEK_TRANSLATION_DOMAIN}")
     if(COVERAGE)
         target_compile_options(tst_weknotifier PRIVATE ${_cov_compile_flags})
         target_link_options(tst_weknotifier PRIVATE ${_cov_link_flags})
@@ -685,16 +700,44 @@ find_package(KF6CoreAddons QUIET)
 find_package(KF6XmlGui QUIET)        # KActionCollection lives in kxmlgui
 find_package(Qt6 COMPONENTS Gui QUIET)   # QGuiApplication for the test main (QAction needs a GUI app)
 if(KF6GlobalAccel_FOUND AND KF6CoreAddons_FOUND AND KF6XmlGui_FOUND AND Qt6DBus_FOUND AND Qt6Gui_FOUND)
+    # Planted translation catalog for wrappedLabels_respectTranslationDomain
+    # (tst_wekshortcuts.cpp): proves i18nc() in the *production* WekShortcuts.cpp
+    # translation unit actually routes through TRANSLATION_DOMAIN to a real
+    # catalog, not just that the code compiles.  "xx" only exists for this
+    # fixture -- no real system ships an "xx" catalog to collide with it.
+    set(_i18n_fixture_dir "${CMAKE_CURRENT_BINARY_DIR}/i18n_test_fixture")
+    set(_i18n_fixture_po "${CMAKE_CURRENT_BINARY_DIR}/i18n_test_fixture.po")
+    set(_i18n_fixture_mo "${_i18n_fixture_dir}/xx/LC_MESSAGES/${WEK_TRANSLATION_DOMAIN}.mo")
+    file(WRITE "${_i18n_fixture_po}" "msgid \"\"
+msgstr \"\"
+\"Content-Type: text/plain; charset=UTF-8\\n\"
+
+msgctxt \"@action shortcut label\"
+msgid \"Next wallpaper in playlist\"
+msgstr \"MARKER-TRANSLATED-NEXT\"
+")
+    add_custom_command(OUTPUT "${_i18n_fixture_mo}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${_i18n_fixture_dir}/xx/LC_MESSAGES"
+        COMMAND ${MSGFMT_EXECUTABLE} "${_i18n_fixture_po}" -o "${_i18n_fixture_mo}"
+        DEPENDS "${_i18n_fixture_po}"
+        VERBATIM)
+    add_custom_target(wek_i18n_test_fixture DEPENDS "${_i18n_fixture_mo}")
+
     add_executable(tst_wekshortcuts
         tst_wekshortcuts.cpp
         ${WEKDE_SRC_DIR}/WekShortcuts.cpp
     )
+    add_dependencies(tst_wekshortcuts wek_i18n_test_fixture)
     target_include_directories(tst_wekshortcuts PRIVATE ${WEKDE_SRC_DIR})
     target_link_libraries(tst_wekshortcuts PRIVATE
         Qt6::Core Qt6::Test Qt6::DBus Qt6::Gui
         KF6::GlobalAccel
         KF6::CoreAddons
-        KF6::XmlGui)
+        KF6::XmlGui
+        KF6::I18n)
+    target_compile_definitions(tst_wekshortcuts PRIVATE
+        WEK_TEST_I18N_LOCALE_DIR="${_i18n_fixture_dir}"
+        TRANSLATION_DOMAIN="${WEK_TRANSLATION_DOMAIN}")
     if(COVERAGE)
         target_compile_options(tst_wekshortcuts PRIVATE ${_cov_compile_flags})
         target_link_options(tst_wekshortcuts PRIVATE ${_cov_link_flags})
@@ -895,6 +938,16 @@ add_test(NAME test_qmlcov_warning_budget
          COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_qmlcov_warning_budget.sh
                  ${CMAKE_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
 set_tests_properties(test_qmlcov_warning_budget PROPERTIES SKIP_RETURN_CODE 77)
+
+# Regression test for po/Messages.sh's extraction scope: the C++ + notifyrc
+# pass must reach WekNotifier.cpp/WekShortcuts.cpp and data/wek.notifyrc
+# without sweeping the backend_scene/backend_mpv submodule. Builds its own
+# scratch tree (symlinks, no repo mutation) so this is safe to run from ctest.
+# SKIP_RETURN_CODE covers a distrobox/chroot with no xgettext on PATH.
+add_test(NAME test_po_messages_scope
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_po_messages_scope.sh
+                 ${CMAKE_CURRENT_SOURCE_DIR}/..)
+set_tests_properties(test_po_messages_scope PROPERTIES SKIP_RETURN_CODE 77)
 
 # ── Master test-target enumeration ────────────────────────────────────────────
 # The one place that names every tst_* target this file can define (each is

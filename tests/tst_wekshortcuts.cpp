@@ -11,8 +11,10 @@
 
 #include <KActionCollection>
 #include <KGlobalAccel>
+#include <KLocalizedString>
 #include <QAction>
 #include <QDBusConnection>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QHash>
 #include <QSignalSpy>
@@ -32,6 +34,7 @@ private slots:
     void triggerNext_firesTriggeredSignal();
     void openLibrary_triggerDoesNotCrash();
     void allActions_haveDistinctIds();
+    void wrappedLabels_respectTranslationDomain();
 };
 
 void TestWekShortcuts::registersExpectedActions() {
@@ -154,6 +157,35 @@ void TestWekShortcuts::allActions_haveDistinctIds() {
         seen.insert(id);
     }
     QCOMPARE(seen.size(), 6);
+}
+
+void TestWekShortcuts::wrappedLabels_respectTranslationDomain() {
+    // WEK_TEST_I18N_LOCALE_DIR/xx/LC_MESSAGES/<domain>.mo (built at configure
+    // time by the wek_i18n_test_fixture CMake target, below) translates
+    // exactly one msgid: "Next wallpaper in playlist" -> a marker string
+    // nothing else in this process could produce by accident.  If this test
+    // reads back the untranslated English label, either the action's label
+    // isn't going through i18nc() any more, or TRANSLATION_DOMAIN isn't
+    // defined for this translation unit -- both are real regressions.
+    const QString moPath = QStringLiteral(
+        WEK_TEST_I18N_LOCALE_DIR
+        "/xx/LC_MESSAGES/plasma_wallpaper_com.github.captsilver.wallpaperEngineKde.mo");
+    QVERIFY2(QFileInfo::exists(moPath),
+             qPrintable(QStringLiteral("fixture .mo missing at ") + moPath +
+                        QStringLiteral(" -- msgfmt build step failed")));
+
+    KLocalizedString::addDomainLocaleDir(
+        QByteArrayLiteral("plasma_wallpaper_com.github.captsilver.wallpaperEngineKde"),
+        QStringLiteral(WEK_TEST_I18N_LOCALE_DIR));
+    KLocalizedString::setLanguages({ QStringLiteral("xx") });
+
+    WekShortcuts shortcuts;
+    auto*        coll   = shortcuts.collectionForTest();
+    auto*        action = coll->action(QStringLiteral("next_wallpaper"));
+    QVERIFY(action);
+    QCOMPARE(action->text(), QStringLiteral("MARKER-TRANSLATED-NEXT"));
+
+    KLocalizedString::clearLanguages();
 }
 
 // QAction lives in QtGui and, since Qt 6.11, its constructor dereferences

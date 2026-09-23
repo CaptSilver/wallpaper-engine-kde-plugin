@@ -62,6 +62,14 @@ target_link_libraries(${PROJECT_NAME}
 	KF6::I18n
 )
 
+# i18nc()/i18n() resolve to a real catalog only when the compiling TU has
+# TRANSLATION_DOMAIN defined (see klocalizedstring.h) -- without it they
+# still compile and link, they just never find a translation.  Same string
+# as po/Messages.sh's CATALOG and plugin/metadata.json.in's
+# X-Plasma-MainScriptDomain; keep all three in sync.
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    TRANSLATION_DOMAIN="plasma_wallpaper_com.github.captsilver.wallpaperEngineKde")
+
 # KGlobalAccel wires global keyboard shortcuts through KActionCollection +
 # the kglobalaccel daemon.  Optional: when the dev/build sysroot lacks
 # kf6-kglobalaccel-devel / libkf6globalaccel-dev the WekShortcuts class is

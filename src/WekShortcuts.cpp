@@ -2,6 +2,7 @@
 
 #include <KActionCollection>
 #include <KGlobalAccel>
+#include <KLocalizedString>
 #include <QAction>
 #include <QDBusConnection>
 #include <QDBusMessage>
@@ -34,7 +35,7 @@ void invokeDBusMethod(const QString& method) {
 
 WekShortcuts::WekShortcuts(QObject* parent)
     : QObject(parent), m_actions(new KActionCollection(this, QStringLiteral("wallpaper_engine"))) {
-    m_actions->setComponentDisplayName(QStringLiteral("Wallpaper Engine"));
+    m_actions->setComponentDisplayName(i18nc("@title shortcuts category", "Wallpaper Engine"));
 
     // Helper: create the action, default-unbind via setGlobalShortcut({}),
     // and wire its triggered() to the async D-Bus call.
@@ -54,23 +55,23 @@ WekShortcuts::WekShortcuts(QObject* parent)
     };
 
     registerAction(QStringLiteral("next_wallpaper"),
-                   QStringLiteral("Next wallpaper in playlist"),
+                   i18nc("@action shortcut label", "Next wallpaper in playlist"),
                    QStringLiteral("Next"));
 
     registerAction(QStringLiteral("previous_wallpaper"),
-                   QStringLiteral("Previous wallpaper in playlist"),
+                   i18nc("@action shortcut label", "Previous wallpaper in playlist"),
                    QStringLiteral("Previous"));
 
     registerAction(QStringLiteral("toggle_pause"),
-                   QStringLiteral("Pause / resume wallpaper"),
+                   i18nc("@action shortcut label", "Pause / resume wallpaper"),
                    QStringLiteral("Toggle"));
 
     registerAction(QStringLiteral("toggle_mute"),
-                   QStringLiteral("Toggle wallpaper audio mute"),
+                   i18nc("@action shortcut label", "Toggle wallpaper audio mute"),
                    QStringLiteral("ToggleMute"));
 
     registerAction(QStringLiteral("reload_wallpaper"),
-                   QStringLiteral("Reload current wallpaper"),
+                   i18nc("@action shortcut label", "Reload current wallpaper"),
                    QStringLiteral("Reload"));
 
     // open_library opens the config dialog.  No clean Plasma 6 API exists to
@@ -78,7 +79,8 @@ WekShortcuts::WekShortcuts(QObject* parent)
     // hint rather than D-Bus dispatch.  Revisit when Plasma 6.x adds an
     // openWallpaperConfig signal.
     auto* openLib = m_actions->addAction(QStringLiteral("open_library"));
-    openLib->setText(QStringLiteral("Open wallpaper library (configuration dialog)"));
+    openLib->setText(
+        i18nc("@action shortcut label", "Open wallpaper library (configuration dialog)"));
     KGlobalAccel::self()->setGlobalShortcut(openLib, QList<QKeySequence> {});
     QObject::connect(openLib, &QAction::triggered, this, []() {
         qInfo("wek-shortcuts: 'Open Library' shortcut triggered; user "

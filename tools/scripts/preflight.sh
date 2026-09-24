@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Pre-push verification: lint -> submodule build/tests -> main tests ->
-# -Werror gate -> ASAN+UBSAN gate -> fuzz smoke -> mutation gate (--diff-only).
+# -Werror gate -> standalone QML viewer build -> ASAN+UBSAN gate -> fuzz smoke
+# -> mutation gate (--diff-only).
 #
 # Usage:
 #   tools/scripts/preflight.sh              # default gate (lint + build + tests +
@@ -915,6 +916,37 @@ if [[ "$MODE" != "test-only" ]]; then
         ok "-Werror clean (whole first-party tree under -Wall -Wextra)"
     else
         fail "-Werror gate failed — a -Wall/-Wextra regression in first-party code (shippable targets or renderer libs) is now an error"
+    fi
+fi
+
+# ── 5a2. Standalone QML viewer build (compile-only, BUILD_QML=ON) ─────────────
+# sceneviewer-script (qmlviewer.cpp) is the tool this project's own debugging
+# notes reach for first, but standalone_view is its own top-level CMake project
+# and nothing else in the repo ever configures it with BUILD_QML=ON --
+# render-smoke.sh/render-oracle.sh both build the plain GLFW sceneviewer target
+# only. A real compile break here went unnoticed for as long as
+# --deterministic/--screenshot-at-frame sat parsed-but-unread in qmlviewer.cpp --
+# nothing forced anyone to compile the file that would have needed them. Release,
+# not Debug: SCENE_VIEWER_ASAN defaults ON and only gates on $<CONFIG:Debug>, so a
+# Debug configure here would silently rebuild the whole renderer stack under ASan
+# on every push -- Release matches how render-smoke.sh/render-oracle.sh already
+# configure this same CMake project and keeps this what it's meant to be: a plain
+# compile+link, no live Vulkan device or display needed. Also builds the plain
+# sceneviewer (GLFW) target, which has no coverage in the default gate either --
+# render-smoke.sh/render-oracle.sh are themselves opt-in legs. Persistent build
+# dir build/viewer-gate, reused on repeat runs so only the first run pays the
+# cold configure+build (measured cold ~30s, warm no-op ~0.4s on this box).
+if [[ "$MODE" != "test-only" ]]; then
+    step "Standalone QML viewer build (BUILD_QML=ON, sceneviewer-script)"
+    QML_GATE_GEN=""
+    [[ ! -f build/viewer-gate/CMakeCache.txt ]] && QML_GATE_GEN="-G Ninja"
+    if dbox "CC=/usr/bin/clang CXX=/usr/bin/clang++ \
+             cmake -B build/viewer-gate -S src/backend_scene/standalone_view $QML_GATE_GEN \
+                   -DBUILD_QML=ON -DCMAKE_BUILD_TYPE=Release \
+             && cmake --build build/viewer-gate -j\$(nproc) --target sceneviewer sceneviewer-script"; then
+        ok "standalone QML viewer builds clean (sceneviewer, sceneviewer-script)"
+    else
+        fail "standalone QML viewer build failed — qmlviewer.cpp / main.qml / the QML-bridge-only parts of SceneBackend.cpp don't compile"
     fi
 fi
 

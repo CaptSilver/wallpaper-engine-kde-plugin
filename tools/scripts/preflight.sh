@@ -849,6 +849,20 @@ else
     warn "tools/scripts/tests/test-lsan-suppressions.sh missing or not executable — skipping"
 fi
 
+# ── 1f. Build-corpus self-test ────────────────────────────────────────────────
+# build-corpus.sh's three seeding loops (loose .mdl/.tex, archive-embedded
+# .mdl/.tex, raw .pkg into WPPkgFs) had no automated coverage of their own --
+# a synthetic workshop dir and a stub wp-pkg pin the contract in a fraction of
+# a second, same reasoning as 1b/1c/1d.
+step "Build-corpus self-test"
+if [[ -x tools/scripts/tests/test-build-corpus.sh ]]; then
+    if ! tools/scripts/tests/test-build-corpus.sh; then
+        fail "build-corpus self-test failed — build-corpus.sh's seeding loops are broken"
+    fi
+else
+    warn "tools/scripts/tests/test-build-corpus.sh missing or not executable — skipping"
+fi
+
 # ── 2. Build submodule (with tests) ───────────────────────────────────────────
 # Only force -G Ninja on fresh dirs; otherwise reuse the existing generator so
 # we don't fight with manual build dirs the user already configured.

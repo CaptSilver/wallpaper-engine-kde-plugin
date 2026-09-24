@@ -1,5 +1,5 @@
 {
-  "_accepted_equivalent": "src/backend_scene/src/WPShaderParser.cpp, in `WPShaderParser::ClearSpvMemo()` (cxx_gt_to_ge, cxx_gt_to_le), is `if (s_memoCompiles > 0)`, and it guards nothing but a LOG_INFO summary. Both mutants only change whether that line is emitted, so no assertion can distinguish them without capturing log output, and contorting a test to do so would pin the logging rather than the behaviour. Accepted deliberately. The two sibling survivors that WERE killed (the include-depth bound `depth >= kMaxIncludeDepth` in `LoadGlslIncludeImpl` and the memo compile counter) are the ones that described real behaviour.  src/backend_scene/src/WPParticleParser.cpp, in `WPParticleParser::genParticleOperatorOp`'s \"angularmovement\" branch (cxx_gt_to_ge), is the drag gate `if (drag > 0.0f)`. `>=` only changes which branch is taken when drag is exactly zero, and there the guarded body computes factor = max(0.0, 1.0 - 0*blend*dt) = 1.0, so MutiplyAngularVelocity(p, 1.0) is the identity on every float value. The only way that factor could come out as anything but 1.0 at drag==0 is a non-finite blend factor or step, and in exactly those cases the operator's own AngularAccelerate(p, force * blend, dt) two lines earlier has already driven angularVelocity to NaN, which absorbs both *1.0 and *0.0 -- so the branch cannot be observed from the outside either way. A non-finite step is not reachable regardless: ParticleSystem clamps frameTime with kMaxParticleFrameTime. Verified empirically as well -- with the mutation applied by hand the whole 3235-case backend_scene_tests suite passes unchanged. The two sibling cxx_mul_to_div mutants on the next line describe real behaviour (blended angular drag) and were killed with tests rather than accepted here.  ||  src/PlaylistManager.cpp, in `PlaylistManager::stepBy(int delta)` (cxx_gt_to_ge), is `const bool forward = delta > 0;`, and the line above it returns on `delta == 0` (`if (m_activeId.isEmpty() || delta == 0) return;`). delta is a plain int, unmodified between the two lines, so at that point the precondition delta != 0 holds and `> 0` and `>= 0` agree for every reachable value -- they differ only at 0. Every downstream branch is driven solely by `forward`, so nothing can observe the difference. Accepted deliberately.  ||  src/backend_scene/src/VulkanRender/SkyboxPass.cpp, in `SkyboxPass::execute()`: the framebuffer-create failure check `res != VK_SUCCESS` (cxx_ne_to_eq) and the null-framebuffer skip `if (framebuffer == nullptr) return;` (cxx_eq_to_ne), which backend_scene_tests never calls -- proven by inserting std::abort() as the function's first statement and watching the whole suite still pass 3257/3257 with exit 0. They survive because the code does not run, not because the behaviour is unpinned, and reaching them needs a live VkDevice plus a compiled render pass, pipeline, mapped dyn_buf, recording command buffer and the push-descriptor extension. Deliberately NOT lifted into a device-free helper: `res != VK_SUCCESS` is the Vulkan API contract, not project policy, and it appears at 42 sites in src/. Extracting this one would create a function whose body is the mutated expression, so the test would restate the wrapper's definition; the mutant would die only because the line moved into a covered translation unit while the branch still never executes.  ||  src/backend_scene/src/Vulkan/include/Vulkan/SwapchainPolicy.hpp, in `chooseSwapchainImageCount()` (cxx_gt_to_ge), is the second comparison in `if (caps.maxImageCount > 0 && wanted > caps.maxImageCount) return caps.maxImageCount;`. `>=` only changes which branch is taken when wanted == caps.maxImageCount, and there the guarded return hands back caps.maxImageCount -- the same number the fall-through `return wanted` would have produced. The one input that separates the two operators produces an identical result, and every other input takes the same path in both, so nothing downstream can observe the difference. Accepted deliberately. The other `>` on that line is NOT equivalent and stays killed by \"a zero maximum means unlimited\": maxImageCount == 0 means no limit, so `>= 0` would clamp the image count to zero. The four inclusive extent bounds in `chooseSwapchainExtent()` were killed with boundary cases (a current extent sitting exactly on minImageExtent or maxImageExtent is a size the driver accepts) rather than accepted here.  ||  src/backend_scene/src/Vulkan/include/Vulkan/TextureCacheDetail.hpp, in `shouldLogUploadFailure()` (cxx_lt_to_le), is the verbose-head test `if (prior_failures < verbose_head) return true;`, where verbose_head is a constexpr 3. `<=` differs only at prior_failures == 3, and there the unmutated fall-through evaluates (3 - 3) % 600 == 0, which is true -- the same answer the mutant returns directly. prior_failures is the only argument and both constants are constexpr locals, so there is no reachable input that separates the two. Accepted deliberately. The subtraction on the next line does describe real behaviour -- the interval is anchored at the end of the verbose head, so the periodic line lands on 603, not 600 -- and was killed with a test.  ||  src/FileHelper.cpp, in `readRegularFileCapped()` (cxx_gt_to_ge, cxx_gt_to_le), is the preallocation hint `if (declared > 0) out.reserve(declared);`. reserve() sets capacity and nothing else. `>=` differs only when declared == 0, and there it calls out.reserve(0) on an empty QByteArray -- a no-op. `<=` differs whenever declared > 0, and there it merely drops the preallocation and lets append() grow the buffer geometrically instead; the bytes appended, the final size and the value returned are the same either way. declared is QFile::size() on an already-opened regular file, so it is never negative and there is no third case. The only thing either mutant can change is the capacity of a buffer that is about to be filled to exactly the same size -- how many reallocations happen, not what the function returns -- and pinning it would mean asserting on QByteArray::capacity(), which is not part of what the read promises. Accepted deliberately. The sibling guards in the same function do describe real behaviour and were killed with tests rather than accepted here: the up-front cap (`declared > FileHelper::kMaxReadSize`) by a file measuring exactly kMaxReadSize, the mid-read cap (`out.size() + n > FileHelper::kMaxReadSize`) by a file that gains a byte after the size check, and the loop's error (`n < 0`) and EOF (`n == 0`) tests by the existing round-trip reads.  ||  src/MprisMonitor.cpp, in `MprisMonitor::supersedeArt()` (cxx_pre_inc_to_pre_dec), is `++m_artGeneration`. The counter owes each album-art dispatch a value the previous dispatch did not have, and every reader tests it with `!=`, so a quint64 decremented past zero to UINT64_MAX supersedes in-flight art exactly as an increment does. Killing it would mean pinning a direction nothing reads. Accepted deliberately. This entry and the sibling `++m_scanGeneration` in `findActivePlayer()` were both followed from earlier lines when supersedeArt() was extracted -- the baseline keys on line numbers, so an insertion above orphans an entry and re-reports the same mutant as new.  src/backend_scene/src/WPTexImageParser.cpp, in `PrefetchTextures()` (cxx_sub_to_add), is `workers.reserve(worker_count - 1)`. reserve() is a capacity hint with no observable effect; the thread count itself is pinned by the peak-concurrent-opens test, which kills the loop-bound mutants on the next line. Accepted deliberately.  src/backend_scene/src/VulkanRender/CustomShaderPass.cpp, in `CustomShaderPass::prepare()`'s log-and-continue chain (cxx_gt_to_ge, cxx_gt_to_le), is `scene.msaaSamples > 1`, reached only after DepthAliasPathAEligible has already declined the sampled-depth path; the comparison picks which LOG_INFO explains the decline, and every branch continues. The eligibility rule itself is DepthAliasPathAEligible, pinned at 1, 2, 4 and 8 samples. Accepted deliberately. FpsCounter::RegisterFrame() `while (ms > prev && !m_maxMs.compare_exchange_weak(...))` (cxx_gt_to_ge): a non-strict compare only adds an idempotent same-value store when ms == prev; the final maximum, and everything read from it, is identical for every interval sequence.",
+  "_accepted_equivalent": "src/backend_scene/src/WPShaderParser.cpp, in `WPShaderParser::ClearSpvMemo()` (cxx_gt_to_ge, cxx_gt_to_le), is `if (s_memoCompiles > 0)`, and it guards nothing but a LOG_INFO summary. Both mutants only change whether that line is emitted, so no assertion can distinguish them without capturing log output, and contorting a test to do so would pin the logging rather than the behaviour. Accepted deliberately. The two sibling survivors that WERE killed (the include-depth bound `depth >= kMaxIncludeDepth` in `LoadGlslIncludeImpl` and the memo compile counter) are the ones that described real behaviour.  src/backend_scene/src/WPParticleParser.cpp, in `WPParticleParser::genParticleOperatorOp`'s \"angularmovement\" branch (cxx_gt_to_ge), is the drag gate `if (drag > 0.0f)`. `>=` only changes which branch is taken when drag is exactly zero, and there the guarded body computes factor = max(0.0, 1.0 - 0*blend*dt) = 1.0, so MutiplyAngularVelocity(p, 1.0) is the identity on every float value. The only way that factor could come out as anything but 1.0 at drag==0 is a non-finite blend factor or step, and in exactly those cases the operator's own AngularAccelerate(p, force * blend, dt) two lines earlier has already driven angularVelocity to NaN, which absorbs both *1.0 and *0.0 -- so the branch cannot be observed from the outside either way. A non-finite step is not reachable regardless: ParticleSystem clamps frameTime with kMaxParticleFrameTime. Verified empirically as well -- with the mutation applied by hand the whole 3235-case backend_scene_tests suite passes unchanged. The two sibling cxx_mul_to_div mutants on the next line describe real behaviour (blended angular drag) and were killed with tests rather than accepted here.  ||  src/PlaylistManager.cpp, in `PlaylistManager::stepBy(int delta)` (cxx_gt_to_ge), is `const bool forward = delta > 0;`, and the line above it returns on `delta == 0` (`if (m_activeId.isEmpty() || delta == 0) return;`). delta is a plain int, unmodified between the two lines, so at that point the precondition delta != 0 holds and `> 0` and `>= 0` agree for every reachable value -- they differ only at 0. Every downstream branch is driven solely by `forward`, so nothing can observe the difference. Accepted deliberately.  ||  src/backend_scene/src/VulkanRender/SkyboxPass.cpp, in `SkyboxPass::execute()`: the framebuffer-create failure check `res != VK_SUCCESS` (cxx_ne_to_eq) and the null-framebuffer skip `if (framebuffer == nullptr) return;` (cxx_eq_to_ne), which backend_scene_tests never calls -- proven by inserting std::abort() as the function's first statement and watching the whole suite still pass 3257/3257 with exit 0. They survive because the code does not run, not because the behaviour is unpinned, and reaching them needs a live VkDevice plus a compiled render pass, pipeline, mapped dyn_buf, recording command buffer and the push-descriptor extension. Deliberately NOT lifted into a device-free helper: `res != VK_SUCCESS` is the Vulkan API contract, not project policy, and it appears at 42 sites in src/. Extracting this one would create a function whose body is the mutated expression, so the test would restate the wrapper's definition; the mutant would die only because the line moved into a covered translation unit while the branch still never executes.  ||  src/backend_scene/src/Vulkan/include/Vulkan/SwapchainPolicy.hpp, in `chooseSwapchainImageCount()` (cxx_gt_to_ge), is the second comparison in `if (caps.maxImageCount > 0 && wanted > caps.maxImageCount) return caps.maxImageCount;`. `>=` only changes which branch is taken when wanted == caps.maxImageCount, and there the guarded return hands back caps.maxImageCount -- the same number the fall-through `return wanted` would have produced. The one input that separates the two operators produces an identical result, and every other input takes the same path in both, so nothing downstream can observe the difference. Accepted deliberately. The other `>` on that line is NOT equivalent and stays killed by \"a zero maximum means unlimited\": maxImageCount == 0 means no limit, so `>= 0` would clamp the image count to zero. The four inclusive extent bounds in `chooseSwapchainExtent()` were killed with boundary cases (a current extent sitting exactly on minImageExtent or maxImageExtent is a size the driver accepts) rather than accepted here.  ||  src/backend_scene/src/Vulkan/include/Vulkan/TextureCacheDetail.hpp, in `shouldLogUploadFailure()` (cxx_lt_to_le), is the verbose-head test `if (prior_failures < verbose_head) return true;`, where verbose_head is a constexpr 3. `<=` differs only at prior_failures == 3, and there the unmutated fall-through evaluates (3 - 3) % 600 == 0, which is true -- the same answer the mutant returns directly. prior_failures is the only argument and both constants are constexpr locals, so there is no reachable input that separates the two. Accepted deliberately. The subtraction on the next line does describe real behaviour -- the interval is anchored at the end of the verbose head, so the periodic line lands on 603, not 600 -- and was killed with a test.  ||  src/FileHelper.cpp, in `readRegularFileCapped()` (cxx_gt_to_ge, cxx_gt_to_le), is the preallocation hint `if (declared > 0) out.reserve(declared);`. reserve() sets capacity and nothing else. `>=` differs only when declared == 0, and there it calls out.reserve(0) on an empty QByteArray -- a no-op. `<=` differs whenever declared > 0, and there it merely drops the preallocation and lets append() grow the buffer geometrically instead; the bytes appended, the final size and the value returned are the same either way. declared is QFile::size() on an already-opened regular file, so it is never negative and there is no third case. The only thing either mutant can change is the capacity of a buffer that is about to be filled to exactly the same size -- how many reallocations happen, not what the function returns -- and pinning it would mean asserting on QByteArray::capacity(), which is not part of what the read promises. Accepted deliberately. The sibling guards in the same function do describe real behaviour and were killed with tests rather than accepted here: the up-front cap (`declared > FileHelper::kMaxReadSize`) by a file measuring exactly kMaxReadSize, the mid-read cap (`out.size() + n > FileHelper::kMaxReadSize`) by a file that gains a byte after the size check, and the loop's error (`n < 0`) and EOF (`n == 0`) tests by the existing round-trip reads.  ||  src/MprisMonitor.cpp, in `MprisMonitor::supersedeArt()` (cxx_pre_inc_to_pre_dec), is `++m_artGeneration`. The counter owes each album-art dispatch a value the previous dispatch did not have, and every reader tests it with `!=`, so a quint64 decremented past zero to UINT64_MAX supersedes in-flight art exactly as an increment does. Killing it would mean pinning a direction nothing reads. Accepted deliberately. This entry and the sibling `++m_scanGeneration` in `findActivePlayer()` were both followed from earlier lines when supersedeArt() was extracted -- the baseline keys on line numbers, so an insertion above orphans an entry and re-reports the same mutant as new.  src/backend_scene/src/WPTexImageParser.cpp, in `PrefetchTextures()` (cxx_sub_to_add), is `workers.reserve(worker_count - 1)`. reserve() is a capacity hint with no observable effect; the thread count itself is pinned by the peak-concurrent-opens test, which kills the loop-bound mutants on the next line. Accepted deliberately.  src/backend_scene/src/VulkanRender/CustomShaderPass.cpp, in `CustomShaderPass::prepare()`'s log-and-continue chain (cxx_gt_to_ge, cxx_gt_to_le), is `scene.msaaSamples > 1`, reached only after DepthAliasPathAEligible has already declined the sampled-depth path; the comparison picks which LOG_INFO explains the decline, and every branch continues. The eligibility rule itself is DepthAliasPathAEligible, pinned at 1, 2, 4 and 8 samples. Accepted deliberately. FpsCounter::RegisterFrame() `while (ms > prev && !m_maxMs.compare_exchange_weak(...))` (cxx_gt_to_ge): a non-strict compare only adds an idempotent same-value store when ms == prev; the final maximum, and everything read from it, is identical for every interval sequence.  ||  src/backend_scene/src/Particle/ParticleEmitter.cpp, in `EmitScheduler::Next()`'s burst-window gate (cxx_lt_to_le), is `if (batchEmitted < p.batchSize)`. Letting `<=` in only adds the batchEmitted == batchSize case; inside that case `remaining = p.batchSize - batchEmitted` (unmutated here) computes 0, and the sibling clamp `if (emit_num > remaining) emit_num = remaining;` (also unmutated) forces emit_num back to 0 regardless of what GetEmitNum returned, so batchEmitted is left unchanged. The only extra work done is timer accumulating a bit further before the burst window's own reset zeroes it again on the next wrap -- nothing downstream ever reads that difference. Accepted deliberately.  ||  src/backend_scene/src/Particle/ParticleEmitter.cpp, in `EmitScheduler::Next()`'s two \"cap to one particle per frame\" gates -- the burst-mode `if (emit_num > 1) emit_num = 1;` and continuous mode's identical guard a few lines later (cxx_gt_to_ge on both) -- clamping a count already equal to 1 down to 1 assigns the value it already holds, so `>` and `>=` produce the same emit_num for every possible count: below 1 (0), neither fires; at 1, both leave it at 1 (one by skipping, one by a no-op overwrite); above 1, both clamp to 1. No input distinguishes them. Accepted deliberately, both sites, same argument.  ||  src/backend_scene/src/Particle/ParticleEmitter.cpp, in `EmitScheduler::Next()` (cxx_sub_to_add), is `u32 remaining = p.batchSize - batchEmitted;`. Its only read is the next line's `if (emit_num > remaining) emit_num = remaining;`. Reaching this line at all already means the batch-window gate one line up passed, so batchEmitted < p.batchSize strictly and the correct subtraction is always >= 1; emit_num is already capped to at most 1 by the line above that. 1 is never greater than a number >= 1, so the clamp can never fire regardless of what remaining actually equals -- an oversized sum in place of the difference changes remaining's value but not whether anything ever reads it. Accepted deliberately.  ||  src/backend_scene/src/Particle/ParticleEmitter.cpp, in `EmitScheduler::Next()` (cxx_gt_to_ge), is `if (emit_num > remaining) emit_num = remaining;`. Given remaining's floor of 1 and emit_num's ceiling of 1 (shown above), the only way `>=` and `>` can disagree is emit_num == remaining == 1, and clamping 1 to 1 is a no-op either way. Accepted deliberately.  ||  src/backend_scene/src/Particle/include/Particle/ParticleEmitter.h, in `EmitScheduler`'s constructor (cxx_gt_to_ge), is `batchEmitted(p.burstRate > 0 ? p.batchSize : 0u)`. `>=` only disagrees with `>` at burstRate == 0.0f exactly, and `Next()`'s continuous-mode branch -- the one that runs whenever burstRate is not positive -- never reads batchEmitted at all; only the burst branch does, and that branch is unreachable when burstRate <= 0. The starting value this picks is dead in the one case where the two operators differ. Accepted deliberately.  ||  src/backend_scene/src/wpscene/WPImageObject.h, in `collectComposeLinkIdsFromTextures()`'s digit-scan loop bound (cxx_lt_to_le), is `while (ndigits < rest.size() && std::isdigit(...)) ++ndigits;`. `rest` is always `std::string_view(tex).substr(prefix.size())` -- a to-the-end substring, never a bounded one -- so `rest.data() + rest.size()` always equals `tex.data() + tex.size()`. Reading one index past that boundary, which is what `<=` adds, reads exactly `tex[tex.size()]`, which std::string guarantees is the null terminator; isdigit('\\0') is false, so the loop stops in the same place either way. Accepted deliberately.  ||  src/backend_scene/src/wpscene/WPImageObject.h, the same loop's increment (cxx_pre_inc_to_pre_dec), is `++ndigits`. ndigits is a size_t starting at 0, so a single `--` wraps it straight to SIZE_MAX; since SIZE_MAX < rest.size() is always false, the loop body can run at most once under this mutation regardless of how many digits follow. The following `rest.substr(0, ndigits)` clamps an oversized count down to \"rest of the string\", so the mutant always hands `std::stoi` the whole tail instead of just the digit run -- but stoi() itself stops at the first non-digit character, which is exactly the same digit run the correct loop would have measured, so the parsed integer comes out identical either way. (When rest[0] isn't a digit the loop body never runs at all, so the mutation doesn't apply there either.) Accepted deliberately.  ||  src/backend_scene/src/VulkanRender/include/VulkanRender/UniformWriteSize.hpp, in `ClampUniformWriteSize()` (cxx_gt_to_ge), is `valueSize > memberSize ? memberSize : valueSize`. Clamping a value already equal to memberSize down to memberSize is a no-op, so `>=` and `>` return the same size for every input: below memberSize neither clamps, at memberSize both settle on memberSize, above memberSize both clamp. Accepted deliberately.  ||  src/backend_scene/src/wpscene/WPMaterial.cpp, in `MergeOverlayFields()` (cxx_gt_to_ge), is `if (p.textures.size() > textures.size()) textures.resize(p.textures.size());`. Resizing a vector to a length it already has is a no-op (same elements, same size) -- `>` and `>=` only disagree when the two sizes are already equal, and there the \"resize\" changes nothing either way. Accepted deliberately.",
   "_comment": "Surviving mutants accepted as baseline. Run tools/scripts/mutation.sh --refresh-baseline to update; new entries in a non-refresh run fail the gate.",
   "_scope": "Measured from the parent test binaries only. backend_scene_tests is NOT represented: its instrumented warmup takes ~91s and Mull's ceiling was 60s from 2026-06-06 until 2026-09-01, so that target has never once produced a report. The src/backend_scene/ entries here come from parent binaries linking submodule sources (Audio, Utils), not from that target. A future full submodule sweep will therefore surface a large batch of survivors that are first measurements, not regressions -- refresh the baseline from that run rather than treating them as new.  Since 2026-09-04 the parent's own tests/ directory is excluded in tests/mull.yml: Mull had been mutating the test sources themselves and 163 of the entries here sat in tests/*.cpp, which say nothing about the product. Those entries were pruned when the exclude landed.",
   "survivors": [
@@ -927,126 +927,6 @@
       "mutator": "cxx_ne_to_eq"
     },
     {
-      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-      "line": 38,
-      "mutator": "cxx_lt_to_ge",
-      "line_text": "if (mpv_initialize(mpv) < 0) {"
-    },
-    {
-      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-      "line": 38,
-      "mutator": "cxx_lt_to_le",
-      "line_text": "if (mpv_initialize(mpv) < 0) {"
-    },
-    {
-      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-      "line": 69,
-      "mutator": "cxx_lt_to_ge",
-      "line_text": "if (mpv_command(d->mpv, loadcmd) < 0) {"
-    },
-    {
-      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-      "line": 69,
-      "mutator": "cxx_lt_to_le",
-      "line_text": "if (mpv_command(d->mpv, loadcmd) < 0) {"
-    },
-    {
-      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-      "line": 76,
-      "mutator": "cxx_lt_to_ge",
-      "line_text": "for (int i = 0; i < 50 && ! loaded; i++) {"
-    },
-    {
-      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-      "line": 76,
-      "mutator": "cxx_lt_to_le",
-      "line_text": "for (int i = 0; i < 50 && ! loaded; i++) {"
-    },
-    {
-      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-      "line": 76,
-      "mutator": "cxx_post_inc_to_post_dec",
-      "line_text": "for (int i = 0; i < 50 && ! loaded; i++) {"
-    },
-    {
-      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-      "line": 78,
-      "mutator": "cxx_eq_to_ne",
-      "line_text": "if (ev->event_id == MPV_EVENT_FILE_LOADED)"
-    },
-    {
-      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-      "line": 80,
-      "mutator": "cxx_eq_to_ne",
-      "line_text": "else if (ev->event_id == MPV_EVENT_END_FILE) {"
-    },
-    {
-      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-      "line": 93,
-      "mutator": "cxx_lt_to_ge",
-      "line_text": "if (mpv_command(d->mpv, seekcmd) < 0) {"
-    },
-    {
-      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-      "line": 93,
-      "mutator": "cxx_lt_to_le",
-      "line_text": "if (mpv_command(d->mpv, seekcmd) < 0) {"
-    },
-    {
-      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-      "line": 101,
-      "mutator": "cxx_lt_to_ge",
-      "line_text": "for (int i = 0; i < 50 && ! seeked; i++) {"
-    },
-    {
-      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-      "line": 101,
-      "mutator": "cxx_lt_to_le",
-      "line_text": "for (int i = 0; i < 50 && ! seeked; i++) {"
-    },
-    {
-      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-      "line": 101,
-      "mutator": "cxx_post_inc_to_post_dec",
-      "line_text": "for (int i = 0; i < 50 && ! seeked; i++) {"
-    },
-    {
-      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-      "line": 103,
-      "mutator": "cxx_eq_to_ne",
-      "line_text": "if (ev->event_id == MPV_EVENT_PLAYBACK_RESTART)"
-    },
-    {
-      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-      "line": 105,
-      "mutator": "cxx_eq_to_ne",
-      "line_text": "else if (ev->event_id == MPV_EVENT_END_FILE) {"
-    },
-    {
-      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-      "line": 118,
-      "mutator": "cxx_lt_to_ge",
-      "line_text": "if (mpv_command(d->mpv, shotcmd) < 0) {"
-    },
-    {
-      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-      "line": 118,
-      "mutator": "cxx_lt_to_le",
-      "line_text": "if (mpv_command(d->mpv, shotcmd) < 0) {"
-    },
-    {
-      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-      "line": 124,
-      "mutator": "cxx_gt_to_ge",
-      "line_text": "const bool ok = QFileInfo::exists(outPath) && QFileInfo(outPath).size() > 0;"
-    },
-    {
-      "file": "src/backend_mpv/ThumbnailGrabber.cpp",
-      "line": 124,
-      "mutator": "cxx_gt_to_le",
-      "line_text": "const bool ok = QFileInfo::exists(outPath) && QFileInfo(outPath).size() > 0;"
-    },
-    {
       "file": "src/backend_mpv/qthelper.hpp",
       "line": 57,
       "mutator": "cxx_lt_to_ge",
@@ -1618,6 +1498,42 @@
       "mutator": "cxx_pre_inc_to_pre_dec"
     },
     {
+      "file": "src/backend_scene/src/Particle/ParticleEmitter.cpp",
+      "line": 125,
+      "mutator": "cxx_lt_to_le",
+      "line_text": "if (batchEmitted < p.batchSize) {"
+    },
+    {
+      "file": "src/backend_scene/src/Particle/ParticleEmitter.cpp",
+      "line": 129,
+      "mutator": "cxx_gt_to_ge",
+      "line_text": "if (emit_num > 1) emit_num = 1;"
+    },
+    {
+      "file": "src/backend_scene/src/Particle/ParticleEmitter.cpp",
+      "line": 131,
+      "mutator": "cxx_sub_to_add",
+      "line_text": "u32 remaining = p.batchSize - batchEmitted;"
+    },
+    {
+      "file": "src/backend_scene/src/Particle/ParticleEmitter.cpp",
+      "line": 132,
+      "mutator": "cxx_gt_to_ge",
+      "line_text": "if (emit_num > remaining) emit_num = remaining;"
+    },
+    {
+      "file": "src/backend_scene/src/Particle/ParticleEmitter.cpp",
+      "line": 141,
+      "mutator": "cxx_gt_to_ge",
+      "line_text": "if (emit_num > 1) emit_num = 1;"
+    },
+    {
+      "file": "src/backend_scene/src/Particle/include/Particle/ParticleEmitter.h",
+      "line": 181,
+      "mutator": "cxx_gt_to_ge",
+      "line_text": ": batchEmitted(p.burstRate > 0 ? p.batchSize : 0u) {}"
+    },
+    {
       "file": "src/backend_scene/src/Utils/FpsCounter.cpp",
       "line": 77,
       "mutator": "cxx_gt_to_ge",
@@ -1714,6 +1630,12 @@
       "line_text": "if (framebuffer == nullptr) return;"
     },
     {
+      "file": "src/backend_scene/src/VulkanRender/include/VulkanRender/UniformWriteSize.hpp",
+      "line": 29,
+      "mutator": "cxx_gt_to_ge",
+      "line_text": "return valueSize > memberSize ? memberSize : valueSize;"
+    },
+    {
       "file": "src/backend_scene/src/WPParticleParser.cpp",
       "line": 955,
       "mutator": "cxx_gt_to_ge"
@@ -1733,6 +1655,24 @@
       "line": 718,
       "mutator": "cxx_sub_to_add",
       "line_text": "workers.reserve(worker_count - 1);"
+    },
+    {
+      "file": "src/backend_scene/src/wpscene/WPImageObject.h",
+      "line": 191,
+      "mutator": "cxx_lt_to_le",
+      "line_text": "while (ndigits < rest.size() && std::isdigit(static_cast<unsigned char>(rest[ndigits])))"
+    },
+    {
+      "file": "src/backend_scene/src/wpscene/WPImageObject.h",
+      "line": 192,
+      "mutator": "cxx_pre_inc_to_pre_dec",
+      "line_text": "++ndigits;"
+    },
+    {
+      "file": "src/backend_scene/src/wpscene/WPMaterial.cpp",
+      "line": 76,
+      "mutator": "cxx_gt_to_ge",
+      "line_text": "if (p.textures.size() > textures.size()) textures.resize(p.textures.size());"
     }
   ]
 }

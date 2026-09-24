@@ -25,7 +25,7 @@ namespace wekde
 {
 
 PlaylistManager::PlaylistManager(QObject* parent)
-    : QObject(parent), m_listModel(new PlaylistsModel(this)) {
+    : QObject(parent), m_listModel(new PlaylistsModel(this, this)) {
     m_timer.setSingleShot(true);
     QObject::connect(&m_timer, &QTimer::timeout, this, &PlaylistManager::onTimerTick);
     // UI4.1: 250ms debounce around persist(). Interval picked as the spec

@@ -67,6 +67,17 @@ private slots:
         QVERIFY(QFileInfo::exists(path));
     }
 
+    void listModelIsOwnedByTheManager() {
+        // PlaylistsModel's ctor takes (PlaylistManager* mgr, QObject* parent);
+        // the manager's own ctor used to call `new PlaylistsModel(this)`, which
+        // fills the mgr slot and leaves parent defaulted to nullptr. Qt only
+        // auto-deletes children it actually owns, so the model outlived every
+        // manager instance and leaked (caught by the ASAN sanitizer leg).
+        wekde::PlaylistManager mgr;
+        QVERIFY(mgr.playlistsModel() != nullptr);
+        QCOMPARE(mgr.playlistsModel()->parent(), &mgr);
+    }
+
     void createPlaylistPersists() {
         const QString          path = playlistsJsonPath();
         wekde::PlaylistManager mgr;

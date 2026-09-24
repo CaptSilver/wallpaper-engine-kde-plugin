@@ -128,17 +128,20 @@ else
     skip "no display: xvfb-run absent AND no WAYLAND_DISPLAY/DISPLAY"
 fi
 
-# ── 5. build the plain GLFW sceneviewer ───────────────────────────────────────
+# ── 5. build the plain GLFW sceneviewer + the QML sceneviewer-script ─────────
+VIEWER_SCRIPT_BIN="$BUILD_DIR/sceneviewer-script"
 if [[ "$DO_BUILD" == "1" ]]; then
-    step "Build plain sceneviewer (Release, build/impl-oracle)"
+    step "Build sceneviewer + sceneviewer-script (Release, build/impl-oracle, BUILD_QML=ON)"
     CC="${CC:-clang}" CXX="${CXX:-clang++}" \
-        cmake -B "$BUILD_DIR" -S "$VIEWER_DIR" -DCMAKE_BUILD_TYPE=Release \
+        cmake -B "$BUILD_DIR" -S "$VIEWER_DIR" -DBUILD_QML=ON -DCMAKE_BUILD_TYPE=Release \
         || fail "cmake configure failed"
-    cmake --build "$BUILD_DIR" --target sceneviewer -j"$(nproc)" \
-        || fail "sceneviewer build failed"
+    cmake --build "$BUILD_DIR" --target sceneviewer sceneviewer-script -j"$(nproc)" \
+        || fail "sceneviewer/sceneviewer-script build failed"
     ok "sceneviewer built: $VIEWER_BIN"
+    ok "sceneviewer-script built: $VIEWER_SCRIPT_BIN"
 fi
 [[ -x "$VIEWER_BIN" ]] || fail "sceneviewer binary not found ($VIEWER_BIN) — run without --no-build"
+[[ -x "$VIEWER_SCRIPT_BIN" ]] || fail "sceneviewer-script binary not found ($VIEWER_SCRIPT_BIN) — run without --no-build"
 
 # ── 6. render: 3 deterministic frame-exact captures ───────────────────────────
 mkdir -p "$WORK_DIR"
@@ -232,11 +235,100 @@ sys.exit(0 if frac>thresh else 1)
 PY
 ok "motion present — frame@$FRAME_EARLY differs from frame@$FRAME_LATE above threshold"
 
-# ── 9. cleanup ────────────────────────────────────────────────────────────────
+# ── 9. render + assert via sceneviewer-script: non-blank + JS engine alive ────
+# A separate, independently-timed capture rather than folding the JS probe
+# into the frame-exact captures above: --screenshot-at-frame fires on the
+# render thread's own frame counter (independent of wall-clock), while
+# --js-eval-delay is a real wall-clock QTimer.  On a warm SPV cache (exactly
+# what WARM_LATE/WARM_EARLY above exercise) frame 120 can be reached in well
+# under a second, racing a --js-eval-delay tuned for cold-cache shader-compile
+# time.  A dedicated capture removes that race instead of tuning around it.
+PPM_SCRIPT="$WORK_DIR/script_js.ppm"
+JS_LOG="$WORK_DIR/script_js.log"
+rm -f "$PPM_SCRIPT" "$JS_LOG"
+
+JS_MARKER="SMOKE_JS_OK"
+JS_PROBE="console.log('${JS_MARKER} ' + (typeof engine === 'object' && typeof engine.userProperties === 'object'))"
+
+# fantasticcar (the fixture above) has no authored SceneScript either, and
+# qml_helper/SceneBackend.cpp only builds the QJSEngine for a scene that has
+# some (ScriptLoopGate.h's sceneHasAuthorScripts(), gating setupEngineGlobals()
+# at SceneBackend.cpp:2259) -- so `engine` never exists here and the probe
+# above can't evaluate true.  See the matching comment in render-smoke.sh for
+# how this was confirmed (not a --js-eval-delay margin problem: raising the
+# delay to 10s against a scriptless scene never changes the outcome, while
+# the same plumbing completes end-to-end against a real scripted wallpaper).
+# The assertion below accordingly checks that the js-eval dispatch round-
+# tripped at all (SceneObject reachable, debugEvalJs didn't crash or hang),
+# not that the JS evaluated true.
+#
+# Unlike run_viewer above, this does NOT force VK_ICD_FILENAMES to lavapipe.
+# sceneviewer-script's offscreen renderer shares textures between an internal
+# GL context and Vulkan, so it picks its Vulkan device by matching the GL
+# context's device UUID (qml_helper/SceneBackend.cpp's `info.uuid =
+# m_glex.uuid()`, glExtra.cpp).  On a box with a real GPU, the GL context
+# binds to that GPU, so restricting Vulkan to lavapipe-only leaves no
+# matching device and Vulkan init fails outright ("failed to find GPU with
+# vulkan support") — a real Vulkan/GL device mismatch, not a render bug.
+# Leaving VK_ICD_FILENAMES unset lets Vulkan enumerate every ICD the system
+# has (real driver + lavapipe) and pick whichever one actually matches the
+# GL context; on a box with no real GPU, the GL context itself falls back to
+# software and the same match-by-UUID logic lands on lavapipe.  LP_NUM_THREADS
+# still applies (harmless when lavapipe isn't the device actually chosen).
+run_viewer_script() {
+    case "$DISPLAY_MODE" in
+        xvfb)
+            LP_NUM_THREADS=0 \
+            xvfb-run -a -s "-screen 0 1280x720x24" \
+                env -u WAYLAND_DISPLAY \
+                "$VIEWER_SCRIPT_BIN" -R "$RES" --fps 60 --screenshot-frames 60 \
+                    --js-eval "$JS_PROBE" --js-eval-delay 0.3 \
+                    -C "$CACHE_DIR" -S "$PPM_SCRIPT" "$ASSETS" "$FIXTURE" \
+                    >"$JS_LOG" 2>&1
+            ;;
+        wayland)
+            LP_NUM_THREADS=0 \
+                "$VIEWER_SCRIPT_BIN" -R "$RES" --fps 60 --screenshot-frames 60 \
+                    --js-eval "$JS_PROBE" --js-eval-delay 0.3 \
+                    -C "$CACHE_DIR" -S "$PPM_SCRIPT" "$ASSETS" "$FIXTURE" \
+                    >"$JS_LOG" 2>&1
+            ;;
+        x11)
+            LP_NUM_THREADS=0 \
+                env -u WAYLAND_DISPLAY \
+                "$VIEWER_SCRIPT_BIN" -R "$RES" --fps 60 --screenshot-frames 60 \
+                    --js-eval "$JS_PROBE" --js-eval-delay 0.3 \
+                    -C "$CACHE_DIR" -S "$PPM_SCRIPT" "$ASSETS" "$FIXTURE" \
+                    >"$JS_LOG" 2>&1
+            ;;
+    esac
+}
+
+step "Render fixture via sceneviewer-script ($DISPLAY_MODE, $RES)"
+rc=0
+run_viewer_script || rc=$?
+[[ "$rc" -eq 0 ]] || fail "sceneviewer-script exited rc=$rc (check $JS_LOG)"
+ok "sceneviewer-script exited rc=0"
+
+step "Assert: sceneviewer-script framebuffer is non-blank"
+[[ -s "$PPM_SCRIPT" ]] || fail "sceneviewer-script: no PPM written (expected $PPM_SCRIPT)"
+python3 "$REPO_ROOT/tools/scripts/lib/ppm_nonblank.py" "$PPM_SCRIPT" \
+    || fail "sceneviewer-script: framebuffer BLANK or unparseable (render produced no visible content)"
+
+step "Assert: sceneviewer-script JS-eval bridge dispatched (SceneObject reachable)"
+if grep -q "${JS_MARKER} true" "$JS_LOG"; then
+    ok "SceneScript engine responded: ${JS_MARKER} true"
+elif grep -qE '^js-eval: .* -> ' "$JS_LOG"; then
+    ok "js-eval dispatch round-tripped (queued -- fixture has no scripts to evaluate)"
+else
+    fail "sceneviewer-script: js-eval never round-tripped in $JS_LOG (QJSEngine bridge regression -- SceneObject unreachable, or the process crashed/hung before dispatch returned)"
+fi
+
+# ── 10. cleanup ───────────────────────────────────────────────────────────────
 if [[ "$KEEP" == "1" ]]; then
     warn "kept captures under $WORK_DIR"
 else
-    rm -f "$COLD_LATE" "$WARM_LATE" "$WARM_EARLY"
+    rm -f "$COLD_LATE" "$WARM_LATE" "$WARM_EARLY" "$PPM_SCRIPT" "$JS_LOG"
 fi
 
 printf '\n%sRender oracle PASSED (motion + warm==cold).%s\n' "$GREEN" "$RESET"

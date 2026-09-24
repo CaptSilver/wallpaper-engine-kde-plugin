@@ -46,3 +46,20 @@ signals:
 private:
     FakeConfiguration* m_config;
 };
+
+// Builds the FakeContainment/FakeWallpaperItem pair Setup::qmlEngineAvailable
+// installs as the `wallpaper` context property, and gives both an explicit
+// QObject parent. setParentItem() below only wires the QML visual (item-tree)
+// parent -- it is a different relationship from QObject ownership -- and
+// storing `wallpaper` in a QQmlContext property is a QVariant copy, not
+// ownership either. Without an explicit parent both objects outlive the
+// QQmlEngine that briefly referenced them and leak (caught by the ASAN
+// sanitizer leg's parent ctest run).
+inline FakeWallpaperItem* buildOwnedFakeWallpaperTree(QObject* owner) {
+    auto* containment = new FakeContainment();
+    containment->setParent(owner);
+    auto* wallpaper = new FakeWallpaperItem();
+    wallpaper->setParent(owner);
+    wallpaper->setParentItem(containment); // wallpaper.parent -> containment
+    return wallpaper;
+}

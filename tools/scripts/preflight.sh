@@ -329,20 +329,20 @@ if [[ "$MODE" == "sanitize" ]]; then
             # ASAN/UBSAN (and any address/undefined combo).  FATAL: the submodule
             # doctest suites are audited clean under address+undefined (see
             # tools/scripts/lsan.supp for the one confirmed system-library leak
-            # they suppress).  The parent ctest suite is NOT leak-clean, so its
-            # own dbox call below keeps detect_leaks=0 -- scoped to a variable
-            # of its own (parent_asan_opts), never reused for the submodule
-            # suites above.  Two of its 26 targets can't be suppressed by name
-            # the way the mpv leak can: tst_webprofileregistry leaks inside
-            # libQt6WebEngineCore with an allocation LSan can't resolve to any
-            # module or function, so there's no name left to suppress by;
-            # tst_main_integration mixes a first-party test-fixture leak
-            # (FakeContainment/FakeWallpaperItem in tests/qml_integration/
-            # main.cpp, never parented or deleted) with QML engine-lifetime
-            # caching (QQmlPropertyCache, QArrayData) that needs its own audit
-            # to tell benign caching from a real bug. Follow-up work, not
-            # scoped to this leg. Still FATAL on anything the submodule suites
-            # find.
+            # they suppress).  The parent ctest suite now runs under the same
+            # leak detection, reusing ${asan_opts}/${lsan_opts} below instead of
+            # its own process-wide override.  One of its 26 targets still needs
+            # an exclusion: tst_webprofileregistry leaks inside
+            # libQt6WebEngineCore with no allocation frame LSan can resolve
+            # narrowly enough to suppress by name (a live run found nothing
+            # common to every leak block), so it keeps detect_leaks=0 as a
+            # per-test ENVIRONMENT override in tests/CMakeLists.txt instead of
+            # a blanket disable here. tst_main_integration's leak was a real
+            # first-party bug -- FakeContainment/FakeWallpaperItem in
+            # tests/qml_integration/ never got a QObject parent -- and is fixed
+            # (see buildOwnedFakeWallpaperTree() in FakeWallpaper.h). Still
+            # FATAL on anything the submodule suites or the rest of the parent
+            # suite find.
             # Build with BUILD_FUZZERS=OFF so the fuzzers' own
             # -fsanitize=fuzzer,... flags don't double-instrument.
             step "Sanitizer leg (WEK_SANITIZE=${SAN_SPEC}) — FATAL on any finding"
@@ -389,14 +389,13 @@ if [[ "$MODE" == "sanitize" ]]; then
                         -DCMAKE_BUILD_TYPE=Debug \
                   && cmake --build build/impl-asan-main -j\$(nproc)" \
                 || fail "parent-tests sanitizer build failed"
-            # detect_leaks=0 here is a narrower version of the disable this fix
-            # removed above: it applies only to this one dbox call, not the
-            # whole binary, and only because tst_webprofileregistry and
-            # tst_main_integration leak in ways lsan.supp can't name yet (see
-            # the case-arm comment above this block). Heap/UBSAN findings in
-            # this suite still fail the leg.
-            parent_asan_opts="detect_leaks=0:halt_on_error=1:print_stacktrace=1"
-            dbox "ASAN_OPTIONS='${parent_asan_opts}' UBSAN_OPTIONS='${ubsan_opts}' \
+            # Leak detection stays ON here, same as the submodule suites above
+            # -- reuses their ${asan_opts}/${lsan_opts} instead of a
+            # process-wide disable. tst_webprofileregistry alone still opts
+            # out of leak detection, via its own ENVIRONMENT override in
+            # tests/CMakeLists.txt (see the case-arm comment above this
+            # block), so this call site doesn't need to know about it.
+            dbox "ASAN_OPTIONS='${asan_opts}' UBSAN_OPTIONS='${ubsan_opts}' LSAN_OPTIONS='${lsan_opts}' \
                   QT_QPA_PLATFORM=offscreen \
                   ctest --test-dir build/impl-asan-main --output-on-failure" \
                 || fail "parent ctest: sanitizer finding (${SAN_SPEC}) — see log"

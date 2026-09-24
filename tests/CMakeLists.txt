@@ -511,9 +511,16 @@ if(Qt6Gui_FOUND AND Qt6Qml_FOUND AND Qt6WebEngineCore_FOUND AND Qt6WebEngineQuic
     add_test(NAME tst_webprofileregistry COMMAND tst_webprofileregistry -v2)
     # --no-sandbox: Chromium's setuid sandbox helper isn't set up in the
     # distrobox / CI container this runs in. --disable-gpu: offscreen QPA has
-    # no GPU device to hand Chromium anyway.
+    # no GPU device to hand Chromium anyway. ASAN_OPTIONS=detect_leaks=0: this
+    # target leaks inside libQt6WebEngineCore every run -- a live LSan run
+    # found no single stack frame common to every leak block (most bottom out
+    # in unresolved Chromium-internal addresses, the rest are the same
+    # profile-construction path production code uses), so there's no name
+    # narrow enough for tools/scripts/lsan.supp the way the mpv leak is
+    # suppressed. Scoped to this one test via CTest's ENVIRONMENT property,
+    # not a process-wide disable in tools/scripts/preflight.sh.
     set_tests_properties(tst_webprofileregistry PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu"
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu;ASAN_OPTIONS=detect_leaks=0:halt_on_error=1:print_stacktrace=1"
         TIMEOUT 120)
 else()
     message(STATUS "Qt6Gui / Qt6Qml / Qt6WebEngineCore / Qt6WebEngineQuick not found — skipping tst_webprofileregistry")
@@ -949,6 +956,20 @@ if(Qt6QuickTest_FOUND AND Qt6Qml_FOUND AND Qt6Quick_FOUND)
     add_test(NAME tst_main_integration COMMAND tst_main_integration)
     set_tests_properties(tst_main_integration PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    add_executable(tst_fakewallpaper_ownership
+        qml_integration/tst_fakewallpaper_ownership.cpp
+        qml_integration/FakeWallpaper.h
+        "${_e2e_gen_hdr}")
+    set_target_properties(tst_fakewallpaper_ownership PROPERTIES AUTOMOC ON)
+    target_include_directories(tst_fakewallpaper_ownership PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/qml_integration"
+        "${_e2e_gen_dir}")
+    target_link_libraries(tst_fakewallpaper_ownership PRIVATE
+        Qt6::Test Qt6::Qml Qt6::Quick)
+    add_test(NAME tst_fakewallpaper_ownership COMMAND tst_fakewallpaper_ownership -v2)
+    set_tests_properties(tst_fakewallpaper_ownership PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 else()
     message(STATUS "Qt6QuickTest not found — skipping tst_main_integration (Phase 3)")
 endif()
@@ -993,7 +1014,7 @@ set_tests_properties(test_po_messages_scope PROPERTIES SKIP_RETURN_CODE 77)
 set(_wek_all_test_targets
     tst_filehelper tst_plugininfo tst_mpriscolors tst_mousegrabber tst_mpvbackend
     tst_thumbnail_grabber tst_webaudio tst_activityhelper
-    tst_playlist_manager tst_main_integration tst_ttyswitchmonitor
+    tst_playlist_manager tst_main_integration tst_fakewallpaper_ownership tst_ttyswitchmonitor
     tst_safewallpaperbridge tst_safewallpaperbridgecontroller tst_weburlinterceptor
     tst_webprofileregistry tst_qmlcachepurge
     tst_screensavermonitor

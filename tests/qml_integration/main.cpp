@@ -19,9 +19,7 @@ public slots:
         engine->addImportPath(repo + "/tests/qml/_stubs");
         engine->addImportPath(repo + "/tests/qml");
 
-        auto* containment = new FakeContainment();
-        auto* wallpaper   = new FakeWallpaperItem();
-        wallpaper->setParentItem(containment); // wallpaper.parent -> containment
+        auto* wallpaper = buildOwnedFakeWallpaperTree(engine);
 
         // Test-friendly overrides differing from main.xml defaults.
         wallpaper->config()->setProperty("MouseInput", false); // avoid 2s hookTimer tree-dump

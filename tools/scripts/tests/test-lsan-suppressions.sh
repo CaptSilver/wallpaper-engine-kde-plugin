@@ -7,14 +7,18 @@
 # only ever meant to cover the parsers' long-lived caches. The fix replaced
 # the blanket disable with a suppressions file scoped to the one leak that's
 # actually been seen, for the submodule doctest suites. The standalone leg's
-# parent-ctest call site is a deliberate, narrower exception: it still
-# disables leak detection, but in its own variable, for two named targets
-# that can't be suppressed by name yet, not process-wide for everything.
-# Losing any of that -- detect_leaks=0 creeping back into the submodule
-# suites, a call site missing LSAN_OPTIONS, or the parent-ctest exception
+# parent-ctest call site used to keep its own process-wide detect_leaks=0 for
+# two targets that couldn't be suppressed by name; one of those (tst_main_
+# integration) got a real ownership fix, and the exclusion for the other
+# (tst_webprofileregistry, leaking inside libQt6WebEngineCore with no frame
+# narrow enough to suppress by name) moved out of preflight.sh entirely, into
+# a per-test ENVIRONMENT override in tests/CMakeLists.txt -- so every other
+# parent-ctest target now runs under the same leak detection as the
+# submodule suites. Losing any of that -- detect_leaks=0 creeping back
+# process-wide, a call site missing LSAN_OPTIONS, or the per-test override
 # losing its scoping or its named reason -- would silently reopen the gap
-# this file exists to close. No cmake, no build: it reads preflight.sh's own
-# text.
+# this file exists to close. No cmake, no build: it reads preflight.sh's and
+# tests/CMakeLists.txt's own text.
 #
 #   tools/scripts/tests/test-lsan-suppressions.sh
 #
@@ -25,6 +29,7 @@ set -uo pipefail
 REAL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 PREFLIGHT="$REAL_ROOT/tools/scripts/preflight.sh"
 LSAN_SUPP="$REAL_ROOT/tools/scripts/lsan.supp"
+TESTS_CMAKE="$REAL_ROOT/tests/CMakeLists.txt"
 PASS=0
 FAIL=0
 
@@ -44,20 +49,29 @@ check() {  # check <name> <0-or-1> <detail-on-fail>
 
 echo "== LSan suppressions self-test =="
 
-# 1. The blanket disable must be gone from both sanitizer legs' ASAN_OPTIONS
-#    strings. Reintroducing "detect_leaks=0" on either turns leak detection
-#    back off for the whole binary, silently, the exact regression this item
-#    closes.
-hits="$(grep -nE '(^|[^_])(asan_opts|gate_asan_opts)="detect_leaks=0' "$PREFLIGHT" || true)"
+# 1. The blanket disable must be gone from every sanitizer-leg ASAN_OPTIONS
+#    assignment in preflight.sh, including the parent-ctest call site's old
+#    dedicated variable (now deleted). Reintroducing "detect_leaks=0" here,
+#    process-wide or on a leftover parent_asan_opts, turns leak detection
+#    back off silently -- the exact regression this item closes.
+hits="$(grep -nE '(^|[^_])(asan_opts|gate_asan_opts|parent_asan_opts)="detect_leaks=0' "$PREFLIGHT" || true)"
 ok=1; [[ -z "$hits" ]] || ok=0
-check "detect_leaks_is_gone_from_both_asan_opts_assignments" "$ok" "still present: $hits"
+check "detect_leaks_is_gone_from_every_asan_opts_assignment" "$ok" "still present: $hits"
 
-# 2. Every submodule-suite ASAN_OPTIONS call site (the ones reading
+leftover="$(grep -n 'parent_asan_opts' "$PREFLIGHT" || true)"
+ok=1; [[ -z "$leftover" ]] || ok=0
+check "parent_asan_opts_variable_no_longer_exists" "$ok" "still present: $leftover"
+
+# 2. Every parent-suite-or-submodule ASAN_OPTIONS call site (the ones reading
 #    ${asan_opts} or ${gate_asan_opts}) must also carry LSAN_OPTIONS on the
-#    same line -- a partial edit that drops it from one of the four (or a
-#    fifth site added later without it) would run that leg with LSan on but
+#    same line -- a partial edit that drops it from one of the five (or a
+#    sixth site added later without it) would run that leg with LSan on but
 #    unsuppressed, silently diverging from the others. The parent-ctest call
-#    site is deliberately not one of these four -- see check 3.
+#    site now reuses ${asan_opts}/${lsan_opts} like the submodule suites
+#    instead of keeping a dedicated variable, so it counts as one of these
+#    five, not a separate exception -- the one remaining excluded target
+#    (tst_webprofileregistry) is handled by check 3 instead, as a per-test
+#    CMake override rather than a call-site-wide disable.
 mapfile -t asan_lines < <(
     grep -nF "ASAN_OPTIONS='\${asan_opts}'" "$PREFLIGHT"
     grep -nF "ASAN_OPTIONS='\${gate_asan_opts}'" "$PREFLIGHT"
@@ -66,30 +80,31 @@ ok=1; missing=""
 for line in "${asan_lines[@]}"; do
     [[ "$line" == *"LSAN_OPTIONS="* ]] || { ok=0; missing+="$line"$'\n'; }
 done
-[[ "${#asan_lines[@]}" -eq 4 ]] || ok=0
-check "lsan_options_present_at_every_submodule_ASAN_OPTIONS_call_site (${#asan_lines[@]} found, want 4)" "$ok" \
+[[ "${#asan_lines[@]}" -eq 5 ]] || ok=0
+check "lsan_options_present_at_every_ASAN_OPTIONS_call_site (${#asan_lines[@]} found, want 5)" "$ok" \
     "missing LSAN_OPTIONS: $missing"
 
-# 3. The parent-ctest call site is the one deliberate exception: two of its
-#    26 targets (tst_webprofileregistry, tst_main_integration) leak in ways
-#    that can't be suppressed by name the way the mpv leak can -- one leaks
-#    inside libQt6WebEngineCore with no allocation frame LSan can resolve to a
-#    module or function, the other mixes a fixable first-party fixture leak
-#    with QML engine-lifetime state that needs its own audit. Until that
-#    follow-up work lands, this one call site keeps detect_leaks=0 -- but in
-#    its own variable (parent_asan_opts), never reused for the submodule
-#    suites, and named in a nearby comment so a future reader can tell "still
-#    needed" from "leftover copy-paste."
-block="$(awk '/ASAN\/UBSAN \(and any address\/undefined combo\)/,/Sanitizer leg passed/' "$PREFLIGHT")"
+# 3. tst_webprofileregistry is the one remaining exception: it leaks inside
+#    libQt6WebEngineCore, and a live LSan run found no single stack frame
+#    common to every leak block (most bottom out in unresolved Chromium-
+#    internal addresses), so there's no name narrow enough for lsan.supp the
+#    way the mpv leak is suppressed. Unlike the old parent_asan_opts variable,
+#    this exclusion now lives as a per-test ENVIRONMENT override in
+#    tests/CMakeLists.txt, scoped to this one target -- every other
+#    parent-ctest target runs with leak detection on by default (check 2).
+block="$(awk '/set_tests_properties\(tst_webprofileregistry/,/\)/' "$TESTS_CMAKE")"
+comment="$(grep -B8 'set_tests_properties(tst_webprofileregistry' "$TESTS_CMAKE" || true)"
 ok=1; detail=""
-if [[ -z "$block" ]]; then
-    ok=0; detail="couldn't find the --sanitize= case-arm block in $PREFLIGHT"
-elif ! grep -q 'parent_asan_opts="detect_leaks=0' <<<"$block"; then
-    ok=0; detail="parent_asan_opts=\"detect_leaks=0...\" not found in the case-arm block"
-elif ! grep -q 'tst_webprofileregistry' <<<"$block" || ! grep -q 'tst_main_integration' <<<"$block"; then
-    ok=0; detail="case-arm comment doesn't name both open targets (tst_webprofileregistry, tst_main_integration)"
+if [[ ! -f "$TESTS_CMAKE" ]]; then
+    ok=0; detail="$TESTS_CMAKE does not exist"
+elif [[ -z "$block" ]]; then
+    ok=0; detail="couldn't find set_tests_properties(tst_webprofileregistry ...) in $TESTS_CMAKE"
+elif ! grep -q 'ASAN_OPTIONS=.*detect_leaks=0' <<<"$block"; then
+    ok=0; detail="tst_webprofileregistry's ENVIRONMENT string doesn't set ASAN_OPTIONS=...detect_leaks=0"
+elif ! grep -qi 'leak' <<<"$comment"; then
+    ok=0; detail="no nearby comment names the leak reason for tst_webprofileregistry's override"
 fi
-check "parent_ctest_call_site_keeps_a_scoped_detect_leaks_with_named_reason" "$ok" "$detail"
+check "tst_webprofileregistry_keeps_a_scoped_cmake_override_with_named_reason" "$ok" "$detail"
 
 # 4. The suppressions file must exist and carry exactly the one entry verified
 #    against a live LSan run -- not empty (suppresses nothing, reintroduces

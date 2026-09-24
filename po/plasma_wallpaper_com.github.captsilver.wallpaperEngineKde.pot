@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: wallpaper-engine-kde-plugin\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-22 19:43-0500\n"
+"POT-Creation-Date: 2026-09-24 03:06-0500\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1520,6 +1520,54 @@ msgstr ""
 #, kde-format
 msgctxt "@action shortcut label"
 msgid "Open wallpaper library (configuration dialog)"
+msgstr ""
+
+#: ../src/WekDiagnostics.cpp:29
+#, kde-format
+msgctxt "@info diagnostic error, %1=cache directory"
+msgid "Failed to create cache dir: %1"
+msgstr ""
+
+#: ../src/WekDiagnostics.cpp:72
+#, kde-format
+msgctxt "@info diagnostic error, %1=destination url"
+msgid "Destination is not a local file: %1"
+msgstr ""
+
+#: ../src/WekDiagnostics.cpp:79
+#, kde-format
+msgctxt "@info diagnostic error, %1=bundle path"
+msgid "Bundle no longer exists: %1"
+msgstr ""
+
+#: ../src/WekDiagnostics.cpp:87
+#, kde-format
+msgctxt "@info diagnostic error, %1=destination path"
+msgid "Could not replace existing file: %1"
+msgstr ""
+
+#: ../src/WekDiagnostics.cpp:94
+#, kde-format
+msgctxt "@info diagnostic error, %1=destination path, %2=reason"
+msgid "Could not write %1: %2"
+msgstr ""
+
+#: ../src/WekDiagnostics.cpp:284
+#, kde-format
+msgctxt "@info diagnostic error, %1=temp directory"
+msgid "Failed to create temp dir: %1"
+msgstr ""
+
+#: ../src/WekDiagnostics.cpp:291
+#, kde-format
+msgctxt "@info diagnostic error, %1=staging file path"
+msgid "Failed to write staging file: %1"
+msgstr ""
+
+#: ../src/WekDiagnostics.cpp:306
+#, kde-format
+msgctxt "@info diagnostic error, %1=tar exit code, %2=stderr"
+msgid "tar failed: exitCode=%1, stderr=%2"
 msgstr ""
 
 #: ../data/wek.notifyrc:7

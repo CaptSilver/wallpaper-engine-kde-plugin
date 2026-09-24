@@ -1072,6 +1072,19 @@ private slots:
         QCOMPARE(result["folder"].toString(), d.filePath("fallback"));
     }
 
+    void getFolderList_fallbackStripsFileUrlPrefix() {
+        QTemporaryDir d;
+        QDir(d.path()).mkdir("fallback");
+
+        FileHelper  helper;
+        QVariantMap opts;
+        opts["fallbacks"] = QStringList { "file://" + d.filePath("fallback") };
+
+        QVariantMap result = helper.getFolderList("/tmp/wekde_test_nodir_xyz", opts);
+        QVERIFY(! result.isEmpty());
+        QCOMPARE(result["folder"].toString(), d.filePath("fallback"));
+    }
+
     void getFolderList_firstValidFallbackChosen() {
         QTemporaryDir d;
         QDir(d.path()).mkdir("second");
@@ -2519,6 +2532,12 @@ private slots:
         QTemporaryDir outside;
         QVERIFY(outside.isValid());
         QVERIFY(writeBytes(outside.path() + "/x.jpg", 100));
+        // The warning is logged inside sweepCacheQuota (three frames below
+        // the enforceCacheQuota* entry points) -- name that function, not a
+        // caller, so a journal reader can find where it actually fired.
+        QTest::ignoreMessage(
+            QtWarningMsg,
+            QRegularExpression("FileHelper::sweepCacheQuota refused root outside cache"));
         // /tmp is outside QStandardPaths::CacheLocation; nothing freed.
         QCOMPARE(fh.enforceCacheQuotaForce({ outside.path() }, 1), qint64 { 0 });
         QVERIFY(QFile::exists(outside.path() + "/x.jpg"));

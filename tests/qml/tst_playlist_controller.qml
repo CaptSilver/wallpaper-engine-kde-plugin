@@ -170,16 +170,13 @@ TestCase {
         });
         verify(freshCtrl !== null);
         compare(freshCtrl.userPaused, true);
-        // Not asserting an exact call count: activePlaylistIdRead's own
-        // static-binding evaluation independently fires
+        // activePlaylistIdRead's own static-binding evaluation fires
         // onActivePlaylistIdReadChanged before Component.onCompleted even
-        // runs, so mgr.activate() legitimately fires more than once here
-        // (a separate, pre-existing redundancy — see the task report's
-        // Extras). What this test cares about is the end state: did the
-        // startup path actually activate a playlist, and did the pause
-        // seed actually stop it ticking.
-        verify(freshCtrl.manager.activateCount >= 1,
-               "startup never activated the persisted playlist at all");
+        // runs; Component.onCompleted's own re-activate branch is guarded
+        // against redoing that work, so a persisted playlist is activated
+        // exactly once on startup, not once per handler.
+        compare(freshCtrl.manager.activateCount, 1,
+                "startup must activate the persisted playlist exactly once");
         compare(freshCtrl.manager.timerActive, false,
                 "playlist rotation kept running under a restored pause");
         freshCtrl.destroy();

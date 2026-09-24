@@ -1,4 +1,5 @@
 #include <QtTest>
+#include <KLocalizedString>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -233,6 +234,52 @@ WallpaperWorkShopId=1234567
         QVERIFY2(bundlePath.isEmpty(), "saveBundle must fail when its cache dir cannot be created");
         QVERIFY2(! diag.lastError().isEmpty(), "a failed saveBundle must leave a reason behind");
         QVERIFY2(diag.lastError().contains(QStringLiteral("cache dir")),
+                 qPrintable(diag.lastError()));
+    }
+
+    void testLastErrorRoutesThroughTranslationDomain() {
+        // Proves the i18nc() call inside WekDiagnostics.cpp actually resolves
+        // through TRANSLATION_DOMAIN to a real catalog, not just that it
+        // compiles -- same shape as tst_wekshortcuts.cpp's
+        // wrappedLabels_respectTranslationDomain. "xx" only exists for this
+        // fixture; no real system ships an "xx" catalog to collide with it.
+        const QString moPath = QStringLiteral(
+            WEK_DIAG_TEST_I18N_LOCALE_DIR
+            "/xx/LC_MESSAGES/plasma_wallpaper_com.github.captsilver.wallpaperEngineKde.mo");
+        QVERIFY2(QFileInfo::exists(moPath),
+                 qPrintable(QStringLiteral("fixture .mo missing at ") + moPath +
+                            QStringLiteral(" -- msgfmt build step failed")));
+
+        KLocalizedString::addDomainLocaleDir(
+            QByteArrayLiteral("plasma_wallpaper_com.github.captsilver.wallpaperEngineKde"),
+            QStringLiteral(WEK_DIAG_TEST_I18N_LOCALE_DIR));
+        KLocalizedString::setLanguages({ QStringLiteral("xx") });
+
+        // Same forced-failure setup as testSaveBundleReportsCacheDirCreateFailure:
+        // a regular file sitting where the cache dir needs to be created
+        // blocks mkpath(), driving m_lastError's "Failed to create cache
+        // dir: %1" path.
+        QTemporaryDir isolatedHome;
+        QVERIFY(isolatedHome.isValid());
+        const auto qttestDir = isolatedHome.path() + QStringLiteral("/.qttest");
+        QVERIFY(QDir().mkpath(qttestDir));
+        {
+            QFile blocker(qttestDir + QStringLiteral("/cache"));
+            QVERIFY(blocker.open(QIODevice::WriteOnly));
+            blocker.write("not a directory");
+        }
+
+        const auto savedHome = qgetenv("HOME");
+        qputenv("HOME", isolatedHome.path().toLocal8Bit());
+
+        WekDiagnostics diag;
+        const auto     bundlePath = diag.saveBundle();
+
+        qputenv("HOME", savedHome);
+        KLocalizedString::clearLanguages();
+
+        QVERIFY2(bundlePath.isEmpty(), "saveBundle must fail when its cache dir cannot be created");
+        QVERIFY2(diag.lastError().contains(QStringLiteral("MARKER-TRANSLATED-CACHEDIR")),
                  qPrintable(diag.lastError()));
     }
 

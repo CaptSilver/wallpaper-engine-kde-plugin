@@ -332,8 +332,20 @@ Item {
     // requiring a manual Refresh click. One watcher per library (not per
     // wallpaper subdir) keeps the inotify slot budget under any reasonable
     // /proc/sys/fs/inotify/max_user_watches ceiling.
+    // Set once pyext turns out missing/malformed, so _attachWatchers()'s
+    // guard below warns only the first time -- workshopDirs/loadEnabled
+    // changes call this repeatedly, and every call hits the same gap.
+    property bool _pyextMissingWarned: false
+
     function _attachWatchers() {
-        if (! Boolean(pyext) || typeof pyext.unwatch_all_wallpaper_dirs !== "function") return;
+        if (! Boolean(pyext) || typeof pyext.unwatch_all_wallpaper_dirs !== "function") {
+            if (! root._pyextMissingWarned) {
+                root._pyextMissingWarned = true;
+                console.warn("WallpaperListModel: pyext missing or lacks watch/unwatch support " +
+                              "— directory-change auto-refresh disabled");
+            }
+            return;
+        }
         pyext.unwatch_all_wallpaper_dirs();
         // A model that isn't scanning holds no watchers. config.qml binds
         // workshopDirs to getProjectDirs(cfg_SteamLibraryPath); with no Steam

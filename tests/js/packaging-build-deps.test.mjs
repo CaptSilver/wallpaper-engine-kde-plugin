@@ -228,15 +228,14 @@ test("tst_activityhelper's live-Consumer case compiles wherever the standalone t
     assert.deepEqual(missing, [], missing.join('\n  '));
 });
 
-// The Plasma::Activities gate is duplicated between the plugin target
-// (src/CMakeLists.txt) and the standalone test target (tests/CMakeLists.txt) --
-// same find_package/if(TARGET) shape, each defining WEK_HAS_PLASMA_ACTIVITIES on
-// its own target. Extracts one gate block by scanning from a line that must occur
-// exactly once in the file (enforced below, so a second matching line added later
-// fails loudly instead of silently grabbing the wrong block) through the next bare
-// `endif()` line -- neither gate nests another `if`, confirmed by reading both
-// blocks directly.
-function activitiesGateBlock(relPath, openLineRe) {
+// Several CMake if/else gates print a message(STATUS ...) on only one branch,
+// leaving a configure log with no positive signal for the other outcome.
+// Extracts one gate block by scanning from a line that must occur exactly
+// once in the file (enforced below, so a second matching line added later
+// fails loudly instead of silently grabbing the wrong block) through the next
+// bare `endif()` line -- none of the gates checked below nest another `if`,
+// confirmed by reading each block directly.
+function cmakeGateBlock(relPath, openLineRe) {
     const lines = readFileSync(join(repoRoot, relPath), 'utf8').split('\n');
     const opens = lines.filter((l) => openLineRe.test(l)).length;
     assert.equal(opens, 1, `${relPath}: expected exactly one line matching ${openLineRe}, found ${opens}`);
@@ -248,8 +247,8 @@ function activitiesGateBlock(relPath, openLineRe) {
 
 test("tests/CMakeLists.txt's Plasma::Activities gate is missing the enabled/disabled STATUS pair src/CMakeLists.txt's has", () => {
     const statusRe = /message\(STATUS "Live per-Activity source \(KActivities::Consumer\):/g;
-    const srcBlock = activitiesGateBlock('src/CMakeLists.txt', /^if\(TARGET Plasma::Activities\)$/);
-    const testsBlock = activitiesGateBlock('tests/CMakeLists.txt', /^find_package\(PlasmaActivities QUIET\)$/);
+    const srcBlock = cmakeGateBlock('src/CMakeLists.txt', /^if\(TARGET Plasma::Activities\)$/);
+    const testsBlock = cmakeGateBlock('tests/CMakeLists.txt', /^find_package\(PlasmaActivities QUIET\)$/);
     const srcCount = (srcBlock.match(statusRe) || []).length;
     const testsCount = (testsBlock.match(statusRe) || []).length;
     assert.equal(
@@ -264,4 +263,11 @@ test("tests/CMakeLists.txt's Plasma::Activities gate is missing the enabled/disa
             `(found ${testsCount}) -- a tests-only configure has no way to tell whether ` +
             'WEK_HAS_PLASMA_ACTIVITIES was actually defined',
     );
+});
+
+test("tests/CMakeLists.txt's FHMPV_FOUND gate is missing the enabled-branch STATUS line", () => {
+    const statusRe = /message\(STATUS "libmpv (found|not found)/g;
+    const block = cmakeGateBlock('tests/CMakeLists.txt', /^if\(FHMPV_FOUND\)$/);
+    const count = (block.match(statusRe) || []).length;
+    assert.equal(count, 2, `expected one "libmpv found" + one "libmpv not found" STATUS line, found ${count}`);
 });

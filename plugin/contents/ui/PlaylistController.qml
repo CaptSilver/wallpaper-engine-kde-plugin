@@ -391,8 +391,13 @@ Item {
         if (root.randomizeWallpaperRead && !root.activePlaylistIdRead) {
             mgr.setFilteredLibraryIntervalMin(root.switchTimerRead || 15);
             mgr.activate(Common.filteredLibraryId);
-        } else if (root.activePlaylistIdRead) {
+        } else if (root.activePlaylistIdRead && root.activePlaylistIdRead !== mgr.activePlaylistId) {
             // Re-activate previously-active playlist on plasmashell startup.
+            // The condition mirrors onActivePlaylistIdReadChanged's own
+            // early-return: activePlaylistIdRead is a static declarative
+            // binding, so its initial evaluation already fired that handler
+            // (and already called mgr.activate()) before this runs — doing
+            // it again here would activate the same playlist twice.
             if (root.activePlaylistIdRead === Common.filteredLibraryId)
                 mgr.setFilteredLibraryIntervalMin(root.switchTimerRead || 15);
             mgr.activate(root.activePlaylistIdRead);

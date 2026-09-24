@@ -68,8 +68,9 @@ check() {
     fi
 }
 
-check "WekNotifier string reaches the pot"  'msgid "Wallpaper could not be loaded"'   1
-check "WekShortcuts string reaches the pot" 'msgid "Next wallpaper in playlist"'      1
+check "WekNotifier string reaches the pot"    'msgid "Wallpaper could not be loaded"'      1
+check "WekShortcuts string reaches the pot"   'msgid "Next wallpaper in playlist"'         1
+check "WekDiagnostics string reaches the pot" 'msgid "Failed to create cache dir: %1"'     1
 # "Wallpaper failed to load" (the more obvious pick, [Event/wallpaperLoadFailed]'s
 # Name=) is NOT usable here: plugin/contents/ui/backend/InfoShow.qml:53 already
 # wraps that exact same English text for an unrelated purpose, so it's in the

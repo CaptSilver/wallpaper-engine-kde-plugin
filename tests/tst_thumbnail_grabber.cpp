@@ -10,7 +10,9 @@
 #include <QTemporaryDir>
 #include <clocale>
 #include <vector>
+#include <mpv/client.h>
 #include "ThumbnailGrabber.hpp"
+#include "ThumbnailGrabberOptions.hpp"
 #include "FileHelper.hpp"
 
 using wekde::FileHelper;
@@ -311,6 +313,24 @@ private slots:
         if (! ok) QSKIP("libmpv could not init or seek in this environment");
         // The 12 sites all emit substrings starting with "ThumbnailGrabber:".
         QVERIFY(! sinkContains("ThumbnailGrabber:"));
+    }
+
+    void applyMpvOption_logsAndReturnsFalseOnUnknownOption() {
+        mpv_handle* mpv = mpv_create();
+        QVERIFY(mpv);
+        const bool ok = wekde::applyMpvOption(mpv, "not-a-real-mpv-option-xyz", "1");
+        QVERIFY(! ok);
+        QVERIFY(sinkContains("not-a-real-mpv-option-xyz"));
+        mpv_destroy(mpv);
+    }
+
+    void applyMpvOption_silentOnKnownGoodOption() {
+        mpv_handle* mpv = mpv_create();
+        QVERIFY(mpv);
+        const bool ok = wekde::applyMpvOption(mpv, "vo", "null");
+        QVERIFY(ok);
+        QVERIFY(! sinkContains("ThumbnailGrabber:"));
+        mpv_destroy(mpv);
     }
 };
 

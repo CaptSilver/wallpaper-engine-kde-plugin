@@ -65,7 +65,7 @@ TestCase {
 
     PluginUi.WallpaperListModel {
         id: wpModel
-        enabled: true   // required: filterStrChanged is gated on enabled
+        loadEnabled: true   // filterStrChanged's refresh handler is gated on loadEnabled (see WallpaperListModel.qml); already the default, kept explicit for readability, matching tst_wallpaperlistmodel_watch.qml
         workshopDirs: ["/wp"]
         globalConfigPath: "/wp/global.json"
         readfile: tc._readfileFor

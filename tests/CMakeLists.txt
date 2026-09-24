@@ -68,6 +68,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(FHMPV mpv)
 
 if(FHMPV_FOUND)
+    message(STATUS "libmpv found — building tst_filehelper with thumbnail support (WEKDE_HAS_MPV)")
     add_executable(tst_filehelper
         tst_filehelper.cpp
         ${WEKDE_SRC_DIR}/FileHelper.cpp
@@ -606,17 +607,48 @@ else()
 endif()
 
 # ── WekDiagnostics unit tests ─────────────────────────────────────────────────
-# Pure Qt6 Core+Test — no KF6 deps.  Exercises bundle composition, home-path
-# redaction, KConfig path-field redaction, lastError contract, and non-crash
-# on missing system tools (lspci / lsmod stripped distrobox).  WEK_VERSION=
-# "testbuild" supplies the macro that collectPluginVersion expands at compile.
+# Exercises bundle composition, home-path redaction, KConfig path-field
+# redaction, lastError contract (including that it routes through the i18n
+# catalog), and non-crash on missing system tools (lspci / lsmod stripped
+# distrobox).  WEK_VERSION="testbuild" supplies the macro that
+# collectPluginVersion expands at compile.
+#
+# Planted translation catalog for the lastError()-catalog test: proves
+# i18nc() in the *production* WekDiagnostics.cpp translation unit actually
+# routes through TRANSLATION_DOMAIN to a real catalog, not just that the code
+# compiles.  A dedicated fixture rather than tst_wekshortcuts.cpp's
+# wek_i18n_test_fixture below — that one is gated behind
+# KF6GlobalAccel_FOUND AND KF6CoreAddons_FOUND AND KF6XmlGui_FOUND AND
+# Qt6Gui_FOUND, none of which tst_wekdiagnostics needs or has.
+set(_diag_i18n_fixture_dir "${CMAKE_CURRENT_BINARY_DIR}/diag_i18n_test_fixture")
+set(_diag_i18n_fixture_po "${CMAKE_CURRENT_BINARY_DIR}/diag_i18n_test_fixture.po")
+set(_diag_i18n_fixture_mo "${_diag_i18n_fixture_dir}/xx/LC_MESSAGES/${WEK_TRANSLATION_DOMAIN}.mo")
+file(WRITE "${_diag_i18n_fixture_po}" "msgid \"\"
+msgstr \"\"
+\"Content-Type: text/plain; charset=UTF-8\\n\"
+
+msgctxt \"@info diagnostic error, %1=cache directory\"
+msgid \"Failed to create cache dir: %1\"
+msgstr \"MARKER-TRANSLATED-CACHEDIR: %1\"
+")
+add_custom_command(OUTPUT "${_diag_i18n_fixture_mo}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${_diag_i18n_fixture_dir}/xx/LC_MESSAGES"
+    COMMAND ${MSGFMT_EXECUTABLE} "${_diag_i18n_fixture_po}" -o "${_diag_i18n_fixture_mo}"
+    DEPENDS "${_diag_i18n_fixture_po}"
+    VERBATIM)
+add_custom_target(wek_diag_i18n_test_fixture DEPENDS "${_diag_i18n_fixture_mo}")
+
 add_executable(tst_wekdiagnostics
     tst_wekdiagnostics.cpp
     ${WEKDE_SRC_DIR}/WekDiagnostics.cpp)
+add_dependencies(tst_wekdiagnostics wek_diag_i18n_test_fixture)
 target_include_directories(tst_wekdiagnostics PRIVATE ${WEKDE_SRC_DIR}
     ${WEKDE_RENDERER_HEADER_DIRS})
-target_link_libraries(tst_wekdiagnostics PRIVATE Qt6::Test Qt6::Core)
-target_compile_definitions(tst_wekdiagnostics PRIVATE WEK_VERSION="testbuild")
+target_link_libraries(tst_wekdiagnostics PRIVATE Qt6::Test Qt6::Core KF6::I18n)
+target_compile_definitions(tst_wekdiagnostics PRIVATE
+    WEK_VERSION="testbuild"
+    WEK_DIAG_TEST_I18N_LOCALE_DIR="${_diag_i18n_fixture_dir}"
+    TRANSLATION_DOMAIN="${WEK_TRANSLATION_DOMAIN}")
 if(COVERAGE)
     target_compile_options(tst_wekdiagnostics PRIVATE ${_cov_compile_flags})
     target_link_options(tst_wekdiagnostics PRIVATE ${_cov_link_flags})

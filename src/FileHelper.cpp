@@ -463,9 +463,10 @@ QVariantMap FileHelper::getFolderList(const QString& path, const QVariantMap& op
 
     if (! dir.exists()) {
         for (const QString& fb : fallbacks) {
-            QDir fbDir(fb);
+            const QString fbNative = nativePath(fb);
+            QDir          fbDir(fbNative);
             if (fbDir.exists()) {
-                folder = fb;
+                folder = fbNative;
                 dir    = fbDir;
                 break;
             }
@@ -897,7 +898,7 @@ qint64 FileHelper::sweepCacheQuota(const QStringList& roots, qint64 quotaBytes) 
         const QString canon  = QFileInfo(native).canonicalFilePath();
         if (canon.isEmpty()) continue;
         if (! isStrictlyUnderRoot(canon, cacheRootCanon)) {
-            qWarning() << "FileHelper::enforceCacheQuota refused root outside cache:" << root;
+            qWarning() << "FileHelper::sweepCacheQuota refused root outside cache:" << root;
             continue;
         }
         QDirIterator it(canon, QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
@@ -910,7 +911,7 @@ qint64 FileHelper::sweepCacheQuota(const QStringList& roots, qint64 quotaBytes) 
             // count its bytes and don't delete it.
             const QString entryCanon = fi.canonicalFilePath();
             if (entryCanon.isEmpty() || ! isUnderRoot(entryCanon, cacheRootCanon)) {
-                qWarning() << "FileHelper::enforceCacheQuota refused entry outside cache root:"
+                qWarning() << "FileHelper::sweepCacheQuota refused entry outside cache root:"
                            << fi.absoluteFilePath();
                 continue;
             }
@@ -941,7 +942,7 @@ qint64 FileHelper::sweepCacheQuota(const QStringList& roots, qint64 quotaBytes) 
     for (const Entry& e : all) {
         if (total <= quotaBytes) break;
         if (! QFile::remove(e.path)) {
-            qWarning() << "FileHelper::enforceCacheQuota: cannot delete" << e.path;
+            qWarning() << "FileHelper::sweepCacheQuota: cannot delete" << e.path;
             continue;
         }
         freed += e.size;

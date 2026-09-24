@@ -1,5 +1,6 @@
 #include "WekDiagnostics.hpp"
 #include "CachePaths.hpp"
+#include <KLocalizedString>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -24,7 +25,9 @@ QString WekDiagnostics::saveBundle() {
     QDir dir(cache_paths::diagnosticsDir());
     if (! dir.exists()) {
         if (! dir.mkpath(QStringLiteral("."))) {
-            m_lastError = QStringLiteral("Failed to create cache dir: %1").arg(dir.absolutePath());
+            m_lastError = i18nc("@info diagnostic error, %1=cache directory",
+                                "Failed to create cache dir: %1",
+                                dir.absolutePath());
             return {};
         }
     }
@@ -65,24 +68,32 @@ QString WekDiagnostics::saveBundle() {
 
 bool WekDiagnostics::exportBundle(const QString& srcPath, const QUrl& dest) {
     if (! dest.isLocalFile()) {
-        m_lastError = QStringLiteral("Destination is not a local file: %1").arg(dest.toString());
+        m_lastError = i18nc("@info diagnostic error, %1=destination url",
+                            "Destination is not a local file: %1",
+                            dest.toString());
         return false;
     }
     const auto destPath = dest.toLocalFile();
     if (! QFile::exists(srcPath)) {
-        m_lastError = QStringLiteral("Bundle no longer exists: %1").arg(srcPath);
+        m_lastError =
+            i18nc("@info diagnostic error, %1=bundle path", "Bundle no longer exists: %1", srcPath);
         return false;
     }
     // The picker pre-fills the bundle's own filename, so the user routinely
     // answers "Replace" to the native overwrite prompt — and QFile::copy
     // refuses to clobber an existing file rather than overwriting it.
     if (QFile::exists(destPath) && ! QFile::remove(destPath)) {
-        m_lastError = QStringLiteral("Could not replace existing file: %1").arg(destPath);
+        m_lastError = i18nc("@info diagnostic error, %1=destination path",
+                            "Could not replace existing file: %1",
+                            destPath);
         return false;
     }
     QFile src(srcPath);
     if (! src.copy(destPath)) {
-        m_lastError = QStringLiteral("Could not write %1: %2").arg(destPath, src.errorString());
+        m_lastError = i18nc("@info diagnostic error, %1=destination path, %2=reason",
+                            "Could not write %1: %2",
+                            destPath,
+                            src.errorString());
         return false;
     }
     m_lastError.clear();
@@ -269,14 +280,16 @@ bool WekDiagnostics::pack(const QString& outPath, const QMap<QString, QByteArray
                          QStringLiteral("/wek-diag-") +
                          QDateTime::currentDateTime().toString(QStringLiteral("hhmmss"));
     if (! QDir().mkpath(tempDir)) {
-        m_lastError = QStringLiteral("Failed to create temp dir: %1").arg(tempDir);
+        m_lastError = i18nc(
+            "@info diagnostic error, %1=temp directory", "Failed to create temp dir: %1", tempDir);
         return false;
     }
     for (auto it = files.begin(); it != files.end(); ++it) {
         QFile staging(tempDir + '/' + it.key());
         if (! staging.open(QIODevice::WriteOnly)) {
-            m_lastError =
-                QStringLiteral("Failed to write staging file: %1").arg(staging.fileName());
+            m_lastError = i18nc("@info diagnostic error, %1=staging file path",
+                                "Failed to write staging file: %1",
+                                staging.fileName());
             QDir(tempDir).removeRecursively();
             return false;
         }
@@ -289,9 +302,10 @@ bool WekDiagnostics::pack(const QString& outPath, const QMap<QString, QByteArray
     const bool ok = tar.waitForFinished(5000);
     QDir(tempDir).removeRecursively();
     if (! ok || tar.exitCode() != 0) {
-        m_lastError = QStringLiteral("tar failed: exitCode=%1, stderr=%2")
-                          .arg(tar.exitCode())
-                          .arg(QString::fromUtf8(tar.readAllStandardError()));
+        m_lastError = i18nc("@info diagnostic error, %1=tar exit code, %2=stderr",
+                            "tar failed: exitCode=%1, stderr=%2",
+                            tar.exitCode(),
+                            QString::fromUtf8(tar.readAllStandardError()));
         return false;
     }
     return true;

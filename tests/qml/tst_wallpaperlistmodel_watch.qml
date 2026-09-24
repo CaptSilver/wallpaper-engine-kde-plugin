@@ -181,4 +181,23 @@ TestCase {
         gateModel.loadEnabled = false;
     }
 
+    // WallpaperListModel.qml's own _attachWatchers() guard silently no-ops
+    // when pyext is missing or lacks the expected watch API -- no watchers,
+    // no Steam-subscribe auto-refresh, nothing logged. Production always
+    // binds a real pyext (main.qml), so this firing there is a real
+    // misconfiguration worth a console.warn -- but once per instance, not
+    // once per _attachWatchers() call (workshopDirs/loadEnabled changes call
+    // it repeatedly, and each would otherwise re-warn).
+    function test_missingPyextWarnsOnceNotPerAttach() {
+        ignoreWarning(new RegExp("WallpaperListModel.*pyext"));
+        const m = Qt.createQmlObject(
+            'import "../../plugin/contents/ui" as Plugin; Plugin.WallpaperListModel { loadEnabled: false }',
+            tc, "missingPyextTest");
+        // Component.onCompleted's own _attachWatchers() call already produced
+        // the one warning above; two more explicit calls must stay silent.
+        m._attachWatchers();
+        m._attachWatchers();
+        m.destroy();
+    }
+
 }

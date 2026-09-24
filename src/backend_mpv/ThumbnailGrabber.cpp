@@ -1,10 +1,20 @@
 #include "ThumbnailGrabber.hpp"
+#include "ThumbnailGrabberOptions.hpp"
 #include <QDebug>
 #include <QFileInfo>
 #include <mpv/client.h>
 
 namespace wekde
 {
+
+bool applyMpvOption(mpv_handle* mpv, const char* name, const char* value) {
+    const int rc = mpv_set_option_string(mpv, name, value);
+    if (rc < 0) {
+        qWarning() << "ThumbnailGrabber: failed to set mpv option" << name << "=" << value << "("
+                   << mpv_error_string(rc) << ")";
+    }
+    return rc >= 0;
+}
 
 struct ThumbnailGrabber::Impl {
     mpv_handle* mpv { nullptr };
@@ -22,14 +32,16 @@ struct ThumbnailGrabber::Impl {
                            "— video thumbnail subsystem disabled";
             return;
         }
-        mpv_set_option_string(mpv, "vo", "null");
-        mpv_set_option_string(mpv, "ao", "null");
-        mpv_set_option_string(mpv, "audio", "no");
-        mpv_set_option_string(mpv, "hwdec", "no");
-        mpv_set_option_string(mpv, "input-default-bindings", "no");
-        mpv_set_option_string(mpv, "input-vo-keyboard", "no");
-        mpv_set_option_string(mpv, "screenshot-format", "jpg");
-        mpv_set_option_string(mpv, "screenshot-jpeg-quality", "80");
+        // Log-and-continue on a bad option: matches mpv_initialize() failure
+        // below, which degrades gracefully rather than crashing the grabber.
+        applyMpvOption(mpv, "vo", "null");
+        applyMpvOption(mpv, "ao", "null");
+        applyMpvOption(mpv, "audio", "no");
+        applyMpvOption(mpv, "hwdec", "no");
+        applyMpvOption(mpv, "input-default-bindings", "no");
+        applyMpvOption(mpv, "input-vo-keyboard", "no");
+        applyMpvOption(mpv, "screenshot-format", "jpg");
+        applyMpvOption(mpv, "screenshot-jpeg-quality", "80");
         if (mpv_initialize(mpv) < 0) {
             qCritical() << "ThumbnailGrabber: mpv_initialize() failed "
                            "— video thumbnail subsystem disabled";

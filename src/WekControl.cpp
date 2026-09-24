@@ -165,6 +165,13 @@ int WekControl::CurrentItemIndex() const {
     const int idx = v.toInt(&ok);
     return ok ? idx : -1;
 }
+bool WekControl::IsPaused() const {
+    if (! m_controller) return false;
+    QVariant v;
+    QMetaObject::invokeMethod(
+        m_controller, "isPaused", Qt::DirectConnection, Q_RETURN_ARG(QVariant, v));
+    return v.toBool();
+}
 
 // -- Signal bridge from QML --
 

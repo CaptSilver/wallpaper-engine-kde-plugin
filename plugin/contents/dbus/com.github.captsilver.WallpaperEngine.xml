@@ -16,9 +16,9 @@
   Multi-monitor: first-plasmoid-wins service ownership. The second
   plasmoid logs "service already registered" and goes silent, but every
   write method below (Next/Previous/Pause/Resume/Toggle/Mute/Unmute/
-  ToggleMute/ActivatePlaylist/Reload) reaches every screen -- the owning
+  ToggleMute/ActivatePlaylist/Reload) reaches every screen: the owning
   plasmoid broadcasts to every registered controller in the process.
-  CurrentWorkshopId/CurrentPlaylistId/CurrentItemIndex and
+  CurrentWorkshopId/CurrentPlaylistId/CurrentItemIndex/IsPaused and
   WallpaperChanged answer for the owning plasmoid's own screen only.
 
   See src/WekControl.{hpp,cpp} for the C++ implementation.
@@ -45,6 +45,9 @@
     </method>
     <method name="CurrentItemIndex">
       <arg name="value" type="i" direction="out"/>
+    </method>
+    <method name="IsPaused">
+      <arg name="value" type="b" direction="out"/>
     </method>
     <signal name="WallpaperChanged">
       <arg name="workshopId" type="s"/>

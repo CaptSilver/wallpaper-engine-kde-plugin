@@ -196,6 +196,14 @@ TestCase {
         compare(tc.lastSet.v, false);
     }
 
+    function test_isPaused_reflectsUserPaused() {
+        compare(ctrl.isPaused(), false);
+        ctrl.pause();
+        compare(ctrl.isPaused(), true);
+        ctrl.resume(); // leave ctrl unpaused for tests that run after this one
+        compare(ctrl.isPaused(), false);
+    }
+
     function test_resolvesFromWpListModel() {
         const item = ctrl._resolveItem("wid-A");
         verify(item !== null);

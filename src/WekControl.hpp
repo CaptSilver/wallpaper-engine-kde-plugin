@@ -29,7 +29,7 @@ namespace wekde
 // just the exporting instance's own screen. A D-Bus Pause therefore pauses
 // every screen, even though only one instance answers the D-Bus call.
 //
-// CurrentWorkshopId/CurrentPlaylistId/CurrentItemIndex and the
+// CurrentWorkshopId/CurrentPlaylistId/CurrentItemIndex/IsPaused and the
 // WallpaperChanged signal are the one place this stays single-screen: they
 // answer for the exporting instance's own screen only. There's no way to
 // return "every screen's answer" from a single scalar value or an
@@ -97,6 +97,7 @@ public slots:
     QString CurrentWorkshopId() const;
     QString CurrentPlaylistId() const;
     int     CurrentItemIndex() const;
+    bool    IsPaused() const;
 
 signals:
     // Broadcast on every wallpaper change. Third-party panel widgets

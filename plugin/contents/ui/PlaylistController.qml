@@ -192,6 +192,10 @@ Item {
         return root.currentItemIndexRead;
     }
 
+    function isPaused() {
+        return root.userPaused;
+    }
+
     function _resolveItem(workshopId) {
         if (!workshopId) return null;
         // Prefer the unfiltered source via findItem(): the user's filter

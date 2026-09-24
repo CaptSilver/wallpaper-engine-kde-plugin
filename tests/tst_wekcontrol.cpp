@@ -55,6 +55,7 @@ public slots:
     QVariant currentWorkshopId() const { return QString("12345"); }
     QVariant currentPlaylistId() const { return QString("favorites"); }
     QVariant currentItemIndex() const { return 7; }
+    QVariant isPaused() const { return true; }
 };
 
 namespace
@@ -114,6 +115,7 @@ private slots:
     void currentWorkshopId_returnsStubValue();
     void currentPlaylistId_returnsStubValue();
     void currentItemIndex_returnsStubValue();
+    void isPaused_returnsStubValue();
 
     // -- Broadcast tests (every registered controller, not just the caller's own) --
     void next_broadcastsToEveryRegisteredController();
@@ -258,6 +260,13 @@ void TestWekControl::currentItemIndex_returnsStubValue() {
     QCOMPARE(control->CurrentItemIndex(), 7);
 }
 
+void TestWekControl::isPaused_returnsStubValue() {
+    auto                   control = std::make_unique<WekControl>();
+    PlaylistControllerStub stub;
+    control->setPlaylistController(&stub);
+    QCOMPARE(control->IsPaused(), true);
+}
+
 // -- Broadcast tests ---------------------------------------------------------
 
 void TestWekControl::next_broadcastsToEveryRegisteredController() {
@@ -394,6 +403,7 @@ void TestWekControl::allGetters_returnSentinelsWhenControllerIsNull() {
     QCOMPARE(control->CurrentWorkshopId(), QString());
     QCOMPARE(control->CurrentPlaylistId(), QString());
     QCOMPARE(control->CurrentItemIndex(), -1);
+    QCOMPARE(control->IsPaused(), false);
 }
 
 // -- Signal contract -------------------------------------------------------

@@ -1,0 +1,24 @@
+# LeakSanitizer suppressions for the WEK test suites.
+#
+# Referenced by tools/scripts/preflight.sh's two ASAN/UBSAN legs (the opt-in
+# --sanitize= leg and the default gate's asan-gate step) via:
+#   LSAN_OPTIONS="suppressions=$_PF_DIR/lsan.supp" ...
+#
+# Scope: one verified entry per known system-library leak, each backed by a
+# captured stack trace -- never a broad first-party prefix. A `leak:<name>`
+# entry matches by function name ANYWHERE in the allocation stack, across any
+# caller, not just the call site that first surfaced it -- keep that in mind
+# before assuming an entry here is scoped to a single call site.
+#
+# Format: https://github.com/google/sanitizers/wiki/AddressSanitizerLeakSanitizer#suppressions
+
+# libmpv's render-context bring-up strdup()s a short device/driver name string
+# inside libdrm and never frees it -- confirmed by stack trace to be a
+# system-library leak, not first-party code (every allocating frame sits
+# inside libdrm.so.2 / libmpv.so.2). Reachable from three call sites in this
+# tree, all through libmpv's public mpv_render_context_create() API:
+# wallpaper::HWVideoTextureDecoder::open() (HWVideoTextureDecoder.cpp),
+# VideoTextureDecoder::open()'s software fallback (VideoTextureDecoder.cpp),
+# and CreateMpvContex() (MpvBackend.cpp). Confirmed via backend_scene_tests'
+# "a destroyed decoder holds no dma-buf from the frames it rendered" case.
+leak:mpv_render_context_create

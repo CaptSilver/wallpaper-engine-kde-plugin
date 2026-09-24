@@ -284,7 +284,7 @@ fi
 
 # ── Sanitizer legs (opt-in, standalone) ───────────────────────────────────────
 # --tsan                    => WEK_SANITIZE=thread  (FATAL on a race)
-# --sanitize=address,undefined (etc) => ASAN/UBSAN  (NON-FATAL: surfaces findings)
+# --sanitize=address,undefined (etc) => ASAN/UBSAN  (FATAL on any finding)
 # Both use fresh build dirs and skip the normal lint/build/test/fuzz flow.
 if [[ "$MODE" == "sanitize" ]]; then
     REPO_ROOT="$(pwd)"
@@ -326,8 +326,22 @@ if [[ "$MODE" == "sanitize" ]]; then
             ;;
         *)
             # ASAN/UBSAN (and any address/undefined combo).  FATAL: the submodule
-            # suites + parent tests are audited clean under address+undefined,
-            # so a finding here is a real regression and blocks the push.
+            # doctest suites are audited clean under address+undefined (see
+            # tools/scripts/lsan.supp for the one confirmed system-library leak
+            # they suppress).  The parent ctest suite is NOT leak-clean, so its
+            # own dbox call below keeps detect_leaks=0 -- scoped to a variable
+            # of its own (parent_asan_opts), never reused for the submodule
+            # suites above.  Two of its 26 targets can't be suppressed by name
+            # the way the mpv leak can: tst_webprofileregistry leaks inside
+            # libQt6WebEngineCore with an allocation LSan can't resolve to any
+            # module or function, so there's no name left to suppress by;
+            # tst_main_integration mixes a first-party test-fixture leak
+            # (FakeContainment/FakeWallpaperItem in tests/qml_integration/
+            # main.cpp, never parented or deleted) with QML engine-lifetime
+            # caching (QQmlPropertyCache, QArrayData) that needs its own audit
+            # to tell benign caching from a real bug. Follow-up work, not
+            # scoped to this leg. Still FATAL on anything the submodule suites
+            # find.
             # Build with BUILD_FUZZERS=OFF so the fuzzers' own
             # -fsanitize=fuzzer,... flags don't double-instrument.
             step "Sanitizer leg (WEK_SANITIZE=${SAN_SPEC}) — FATAL on any finding"
@@ -342,21 +356,26 @@ if [[ "$MODE" == "sanitize" ]]; then
                         --target backend_scene_tests scenescript_tests" \
                 || fail "submodule sanitizer build failed"
 
-            # detect_leaks=0: the parsers intentionally retain some long-lived
-            # state in these short-lived test runs; LSAN noise would drown the
-            # heap/UB findings we care about.  halt_on_error=1 + exit on the
-            # first finding so the gate fails loudly.
-            asan_opts="detect_leaks=0:halt_on_error=1:print_stacktrace=1"
+            # A blanket detect_leaks=0 used to sit here, meant to quiet the
+            # parsers' long-lived caches -- but ASAN_OPTIONS is process-wide,
+            # so it silenced leak detection for everything the binary links,
+            # including a real system-library leak inside libmpv/libdrm (see
+            # lsan.supp). Leak detection now stays ON; the one confirmed leak
+            # is suppressed by name instead, so a future, unrelated leak still
+            # fails this leg. halt_on_error=1 + exit on the first finding so
+            # the gate fails loudly.
+            asan_opts="halt_on_error=1:print_stacktrace=1"
             ubsan_opts="halt_on_error=1:print_stacktrace=1"
+            lsan_opts="suppressions=${_PF_DIR}/lsan.supp"
 
             step "Run backend_scene_tests under ${SAN_SPEC} (fatal on finding)"
             # WEKDE_HAS_AUDIO_DEVICE intentionally unset (avoids the device-enum hang).
-            dbox "ASAN_OPTIONS='${asan_opts}' UBSAN_OPTIONS='${ubsan_opts}' \
+            dbox "ASAN_OPTIONS='${asan_opts}' UBSAN_OPTIONS='${ubsan_opts}' LSAN_OPTIONS='${lsan_opts}' \
                   ./build/impl-asan/src/Test/backend_scene_tests" \
                 || fail "backend_scene_tests: sanitizer finding (${SAN_SPEC}) — see log"
 
             step "Run scenescript_tests under ${SAN_SPEC} (fatal on finding)"
-            dbox "ASAN_OPTIONS='${asan_opts}' UBSAN_OPTIONS='${ubsan_opts}' \
+            dbox "ASAN_OPTIONS='${asan_opts}' UBSAN_OPTIONS='${ubsan_opts}' LSAN_OPTIONS='${lsan_opts}' \
                   QT_QPA_PLATFORM=offscreen \
                   ./build/impl-asan/src/Test/scenescript_tests" \
                 || fail "scenescript_tests: sanitizer finding (${SAN_SPEC}) — see log"
@@ -369,7 +388,14 @@ if [[ "$MODE" == "sanitize" ]]; then
                         -DCMAKE_BUILD_TYPE=Debug \
                   && cmake --build build/impl-asan-main -j\$(nproc)" \
                 || fail "parent-tests sanitizer build failed"
-            dbox "ASAN_OPTIONS='${asan_opts}' UBSAN_OPTIONS='${ubsan_opts}' \
+            # detect_leaks=0 here is a narrower version of the disable this fix
+            # removed above: it applies only to this one dbox call, not the
+            # whole binary, and only because tst_webprofileregistry and
+            # tst_main_integration leak in ways lsan.supp can't name yet (see
+            # the case-arm comment above this block). Heap/UBSAN findings in
+            # this suite still fail the leg.
+            parent_asan_opts="detect_leaks=0:halt_on_error=1:print_stacktrace=1"
+            dbox "ASAN_OPTIONS='${parent_asan_opts}' UBSAN_OPTIONS='${ubsan_opts}' \
                   QT_QPA_PLATFORM=offscreen \
                   ctest --test-dir build/impl-asan-main --output-on-failure" \
                 || fail "parent ctest: sanitizer finding (${SAN_SPEC}) — see log"
@@ -807,6 +833,21 @@ else
     warn "tools/scripts/tests/test-fuzz-run.sh missing or not executable — skipping"
 fi
 
+# ── 1e. LSan-suppressions self-test ───────────────────────────────────────────
+# Same reasoning as 1b/1c/1d: the sanitizer legs' ASAN_OPTIONS/LSAN_OPTIONS
+# wiring is plain text, not a function, so nothing else would catch
+# detect_leaks=0 creeping back in or a call site losing its suppressions file
+# except actually reading the ASAN gate's own multi-minute output -- this pins
+# the wiring in a fraction of a second instead.
+step "LSan-suppressions self-test"
+if [[ -x tools/scripts/tests/test-lsan-suppressions.sh ]]; then
+    if ! tools/scripts/tests/test-lsan-suppressions.sh; then
+        fail "LSan suppressions self-test failed — preflight.sh's ASAN_OPTIONS/LSAN_OPTIONS wiring or tools/scripts/lsan.supp has drifted, fix it before trusting the ASAN gate's leak detection"
+    fi
+else
+    warn "tools/scripts/tests/test-lsan-suppressions.sh missing or not executable — skipping"
+fi
+
 # ── 2. Build submodule (with tests) ───────────────────────────────────────────
 # Only force -G Ninja on fresh dirs; otherwise reuse the existing generator so
 # we don't fight with manual build dirs the user already configured.
@@ -881,13 +922,14 @@ fi
 # The parsers + scene runtime are the highest-risk untrusted-input surface and
 # are audited clean under address+undefined sanitizers.  Gate every push on
 # them so an ASAN heap/UAF or UBSAN find blocks the push instead of slipping
-# in unobserved.  Detect_leaks=0 (parsers keep some long-lived state during
-# short test runs — LSAN noise would mask the bugs we care about);
-# halt_on_error=1 so the first finding fails the leg.  Fresh build dir
-# (build/asan-gate) reused on repeat runs; BUILD_FUZZERS=OFF so the fuzzers'
-# own -fsanitize=fuzzer flags don't double-instrument.  The wider parent-tests
-# + full-suite sanitizer run is still advisory via --sanitize=address,undefined
-# (parent QML / mpv tests not yet audited clean).
+# in unobserved.  Leak detection stays ON (see tools/scripts/lsan.supp for the
+# one confirmed system-library leak it suppresses by name — libmpv/libdrm's
+# mpv_render_context_create, not first-party code); halt_on_error=1 so the
+# first finding fails the leg.  Fresh build dir (build/asan-gate) reused on
+# repeat runs; BUILD_FUZZERS=OFF so the fuzzers' own -fsanitize=fuzzer flags
+# don't double-instrument.  The wider parent-tests + full-suite sanitizer run
+# is still advisory via --sanitize=address,undefined (parent QML / mpv tests
+# not yet audited clean).
 if [[ "$MODE" != "test-only" ]]; then
     step "Sanitizer gate (ASAN+UBSAN over submodule doctest suites)"
     ASAN_GATE_GEN=""
@@ -903,15 +945,16 @@ if [[ "$MODE" != "test-only" ]]; then
 fi
 
 step "Run backend_scene_tests under ASAN+UBSAN (gate)"
-gate_asan_opts="detect_leaks=0:halt_on_error=1:print_stacktrace=1"
+gate_asan_opts="halt_on_error=1:print_stacktrace=1"
 gate_ubsan_opts="halt_on_error=1:print_stacktrace=1"
-dbox "ASAN_OPTIONS='${gate_asan_opts}' UBSAN_OPTIONS='${gate_ubsan_opts}' \
+gate_lsan_opts="suppressions=${_PF_DIR}/lsan.supp"
+dbox "ASAN_OPTIONS='${gate_asan_opts}' UBSAN_OPTIONS='${gate_ubsan_opts}' LSAN_OPTIONS='${gate_lsan_opts}' \
       ./build/asan-gate/src/Test/backend_scene_tests" \
     || fail "backend_scene_tests: sanitizer finding (ASAN/UBSAN) — investigate then re-run"
 ok "backend_scene_tests: ASAN+UBSAN clean"
 
 step "Run scenescript_tests under ASAN+UBSAN (gate)"
-dbox "ASAN_OPTIONS='${gate_asan_opts}' UBSAN_OPTIONS='${gate_ubsan_opts}' \
+dbox "ASAN_OPTIONS='${gate_asan_opts}' UBSAN_OPTIONS='${gate_ubsan_opts}' LSAN_OPTIONS='${gate_lsan_opts}' \
       QT_QPA_PLATFORM=offscreen \
       ./build/asan-gate/src/Test/scenescript_tests" \
     || fail "scenescript_tests: sanitizer finding (ASAN/UBSAN) — investigate then re-run"

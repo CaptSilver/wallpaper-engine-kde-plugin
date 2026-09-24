@@ -78,10 +78,10 @@ check "WekDiagnostics string reaches the pot" 'msgid "Failed to create cache dir
 # it would falsely PASS today and prove nothing. This string is unique to
 # data/wek.notifyrc (confirmed: no hits anywhere under plugin/contents/ui).
 check "wek.notifyrc string reaches the pot" 'msgid "Wallpaper Engine for KDE Plasma 6"' 1
-# Regression guard, not a red/green pair: this is already true today (there's
-# no ../src scan at all yet), and must stay true once ../src is scanned --
-# an unscoped `find ../src` (no -maxdepth 1) would sweep the 2257-file
-# backend_scene submodule and start failing this.
+# Regression guard, not a red/green pair: po/Messages.sh's ../src find is
+# scoped with -maxdepth 1 specifically to keep it from sweeping the
+# 2257-file backend_scene submodule -- an unscoped `find ../src` would
+# start failing this check.
 check "no backend_scene leakage into the pot" 'backend_scene' 0
 check "no backend_mpv leakage into the pot"   'backend_mpv'   0
 

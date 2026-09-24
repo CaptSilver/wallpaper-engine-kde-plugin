@@ -913,7 +913,7 @@ else()
     message(STATUS "node not found — skipping JavaScript tests")
 endif()
 
-# ── C++ end-to-end integration harness (Phase 3) ──────────────────────────────
+# ── C++ end-to-end integration harness ────────────────────────────────────────
 # Loads the real main.qml with `wallpaper` as a context property backed by a
 # code-generated config QObject, so main.qml's reactive Connections fire. A second
 # tier alongside the qmltestrunner rig; skips gracefully without Qt6QuickTest.
@@ -971,7 +971,7 @@ if(Qt6QuickTest_FOUND AND Qt6Qml_FOUND AND Qt6Quick_FOUND)
     set_tests_properties(tst_fakewallpaper_ownership PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 else()
-    message(STATUS "Qt6QuickTest not found — skipping tst_main_integration (Phase 3)")
+    message(STATUS "Qt6QuickTest not found — skipping tst_main_integration")
 endif()
 
 # Hermetic bash self-test for tools/scripts/mutation.sh (RAM-bounded worker

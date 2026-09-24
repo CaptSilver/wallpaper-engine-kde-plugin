@@ -2,11 +2,19 @@
 # Headless render smoke test (D10a) — the first automated execution of the
 # Vulkan render path.
 #
-# Builds the plain GLFW `sceneviewer`, renders a tiny bundled fixture scene
-# headless under Mesa lavapipe (CPU Vulkan, no GPU), captures a PPM, and asserts
-#   (1) the process exits rc==0, and
-#   (2) the framebuffer is NON-BLANK (more than one distinct colour / nonzero
-#       per-channel range — a black/empty frame fails).
+# Two capture passes over the same tiny bundled fixture scene, both headless
+# under Mesa lavapipe (CPU Vulkan, no GPU):
+#   1. the plain GLFW `sceneviewer` captures a PPM and asserts the framebuffer
+#      is NON-BLANK (more than one distinct colour / nonzero per-channel range
+#      — a black/empty frame fails).
+#   2. `sceneviewer-script`, the QML/QJSEngine build the plugin's own renderer
+#      bridge is built from, captures a second PPM (same non-blank check) and
+#      fires a JS command at the viewer's embedded QJSEngine partway through,
+#      asserting the dispatch reached it and returned instead of crashing or
+#      hanging.  This pass does NOT force lavapipe — sceneviewer-script picks
+#      its Vulkan device by matching its internal GL context's GPU UUID, so it
+#      lands on lavapipe on its own whenever there's no real GPU to match.
+# Both passes must also exit rc==0.
 #
 # This is the *smoke* form only.  The deterministic golden-HASH form (D10b)
 # needs a frame-indexed capture trigger (deferred, spec item D11 P1.2) and is
@@ -15,20 +23,24 @@
 #
 # Usage:
 #   tools/scripts/render-smoke.sh                 # build + render + assert non-blank
-#   tools/scripts/render-smoke.sh --no-build      # reuse an existing sceneviewer binary
-#   tools/scripts/render-smoke.sh --keep          # keep the captured PPM (don't clean up)
+#   tools/scripts/render-smoke.sh --no-build      # reuse existing sceneviewer/sceneviewer-script binaries
+#   tools/scripts/render-smoke.sh --keep          # keep the captured PPMs + JS log (don't clean up)
 #   ASSETS_DIR=/path/to/wallpaper_engine/assets tools/scripts/render-smoke.sh
 #
 # Exit codes:
-#   0   render succeeded AND framebuffer non-blank   (PASS)
+#   0   both passes rendered AND both framebuffers non-blank AND the JS
+#       dispatch round-tripped                                          (PASS)
 #   77  capability missing — lavapipe ICD / display / WE assets absent  (SKIP)
-#   1   build failed, render failed (rc!=0), or framebuffer BLANK        (FAIL)
+#   1   a build failed, a render failed (rc!=0), a framebuffer was BLANK,
+#       or the JS dispatch never round-tripped                          (FAIL)
 #
 # The SKIP code (77, the autotools/ctest convention) lets preflight treat a
 # box without lavapipe/Xvfb/WE-assets as "skipped" rather than "failed".
 #
 # Requirements (all probed; missing → SKIP, never FAIL):
-#   - Mesa lavapipe ICD  (/usr/share/vulkan/icd.d/lvp_icd.*.json)
+#   - Mesa lavapipe ICD  (/usr/share/vulkan/icd.d/lvp_icd.*.json) — pass 1
+#     forces it via VK_ICD_FILENAMES; pass 2 lands there too on any box with
+#     no real GPU for its GL context to match
 #   - a windowing display: `xvfb-run` (preferred, truly headless) OR an already
 #     -present WAYLAND_DISPLAY / DISPLAY (desktop session / live distrobox)
 #   - the Wallpaper Engine `assets/` dir (the renderer reads base materials/
@@ -59,7 +71,7 @@ for arg in "$@"; do
     case "$arg" in
         --no-build) DO_BUILD=0 ;;
         --keep)     KEEP=1 ;;
-        -h|--help)  sed -n '2,40p' "$0"; exit 0 ;;
+        -h|--help)  sed -n '2,47p' "$0"; exit 0 ;;
         *) echo "render-smoke: unknown flag: $arg" >&2; exit 1 ;;
     esac
 done

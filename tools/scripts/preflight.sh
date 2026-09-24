@@ -959,9 +959,11 @@ fi
 # ── 5a2. Standalone QML viewer build (compile-only, BUILD_QML=ON) ─────────────
 # sceneviewer-script (qmlviewer.cpp) is the tool this project's own debugging
 # notes reach for first, but standalone_view is its own top-level CMake project
-# and nothing else in the repo ever configures it with BUILD_QML=ON --
-# render-smoke.sh/render-oracle.sh both build the plain GLFW sceneviewer target
-# only. A real compile break here went unnoticed for as long as
+# and this step is the only place that build is guaranteed to run on every
+# push -- render-smoke.sh/render-oracle.sh also configure BUILD_QML=ON and
+# build sceneviewer-script now, but both stay opt-in and self-probe lavapipe/a
+# display/the WE assets dir, skipping cleanly when any are missing. A real
+# compile break here went unnoticed for as long as
 # --deterministic/--screenshot-at-frame sat parsed-but-unread in qmlviewer.cpp --
 # nothing forced anyone to compile the file that would have needed them. Release,
 # not Debug: SCENE_VIEWER_ASAN defaults ON and only gates on $<CONFIG:Debug>, so a

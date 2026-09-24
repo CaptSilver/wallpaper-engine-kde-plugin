@@ -3,7 +3,8 @@
 #
 # Renders the WE-bundled `fantasticcar` default scene headless under Mesa
 # lavapipe (CPU Vulkan, no GPU) in DETERMINISTIC mode (fixed dt + seeded RNG +
-# frame-exact capture) and asserts two self-comparisons:
+# frame-exact capture) and asserts two self-comparisons, plus one liveness
+# check on a second viewer build:
 #
 #   MOTION    frame@early vs frame@late must DIFFER beyond a pixel threshold.
 #             Catches the "animation frozen / uniforms never reach the GPU"
@@ -15,21 +16,30 @@
 #             SPV cache), run 2 warm (reads it).  The captured frame@late must
 #             be BYTE-IDENTICAL.  Catches the "warm/cached path skips a
 #             side-effect" class (e.g. textures stripped on the 2nd run).
+#   JS-ENGINE a separate, independently-timed capture through
+#             `sceneviewer-script` (the QML/QJSEngine build the plugin's own
+#             renderer bridge is built from, not the plain GLFW viewer the two
+#             checks above use): asserts its framebuffer is non-blank and that
+#             a JS command fired at its embedded QJSEngine dispatched and
+#             returned instead of crashing or hanging.  Does NOT force
+#             lavapipe — sceneviewer-script picks its Vulkan device by
+#             matching its internal GL context's GPU UUID, and lands on
+#             lavapipe on its own whenever there's no real GPU to match.
 #
 # Self-comparison sidesteps cross-machine FP determinism: we never compare
 # against a committed golden, only two outputs from the SAME machine/build.
 #
 # Usage:
 #   tools/scripts/render-oracle.sh                # build + render + assert
-#   tools/scripts/render-oracle.sh --no-build     # reuse an existing sceneviewer
-#   tools/scripts/render-oracle.sh --keep         # keep captured PPMs
+#   tools/scripts/render-oracle.sh --no-build     # reuse existing sceneviewer/sceneviewer-script binaries
+#   tools/scripts/render-oracle.sh --keep         # keep captured PPMs + JS log
 #   ASSETS_DIR=/path/to/wallpaper_engine/assets tools/scripts/render-oracle.sh
 #   FRAME_EARLY=30 FRAME_LATE=120 MOTION_MIN_FRAC=0.01 tools/scripts/render-oracle.sh
 #
 # Exit codes:
-#   0   motion AND warm==cold both passed                              (PASS)
+#   0   motion, warm==cold, AND the JS-engine pass all passed            (PASS)
 #   77  capability missing — lavapipe / display / WE assets / fixture  (SKIP)
-#   1   build failed, render failed, or an assertion failed            (FAIL)
+#   1   a build failed, a render failed, or any assertion failed        (FAIL)
 
 set -euo pipefail
 
@@ -62,7 +72,7 @@ for arg in "$@"; do
     case "$arg" in
         --no-build) DO_BUILD=0 ;;
         --keep)     KEEP=1 ;;
-        -h|--help)  sed -n '2,30p' "$0"; exit 0 ;;
+        -h|--help)  sed -n '2,42p' "$0"; exit 0 ;;
         *) echo "render-oracle: unknown flag: $arg" >&2; exit 1 ;;
     esac
 done

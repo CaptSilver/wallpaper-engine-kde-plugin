@@ -417,13 +417,18 @@ fi
 # Particle) is -Wall -Wextra clean, so a residual first-party warning fails this
 # leg.  The default flow gates the same config in step 5a; this standalone leg
 # is the whole-tree audit entry point.  Set WERROR_FATAL=0 to run it advisory.
+# -DBUILD_TESTS=ON pulls in the parent tests/ AND the submodule's src/Test/
+# (one flag, both — BUILD_TESTS is both projects' own option() name, and CMake
+# cache vars are global once set via -D), so backend_scene_tests and
+# scenescript_tests build under -Werror here too, not just the shippable
+# targets and renderer libs.
 if [[ "$MODE" == "werror" ]]; then
     step "-Werror leg (WEK_WERROR=ON) — FATAL unless WERROR_FATAL=0"
     WERR_GEN=""
     [[ ! -f build/impl-werror/CMakeCache.txt ]] && WERR_GEN="-G Ninja"
     if dbox "CC=/usr/bin/clang CXX=/usr/bin/clang++ \
              cmake -B build/impl-werror -S . $WERR_GEN \
-                   -DWEK_WERROR=ON -DCMAKE_BUILD_TYPE=Debug \
+                   -DWEK_WERROR=ON -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug \
              && cmake --build build/impl-werror -j\$(nproc)"; then
         ok "-Werror build clean (first-party targets warning-free under -Wall -Wextra)"
         printf '\n%sWEK_WERROR leg passed.%s\n' "$GREEN" "$RESET"
@@ -862,6 +867,21 @@ else
     warn "tools/scripts/tests/test-build-corpus.sh missing or not executable — skipping"
 fi
 
+# ── 1g. -Werror full-tree wiring self-test ────────────────────────────────────
+# Same reasoning as 1b/1c/1d/1e/1f: the -Werror legs' BUILD_TESTS=ON flag and
+# the doctest/scenescript/wescene-renderer/standalone_view warning-flag
+# plumbing are all plain text (CMake args and target_compile_options calls),
+# so nothing else would catch a dropped flag except actually running the
+# multi-minute -Werror build and noticing a target silently went unchecked.
+step "-Werror full-tree wiring self-test"
+if [[ -x tools/scripts/tests/test-werror-full-tree.sh ]]; then
+    if ! tools/scripts/tests/test-werror-full-tree.sh; then
+        fail "-Werror full-tree wiring self-test failed — preflight.sh's -Werror legs or the submodule's warning-flag CMake plumbing has drifted"
+    fi
+else
+    warn "tools/scripts/tests/test-werror-full-tree.sh missing or not executable — skipping"
+fi
+
 # ── 2. Build submodule (with tests) ───────────────────────────────────────────
 # Only force -G Ninja on fresh dirs; otherwise reuse the existing generator so
 # we don't fight with manual build dirs the user already configured.
@@ -917,14 +937,18 @@ ok "ctest passed"
 # is no double-apply.  Clang only — the audit was under clang, and GCC categorises
 # several diagnostics differently, so downstream GCC packagers build with
 # WEK_WERROR OFF.  Persistent build dir build/werror-shippable, kept separate from
-# build/sub / build/tests; reuse on repeat runs.
+# build/sub / build/tests; reuse on repeat runs.  -DBUILD_TESTS=ON also reaches
+# backend_scene_tests and scenescript_tests (both binaries and every source
+# they compile directly, including SceneWallpaper.cpp's first-ever
+# warning-flagged compile via wescene-renderer) — this is the only gate leg
+# that builds those two targets under -Werror.
 if [[ "$MODE" != "test-only" ]]; then
     step "-Werror gate (whole first-party tree, WEK_WERROR=ON)"
     WERR_SCOPED_GEN=""
     [[ ! -f build/werror-shippable/CMakeCache.txt ]] && WERR_SCOPED_GEN="-G Ninja"
     if dbox "CC=/usr/bin/clang CXX=/usr/bin/clang++ \
              cmake -B build/werror-shippable -S . $WERR_SCOPED_GEN \
-                   -DWEK_WERROR=ON -DCMAKE_BUILD_TYPE=Debug \
+                   -DWEK_WERROR=ON -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug \
              && cmake --build build/werror-shippable -j\$(nproc)"; then
         ok "-Werror clean (whole first-party tree under -Wall -Wextra)"
     else

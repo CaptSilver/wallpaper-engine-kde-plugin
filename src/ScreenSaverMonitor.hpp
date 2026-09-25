@@ -1,6 +1,7 @@
 #pragma once
 #include <QQuickItem>
 #include <QDBusConnection>
+#include <QDBusServiceWatcher>
 
 namespace wekde
 {
@@ -18,6 +19,16 @@ namespace wekde
 // SAME handleActiveChanged(bool) slot; the state-edge dedupe in the slot
 // absorbs the cross-interface double-fire so QML sees one event per real
 // lock/unlock.
+//
+// m_active starts false and, before any resync, only ever moved on a
+// received ActiveChanged signal — a monitor built while the session was
+// already locked stayed wrongly "unlocked" until the next real toggle, and
+// a missed unlock (kded_screenlocker restarting mid-session, a D-Bus
+// hiccup) left it stuck locked forever. wireUp() now issues an async
+// GetActive() query right after subscribing, and re-issues it whenever
+// org.freedesktop.ScreenSaver (re)appears on the bus, so construction and a
+// screenlocker restart both resync m_active without depending on a signal
+// ever arriving.
 class ScreenSaverMonitor : public QQuickItem {
     Q_OBJECT
     Q_PROPERTY(bool active READ isActive NOTIFY screenSaverActiveChanged)
@@ -42,6 +53,8 @@ public slots:
 
 private:
     void wireUp(QDBusConnection bus);
+    void queryActiveState(QDBusConnection bus);
+
     bool m_active;
 };
 

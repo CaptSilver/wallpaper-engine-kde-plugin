@@ -10,6 +10,9 @@
 // us the same ActiveChanged event).
 
 #include "ScreenSaverMonitor.hpp"
+#include <QDBusConnection>
+#include <QDBusMessage>
+#include <QDBusVirtualObject>
 #include <QSignalSpy>
 #include <QtTest/QtTest>
 
@@ -27,6 +30,9 @@ private slots:
     void activeProperty_reflectsLastDispatchedState();
     void pmfConnect_signatureCompilesWithMatchingSlot();
     void crossInterfaceDedup_secondFireAbsorbed();
+    void initialQuery_alreadyActiveAtConstruction_reportsActiveWithoutSignal();
+    void initialQuery_alreadyInactiveAtConstruction_reportsInactiveWithoutSignal();
+    void serviceReappearance_requeriesAndAdoptsNewState();
 };
 
 void TestScreenSaverMonitor::initialState_isInactive() {
@@ -127,6 +133,123 @@ void TestScreenSaverMonitor::crossInterfaceDedup_secondFireAbsorbed() {
     mon.handleActiveChanged(true); // second interface fires the same value
     QCOMPARE(spy.count(), 1);
     QCOMPARE(mon.isActive(), true);
+}
+
+// ===========================================================================
+// Live-DBus driver — FakeScreenSaverService
+// ===========================================================================
+//
+// Registers a real org.freedesktop.ScreenSaver service on the session bus
+// and answers GetActive() with a canned value, driving the ctor's initial
+// query (and the service-watcher requery) that the no-injection tests above
+// can't reach. Mirrors FakeMprisService/FakeMprisRegistration in
+// tst_mpriscolors.cpp. QSKIPs rather than fails when no session bus is
+// reachable (the distrobox test harness, per
+// feedback_distrobox_dbus_launch_missing) or a real kded_screenlocker
+// already owns the name.
+class FakeScreenSaverService : public QDBusVirtualObject {
+public:
+    explicit FakeScreenSaverService(bool active): m_active(active) {}
+
+    QString introspect(const QString& /*path*/) const override {
+        return QStringLiteral("<interface name=\"org.freedesktop.ScreenSaver\">"
+                              "  <method name=\"GetActive\">"
+                              "    <arg direction=\"out\" name=\"active\" type=\"b\"/>"
+                              "  </method>"
+                              "</interface>");
+    }
+
+    bool handleMessage(const QDBusMessage& message, const QDBusConnection& connection) override {
+        if (message.interface() != "org.freedesktop.ScreenSaver") return false;
+        if (message.member() != "GetActive") return false;
+        return connection.send(message.createReply(m_active));
+    }
+
+private:
+    bool m_active;
+};
+
+// RAII helper: registers org.freedesktop.ScreenSaver + /ScreenSaver and
+// unregisters on destruction (or on an explicit unregisterNow(), needed to
+// free the name up for a second registration within the same test).
+class FakeScreenSaverRegistration {
+public:
+    explicit FakeScreenSaverRegistration(FakeScreenSaverService* svc)
+        : m_bus(QDBusConnection::sessionBus()) {
+        if (! m_bus.isConnected()) return;
+        m_objectRegistered  = m_bus.registerVirtualObject(QStringLiteral("/ScreenSaver"), svc);
+        m_serviceRegistered = m_bus.registerService(QStringLiteral("org.freedesktop.ScreenSaver"));
+    }
+    ~FakeScreenSaverRegistration() { unregisterNow(); }
+
+    void unregisterNow() {
+        if (m_serviceRegistered) {
+            m_bus.unregisterService(QStringLiteral("org.freedesktop.ScreenSaver"));
+            m_serviceRegistered = false;
+        }
+        if (m_objectRegistered) {
+            m_bus.unregisterObject(QStringLiteral("/ScreenSaver"));
+            m_objectRegistered = false;
+        }
+    }
+
+    bool ok() const { return m_serviceRegistered && m_objectRegistered; }
+
+private:
+    QDBusConnection m_bus;
+    bool            m_objectRegistered { false };
+    bool            m_serviceRegistered { false };
+};
+
+void TestScreenSaverMonitor::initialQuery_alreadyActiveAtConstruction_reportsActiveWithoutSignal() {
+    FakeScreenSaverService      svc(/*active=*/true);
+    FakeScreenSaverRegistration reg(&svc);
+    if (! reg.ok())
+        QSKIP("session bus or org.freedesktop.ScreenSaver registration unavailable in this env");
+
+    // No ActiveChanged signal is ever sent — only the ctor's initial
+    // GetActive() query can move m_active here.
+    ScreenSaverMonitor mon(QDBusConnection::sessionBus(), /*parent=*/nullptr);
+    QTRY_COMPARE_WITH_TIMEOUT(mon.isActive(), true, 2000);
+}
+
+void TestScreenSaverMonitor::
+    initialQuery_alreadyInactiveAtConstruction_reportsInactiveWithoutSignal() {
+    FakeScreenSaverService      svc(/*active=*/false);
+    FakeScreenSaverRegistration reg(&svc);
+    if (! reg.ok())
+        QSKIP("session bus or org.freedesktop.ScreenSaver registration unavailable in this env");
+
+    ScreenSaverMonitor mon(QDBusConnection::sessionBus(), /*parent=*/nullptr);
+    // Give the async query a moment to land, then confirm it settled on (and
+    // stayed) inactive rather than drifting true from some other path.
+    QTest::qWait(200);
+    QCOMPARE(mon.isActive(), false);
+}
+
+void TestScreenSaverMonitor::serviceReappearance_requeriesAndAdoptsNewState() {
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (! bus.isConnected()) QSKIP("no session bus — distrobox without dbus-launch");
+
+    FakeScreenSaverService      svc(/*active=*/false);
+    FakeScreenSaverRegistration reg(&svc);
+    if (! reg.ok()) QSKIP("org.freedesktop.ScreenSaver registration unavailable in this env");
+
+    ScreenSaverMonitor mon(bus, /*parent=*/nullptr);
+    QTRY_COMPARE_WITH_TIMEOUT(mon.isActive(), false, 2000);
+
+    QSignalSpy spy(&mon, &ScreenSaverMonitor::screenSaverActiveChanged);
+
+    // Simulate kded_screenlocker restarting mid-session: drop off the bus
+    // and come back with a DIFFERENT answer. No ActiveChanged signal is
+    // sent — only the reappearance requery can move m_active here.
+    reg.unregisterNow();
+    FakeScreenSaverService      svc2(/*active=*/true);
+    FakeScreenSaverRegistration reg2(&svc2);
+    if (! reg2.ok()) QSKIP("could not re-register org.freedesktop.ScreenSaver for this test");
+
+    QTRY_COMPARE_WITH_TIMEOUT(mon.isActive(), true, 2000);
+    QVERIFY(spy.count() >= 1);
 }
 
 QTEST_MAIN(TestScreenSaverMonitor)

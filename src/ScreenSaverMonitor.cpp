@@ -1,4 +1,7 @@
 #include "ScreenSaverMonitor.hpp"
+#include <QDBusMessage>
+#include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
 #include <QDebug>
 
 using namespace wekde;
@@ -48,6 +51,42 @@ void ScreenSaverMonitor::wireUp(QDBusConnection bus) {
         qWarning("wekde::ScreenSaverMonitor: could not subscribe to "
                  "org.kde.screensaver.ActiveChanged (non-KDE session?)");
     }
+
+    // Resync m_active with whatever the lock state already is -- a bare
+    // subscription only ever sees the *next* toggle, leaving a monitor
+    // built mid-lock wrongly "unlocked" until that toggle happens.
+    queryActiveState(bus);
+
+    // kded_screenlocker restarting mid-session drops org.freedesktop.
+    // ScreenSaver off the bus and brings it back with a fresh internal
+    // state; re-query on every (re)appearance so a restart can't leave
+    // m_active stuck on whatever it was before.
+    auto* watcher = new QDBusServiceWatcher(QStringLiteral("org.freedesktop.ScreenSaver"),
+                                            bus,
+                                            QDBusServiceWatcher::WatchForRegistration,
+                                            this);
+    connect(watcher, &QDBusServiceWatcher::serviceRegistered, this, [this, bus](const QString&) {
+        queryActiveState(bus);
+    });
+}
+
+void ScreenSaverMonitor::queryActiveState(QDBusConnection bus) {
+    QDBusMessage getActive = QDBusMessage::createMethodCall(
+        "org.freedesktop.ScreenSaver", "/ScreenSaver", "org.freedesktop.ScreenSaver", "GetActive");
+    auto* watcher = new QDBusPendingCallWatcher(bus.asyncCall(getActive), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher* w) {
+        w->deleteLater();
+        QDBusPendingReply<bool> reply = *w;
+        if (! reply.isValid()) {
+            // No reply -- e.g. GetActive unimplemented, or the service
+            // isn't up yet. Leave m_active as-is; the next ActiveChanged
+            // signal or service (re)appearance gets another chance.
+            qWarning("wekde::ScreenSaverMonitor: GetActive query failed (%s)",
+                     qUtf8Printable(reply.error().message()));
+            return;
+        }
+        handleActiveChanged(reply.value());
+    });
 }
 
 void ScreenSaverMonitor::handleActiveChanged(bool active) {

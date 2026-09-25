@@ -50,6 +50,13 @@ for a in "$@"; do
     [[ "$prev" == "--report-dir" ]] && dir="$a"
     prev="$a"
 done
+# Records the per-mutant address-space limit this invocation observed, so a
+# case can assert mutation.sh actually set ulimit -v before exec'ing the
+# runner rather than trusting the wrapper silently worked.
+if [[ -n "$dir" ]]; then
+    mkdir -p "$dir"
+    ulimit -Sv > "$dir/observed-ulimit.txt" 2>/dev/null || echo unlimited > "$dir/observed-ulimit.txt"
+fi
 # A per-target body wins over the shared one, so a case can give two targets
 # different results for the same mutant -- which is the only way to see whether
 # the aggregate treats "killed here, survived there" as killed.
@@ -740,6 +747,40 @@ out="$( cd "$root" && MUTATION_SKIP_BUILD=1 WEK_IN_CI=1 MULL_WORKERS=1 \
         "$GATE" --target tst_filehelper --strict 2>&1 )"; rc=$?
 check "a compiled path containing a space is still recognised as uninstrumented" \
       "" "$rc" 1 "$out" "never instrumented"
+
+# 25. A runaway mutant (a corrupted size or loop bound) must hit its OWN
+#     memory cap instead of taking the whole sweep scope down with it -- the
+#     failure mode mutation-sweep.sh exists to survive.  The cap is a
+#     ulimit -v set on the runner's own process, inherited by every mutant it
+#     forks, so an explicit MULL_MUTANT_AS_MB has to reach the runner exactly.
+root="$(make_root)"
+body="$(report_json "$root" "src/FileHelper.cpp:10:cxx_gt_to_ge")"
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 STUB_REPORT="$body" MULL_WORKERS=1 \
+        MULL_MUTANT_AS_MB=2048 "$GATE" --target tst_filehelper --strict 2>&1 )"; rc=$?
+observed="$(cat "$root/build/impl-mutation/mull-out/tst_filehelper/observed-ulimit.txt" 2>/dev/null)"
+check "an explicit MULL_MUTANT_AS_MB reaches the runner as ulimit -v (KB)" \
+      "" "$observed" "2097152" "$out"
+
+# 26. Leaving the cap unset must not mean uncapped -- it falls back to the
+#     documented default, measured against a clean instrumented
+#     backend_scene_tests run (see mutation.sh).
+root="$(make_root)"
+body="$(report_json "$root" "src/FileHelper.cpp:10:cxx_gt_to_ge")"
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 STUB_REPORT="$body" MULL_WORKERS=1 \
+        "$GATE" --target tst_filehelper --strict 2>&1 )"; rc=$?
+observed="$(cat "$root/build/impl-mutation/mull-out/tst_filehelper/observed-ulimit.txt" 2>/dev/null)"
+check "MULL_MUTANT_AS_MB unset applies the default cap, not no cap" \
+      "" "$observed" "4194304" "$out"
+
+# 27. A cap set below the measured healthy footprint would kill every clean
+#     mutant, not just runaway ones -- the driver has to say so rather than
+#     let that read as a wall of "survived" false negatives.
+root="$(make_root)"
+body="$(report_json "$root" "src/FileHelper.cpp:10:cxx_gt_to_ge")"
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 STUB_REPORT="$body" MULL_WORKERS=1 \
+        MULL_MUTANT_AS_MB=64 "$GATE" --target tst_filehelper --strict 2>&1 )"; rc=$?
+check "a cap below the measured healthy footprint is flagged" \
+      "" "$rc" 1 "$out" "below the measured healthy footprint"
 
 echo
 if [[ "$FAIL" -gt 0 ]]; then

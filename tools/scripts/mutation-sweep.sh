@@ -44,12 +44,34 @@ MUTATION="$_SWEEP_DIR/mutation.sh"
 # Under a scope the kernel reclaims and then kills *inside* the scope, so a
 # runaway mutant dies alone and Mull records it as killed -- which is the correct
 # result for it anyway -- instead of the desktop losing an unrelated application.
+#
+# mutation.sh now caps every mutant's own address space at MULL_MUTANT_AS_MB
+# (ulimit -v), but that cap only helps if this scope can hold MULL_MAX_WORKERS
+# of them running at once -- a scope smaller than that throttles or kills the
+# whole run before a single mutant ever reaches its own cap, which is exactly
+# what a static 6G/8G (then 12G/14G) did on this box twice.  So the default
+# tracks both knobs instead of a fixed number: worst case is every worker
+# simultaneously pinned at the cap, plus mull-runner's own process and the
+# bash/ninja coordination around it (not measured precisely -- 1024 MB is
+# just enough that the scope isn't sized to the exact byte the workers use).
+MULL_MAX_WORKERS="${MULL_MAX_WORKERS:-6}"
+MULL_MUTANT_AS_MB="${MULL_MUTANT_AS_MB:-4096}"
+_SWEEP_RUNNER_SHARE_MB=1024
+_SWEEP_DEFAULT_HIGH_MB=$(( MULL_MAX_WORKERS * MULL_MUTANT_AS_MB + _SWEEP_RUNNER_SHARE_MB ))
+_SWEEP_DEFAULT_MAX_MB=$(( _SWEEP_DEFAULT_HIGH_MB + 2048 ))
+SWEEP_MEM_HIGH="${WEK_SWEEP_MEM_HIGH:-${_SWEEP_DEFAULT_HIGH_MB}M}"
+SWEEP_MEM_MAX="${WEK_SWEEP_MEM_MAX:-${_SWEEP_DEFAULT_MAX_MB}M}"
+
 if [[ -z "${WEK_SWEEP_SCOPED:-}" ]] && command -v systemd-run >/dev/null 2>&1; then
     export WEK_SWEEP_SCOPED=1
+    export MULL_MAX_WORKERS MULL_MUTANT_AS_MB
+    printf 'sweep scope: %d workers x %dMB mutant cap + %dMB runner share -> MemoryHigh=%s MemoryMax=%s\n' \
+        "$MULL_MAX_WORKERS" "$MULL_MUTANT_AS_MB" "$_SWEEP_RUNNER_SHARE_MB" \
+        "$SWEEP_MEM_HIGH" "$SWEEP_MEM_MAX" >&2
     exec systemd-run --user --scope --quiet --collect \
         --unit="wek-mutation-sweep-$$" \
-        -p MemoryHigh="${WEK_SWEEP_MEM_HIGH:-6G}" \
-        -p MemoryMax="${WEK_SWEEP_MEM_MAX:-8G}" \
+        -p MemoryHigh="$SWEEP_MEM_HIGH" \
+        -p MemoryMax="$SWEEP_MEM_MAX" \
         -- "${BASH_SOURCE[0]}" "$@"
 fi
 

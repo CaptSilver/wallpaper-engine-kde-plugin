@@ -686,6 +686,30 @@ fi
 MULL_TIMEOUT_MS="${MULL_TIMEOUT_MS:-300000}"
 MULL_MIN_TIMEOUT_MS="${MULL_MIN_TIMEOUT_MS:-5000}"
 ok "mull parallelism: $MULL_WORKERS workers (RAM-bounded, cap nproc), build -j$MULL_BUILD_JOBS, ${MULL_TIMEOUT_MS}ms ceiling / ${MULL_MIN_TIMEOUT_MS}ms floor"
+
+# Per-mutant address-space cap. Nothing bounds a single mutant today: a
+# corrupted size or loop bound allocates without limit, and that took a whole
+# sweep down twice (systemd-oomd killing every worker in the scope, not just
+# the offending mutant -- see mutation-sweep.sh). run_mull_pass() sets this as
+# `ulimit -v` in a subshell around each "$RUNNER" call below; rlimits survive
+# fork+exec, so mull-runner and every mutant process it forks inherit the same
+# cap. A mutant that exceeds it fails its own allocation and dies -- Mull
+# records that as killed, which is the right verdict for it.
+#
+# ulimit -v bounds virtual address space, not RSS, because RSS undercounts
+# what this binary actually reserves: Vulkan/Qt map large ranges the tests
+# never touch. Measured on a clean full run of the instrumented
+# backend_scene_tests (two runs, `systemd-run --user --scope -p
+# MemoryHigh=6G -p MemoryMax=8G`, polling /proc/<pid>/status): VmPeak 2.30 GiB,
+# VmHWM ~470 MB. 4096 MB leaves ~1.7x headroom over that before a clean
+# mutant would ever hit the cap.
+MULL_MUTANT_AS_MB="${MULL_MUTANT_AS_MB:-4096}"
+MULL_HEALTHY_VSZ_MB=2355
+if (( MULL_MUTANT_AS_MB < MULL_HEALTHY_VSZ_MB )); then
+    warn "MULL_MUTANT_AS_MB=$MULL_MUTANT_AS_MB is below the measured healthy footprint (~${MULL_HEALTHY_VSZ_MB} MB) — clean mutants may be killed by the cap, not just runaway ones"
+fi
+ok "mull per-mutant cap: ${MULL_MUTANT_AS_MB}MB virtual address space (ulimit -v)"
+
 # Resolved via PATH by default (inside the box, same as clang/cmake); the
 # instrumentation-drift self-test overrides this to an absolute stub path so
 # it can pin canned `-t commands` output without a real ninja build or an
@@ -977,14 +1001,15 @@ run_mull_pass() {
         # otherwise attaches GDB to every "failing" mutant for post-mortem (which
         # for our purposes is most of them, since killed mutants ARE the success
         # case).  Cuts per-mutant overhead by ~5x.
-        if ! "$RUNNER" --workers "$MULL_WORKERS" \
+        if ! ( ulimit -v $((MULL_MUTANT_AS_MB * 1024))
+               exec "$RUNNER" --workers "$MULL_WORKERS" \
                        --timeout "$MULL_TIMEOUT_MS" \
                        --minimum-timeout "$MULL_MIN_TIMEOUT_MS" \
                        --no-output \
                        --reporters Elements \
                        --report-dir "$target_dir" \
                        --report-name report \
-                       "$bin" 2>&1 | tee "$target_dir/runner.log" | tail -8; then
+                       "$bin" ) 2>&1 | tee "$target_dir/runner.log" | tail -8; then
             warn "Mull exit nonzero for $t$label (survivors expected; output captured)"
         fi
         rpt=$(find "$target_dir" -maxdepth 1 -name '*.json' -type f 2>/dev/null | head -1 || true)
@@ -1044,10 +1069,11 @@ run_mull_pass() {
         # in this project's build environments; it exists for a Mull that predates
         # Elements support.
         out="$target_dir/ide.log"
-        "$RUNNER" --workers "$MULL_WORKERS" \
+        ( ulimit -v $((MULL_MUTANT_AS_MB * 1024))
+          exec "$RUNNER" --workers "$MULL_WORKERS" \
                   --timeout "$MULL_TIMEOUT_MS" \
                   --minimum-timeout "$MULL_MIN_TIMEOUT_MS" \
-                  --reporters IDE "$bin" 2>&1 | tee "$out" | tail -8 || true
+                  --reporters IDE "$bin" ) 2>&1 | tee "$out" | tail -8 || true
         # The IDE reporter has no missing-file tell: jq turns an empty log into
         # an empty survivor list, which reads as a clean run.  A fatal Mull
         # error (a timed-out warmup being the usual one) must not surface as

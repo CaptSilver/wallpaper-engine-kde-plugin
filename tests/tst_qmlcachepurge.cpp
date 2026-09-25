@@ -1,27 +1,34 @@
 // wekde::purgeUnverifiableQmlCache deletes QML disk-cache entries Qt itself
-// can never re-validate. On an ostree host (Bazzite, Kinoite)
-// every file under /usr carries mtime 0; QFileInfo::lastModified() comes
-// back *invalid* for mtime 0 rather than the epoch, so Qt's own cache
+// can never re-validate, or has failed to. On an ostree host (Bazzite,
+// Kinoite) every file under /usr carries mtime 0; QFileInfo::lastModified()
+// comes back *invalid* for mtime 0 rather than the epoch, so Qt's own cache
 // validation has nothing to compare a cached entry's stored timestamp
-// against and just keeps trusting whatever is already on disk -- including
-// an entry compiled from a source that has since changed underneath it.
+// against and just keeps trusting whatever is already on disk. A source
+// with a valid mtime newer than its cache entry is purged too, on the same
+// theory but the opposite direction -- Qt's validation is supposed to
+// invalidate that pair on its own, but a host that doesn't can leave a
+// months-old compiled unit sitting there indefinitely.
 // See src/QmlCachePurge.hpp for the full mechanism this relies on.
 
 #include "QmlCachePurge.hpp"
 
+#include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimeZone>
 
 using wekde::purgeUnverifiableQmlCache;
+using wekde::qmlCacheDir;
 using wekde::QmlCacheEntry;
 using wekde::qmlCacheFileName;
 using wekde::QmlCachePurgeResult;
+using wekde::staleMainQmlMessage;
 
 namespace
 {
@@ -45,6 +52,16 @@ bool stampEpoch(const QString& path) {
     QFile f(path);
     if (! f.open(QIODevice::ReadWrite)) return false;
     return f.setFileTime(QDateTime::fromMSecsSinceEpoch(0, QTimeZone::UTC),
+                         QFileDevice::FileModificationTime);
+}
+
+// Rewrites path's modification time to an explicit instant, so a test can
+// pin a source-vs-cache ordering without depending on real-clock timing
+// between two sequential writes.
+bool stampTime(const QString& path, qint64 msecsSinceEpoch) {
+    QFile f(path);
+    if (! f.open(QIODevice::ReadWrite)) return false;
+    return f.setFileTime(QDateTime::fromMSecsSinceEpoch(msecsSinceEpoch, QTimeZone::UTC),
                          QFileDevice::FileModificationTime);
 }
 
@@ -119,6 +136,60 @@ private slots:
         QVERIFY(QFileInfo(source).lastModified().isValid());
 
         const QString cacheFile = writeCacheEntry(QDir(cacheDir.path()), source);
+
+        const QmlCachePurgeResult result =
+            purgeUnverifiableQmlCache({ srcDir.path() }, cacheDir.path());
+
+        QVERIFY(QFileInfo::exists(cacheFile));
+        QVERIFY(result.removed.isEmpty());
+        QVERIFY(result.failed.isEmpty());
+    }
+
+    // (b2) A source with a valid mtime that is NEWER than its cache entry
+    // -- a reinstall over a host whose disk cache never re-validated, the
+    // exact shape of the systemsettings incident this mechanism exists
+    // for. Qt's own cache validation is supposed to catch this on its own;
+    // this covers the case where a host process doesn't.
+    void sourceNewerThanCacheEntry_isRemoved() {
+        QTemporaryDir srcDir;
+        QTemporaryDir cacheDir;
+        QVERIFY(srcDir.isValid());
+        QVERIFY(cacheDir.isValid());
+
+        const QString source    = writeFixture(QDir(srcDir.path()), "Foo.qml");
+        const QString cacheFile = writeCacheEntry(QDir(cacheDir.path()), source);
+
+        // Cache entry compiled first, source "reinstalled" an hour later --
+        // both valid, real timestamps, source strictly newer.
+        const qint64 cacheTime = 1'700'000'000'000;
+        QVERIFY(stampTime(cacheFile, cacheTime));
+        QVERIFY(stampTime(source, cacheTime + 3600'000));
+
+        const QmlCachePurgeResult result =
+            purgeUnverifiableQmlCache({ srcDir.path() }, cacheDir.path());
+
+        QVERIFY(! QFileInfo::exists(cacheFile));
+        QVERIFY(result.failed.isEmpty());
+        QCOMPARE(result.removed.size(), 1);
+        QCOMPARE(result.removed.first().sourcePath, source);
+        QCOMPARE(result.removed.first().cacheFile, cacheFile);
+    }
+
+    // (b3) A source with a valid mtime EQUAL to its cache entry's is left
+    // alone -- without proof the source moved on, purging would just waste
+    // a recompile on every single process start.
+    void sourceMtimeEqualToCacheEntry_leftAlone() {
+        QTemporaryDir srcDir;
+        QTemporaryDir cacheDir;
+        QVERIFY(srcDir.isValid());
+        QVERIFY(cacheDir.isValid());
+
+        const QString source    = writeFixture(QDir(srcDir.path()), "Foo.qml");
+        const QString cacheFile = writeCacheEntry(QDir(cacheDir.path()), source);
+
+        const qint64 sameTime = 1'700'000'000'000;
+        QVERIFY(stampTime(source, sameTime));
+        QVERIFY(stampTime(cacheFile, sameTime));
 
         const QmlCachePurgeResult result =
             purgeUnverifiableQmlCache({ srcDir.path() }, cacheDir.path());
@@ -246,6 +317,102 @@ private slots:
         const QByteArray selfComputed =
             QCryptographicHash::hash(path.toUtf8(), QCryptographicHash::Sha1).toHex();
         QCOMPARE(QString::fromLatin1(selfComputed), knownHash);
+    }
+
+    // (h) Every test above hands purgeUnverifiableQmlCache() an explicit
+    // cacheDir, so none of them exercise qmlCacheDir() -- the resolution
+    // src/plugin.cpp's purgeStaleQmlCacheOnce() actually calls in
+    // production. Sets XDG_CACHE_HOME to a scratch dir and proves a stale
+    // plugin-file entry sitting under whatever directory qmlCacheDir()
+    // itself resolves is actually found and purged, for two different
+    // QCoreApplication::applicationName() values standing in for
+    // plasmashell and systemsettings -- pinning that the resolution is
+    // genuinely per-process (keyed by QStandardPaths, not a path this
+    // plugin hardcodes) instead of trusting that claim from reading the
+    // source.
+    void qmlCacheDir_resolvesPerProcess_andPurgeReachesIt() {
+        const bool       hadXdgCache        = qEnvironmentVariableIsSet("XDG_CACHE_HOME");
+        const QByteArray savedXdgCache      = qgetenv("XDG_CACHE_HOME");
+        const bool       hadDiskCachePath   = qEnvironmentVariableIsSet("QML_DISK_CACHE_PATH");
+        const QByteArray savedDiskCachePath = qgetenv("QML_DISK_CACHE_PATH");
+        const QString    savedAppName       = QCoreApplication::applicationName();
+
+        // qmlCacheDir() prefers QML_DISK_CACHE_PATH over XDG_CACHE_HOME --
+        // clear it so this test actually exercises the XDG_CACHE_HOME path.
+        qunsetenv("QML_DISK_CACHE_PATH");
+
+        QTemporaryDir scratch;
+        QVERIFY(scratch.isValid());
+        qputenv("XDG_CACHE_HOME", scratch.path().toLocal8Bit());
+
+        QTemporaryDir srcDir;
+        QVERIFY(srcDir.isValid());
+        const QString source = writeFixture(QDir(srcDir.path()), "contents/ui/Common.qml");
+        QVERIFY(stampEpoch(source));
+
+        QHash<QString, QString> cacheDirByAppName;
+
+        for (const QString& appName :
+             { QStringLiteral("plasmashell"), QStringLiteral("systemsettings") }) {
+            QCoreApplication::setApplicationName(appName);
+            const QString cacheDir = qmlCacheDir();
+            QVERIFY2(cacheDir.startsWith(scratch.path()),
+                     qPrintable(QStringLiteral("qmlCacheDir() for %1 = %2, expected under %3")
+                                    .arg(appName, cacheDir, scratch.path())));
+            cacheDirByAppName.insert(appName, cacheDir);
+
+            const QString             cacheFile = writeCacheEntry(QDir(cacheDir), source);
+            const QmlCachePurgeResult result =
+                purgeUnverifiableQmlCache({ srcDir.path() }, cacheDir);
+
+            QVERIFY2(! QFileInfo::exists(cacheFile),
+                     qPrintable(QStringLiteral("stale entry for %1 not purged under "
+                                               "applicationName %2")
+                                    .arg(source, appName)));
+            QCOMPARE(result.removed.size(), 1);
+        }
+
+        // The property this test is named for -- resolution is genuinely
+        // per-process, not just "purge works under whatever it's handed" --
+        // is only pinned once the two resolved directories are compared
+        // against each other. A regression that dropped the app-name
+        // component (e.g. QStandardPaths::GenericCacheLocation in place of
+        // CacheLocation) would collapse both onto the same directory and
+        // every check above would still pass.
+        QVERIFY2(cacheDirByAppName.value(QStringLiteral("plasmashell")) !=
+                     cacheDirByAppName.value(QStringLiteral("systemsettings")),
+                 "qmlCacheDir() resolved the same directory for plasmashell and "
+                 "systemsettings -- cache-directory resolution is no longer per-process");
+
+        QCoreApplication::setApplicationName(savedAppName);
+        if (hadXdgCache)
+            qputenv("XDG_CACHE_HOME", savedXdgCache);
+        else
+            qunsetenv("XDG_CACHE_HOME");
+        if (hadDiskCachePath)
+            qputenv("QML_DISK_CACHE_PATH", savedDiskCachePath);
+        else
+            qunsetenv("QML_DISK_CACHE_PATH");
+    }
+
+    // (i) The plasmashell branch is the only one that may claim "this
+    // session already loaded the old compiled copy" -- it's the only host
+    // that ever actually loads main.qml.
+    void staleMainQmlMessage_plasmashell_tellsItToRestart() {
+        const QString msg = staleMainQmlMessage(QStringLiteral("plasmashell"));
+        QVERIFY2(msg.contains(QStringLiteral("restart plasmashell")), qPrintable(msg));
+        QVERIFY2(msg.contains(QStringLiteral("already loaded the old compiled copy")),
+                 qPrintable(msg));
+    }
+
+    // (j) Every other host (systemsettings, kcmshell6, ...) walks the same
+    // package directory but never loads main.qml itself, so it must not
+    // claim to have "already loaded" the stale copy -- that claim is false
+    // for that host by construction.
+    void staleMainQmlMessage_nonPlasmashellHost_doesNotClaimItLoadedMainQml() {
+        const QString msg = staleMainQmlMessage(QStringLiteral("systemsettings"));
+        QVERIFY2(! msg.contains(QStringLiteral("already loaded")), qPrintable(msg));
+        QVERIFY2(msg.contains(QStringLiteral("systemsettings")), qPrintable(msg));
     }
 };
 

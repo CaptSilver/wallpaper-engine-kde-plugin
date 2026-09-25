@@ -80,6 +80,8 @@ To run it: KDE Plasma 6, Qt 6.8+, and a working Vulkan 1.1+ driver (AMD users wa
 
 [Troubleshooting](https://github.com/CaptSilver/wallpaper-engine-kde-plugin/wiki/Troubleshooting) covers the common ones — empty wallpaper lists, black desktops, missing audio. [Known Issues](https://github.com/CaptSilver/wallpaper-engine-kde-plugin/wiki/Known-Issues) lists the standing quirks.
 
+If the settings dialog itself looks wrong after an update — a tab that won't populate, a missing control — it's usually the KDE System Settings process (`systemsettings`) running an old compiled copy of the dialog's QML. It keeps its own disk cache separate from plasmashell's, at `~/.cache/systemsettings/qmlcache/`; clear that directory and reopen the dialog to force a fresh compile.
+
 ## Contributing
 
 PRs are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) has the local build-and-test gate and a few house rules.

@@ -1,5 +1,6 @@
 #include <QQmlExtensionPlugin>
 #include <QQmlEngine>
+#include <QCoreApplication>
 #include <QDebug>
 #include <array>
 #include <KCrash>
@@ -26,7 +27,6 @@
 #include "ActivityHelper.hpp"
 #ifdef WEKDE_HAS_GLOBALACCEL
 #    include "WekShortcuts.hpp"
-#    include <QCoreApplication>
 #endif
 
 constexpr std::array<uint, 2> WPVer { 1, 2 };
@@ -78,11 +78,16 @@ void purgeStaleQmlCacheOnce() {
         // hasn't loaded yet (backends, helpers, config UI). The purge
         // guarantees the *next* load of main.qml recompiles fresh; it
         // can't retroactively fix the copy this engine is already running.
-        qWarning()
-            << "wekde: main.qml's compiled QML cache was stale and has been purged, but this "
-               "plasmashell session already loaded the old compiled copy -- restart "
-               "plasmashell to pick up the fresh one (log out/in, or `systemctl --user "
-               "restart plasma-plasmashell.service`)";
+        //
+        // main.qml only ever runs inside plasmashell, but the package walk
+        // that found the stale entry runs in whichever process loaded this
+        // plugin -- the settings dialog (systemsettings, kcmshell6, ...)
+        // has its own qmlcache and can purge an orphaned main.qml entry
+        // there too, despite never loading main.qml itself. staleMainQmlMessage()
+        // picks the right wording for the actual host so a non-plasmashell
+        // process doesn't get told it "already loaded" a file it never ran.
+        const QString host = QCoreApplication::applicationName();
+        qWarning().noquote() << wekde::staleMainQmlMessage(host);
     }
 }
 

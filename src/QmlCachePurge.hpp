@@ -38,10 +38,24 @@ struct QmlCachePurgeResult {
 // is safe -- the source just gets recompiled and re-cached, normally, on
 // its next load.
 //
+// A source with a valid mtime that is newer than its own cache entry is
+// purged too. Qt's own validation is supposed to catch this case on its
+// own -- a hand `cmake --install` over a session that already compiled the
+// old QML should invalidate cleanly -- but a host process can end up
+// running a compiled unit dated months before the source it was supposedly
+// built from (seen on a KCM host whose disk cache never picked up an
+// install that plasmashell's own cache recompiled from correctly the same
+// moment). Comparing the two mtimes directly, rather than trusting Qt's own
+// cache validation to have already done it, catches that regardless of
+// which process is asking.
+//
 // sourceDirs are walked recursively for *.qml/*.js/*.mjs files. A file
-// whose mtime is valid is left untouched, because Qt already validates
-// that one correctly. cacheDir is Qt's qmlcache directory (see
-// qmlCacheDir() below).
+// whose mtime is valid AND not newer than its cache entry is left
+// untouched -- there is nothing to purge and Qt already validates that one
+// correctly. cacheDir is Qt's qmlcache directory (see qmlCacheDir() below),
+// which already varies per host process (plasmashell, systemsettings,
+// kcmshell6, ...) since it's derived from that process's own
+// QStandardPaths::CacheLocation.
 QmlCachePurgeResult purgeUnverifiableQmlCache(const QStringList& sourceDirs,
                                               const QString&     cacheDir);
 
@@ -68,5 +82,18 @@ QString qmlCacheDir();
 // than one on a multi-prefix system -- found the same way Qt's own import
 // resolution would find them.
 QStringList pluginQmlPackageDirs();
+
+// The qWarning() text for "a stale, orphaned main.qml cache entry was just
+// purged", given the host process's name (QCoreApplication::applicationName()).
+// main.qml is only ever loaded by plasmashell itself; every other host that
+// imports this plugin's QML package (systemsettings, kcmshell6, the config
+// dialog's own process, ...) walks the same package directory during
+// registerTypes()/initializeEngine() and can find and purge an orphaned
+// entry for main.qml without ever having loaded main.qml. Only the
+// plasmashell branch can truthfully say "this session already loaded the
+// old compiled copy"; every other host gets a message that doesn't make
+// that claim. Pulled out of plugin.cpp so the two branches can be checked
+// directly rather than only by reading the source.
+QString staleMainQmlMessage(const QString& host);
 
 } // namespace wekde

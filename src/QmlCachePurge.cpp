@@ -1,6 +1,7 @@
 #include "QmlCachePurge.hpp"
 
 #include <QCryptographicHash>
+#include <QDateTime>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
@@ -46,12 +47,19 @@ QmlCachePurgeResult purgeUnverifiableQmlCache(const QStringList& sourceDirs,
         while (it.hasNext()) {
             const QString sourcePath = it.next();
 
-            // A valid mtime means Qt can (and does) validate this entry
-            // correctly on its own; nothing for us to do.
-            if (QFileInfo(sourcePath).lastModified().isValid()) continue;
-
             const QString cacheFile = cache.filePath(qmlCacheFileName(sourcePath));
             if (! QFileInfo::exists(cacheFile)) continue;
+
+            // A valid source mtime that is not newer than the cache entry
+            // means Qt can (and, on a well-behaved host, does) validate
+            // this entry correctly on its own; nothing for us to do. An
+            // invalid mtime (the ostree case) or a source that has moved
+            // on since the entry was compiled both mean the opposite --
+            // treat them the same way rather than trusting a comparison
+            // Qt's own loader is supposed to make but this host might not.
+            const QDateTime sourceMtime = QFileInfo(sourcePath).lastModified();
+            if (sourceMtime.isValid() && sourceMtime <= QFileInfo(cacheFile).lastModified())
+                continue;
 
             if (QFile::remove(cacheFile)) {
                 result.removed.append({ sourcePath, cacheFile });
@@ -62,6 +70,25 @@ QmlCachePurgeResult purgeUnverifiableQmlCache(const QStringList& sourceDirs,
     }
 
     return result;
+}
+
+QString staleMainQmlMessage(const QString& host) {
+    if (host == QStringLiteral("plasmashell")) {
+        return QStringLiteral(
+            "wekde: main.qml's compiled QML cache was stale and has been purged, but this "
+            "plasmashell session already loaded the old compiled copy -- restart plasmashell "
+            "to pick up the fresh one (log out/in, or `systemctl --user restart "
+            "plasma-plasmashell.service`)");
+    }
+    // main.qml only ever runs inside plasmashell. Every other host that
+    // imports this plugin's QML package (systemsettings, kcmshell6, ...)
+    // walked the same package directory and can purge an orphaned entry
+    // for main.qml, but it never loaded main.qml itself -- so there is no
+    // "already loaded copy" for it to reopen, and the message must not
+    // claim there is.
+    return QStringLiteral("wekde: an orphaned compiled QML cache entry for main.qml was "
+                          "purged from ") +
+           host + QStringLiteral("'s cache -- main.qml never runs there, so this needs no action");
 }
 
 } // namespace wekde

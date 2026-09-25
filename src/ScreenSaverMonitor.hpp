@@ -25,10 +25,12 @@ namespace wekde
 // already locked stayed wrongly "unlocked" until the next real toggle, and
 // a missed unlock (kded_screenlocker restarting mid-session, a D-Bus
 // hiccup) left it stuck locked forever. wireUp() now issues an async
-// GetActive() query right after subscribing, and re-issues it whenever
-// org.freedesktop.ScreenSaver (re)appears on the bus, so construction and a
-// screenlocker restart both resync m_active without depending on a signal
-// ever arriving.
+// GetActive() query right after subscribing, against BOTH interfaces (a
+// session where only org.kde.screensaver answers — FDO proxy stale or
+// absent — gets a resync too, not just the portable one), and re-issues
+// each query whenever its own interface (re)appears on the bus, so
+// construction and a screenlocker restart both resync m_active without
+// depending on a signal ever arriving.
 class ScreenSaverMonitor : public QQuickItem {
     Q_OBJECT
     Q_PROPERTY(bool active READ isActive NOTIFY screenSaverActiveChanged)
@@ -53,7 +55,7 @@ public slots:
 
 private:
     void wireUp(QDBusConnection bus);
-    void queryActiveState(QDBusConnection bus);
+    void queryActiveState(QDBusConnection bus, const QString& service, const QString& interface);
 
     bool m_active;
 };

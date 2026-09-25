@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QUrl>
@@ -457,6 +458,23 @@ WallpaperWorkShopId=1234567
         const auto     gpu = diag.collectGpuInfoForTest();
         QVERIFY2(gpu.contains(QStringLiteral("=== lspci -k")), qPrintable(gpu));
         QVERIFY2(gpu.contains(QStringLiteral("=== lsmod (GPU modules) ===")), qPrintable(gpu));
+    }
+
+    // QML's console.log/warn/error never reach journald in this
+    // environment, so main.qml routes pause-source transitions through
+    // this method instead. Pins that it actually lands a qCInfo line
+    // naming the source and the play/pause decision, on the "wekde.pause"
+    // category so it can be picked out of a journal grep.
+    void testLogPauseTransition_playingEmitsInfoLineWithSourceAndPlay() {
+        WekDiagnostics diag;
+        QTest::ignoreMessage(QtInfoMsg, QRegularExpression("windowModel.*play"));
+        diag.logPauseTransition(QStringLiteral("windowModel"), /*playing=*/true);
+    }
+
+    void testLogPauseTransition_pausedEmitsInfoLineWithSourceAndPause() {
+        WekDiagnostics diag;
+        QTest::ignoreMessage(QtInfoMsg, QRegularExpression("screensaver.*pause"));
+        diag.logPauseTransition(QStringLiteral("screensaver"), /*playing=*/false);
     }
 };
 

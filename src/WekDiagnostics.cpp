@@ -7,6 +7,7 @@
 #include <QFileInfo>
 #include <QMap>
 #include <QProcess>
+#include <QLoggingCategory>
 #include <QProcessEnvironment>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -19,7 +20,13 @@
 namespace wekde
 {
 
+Q_LOGGING_CATEGORY(lcWekPause, "wekde.pause")
+
 WekDiagnostics::WekDiagnostics(QObject* parent): QObject(parent) {}
+
+void WekDiagnostics::logPauseTransition(const QString& source, bool playing) {
+    qCInfo(lcWekPause) << source << (playing ? "play" : "pause");
+}
 
 QString WekDiagnostics::saveBundle() {
     QDir dir(cache_paths::diagnosticsDir());

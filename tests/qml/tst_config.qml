@@ -224,6 +224,36 @@ TestCase {
         compare(sp.cfg_PresentMode, 0);
     }
 
+    // ── cfg_PauseDebugLogging: alias round-trips through SettingPage's switch ─
+    // Mirrors cfg_PresentMode's test: config.qml's root alias has to reach
+    // SettingPage's own cfg_PauseDebugLogging (backed by
+    // ckbox_pauseDebugLogging.checked), or the switch on the settings page
+    // toggles a property nobody persists — main.qml's
+    // `WindowModel { logging: wallpaper.configuration.PauseDebugLogging }`
+    // would then never see anything but the kcfg default.
+    function test_cfgPauseDebugLogging_roundTripsThroughSettingPage() {
+        verify(cfg !== null);
+        function findSettingPage(parent) {
+            const all = [...(parent.children || []), ...(parent.data || [])];
+            for (const c of all) {
+                if (c && typeof c.cfg_PauseDebugLogging !== "undefined"
+                      && typeof c.cfg_HdrOutput !== "undefined") return c;
+                const found = findSettingPage(c);
+                if (found) return found;
+            }
+            return null;
+        }
+        const sp = findSettingPage(cfg);
+        verify(sp !== null);
+        // Default is off per main.xml.
+        compare(sp.cfg_PauseDebugLogging, false);
+        cfg.cfg_PauseDebugLogging = true;
+        compare(sp.cfg_PauseDebugLogging, true);
+        // Write from the page side should also mirror back via the alias.
+        sp.cfg_PauseDebugLogging = false;
+        compare(cfg.cfg_PauseDebugLogging, false);
+    }
+
     function _configQmlSource() {
         const xhr = new XMLHttpRequest();
         xhr.open("GET", Qt.resolvedUrl("../../plugin/contents/ui/config.qml"), false);

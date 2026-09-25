@@ -26,8 +26,16 @@ QtObject {
     property string lastExportSrc: ""
     property string lastExportDest: ""
 
+    // Records every logPauseTransition() call so a test can assert which
+    // pause source fired and what it decided, without a real journal.
+    property var pauseTransitionLog: []
+
     function lastError() {
         return nextLastError;
+    }
+
+    function logPauseTransition(source, playing) {
+        pauseTransitionLog.push({ source: String(source), playing: !!playing });
     }
 
     function saveBundle() {

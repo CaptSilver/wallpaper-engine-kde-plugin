@@ -28,6 +28,7 @@ Flickable {
     property alias cfg_RandomizeWallpaper: ckbox_randomizeWallpaper.checked
     property alias cfg_NoRandomWhilePaused: ckbox_noRandomWhilePaused.checked
     property alias cfg_PauseFilterByScreen: ckbox_pauseFilterByScreen.checked
+    property alias cfg_PauseDebugLogging: ckbox_pauseDebugLogging.checked
     property alias cfg_PlaylistNotifyOnAdvance: ckbox_playlistNotify.checked
     property alias cfg_CacheQuotaMB: spin_cacheQuota.value
 
@@ -153,6 +154,21 @@ Flickable {
                         Layout.fillWidth: true
                         color: Kirigami.Theme.disabledTextColor
                         text: i18nc("@info screensaver policy help text", "Lock-screen state is session-wide on Plasma; every screen pauses together. There is no per-screen lock policy.")
+                        wrapMode: Text.Wrap
+                    }
+                }
+            }
+            OptionItem {
+                text: i18nc("@label settings option", "Log which window satisfied the pause condition")
+                text_color: Kirigami.Theme.textColor
+                actor: Switch {
+                    id: ckbox_pauseDebugLogging
+                }
+                contentBottom: ColumnLayout {
+                    Text {
+                        Layout.fillWidth: true
+                        color: Kirigami.Theme.disabledTextColor
+                        text: i18nc("@info pause debug logging help text", "Writes each window's minimized/maximized/fullscreen/active state to the terminal running plasmashell every time the pause check runs. For diagnosing why Pause mode is (or isn't) triggering; leave off otherwise.")
                         wrapMode: Text.Wrap
                     }
                 }

@@ -52,6 +52,7 @@ ColumnLayout {
     property alias  cfg_RandomizeWallpaper:  settingPage.cfg_RandomizeWallpaper
     property alias  cfg_NoRandomWhilePaused: settingPage.cfg_NoRandomWhilePaused
     property alias  cfg_PauseFilterByScreen: settingPage.cfg_PauseFilterByScreen
+    property alias  cfg_PauseDebugLogging:   settingPage.cfg_PauseDebugLogging
     property alias  cfg_PauseOnBatPower:     settingPage.cfg_PauseOnBatPower
     property alias  cfg_PauseBatPercent:     settingPage.cfg_PauseBatPercent
     property alias  cfg_HdrOutput:           settingPage.cfg_HdrOutput

@@ -120,9 +120,11 @@ Rectangle {
         onTtySwitch: function(sleep) {
             if (sleep) {
                 console.log("Preparing for sleep (possibly a VT switch)");
+                diagnostics.logPauseTransition("tty", false);
                 if (backendLoader.item) backendLoader.item.pause();
             } else {
                 console.log("Waking up (VT switch back)");
+                diagnostics.logPauseTransition("tty", true);
                 background.autoPause();
             }
         }
@@ -136,6 +138,7 @@ Rectangle {
     // wiring (further down in this file) handles the dispatch.
     ScreenSaverMonitor {
         id: lockMonitor
+        onActiveChanged: diagnostics.logPauseTransition("screensaver", !lockMonitor.active)
     }
 
     property string nowBackend: ""
@@ -314,6 +317,11 @@ Rectangle {
         filterByScreen: wallpaper.configuration.PauseFilterByScreen
         modePlay: wallpaper.configuration.PauseMode
         resumeTime: wallpaper.configuration.ResumeTime
+        // Off by default (console.error never reaches journald here); flip
+        // via the settings page's "Log window-pause diagnostics" switch to
+        // dump which window satisfied the PauseMode predicate.
+        logging: wallpaper.configuration.PauseDebugLogging
+        onReqPauseChanged: diagnostics.logPauseTransition("windowModel", !windowModel.reqPause)
     }
 
     PowerSource {
@@ -321,6 +329,7 @@ Rectangle {
         readonly property bool reqPause:
             (background.pauseOnBatPower && (st_battery_state === 'NoCharge' || st_battery_state === 'Discharging')) ||
             (background.pauseBatPercent !== 0 && st_battery_has && st_battery_percent < background.pauseBatPercent)
+        onReqPauseChanged: diagnostics.logPauseTransition("powerSource", !powerSource.reqPause)
     }
 
     // The wallpaper item needs its own PluginInfo: config.qml declares one for
@@ -436,6 +445,7 @@ Rectangle {
         // to the runtime mgr without a plasmashell restart.
         playlistsReloadSeqRead:    wallpaper.configuration.PlaylistsReloadSeq
         userPausedRead:            wallpaper.configuration.UserPaused
+        onUserPausedChanged: diagnostics.logPauseTransition("userPause", !playlistController.userPaused)
 
         // Writes happen here so `wallpaper.configuration` is in lexical scope —
         // QML can resolve Q_PROPERTY assignments correctly.

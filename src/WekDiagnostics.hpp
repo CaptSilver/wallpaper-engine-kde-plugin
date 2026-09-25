@@ -37,6 +37,17 @@ public:
 
     Q_INVOKABLE QString lastError() const { return m_lastError; }
 
+    // Logs a pause-chain state change to the journal via qCInfo (unlike
+    // QML's console.log/warn/error, which never reach journald in this
+    // environment — see main.qml's pause-source wiring). One line per
+    // source per transition: main.qml's onXChanged handlers only fire when
+    // that source's own value actually changes, so this method does not
+    // rate-limit on its own. `source` names which of the pause inputs
+    // fired (windowModel, powerSource, screensaver, tty, userPause);
+    // `playing` is that source's own resulting request, true for play,
+    // false for pause.
+    Q_INVOKABLE void logPauseTransition(const QString& source, bool playing);
+
     // Test hooks — exposed for tst_wekdiagnostics; not part of the
     // production QML API.
     QString        collectPluginEnvForTest() { return collectPluginEnv(); }

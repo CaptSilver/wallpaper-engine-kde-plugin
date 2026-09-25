@@ -66,6 +66,7 @@ Item {
     function webView()            { return _find(mainItem, o => typeof o.loadWallpaper === "function"); }
     function windowModel()        { return _find(mainItem, o => typeof o.filterByScreen !== "undefined" && typeof o.modePlay !== "undefined"); }
     function powerSource()        { return _find(mainItem, o => typeof o.st_battery_state !== "undefined"); }
+    function diagnostics()        { return _find(mainItem, o => typeof o.logPauseTransition === "function"); }
     function playlistController() { return _find(mainItem, o => typeof o.activePlaylistIdRead !== "undefined"); }
     function notifier()           { return _find(mainItem, o => typeof o.wallpaperLoadFailed === "function"); }
     function pyext()              { return _find(mainItem, o => typeof o.read_wallpaper_config === "function"); }

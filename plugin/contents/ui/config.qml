@@ -58,9 +58,30 @@ ColumnLayout {
     property alias  cfg_HdrOutput:           settingPage.cfg_HdrOutput
     property alias  cfg_SystemAudioCapture:  settingPage.cfg_SystemAudioCapture
     property alias  cfg_BackgroundColor:     settingPage.cfg_BackgroundColor
+    // These four have a matching `property alias` on SettingPage already
+    // (cbPresentMode.currentIndex, cbScreenSaverPolicy.currentIndex,
+    // ckbox_playlistNotify.checked, spin_cacheQuota.value) but were missing
+    // the root-level alias down to it, same as the block above -- Plasma's
+    // Apply/persist path never reads the page-local copy, so these four
+    // controls looked like they worked (the combo boxes/switch/spinbox
+    // read and wrote their own alias fine) while silently never saving.
+    property alias  cfg_PresentMode:         settingPage.cfg_PresentMode
+    property alias  cfg_ScreenSaverPolicy:   settingPage.cfg_ScreenSaverPolicy
+    property alias  cfg_PlaylistNotifyOnAdvance: settingPage.cfg_PlaylistNotifyOnAdvance
+    property alias  cfg_CacheQuotaMB:        settingPage.cfg_CacheQuotaMB
     property int    cfg_DisplayMode
     property int    cfg_PauseMode
     property int    cfg_VideoBackend
+    // Render resolution and anti-aliasing combo boxes on SettingPage read
+    // and write these two unqualified (Common.cbCurrentValue/cbIndexOfValue,
+    // same shape as cfg_PauseMode/cfg_DisplayMode/cfg_VideoBackend above) --
+    // there was no declaration anywhere for either, so both threw
+    // `ReferenceError: cfg_RenderScale/cfg_MsaaMode is not defined` the
+    // moment SettingPage loaded. QML's unqualified lookup walks up from
+    // SettingPage's own scope to this root, so declaring them here (with no
+    // page-local shadow, matching cfg_PauseMode's shape) is enough.
+    property int    cfg_RenderScale
+    property int    cfg_MsaaMode
 
     property int    cfg_PerOptChanged: 0
 

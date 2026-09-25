@@ -161,6 +161,21 @@ TestCase {
         try { cfg.saveConfig(); } catch (e) {}
     }
 
+    // Walks cfg's declarative child tree for the SettingPage instance --
+    // the one object besides cfg itself that carries cfg_HdrOutput, used
+    // here as a cheap "this is SettingPage" fingerprint since ids are
+    // file-local in QML and cfg.data doesn't expose SettingPage by name.
+    function _findSettingPageByKnownProp(parent, propName) {
+        const all = [...(parent.children || []), ...(parent.data || [])];
+        for (const c of all) {
+            if (c && typeof c[propName] !== "undefined"
+                  && typeof c.cfg_HdrOutput !== "undefined") return c;
+            const found = _findSettingPageByKnownProp(c, propName);
+            if (found) return found;
+        }
+        return null;
+    }
+
     // ── BackgroundColor wiring ───────────────────────────────────────────────
     // cfg_BackgroundColor is aliased from config.qml down to SettingPage,
     // so writes on either side should mirror through. The setting drives
@@ -174,17 +189,7 @@ TestCase {
     function test_cfgBackgroundColor_writePropagatesToSettingPage() {
         verify(cfg !== null);
         // Find the SettingPage child; it owns the actual property.
-        function findSettingPage(parent) {
-            const all = [...(parent.children || []), ...(parent.data || [])];
-            for (const c of all) {
-                if (c && typeof c.cfg_BackgroundColor !== "undefined"
-                      && typeof c.cfg_HdrOutput !== "undefined") return c;
-                const found = findSettingPage(c);
-                if (found) return found;
-            }
-            return null;
-        }
-        const sp = findSettingPage(cfg);
+        const sp = _findSettingPageByKnownProp(cfg, "cfg_BackgroundColor");
         verify(sp !== null);
         cfg.cfg_BackgroundColor = "#112233";
         compare(sp.cfg_BackgroundColor, "#112233");
@@ -201,17 +206,7 @@ TestCase {
     // and currentIndex -> alias).
     function test_cfgPresentMode_roundTripsThroughSettingPage() {
         verify(cfg !== null);
-        function findSettingPage(parent) {
-            const all = [...(parent.children || []), ...(parent.data || [])];
-            for (const c of all) {
-                if (c && typeof c.cfg_PresentMode !== "undefined"
-                      && typeof c.cfg_HdrOutput !== "undefined") return c;
-                const found = findSettingPage(c);
-                if (found) return found;
-            }
-            return null;
-        }
-        const sp = findSettingPage(cfg);
+        const sp = _findSettingPageByKnownProp(cfg, "cfg_PresentMode");
         verify(sp !== null);
         // Default is Auto (0) per main.xml.
         compare(sp.cfg_PresentMode, 0);
@@ -233,17 +228,7 @@ TestCase {
     // would then never see anything but the kcfg default.
     function test_cfgPauseDebugLogging_roundTripsThroughSettingPage() {
         verify(cfg !== null);
-        function findSettingPage(parent) {
-            const all = [...(parent.children || []), ...(parent.data || [])];
-            for (const c of all) {
-                if (c && typeof c.cfg_PauseDebugLogging !== "undefined"
-                      && typeof c.cfg_HdrOutput !== "undefined") return c;
-                const found = findSettingPage(c);
-                if (found) return found;
-            }
-            return null;
-        }
-        const sp = findSettingPage(cfg);
+        const sp = _findSettingPageByKnownProp(cfg, "cfg_PauseDebugLogging");
         verify(sp !== null);
         // Default is off per main.xml.
         compare(sp.cfg_PauseDebugLogging, false);
@@ -281,6 +266,92 @@ TestCase {
              + "Component.onCompleted. Found:\n" + decl);
         verify(/libcheck\s*=\s*\(?\{/.test(src),
                "expected a deferred `libcheck = { ... }` assignment in config.qml");
+    }
+
+    // ── cfg_PresentMode / cfg_ScreenSaverPolicy: root alias reaches SettingPage ─
+    // Both already had a page-local `property alias cfg_X: someCombo.currentIndex`
+    // on SettingPage, so reading/writing them FROM SettingPage always worked --
+    // that's what test_cfgPresentMode_roundTripsThroughSettingPage above checks.
+    // What was missing is the root alias in config.qml itself, the one Plasma's
+    // Apply/persist path actually reads. These write through `cfg.cfg_X` (the
+    // root, like Plasma does) and confirm it reaches the page's copy.
+    function test_cfgPresentMode_rootWritePropagatesToSettingPage() {
+        verify(cfg !== null);
+        verify(typeof cfg.cfg_PresentMode !== "undefined",
+               "config.qml must declare a root-level cfg_PresentMode alias");
+        const sp = _findSettingPageByKnownProp(cfg, "cfg_PresentMode");
+        verify(sp !== null);
+        cfg.cfg_PresentMode = 3;
+        compare(sp.cfg_PresentMode, 3);
+        cfg.cfg_PresentMode = 0;
+        compare(sp.cfg_PresentMode, 0);
+    }
+
+    function test_cfgScreenSaverPolicy_rootWritePropagatesToSettingPage() {
+        verify(cfg !== null);
+        verify(typeof cfg.cfg_ScreenSaverPolicy !== "undefined",
+               "config.qml must declare a root-level cfg_ScreenSaverPolicy alias");
+        const sp = _findSettingPageByKnownProp(cfg, "cfg_ScreenSaverPolicy");
+        verify(sp !== null);
+        cfg.cfg_ScreenSaverPolicy = 1;
+        compare(sp.cfg_ScreenSaverPolicy, 1);
+        cfg.cfg_ScreenSaverPolicy = 0;
+        compare(sp.cfg_ScreenSaverPolicy, 0);
+    }
+
+    function test_cfgCacheQuotaMB_rootWritePropagatesToSettingPage() {
+        verify(cfg !== null);
+        verify(typeof cfg.cfg_CacheQuotaMB !== "undefined",
+               "config.qml must declare a root-level cfg_CacheQuotaMB alias");
+        const sp = _findSettingPageByKnownProp(cfg, "cfg_CacheQuotaMB");
+        verify(sp !== null);
+        cfg.cfg_CacheQuotaMB = 250;
+        compare(sp.cfg_CacheQuotaMB, 250);
+        cfg.cfg_CacheQuotaMB = 500;
+        compare(sp.cfg_CacheQuotaMB, 500);
+    }
+
+    function test_cfgPlaylistNotifyOnAdvance_rootWritePropagatesToSettingPage() {
+        verify(cfg !== null);
+        verify(typeof cfg.cfg_PlaylistNotifyOnAdvance !== "undefined",
+               "config.qml must declare a root-level cfg_PlaylistNotifyOnAdvance alias");
+        const sp = _findSettingPageByKnownProp(cfg, "cfg_PlaylistNotifyOnAdvance");
+        verify(sp !== null);
+        cfg.cfg_PlaylistNotifyOnAdvance = true;
+        compare(sp.cfg_PlaylistNotifyOnAdvance, true);
+        cfg.cfg_PlaylistNotifyOnAdvance = false;
+        compare(sp.cfg_PlaylistNotifyOnAdvance, false);
+    }
+
+    // ── cfg_RenderScale / cfg_MsaaMode: no declaration anywhere before the fix ─
+    // Unlike cfg_PresentMode/cfg_ScreenSaverPolicy, SettingPage never declared
+    // these locally either -- its render-resolution and anti-aliasing combo
+    // boxes read/write the bare identifier, which threw
+    // `ReferenceError: cfg_RenderScale/cfg_MsaaMode is not defined` the moment
+    // SettingPage's Component.onCompleted ran. Existence (not just a
+    // successful round trip once it exists) is the actual regression this
+    // guards -- reading an undeclared QML property from outside quietly
+    // returns undefined rather than throwing, which is why the ReferenceError
+    // only ever showed up in the journal, not as a test failure, before this
+    // assertion existed.
+    function test_cfgRenderScale_declaredAtRootAndWritable() {
+        verify(cfg !== null);
+        verify(typeof cfg.cfg_RenderScale !== "undefined",
+               "config.qml must declare a root-level cfg_RenderScale property -- "
+             + "SettingPage's render-resolution combo box reads/writes this "
+             + "identifier unqualified and throws a ReferenceError without it");
+        cfg.cfg_RenderScale = 50;
+        compare(cfg.cfg_RenderScale, 50);
+    }
+
+    function test_cfgMsaaMode_declaredAtRootAndWritable() {
+        verify(cfg !== null);
+        verify(typeof cfg.cfg_MsaaMode !== "undefined",
+               "config.qml must declare a root-level cfg_MsaaMode property -- "
+             + "SettingPage's anti-aliasing combo box reads/writes this "
+             + "identifier unqualified and throws a ReferenceError without it");
+        cfg.cfg_MsaaMode = 2;
+        compare(cfg.cfg_MsaaMode, 2);
     }
 
     function test_iconSizesPropertyRemoved() {

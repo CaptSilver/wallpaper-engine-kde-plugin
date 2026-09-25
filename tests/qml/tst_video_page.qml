@@ -21,6 +21,12 @@ TestCase {
         function generate_thumbnail(_, outPath) {
             return Promise.resolve(outPath);
         }
+        // _kickThumbnails calls this for every scanned item once refresh()
+        // resolves; missing it throws inside the .then chain and the scan
+        // reports itself failed even though the list came back fine.
+        function video_thumb_dir(cacheRoot) {
+            return cacheRoot.replace(/\/+$/, "") + "/video-thumbs";
+        }
     }
 
     Component {
@@ -48,6 +54,17 @@ TestCase {
             compare(p.videoListModel.model.count, 1);
             p.destroy();
         });
+    }
+
+    // A folder already configured (the normal case: reopening the dialog
+    // on a wallpaper someone already set up) must populate the grid on its
+    // own -- the user shouldn't have to press Rescan just to see what's
+    // already there.
+    function test_folderAlreadyConfigured_populatesWithoutManualRescan() {
+        const p = pageComp.createObject(host, { cfg_VideoFolderPath: "/tmp/v" });
+        verify(p);
+        tryCompare(p.videoListModel.model, "count", 1);
+        p.destroy();
     }
 
     function test_clickEmitsCommitWallpaper() {

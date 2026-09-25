@@ -44,6 +44,18 @@ TestCase {
         m.destroy();
     }
 
+    // folderPath arrives already set at creation whenever the video folder
+    // was configured in a previous session (the normal case, since the
+    // settings dialog builds VideoListModel eagerly, not on first tab
+    // visit) -- the scan must start on its own, without the caller ever
+    // calling refresh().
+    function test_folderPathSetAtCreation_scansWithoutManualRefresh() {
+        const m = modelComp.createObject(host, { folderPath: "/tmp/v" });
+        verify(m);
+        tryCompare(m.model, "count", 2);
+        m.destroy();
+    }
+
     function test_setFolderPath_populatesModel() {
         const m = modelComp.createObject(host, { folderPath: "/tmp/v" });
         return m.refresh().then(() => {

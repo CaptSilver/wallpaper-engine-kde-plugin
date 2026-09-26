@@ -222,6 +222,7 @@ jobs:
             kf6-kglobalaccel-devel \
             kf6-ki18n-devel \
             kf6-kxmlgui-devel \
+            glibc-langpack-en \
             plasma-workspace \
             libplasma-devel \
             plasma-workspace-devel \

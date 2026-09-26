@@ -9,6 +9,8 @@
 
 #include "../src/WekShortcuts.hpp"
 
+#include "TestGettextLocale.h"
+
 #include <KActionCollection>
 #include <KGlobalAccel>
 #include <KLocalizedString>
@@ -173,6 +175,14 @@ void TestWekShortcuts::wrappedLabels_respectTranslationDomain() {
     QVERIFY2(QFileInfo::exists(moPath),
              qPrintable(QStringLiteral("fixture .mo missing at ") + moPath +
                         QStringLiteral(" -- msgfmt build step failed")));
+
+    wek::test_i18n::ScopedGettextLocale gettextLocale;
+    QVERIFY2(gettextLocale.ok(),
+             qPrintable(QStringLiteral("no real locale available for LC_MESSAGES (tried \"") +
+                        QString::fromLocal8Bit(gettextLocale.appliedLocale()) +
+                        QStringLiteral("\") -- gettext refuses to translate anything while "
+                                       "LC_MESSAGES is the C locale, so this test can't tell a "
+                                       "real regression from a locale-less environment")));
 
     KLocalizedString::addDomainLocaleDir(
         QByteArrayLiteral("plasma_wallpaper_com.github.captsilver.wallpaperEngineKde"),

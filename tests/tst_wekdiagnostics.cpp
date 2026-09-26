@@ -9,6 +9,7 @@
 #include <QTemporaryDir>
 #include <QUrl>
 #include "../src/WekDiagnostics.hpp"
+#include "TestGettextLocale.h"
 #include "TestSandbox.h"
 
 using namespace wekde;
@@ -250,6 +251,14 @@ WallpaperWorkShopId=1234567
         QVERIFY2(QFileInfo::exists(moPath),
                  qPrintable(QStringLiteral("fixture .mo missing at ") + moPath +
                             QStringLiteral(" -- msgfmt build step failed")));
+
+        wek::test_i18n::ScopedGettextLocale gettextLocale;
+        QVERIFY2(gettextLocale.ok(),
+                 qPrintable(QStringLiteral("no real locale available for LC_MESSAGES (tried \"") +
+                            QString::fromLocal8Bit(gettextLocale.appliedLocale()) +
+                            QStringLiteral("\") -- gettext refuses to translate anything while "
+                                           "LC_MESSAGES is the C locale, so this test can't tell "
+                                           "a real regression from a locale-less environment")));
 
         KLocalizedString::addDomainLocaleDir(
             QByteArrayLiteral("plasma_wallpaper_com.github.captsilver.wallpaperEngineKde"),

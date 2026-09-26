@@ -1239,15 +1239,28 @@ fi
 # ThumbnailGrabber.cpp has the same `else if (... MPV_EVENT_END_FILE)` guard
 # twice) is resolved by nearest-line tie-break rather than by whichever one jq
 # sees first.
-BASE_SURVIVORS_JSON="$( [[ -s "$BASELINE" ]] && jq -c '.survivors // []' "$BASELINE" || echo '[]' )"
+# --argjson hands its value to jq as a single argv string, and Linux caps any
+# one argv/envp string at MAX_ARG_STRLEN (128 KiB) regardless of the overall
+# ARG_MAX -- a full sweep's survivor set (thousands of mutants, each carrying
+# file/line/mutator/line_text) blows past that on its own, so jq used to die
+# with "Argument list too long" here before the compare ever ran. --slurpfile
+# reads the same JSON through a file handle instead, with no such per-value
+# cap; it wraps the file's top-level value in a one-element array, hence the
+# [0] on each of base/cur/scope below.
+BASE_SURVIVORS_FILE="$OUT_DIR/base-survivors.json"
+if [[ -s "$BASELINE" ]]; then
+    jq -c '.survivors // []' "$BASELINE" > "$BASE_SURVIVORS_FILE"
+else
+    echo '[]' > "$BASE_SURVIVORS_FILE"
+fi
 CMP="$(jq -n "$JQ_LIB"'
-  match_all($base; $cur) as $m
+  match_all($base[0]; $cur[0].survivors) as $m
   | { new: $m.leftover_c,
       moved: [ $m.pairs[] | select(.b.line != .c.line) ],
-      killed: [ $m.leftover_b[] | select(.file as $f | $scope | index($f) != null) ] }
-' --argjson base "$BASE_SURVIVORS_JSON" \
-  --argjson cur "$(jq -c '.survivors' "$OUT_DIR/all.json")" \
-  --argjson scope "$(cat "$SCOPE_FILES_JSON")")"
+      killed: [ $m.leftover_b[] | select(.file as $f | $scope[0] | index($f) != null) ] }
+' --slurpfile base "$BASE_SURVIVORS_FILE" \
+  --slurpfile cur "$OUT_DIR/all.json" \
+  --slurpfile scope "$SCOPE_FILES_JSON")"
 
 # `|| true` on every head-piped listing below: head closes the pipe once it
 # has enough lines, jq takes SIGPIPE, and under `set -euo pipefail` that used
@@ -1277,13 +1290,18 @@ if [[ "$REFRESH" == "1" ]]; then
     # only the files it actually measured are replaced by what it measured.
     OLD_JSON="$( [[ -s "$BASELINE" ]] && cat "$BASELINE" || echo '{}' )"
     OLD_COUNT=$(jq '.survivors // [] | length' <<<"$OLD_JSON")
+    # Same E2BIG hazard as the compare step above, on the same $cur payload --
+    # a refresh runs right after a full sweep, exactly when the survivor count
+    # (and so $cur's serialized size) is largest.  --slurpfile for both
+    # generated values; $OLD_JSON keeps going in via the here-string below,
+    # since stdin has no per-value size cap to begin with.
     jq '
       (.survivors // []) as $old
-      | ($old | map(select(.file as $f | ($scope | index($f)) == null))) as $out_of_scope
-      | . + {survivors: ($out_of_scope + $cur | sort_by([.file, .line, .mutator])),
+      | ($old | map(select(.file as $f | ($scope[0] | index($f)) == null))) as $out_of_scope
+      | . + {survivors: ($out_of_scope + $cur[0].survivors | sort_by([.file, .line, .mutator])),
              _comment: "Surviving mutants accepted as baseline. Run tools/scripts/mutation.sh --refresh-baseline to update; new entries in a non-refresh run fail the gate."}
-    ' --argjson scope "$(cat "$SCOPE_FILES_JSON")" \
-      --argjson cur "$(jq -c '.survivors' "$OUT_DIR/all.json")" \
+    ' --slurpfile scope "$SCOPE_FILES_JSON" \
+      --slurpfile cur "$OUT_DIR/all.json" \
       <<<"$OLD_JSON" > "$BASELINE"
     ok "baseline refreshed (scope-safe): $BASELINE ($(jq '.survivors | length' "$BASELINE") survivors, $OLD_COUNT before)"
     exit 0

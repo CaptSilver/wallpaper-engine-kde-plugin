@@ -62,6 +62,18 @@ fi
 # the aggregate treats "killed here, survived there" as killed.
 tgt="$(basename "${dir:-}")"
 var="STUB_REPORT_${tgt}"
+filevar="STUB_REPORT_FILE_${tgt}"
+# A body too big for a single argv/env string (thousands of survivors) can't
+# ride in STUB_REPORT itself -- exec'ing this very stub with that env var set
+# would hit the same MAX_ARG_STRLEN this stub exists to help reproduce.
+# STUB_REPORT_FILE instead names a file already holding the report; only the
+# path travels through the environment.
+bodyfile="${!filevar:-${STUB_REPORT_FILE:-}}"
+if [[ -n "$bodyfile" ]]; then
+    mkdir -p "$dir"
+    cp "$bodyfile" "$dir/report.json"
+    exit 0
+fi
 body="${!var:-${STUB_REPORT:-none}}"
 # STUB_REPORT=none reproduces a Mull run that died before reporting (the
 # timed-out warmup); anything else is a JSON body to drop in as the report.
@@ -781,6 +793,57 @@ out="$( cd "$root" && MUTATION_SKIP_BUILD=1 STUB_REPORT="$body" MULL_WORKERS=1 \
         MULL_MUTANT_AS_MB=64 "$GATE" --target tst_filehelper --strict 2>&1 )"; rc=$?
 check "a cap below the measured healthy footprint is flagged" \
       "" "$rc" 1 "$out" "below the measured healthy footprint"
+
+# 28. jq's --argjson hands its value to jq as a single argv string, and Linux
+#     caps any one argv/envp string at MAX_ARG_STRLEN (128 KiB) regardless of
+#     the overall ARG_MAX.  A full sweep's survivor set -- thousands of
+#     mutants, each carrying file/line/mutator/line_text -- blows past that on
+#     its own, so the compare step must die with "Argument list too long"
+#     before this fix, and complete without it.  The body rides in via
+#     STUB_REPORT_FILE (a path, not the payload itself) because passing the
+#     payload as an env var would trip the identical limit on the stub's own
+#     exec, one layer earlier than the bug this pins.
+root="$(make_root)"
+specs=(); for i in $(seq 1 3500); do specs+=("src/FileHelper.cpp:$i:cxx_gt_to_ge"); done
+body="$(report_json "$root" "${specs[@]}")"
+bodyfile="$root/stub-report-body.json"
+printf '%s' "$body" > "$bodyfile"
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 STUB_REPORT_FILE="$bodyfile" MULL_WORKERS=1 \
+        "$GATE" --target tst_filehelper --strict 2>&1 )"; rc=$?
+name="a survivor set past jq's 128 KiB argv limit still completes the compare instead of dying with E2BIG"
+if [[ "$rc" == "1" ]] && grep -q "new surviving mutant" <<<"$out" \
+   && ! grep -qi "argument list too long" <<<"$out"; then
+    printf '  %sok%s   %s\n' "$GREEN" "$RESET" "$name"
+    PASS=$((PASS + 1))
+else
+    printf '  %sFAIL%s %s\n' "$RED" "$RESET" "$name"
+    printf '        rc=%s\n' "$rc"
+    sed 's/^/        | /' <<<"$out" | tail -20
+    FAIL=$((FAIL + 1))
+fi
+
+# 29. --refresh-baseline hits the identical limit on its own --argjson cur --
+#     a scope-safe refresh after a full sweep is exactly when the survivor
+#     count is largest, so fixing only the compare step in #28 would still
+#     leave a refresh dying right afterward.
+root="$(make_root)"
+specs=(); for i in $(seq 1 3500); do specs+=("src/FileHelper.cpp:$i:cxx_gt_to_ge"); done
+body="$(report_json "$root" "${specs[@]}")"
+bodyfile="$root/stub-report-body.json"
+printf '%s' "$body" > "$bodyfile"
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 STUB_REPORT_FILE="$bodyfile" MULL_WORKERS=1 \
+        "$GATE" --target tst_filehelper --refresh-baseline 2>&1 )"; rc=$?
+after_count="$(jq '.survivors | length' "$root/tests/.mull-baseline.json" 2>/dev/null)"
+name="--refresh-baseline with the same oversized survivor set writes the baseline instead of dying with E2BIG"
+if [[ "$rc" == "0" ]] && [[ "$after_count" == "3500" ]] && ! grep -qi "argument list too long" <<<"$out"; then
+    printf '  %sok%s   %s\n' "$GREEN" "$RESET" "$name"
+    PASS=$((PASS + 1))
+else
+    printf '  %sFAIL%s %s\n' "$RED" "$RESET" "$name"
+    printf '        rc=%s after_count=%s\n' "$rc" "$after_count"
+    sed 's/^/        | /' <<<"$out" | tail -20
+    FAIL=$((FAIL + 1))
+fi
 
 echo
 if [[ "$FAIL" -gt 0 ]]; then

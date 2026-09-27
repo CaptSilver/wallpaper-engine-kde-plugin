@@ -63,12 +63,15 @@ int toPlaybackState(const QString& status);
 // without the DBus session.
 QString mapShortcutToMpris(const QString& name);
 
-// Decode the bytes from an MPRIS artUrl HTTP fetch into a flat color list.
-// Returns true + fills `outColors` (15 floats) when the payload decoded into
-// a valid QImage; returns false + clears `outColors` for network errors,
-// empty payloads, and undecodable bytes.  Pure helper — no QObject / DBus
-// dependency, directly unit-testable without spinning up QNetworkAccessManager.
-bool decodeArtReplyBytes(const QByteArray& data, bool networkError, QVariantList& outColors);
+// Decode the bytes from an MPRIS artUrl HTTP fetch into a flat color list
+// plus the decoded image itself. Returns true + fills `outColors` (15
+// floats) and `outImage` when the payload decoded into a valid QImage;
+// returns false + clears `outColors` and leaves `outImage` null for network
+// errors, empty payloads, and undecodable bytes.  Pure helper — no QObject /
+// DBus dependency, directly unit-testable without spinning up
+// QNetworkAccessManager.
+bool decodeArtReplyBytes(const QByteArray& data, bool networkError, QVariantList& outColors,
+                         QImage& outImage);
 
 class MprisMonitor : public QQuickItem {
     Q_OBJECT
@@ -123,7 +126,7 @@ signals:
     // a separate timeline tick).  0.0 when unknown.
     void propertiesChanged(const QString& title, const QString& artist, const QString& albumTitle,
                            const QString& albumArtist, const QString& genres, double duration);
-    void thumbnailChanged(bool hasThumbnail, const QVariantList& colors);
+    void thumbnailChanged(bool hasThumbnail, const QVariantList& colors, const QImage& image);
     // `state` mirrors playbackStateChanged (0=stopped 1=playing 2=paused) so
     // SceneScript can read event.state from the timeline event without
     // synchronizing against the separate playbackStateChanged signal.

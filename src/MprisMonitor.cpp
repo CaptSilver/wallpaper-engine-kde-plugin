@@ -445,7 +445,7 @@ void MprisMonitor::processArtUrl(const QString& artUrl) {
     const quint64 gen = supersedeArt();
     switch (classifyArtUrl(artUrl)) {
     case MprisArtUrlKind::Empty:
-    case MprisArtUrlKind::Unknown: emit thumbnailChanged(false, {}); return;
+    case MprisArtUrlKind::Unknown: emit thumbnailChanged(false, {}, QImage()); return;
     case MprisArtUrlKind::LocalFile: {
         const QString localPath = QUrl(artUrl).toLocalFile();
         m_pool.start([this, localPath, gen]() {
@@ -455,7 +455,7 @@ void MprisMonitor::processArtUrl(const QString& artUrl) {
                     this,
                     [this, gen]() {
                         if (gen != m_artGeneration) return; // superseded by a newer cover
-                        emit thumbnailChanged(false, {});
+                        emit thumbnailChanged(false, {}, QImage());
                     },
                     Qt::QueuedConnection);
                 return;
@@ -464,9 +464,9 @@ void MprisMonitor::processArtUrl(const QString& artUrl) {
             const QVariantList colors = wekde::extractDominantColors(img);
             QMetaObject::invokeMethod(
                 this,
-                [this, gen, colors]() {
+                [this, gen, colors, img]() {
                     if (gen != m_artGeneration) return; // superseded by a newer cover
-                    emit thumbnailChanged(true, colors);
+                    emit thumbnailChanged(true, colors, img);
                 },
                 Qt::QueuedConnection);
         });
@@ -485,14 +485,16 @@ void MprisMonitor::processArtUrl(const QString& artUrl) {
     }
 }
 
-bool wekde::decodeArtReplyBytes(const QByteArray& data, bool networkError,
-                                QVariantList& outColors) {
+bool wekde::decodeArtReplyBytes(const QByteArray& data, bool networkError, QVariantList& outColors,
+                                QImage& outImage) {
     outColors.clear();
+    outImage = QImage();
     if (networkError) return false;
     QImage img;
     img.loadFromData(data);
     if (img.isNull()) return false;
     outColors = extractDominantColors(img);
+    outImage  = std::move(img);
     return true;
 }
 
@@ -502,14 +504,30 @@ void MprisMonitor::onArtDownloaded() {
     reply->deleteLater();
     // Dropped, not painted: this cover was superseded (newer track, or the
     // player went away) while the fetch was still out.
-    if (reply->property(ART_GEN_PROPERTY).toULongLong() != m_artGeneration) return;
+    const quint64 gen = m_artGeneration;
+    if (reply->property(ART_GEN_PROPERTY).toULongLong() != gen) return;
 
-    QVariantList colors;
-    if (decodeArtReplyBytes(reply->readAll(), reply->error() != QNetworkReply::NoError, colors)) {
-        emit thumbnailChanged(true, colors);
-    } else {
-        emit thumbnailChanged(false, {});
-    }
+    // Decode off the compositor thread, matching the LocalFile branch above
+    // — a large/slow-to-decode cover from a remote server shouldn't stall the
+    // GUI thread any more than a local one would.
+    const QByteArray bytes        = reply->readAll();
+    const bool       networkError = reply->error() != QNetworkReply::NoError;
+    m_pool.start([this, bytes, networkError, gen]() {
+        QVariantList colors;
+        QImage       img;
+        const bool   ok = decodeArtReplyBytes(bytes, networkError, colors, img);
+        QMetaObject::invokeMethod(
+            this,
+            [this, gen, ok, colors, img]() {
+                if (gen != m_artGeneration) return; // superseded by a newer cover
+                if (ok) {
+                    emit thumbnailChanged(true, colors, img);
+                } else {
+                    emit thumbnailChanged(false, {}, QImage());
+                }
+            },
+            Qt::QueuedConnection);
+    });
 }
 
 QVariantList wekde::extractDominantColors(const QImage& img) {

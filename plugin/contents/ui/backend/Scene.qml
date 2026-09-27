@@ -51,8 +51,8 @@ Item{
         onPropertiesChanged: function(title, artist, albumTitle, albumArtist, genres, duration) {
             player.mediaPropertiesChanged(title, artist, albumTitle, albumArtist, genres, duration);
         }
-        onThumbnailChanged: function(hasThumbnail, colors) {
-            player.mediaThumbnailChanged(hasThumbnail, colors);
+        onThumbnailChanged: function(hasThumbnail, colors, image) {
+            player.mediaThumbnailChanged(hasThumbnail, colors, image);
         }
         onTimelineChanged: function(position, duration, state) {
             player.mediaTimelineChanged(position, duration, state);

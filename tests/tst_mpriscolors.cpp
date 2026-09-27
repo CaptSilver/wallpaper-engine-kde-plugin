@@ -1037,27 +1037,33 @@ void TestMprisColors::handleNameOwnerChanged_unrelatedServiceVanishes_noDisconne
 
 void TestMprisColors::decodeArt_networkError_returnsFalse() {
     QVariantList out;
+    QImage       outImg;
     QVERIFY(! wekde::decodeArtReplyBytes(
-        QByteArray("bytes that would otherwise decode"), true /*networkError*/, out));
+        QByteArray("bytes that would otherwise decode"), true /*networkError*/, out, outImg));
     QVERIFY(out.isEmpty());
+    QVERIFY(outImg.isNull());
 }
 
 void TestMprisColors::decodeArt_emptyBytes_returnsFalse() {
     QVariantList out;
-    QVERIFY(! wekde::decodeArtReplyBytes(QByteArray(), false, out));
+    QImage       outImg;
+    QVERIFY(! wekde::decodeArtReplyBytes(QByteArray(), false, out, outImg));
     QVERIFY(out.isEmpty());
+    QVERIFY(outImg.isNull());
 }
 
 void TestMprisColors::decodeArt_garbageBytes_returnsFalse() {
     QVariantList out;
+    QImage       outImg;
     // Explicit length must match the literal's byte count (incl. the embedded
     // \x00) — over-stating it reads past the .rodata string into the next
     // global (ASAN: global-buffer-overflow at QByteArray::QByteArray(const
     // char*, long long)).  The literal here is exactly 18 bytes:
     //   \x00 \xFF ' ' n o t - a n - i m a g e ' ' \x42 \x42
     QByteArray junk("\x00\xFF not-an-image \x42\x42", 18);
-    QVERIFY(! wekde::decodeArtReplyBytes(junk, false, out));
+    QVERIFY(! wekde::decodeArtReplyBytes(junk, false, out, outImg));
     QVERIFY(out.isEmpty());
+    QVERIFY(outImg.isNull());
 }
 
 void TestMprisColors::decodeArt_validPng_returnsTrueWith15Colors() {
@@ -1072,7 +1078,10 @@ void TestMprisColors::decodeArt_validPng_returnsTrueWith15Colors() {
     }
 
     QVariantList out;
-    QVERIFY(wekde::decodeArtReplyBytes(bytes, false, out));
+    QImage       outImg;
+    QVERIFY(wekde::decodeArtReplyBytes(bytes, false, out, outImg));
+    QVERIFY(! outImg.isNull());
+    QCOMPARE(outImg.width(), 16);
     QCOMPARE(out.size(), 15);
     // Primary should be close to magenta (R high, B high, G low).
     QVERIFY(out[0].toDouble() > 0.7); // R
@@ -1432,13 +1441,15 @@ void TestMprisColors::processArtUrl_http_downloadsAndEmits() {
     QCOMPARE(spy.count(), 1);
     QCOMPARE(spy.last().at(0).toBool(), true);
     QCOMPARE(spy.last().at(1).toList().size(), 15);
+    const QImage decoded = spy.last().at(2).value<QImage>();
+    QVERIFY(! decoded.isNull());
+    QCOMPARE(decoded.width(), 8);
 }
 
 void TestMprisColors::processArtUrl_http_returnsGarbage_emitsThumbnailFalse() {
-    // Server replies with non-PNG bytes — exercise the decode-failure
-    // branch of onArtDownloaded (lines 318-319 of MprisMonitor.cpp:
-    // `emit thumbnailChanged(false, {});` when decodeArtReplyBytes returns
-    // false even after a successful HTTP fetch).
+    // Server replies with non-PNG bytes — exercise onArtDownloaded's
+    // decode-failure branch (decodeArtReplyBytes returns false even after a
+    // successful HTTP fetch, so the pool callback emits false/null instead).
     QByteArray junk("\x00\xFF this is definitely not an image \x42", 36);
 
     FakePngHttpServer server(junk);
@@ -1459,6 +1470,7 @@ void TestMprisColors::processArtUrl_http_returnsGarbage_emitsThumbnailFalse() {
     QVERIFY(spy.wait(5000));
     QCOMPARE(spy.count(), 1);
     QCOMPARE(spy.last().at(0).toBool(), false);
+    QVERIFY(spy.last().at(2).value<QImage>().isNull());
 }
 
 // Reach the private helper that previous tests used. Defined here so
@@ -1572,6 +1584,9 @@ void TestMprisColors::processArtUrl_localFile_emitsThumbnailAsync() {
     QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 5000);
     QCOMPARE(spy.at(0).at(0).toBool(), true);
     QCOMPARE(spy.at(0).at(1).toList().size(), 15);
+    const QImage decoded = spy.at(0).at(2).value<QImage>();
+    QVERIFY(! decoded.isNull());
+    QCOMPARE(decoded.width(), 16);
 }
 
 void TestMprisColors::processArtUrl_localFileMissing_emitsFalseAsync() {
@@ -1587,6 +1602,7 @@ void TestMprisColors::processArtUrl_localFileMissing_emitsFalseAsync() {
     QCOMPARE(spy.count(), 0);
     QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 5000);
     QCOMPARE(spy.at(0).at(0).toBool(), false);
+    QVERIFY(spy.at(0).at(2).value<QImage>().isNull());
 }
 
 void TestMprisColors::processArtUrl_supersededLocalDecode_dropsStaleResult() {

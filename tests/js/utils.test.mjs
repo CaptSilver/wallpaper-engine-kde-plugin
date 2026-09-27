@@ -165,6 +165,17 @@ test('formatPropertyLabel: localization prefix wins over HTML strip', () => {
                  '<b>nope</b>');
 });
 
+test('formatPropertyLabel: U+3164 Hangul filler is stripped', () => {
+    // Wallpaper Engine authors use U+3164 (HANGUL FILLER) as fake
+    // indentation in the editor. It's category Lo, not Zs, so JS's \s
+    // doesn't match it and it survives the whitespace collapse untouched.
+    assert.equal(
+        formatPropertyLabel('ㅤ<b><small>Album Name</small></b>', 'k'),
+        'Album Name');
+    // Also strip it mid-string and collapse the space left behind.
+    assert.equal(formatPropertyLabel('AlbumㅤName', 'k'), 'Album Name');
+});
+
 // badgeUpdated — the "Updated since you last loaded it" dot predicate,
 // extracted from WallpaperListModel.loadItemFromJson. A wallpaper badges
 // ONLY if the user has loaded it before (seenVersion > 0) and Steam has

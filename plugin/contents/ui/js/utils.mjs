@@ -78,7 +78,10 @@ export function formatPropertyLabel(text, key) {
         ).join(' ');
     }
     let cleaned = text.replace(/<[^>]*>/g, ' ');
-    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    // U+3164 (HANGUL FILLER) is Unicode category Lo, not Zs, so \s doesn't
+    // match it — WE authors use it as fake indentation in the property
+    // editor, and it survives a plain \s+ collapse. Fold it in as whitespace.
+    cleaned = cleaned.replace(/[\s\u3164]+/g, ' ').trim();
     return cleaned || key;
 }
 

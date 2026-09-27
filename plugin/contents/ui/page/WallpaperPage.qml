@@ -1152,6 +1152,11 @@ RowLayout {
                     property var propConfig: wallpaperPageRoot.activeConfig
                     property var propChanges: ({})
                     property var activeBindings: []
+                    // key -> that property's project.json default `value`,
+                    // for resolving `condition` references to properties
+                    // that may not be in userProperties themselves (see
+                    // _loadProps). Keyed on the full, unfiltered property set.
+                    property var propDefaults: ({})
 
                     property bool _loadProps: {
                         // Force re-evaluation when workshopid changes
@@ -1192,19 +1197,37 @@ RowLayout {
                                             precision: prop.precision,
                                             fraction: prop.fraction,
                                             options: prop.options,
-                                            fileType: prop.fileType  // for file picker name filters
+                                            fileType: prop.fileType,  // for file picker name filters
+                                            // Raw project.json expression, e.g.
+                                            // "mediavisualizer.value == true" —
+                                            // evaluated per-row by evaluateRowVisible.
+                                            condition: prop.condition
                                         });
                                     }
                                     userProperties = arr;
+                                    // A condition can reference ANY property key,
+                                    // not just the ones editableTypes let through
+                                    // as their own row (e.g. a decorative label
+                                    // property gating an editable one) — so this
+                                    // default-value lookup is built from the full,
+                                    // unfiltered property set.
+                                    const defaults = {};
+                                    for (const key in props) {
+                                        if (props[key]) defaults[key] = props[key].value;
+                                    }
+                                    propDefaults = defaults;
                                 } else {
                                     userProperties = [];
+                                    propDefaults = {};
                                 }
                             }).catch(reason => {
                                 console.error(`read project.json error: ${reason}`);
                                 userProperties = [];
+                                propDefaults = {};
                             });
                         } else {
                             userProperties = [];
+                            propDefaults = {};
                         }
                         return true;
                     }
@@ -1287,6 +1310,23 @@ RowLayout {
                         return defaultVal;
                     }
 
+                    // Live value of a property `condition` refers to by name
+                    // (project.json's own key, not necessarily this row's
+                    // key) — an unsaved in-session edit, then the saved
+                    // config, then the wallpaper's own declared default.
+                    function resolvePropertyValue(key) {
+                        const defaultVal = propDefaults.hasOwnProperty(key) ? propDefaults[key] : undefined;
+                        return getPropValue(key, defaultVal);
+                    }
+
+                    // Reads propChanges/propConfig (through resolvePropertyValue),
+                    // so a `visible:` binding built on this re-evaluates whenever
+                    // the controlling property's live value changes — no extra
+                    // Connections wiring needed.
+                    function evaluateRowVisible(prop) {
+                        return !prop || Utils.evaluateCondition(prop.condition, resolvePropertyValue);
+                    }
+
                     function resetUserProps() {
                         propChanges = {};
                         const resetConfig = { 'user_props': {} };
@@ -1359,6 +1399,14 @@ RowLayout {
                         OptionItem {
                             text: modelData.text
                             text_color: Kirigami.Theme.textColor
+
+                            // project.json's own "condition" gate, e.g. six
+                            // Now Playing sub-options that only make sense
+                            // once "Media Visualizer" is switched on. Reads
+                            // propChanges/propConfig through evaluateRowVisible,
+                            // so flipping the controlling switch re-evaluates
+                            // this immediately.
+                            visible: user_props_group.evaluateRowVisible(modelData)
 
                             // Gray out properties not bound to any shader
                             property bool isBound: {
@@ -1448,18 +1496,16 @@ RowLayout {
                                             if (modelData.options) {
                                                 const comboModel = [];
                                                 for (const opt of modelData.options) {
-                                                    let label = String(opt.label || opt.value);
-                                                    // Convert localization keys to readable text
-                                                    if (label.startsWith('ui_browse_properties_')) {
-                                                        const suffix = label.replace('ui_browse_properties_', '');
-                                                        label = suffix.split('_').map(w =>
-                                                            w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
-                                                        ).join(' ');
-                                                    }
-                                                    // Strip HTML tags
-                                                    label = label.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                                                    // opt.label is normally a
+                                                    // string, but treat any
+                                                    // other truthy type (WE
+                                                    // JSON is inconsistent) as
+                                                    // "no label" rather than
+                                                    // pass a non-string into
+                                                    // formatPropertyLabel.
+                                                    const rawLabel = (typeof opt.label === 'string') ? opt.label : '';
                                                     comboModel.push({
-                                                        text: label,
+                                                        text: Utils.formatPropertyLabel(rawLabel, String(opt.value)),
                                                         value: opt.value
                                                     });
                                                 }

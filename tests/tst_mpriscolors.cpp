@@ -30,6 +30,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <algorithm>
 #include <chrono>
 #include <thread>
 
@@ -95,6 +96,9 @@ private slots:
     void processArtUrl_destroyedMonitorGetsNoLateCallback();
     void handleNameOwnerChanged_nonMprisName_ignored();
     void handleNameOwnerChanged_mprisNameAppears_entersConnectBranch();
+    // A live connection's success trace must survive a normal plasmashell
+    // session, which filters the default logging category's debug output.
+    void connectToPlayer_logsViaNamedInfoCategory();
     void handlePropsChanged_metadataHttpArtUrl_createsRequest();
     void pollPosition_noActiveService_noSignals();
 
@@ -747,6 +751,47 @@ void TestMprisColors::handleNameOwnerChanged_mprisNameAppears_entersConnectBranc
                Q_ARG(QString, ""),
                Q_ARG(QString, ":1.99"));
     QVERIFY(! m.activeService().isEmpty());
+}
+
+void TestMprisColors::connectToPlayer_logsViaNamedInfoCategory() {
+    // connectToPlayer's only trace of a successful connection used to go
+    // through the default logging category at debug severity — the exact
+    // combination plasmashell's runtime logging config filters out of a
+    // normal session, so the line never reached the journal. Pin it to a
+    // named category at Info level instead, the way the renderer's
+    // wekdeScene category already does.
+    struct Captured {
+        QtMsgType type;
+        QString   category;
+        QString   message;
+    };
+    static QVector<Captured> captured;
+    captured.clear();
+
+    QtMessageHandler previous = qInstallMessageHandler(
+        [](QtMsgType type, const QMessageLogContext& ctx, const QString& msg) {
+            captured.append({ type, QString::fromUtf8(ctx.category ? ctx.category : ""), msg });
+        });
+
+    {
+        MprisMonitor m;
+        invokeSlot(&m,
+                   "handleNameOwnerChanged",
+                   Q_ARG(QString, "org.mpris.MediaPlayer2.testconnectlog"),
+                   Q_ARG(QString, ""),
+                   Q_ARG(QString, ":1.123"));
+    }
+
+    qInstallMessageHandler(previous);
+
+    const auto connectedLine =
+        std::find_if(captured.begin(), captured.end(), [](const Captured& c) {
+            return c.message.contains("connected to");
+        });
+    QVERIFY2(connectedLine != captured.end(), "expected a 'connected to' trace line");
+    QCOMPARE(connectedLine->type, QtInfoMsg);
+    QVERIFY2(connectedLine->category != QLatin1String("default"),
+             "connection trace must use a named logging category, not the default one");
 }
 
 void TestMprisColors::handlePropsChanged_metadataHttpArtUrl_createsRequest() {

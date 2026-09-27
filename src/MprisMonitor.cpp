@@ -13,11 +13,19 @@
 #include <QSet>
 #include <QUrl>
 #include <QDebug>
+#include <QLoggingCategory>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 
 using namespace wekde;
+
+// Qt's default logging category disables debug-level output out of the box
+// (isDebugEnabled() is false with no rules file or QT_LOGGING_RULES set at
+// all) — a bare qDebug() connection trace never reaches the journal in a
+// normal plasmashell session. Route it through a named category at Info
+// level instead, the way the renderer's wekdeScene category already does.
+Q_LOGGING_CATEGORY(lcWekMpris, "wekde.mpris")
 
 static const char* MPRIS_PREFIX    = "org.mpris.MediaPlayer2.";
 static const char* MPRIS_PATH      = "/org/mpris/MediaPlayer2";
@@ -233,7 +241,7 @@ void MprisMonitor::connectToPlayer(const QString& service) {
     emit mediaAvailableChanged(true);
 
     fetchAllProperties();
-    qDebug() << "MprisMonitor: connected to" << service;
+    qCInfo(lcWekMpris) << "MprisMonitor: connected to" << service;
 }
 
 void MprisMonitor::disconnectFromPlayer() {

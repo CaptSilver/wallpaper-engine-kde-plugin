@@ -46,6 +46,12 @@ known shortcuts. When you add a new test that needs a stub method:
 | MediaPlayer | Qt 6 QtMultimedia docs| Properties: source, playbackRate, videoOutput, audioOutput, loops. Functions: play, pause, stop. Enum: Loops. | play / pause / stop are no-ops; no real decoder. |
 | VideoOutput | Qt 6 QtMultimedia docs| Property: fillMode (enum FillMode).                                                   | Inherits Item; no actual video sink.         |
 
+## org/kde/kwindowsystem/
+
+| Stub          | Real source                           | Contract                                                                     | Known shortcuts                                              |
+|---------------|---------------------------------------|------------------------------------------------------------------------------|--------------------------------------------------------------|
+| KWindowSystem | KWindowSystem (KF6) QML singleton     | Property: showingDesktop (bool, notify showingDesktopChanged).               | Tests assign showingDesktop directly; no compositor behind it. |
+
 ## org/kde/plasma/
 
 | Stub            | Real source                         | Contract                                                                                   | Known shortcuts                                                                            |

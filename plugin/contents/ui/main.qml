@@ -574,7 +574,15 @@ Rectangle {
             to: 0
             duration: background.reducedMotion ? 0 : 250
             onFinished: {
-                if (target) target.destroy();
+                // Invisible now.  A backend that can wind down asynchronously
+                // (mpv) gets a moment to do so before its render-thread
+                // teardown, instead of stalling the scenegraph.
+                if (target && typeof target.prepareDestroy === "function") {
+                    target.prepareDestroy();
+                    target.destroy(400);
+                } else if (target) {
+                    target.destroy();
+                }
                 target = null;
             }
         }

@@ -31,6 +31,7 @@ Rectangle {
     property bool   mouseInput: wallpaper.configuration.MouseInput
     property bool   animatedPreview: wallpaper.configuration.AnimatedPreview
     property bool   mpvStats: wallpaper.configuration.MpvStats
+    property bool   mpvPowerSaving: wallpaper.configuration.MpvPowerSaving
 
     property string videoFolderPath: wallpaper.configuration.VideoFolderPath
     property int    cacheQuotaMB: wallpaper.configuration.CacheQuotaMB

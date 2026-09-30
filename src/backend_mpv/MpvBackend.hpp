@@ -8,6 +8,11 @@
 #include <QtQuick/QQuickFramebufferObject>
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QMutex>
+#include <QtCore/QElapsedTimer>
+#include <QtCore/QTimer>
+#include <string>
+#include <utility>
+#include <vector>
 #include <atomic>
 #include <memory>
 
@@ -72,6 +77,11 @@ class MpvObject : public QQuickFramebufferObject {
     Q_PROPERTY(QString logfile READ logfile WRITE setLogfile NOTIFY logfileChanged)
     Q_PROPERTY(int volume READ volume WRITE setVolume NOTIFY volumeChanged)
     Q_PROPERTY(bool initialized READ initialized NOTIFY initializedChanged)
+    // Opt-in (MpvPowerSaving): cheap scalers, frames at the video's own rate.
+    Q_PROPERTY(bool powerSaving READ powerSaving WRITE setPowerSaving NOTIFY powerSavingChanged)
+    // Upper bound on how often a new video frame is drawn; 0 = every frame
+    // mpv produces.  mpv drops the frames in between, like on a slow display.
+    Q_PROPERTY(int maxFps READ maxFps WRITE setMaxFps NOTIFY maxFpsChanged)
 
     friend class MpvRender;
 
@@ -111,11 +121,24 @@ public:
     bool    mute() const;
     QString logfile() const;
     int     volume() const;
+    bool    powerSaving() const { return m_powerSaving; }
+    int     maxFps() const { return m_maxFps; }
+
+    // The mpv options powerSaving sets: the built-in `fast` profile (bilinear
+    // scaling, no dithering / linear or sigmoid scaling / HDR peak detection)
+    // plus video-sync=audio, i.e. present frames at the video's own rate
+    // instead of retiming to every display refresh.
+    static const std::vector<std::pair<const char*, const char*>>& powerSavingOptions();
+    // Frame-rate cap: how long to hold a redraw requested `sinceLastMs` after
+    // the previous one; 0 = draw now.  maxFps <= 0 disables the cap.
+    static int frameCapDelayMs(int maxFps, qint64 sinceLastMs);
 
     void setSource(const QUrl& source);
     void setMute(const bool& mute);
     void setLogfile(const QString& logfile);
     void setVolume(const int& volume);
+    void setPowerSaving(bool on);
+    void setMaxFps(int fps);
 
 public slots:
     void play();
@@ -154,6 +177,8 @@ signals:
     void sourceLoadFailed(const QString& reason);
     void muteChanged();
     void volumeChanged();
+    void powerSavingChanged();
+    void maxFpsChanged();
     void logfileChanged();
 
 private:
@@ -165,6 +190,18 @@ private:
     // fires once per real transition rather than per observed-property event.
     Status m_lastStatus { Stopped };
     bool   m_inited_ok { false }; // set once mpv_initialize() succeeds
+
+    // powerSaving: the values its options had before it was switched on, so
+    // switching it off restores exactly those (mpv's defaults vary by version).
+    bool                                             m_powerSaving { false };
+    std::vector<std::pair<std::string, std::string>> m_savedOptions;
+    // Frame-rate cap (GUI thread): when the last redraw went out, and a
+    // single-shot timer for a deferred one.
+    int           m_maxFps { 0 };
+    QElapsedTimer m_frameClock;
+    QTimer        m_frameTimer;
+    void          scheduleUpdate();
+    void          redrawNow();
 
 private:
     mpv_handle*                m_mpv { nullptr };

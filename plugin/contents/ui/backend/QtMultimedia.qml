@@ -4,6 +4,9 @@ import ".."
 
 Item{
     id: videoItem
+    // Set once this backend has put a frame on screen; main.qml keeps the
+    // previous backend visible until then.
+    property bool frameShown: false
     anchors.fill: parent
     property alias source: player.source
     property int displayMode: background.displayMode
@@ -82,6 +85,7 @@ Item{
             if (player.playbackState !== MediaPlayer.PlayingState) return;
             if (videoItem.announcedFirstFrame) return;
             videoItem.announcedFirstFrame = true;
+            videoItem.frameShown = true;
             background.sig_backendFirstFrame('QtMultimedia');
         }
     }
@@ -107,6 +111,13 @@ Item{
         onTriggered: {
             player.pause();
         }
+    }
+    // main.qml calls this when the backend becomes the outgoing layer of a
+    // handoff: background.* then describes the next wallpaper, so pin the
+    // options this one is showing instead of following them.
+    function freezeOptions() {
+        displayMode = displayMode;
+        player.playbackRate = player.playbackRate;
     }
     function getMouseTarget() {
     }

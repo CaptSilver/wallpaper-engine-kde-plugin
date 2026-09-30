@@ -5,6 +5,9 @@ import "../js/layout.mjs" as Layout
 
 Item{
     id: sceneItem
+    // Set once this backend has put a frame on screen; main.qml keeps the
+    // previous backend visible until then.
+    property bool frameShown: false
     anchors.fill: parent
     property alias source: player.source
     property string assets: "assets"
@@ -116,6 +119,7 @@ Item{
         Connections {
             target: player
             function onFirstFrame() {
+                sceneItem.frameShown = true;
                 background.sig_backendFirstFrame('scene');
                 sceneItem._firstFrameSeen = true;
                 loadWatchdog.stop();
@@ -255,6 +259,14 @@ Item{
         player.pause();
     }
     
+    // main.qml calls this when the backend becomes the outgoing layer of a
+    // handoff: background.* then describes the next wallpaper, so pin the
+    // options this one is showing instead of following them.
+    function freezeOptions() {
+        displayMode = displayMode;
+        userPropsJson = userPropsJson;
+        player.speed = player.speed;
+    }
     function getMouseTarget() {
         return Qt.binding(function() { return player; })
     }

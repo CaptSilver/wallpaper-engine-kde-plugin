@@ -10,6 +10,8 @@ Item {
     property string source:    ""
     property real   volume:    50
     property bool   mute:      false
+    property bool   powerSaving: false
+    property int    maxFps:      0
 
     // ── test recorders (test-only stub) ──────────────────────────────────
     property int  playCount:        0

@@ -17,6 +17,7 @@ QtObject {
     property int    fps:         30
     property int    presentMode: 0          // Auto (matches main.xml default)
     property bool   mpvStats:    false
+    property bool   mpvPowerSaving: false
     property bool   hdrOutput:   false
     property string postProcessing: ""    // empty = wallpaper-default; matches main.qml
     property bool   systemAudioCapture: false

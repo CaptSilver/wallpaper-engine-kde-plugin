@@ -106,6 +106,27 @@ TestCase {
         compare(p.lastCommand[1], "stats/display-stats-toggle");
     }
 
+    // MpvPowerSaving is opt-in: off, the player keeps mpv's quality chain and
+    // draws every frame; on, it also caps redraws at the scene Fps setting.
+    function test_powerSavingOffByDefault_noFrameCap() {
+        const p = _findMpvPlayer();
+        background.mpvPowerSaving = false;
+        compare(p.powerSaving, false);
+        compare(p.maxFps, 0);
+    }
+
+    function test_powerSavingOn_capsAtSceneFps() {
+        const p = _findMpvPlayer();
+        background.fps = 24;
+        background.mpvPowerSaving = true;
+        compare(p.powerSaving, true);
+        compare(p.maxFps, 24);
+        background.fps = 30;               // follows the Fps setting live
+        compare(p.maxFps, 30);
+        background.mpvPowerSaving = false; // and lets go of it when switched off
+        compare(p.maxFps, 0);
+    }
+
     function test_videoRateChangedSetsSpeedProperty() {
         // onVideoRateChanged forwards to player.setProperty('speed', videoRate)
         // (Mpv.qml:49). videoRate is bound to background.speed, so the

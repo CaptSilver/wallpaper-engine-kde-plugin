@@ -19,6 +19,7 @@ Flickable {
     property alias cfg_PresentMode: cbPresentMode.currentIndex
     property alias cfg_Volume: sliderVol.value
     property alias cfg_MpvStats: ckbox_mpvStats.checked
+    property alias cfg_MpvPowerSaving: ckbox_mpvPowerSaving.checked
     property alias cfg_Speed: spin_speed.dValue
     property alias cfg_MuteAudio: ckbox_muteAudio.checked
     property alias cfg_MouseInput: ckbox_mouseInput.checked
@@ -509,6 +510,18 @@ Flickable {
                 visible: cfg_VideoBackend == Common.VideoBackend.Mpv
                 actor: Switch {
                     id: ckbox_mpvStats
+                }
+            }
+
+            OptionItem {
+                text: i18nc("@label settings option", "Power-saving playback")
+                text_color: Kirigami.Theme.textColor
+                icon: '../../images/tuning.svg'
+                visible: cfg_VideoBackend == Common.VideoBackend.Mpv
+                actor: Switch {
+                    id: ckbox_mpvPowerSaving
+                    ToolTip.visible: hovered
+                    ToolTip.text: i18nc("@info:tooltip", "Cheaper scaling, frames at the video's own rate and at most the scene Fps redraws per second. Uses noticeably less CPU and GPU; loop points may be less smooth.")
                 }
             }
         }

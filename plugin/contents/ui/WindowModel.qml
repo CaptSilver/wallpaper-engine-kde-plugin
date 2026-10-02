@@ -5,6 +5,7 @@ import QtQuick.Window 2.1
 import org.kde.plasma.plasma5support as Plasma5Support
 
 import org.kde.taskmanager 0.1 as TaskManager
+import org.kde.kwindowsystem
 
 import "js/windowplay.mjs" as WindowPlay
 
@@ -69,6 +70,8 @@ Item {
     property alias filterByScreen: tasksModel.filterByScreen
     property alias resumeTime: playTimer.interval
     property int modePlay
+    // A changed pause mode must apply now, not at the next window event.
+    onModePlayChanged: updateWindowsinfo()
 
     // ---
     readonly property bool reqPause: _reqPause
@@ -148,6 +151,11 @@ Item {
         }
     }
 
+    Connections {
+        target: KWindowSystem
+        function onShowingDesktopChanged() { updateWindowsinfo(); }
+    }
+
     Plasma5Support.SortFilterModel {
         filterRole: 'IsWindow'
         filterRegExp: 'true'
@@ -171,6 +179,13 @@ Item {
     }
     function _updateWindowsinfo() {
         if(modePlay === Common.PauseMode.Never) {
+            playBy(true);
+            return;
+        }
+        // "Show Desktop" (Meta+D, panel button) hides windows without
+        // minimizing them, so the maximized/fullscreen checks below would
+        // keep the wallpaper paused while the user is looking right at it.
+        if(KWindowSystem.showingDesktop) {
             playBy(true);
             return;
         }

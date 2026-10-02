@@ -8,6 +8,7 @@
 //   3. Firing the simple play/pause/playBy paths.
 import QtQuick
 import QtTest
+import org.kde.kwindowsystem
 
 import "../../plugin/contents/ui" as Plugin
 
@@ -247,6 +248,67 @@ TestCase {
         _runUpdate();
         _settlePlay();
         // Neither active nor maximized -> play.
+        compare(wm.reqPause, false);
+    }
+
+    // ── Show Desktop (Meta+D) ─────────────────────────────────────────────────
+    // KWin's "Show Desktop" hides windows without minimizing them, so the task
+    // model still reports the maximized window: the wallpaper must play anyway,
+    // since it is exactly what the user is looking at.
+    // Fire the play timer only if a play() actually armed it: triggering it
+    // unconditionally would clear a pause the decision just made.
+    function _settlePendingPlay() {
+        const pt = _findPlayTimer();
+        if (pt && pt.running) pt.triggered();
+    }
+
+    function _maximizedWindow() {
+        return [{
+            isWindow: true, isActive: true, isMaximized: true, isFullScreen: false,
+            isMinimized: false, activities: [], appName: "max-hidden-by-show-desktop",
+        }];
+    }
+
+    function test_showDesktop_playsDespiteMaximizedWindow() {
+        wm.modePlay = Plugin.Common.PauseMode.Max;
+        _setWindows(_maximizedWindow());
+        _runUpdate();
+        compare(wm.reqPause, true); // paused by the maximized window
+        KWindowSystem.showingDesktop = true;
+        _runUpdate();
+        _settlePendingPlay();
+        compare(wm.reqPause, false);
+        KWindowSystem.showingDesktop = false;
+    }
+
+    function test_showDesktop_leavingItPausesAgain() {
+        wm.modePlay = Plugin.Common.PauseMode.Max;
+        _setWindows(_maximizedWindow());
+        KWindowSystem.showingDesktop = true;
+        _runUpdate();
+        _settlePendingPlay();
+        compare(wm.reqPause, false);
+        // Toggling the state must schedule a re-decision by itself.
+        KWindowSystem.showingDesktop = false;
+        const tt = _findTriggerTimer();
+        verify(tt.running);
+        tt.triggered();
+        compare(wm.reqPause, true);
+    }
+
+    // ── pause-mode changes apply at once ─────────────────────────────────────
+    function test_modePlayChange_schedulesRedecision() {
+        wm.modePlay = Plugin.Common.PauseMode.Max;
+        _setWindows(_maximizedWindow());
+        _runUpdate();
+        compare(wm.reqPause, true);
+        const tt = _findTriggerTimer();
+        tt.stop();
+        // Switching to Never must not wait for the next window event.
+        wm.modePlay = Plugin.Common.PauseMode.Never;
+        verify(tt.running);
+        tt.triggered();
+        _settlePendingPlay();
         compare(wm.reqPause, false);
     }
 

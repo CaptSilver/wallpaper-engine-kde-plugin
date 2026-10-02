@@ -4,10 +4,13 @@ import ".."
 
 Item{
     id: videoItem
+    // Set once this backend has put a frame on screen; main.qml keeps the
+    // previous backend visible until then.
+    property bool frameShown: false
     anchors.fill: parent
     property alias source: player.source
-    readonly property int displayMode: background.displayMode
-    readonly property real videoRate: background.speed
+    property int displayMode: background.displayMode
+    property real videoRate: background.speed
     readonly property bool stats: background.mpvStats
     // No userPropsJson binding on purpose. A project.json property binds to a
     // shader uniform or a scene script, and a video has neither — mpv just
@@ -66,6 +69,7 @@ Item{
         Connections {
             ignoreUnknownSignals: true
             function onFirstFrame() {
+                videoItem.frameShown = true;
                 background.sig_backendFirstFrame('mpv');
                 loadWatchdog.stop();
             }
@@ -114,6 +118,19 @@ Item{
         pauseTimer.stop();
         player.play();
         volumeFade.start();
+    }
+    // main.qml calls this when the backend becomes the outgoing layer of a
+    // handoff: background.* then describes the next wallpaper, so pin the
+    // options this one is showing instead of following them.
+    function freezeOptions() {
+        displayMode = displayMode;
+        videoRate = videoRate;
+    }
+    // Called by main.qml once this backend has faded out, some time before
+    // destroying it: mpv drops its video output off the render thread, so
+    // ~MpvRender no longer waits on the core there.
+    function prepareDestroy() {
+        player.stopAsync();
     }
     function pause(){
         volumeFade.stop();

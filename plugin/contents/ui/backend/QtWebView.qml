@@ -7,6 +7,9 @@ import "../js/utils.mjs" as Utils
 
 Item {
     id: webItem
+    // Set once this backend has put a frame on screen; main.qml keeps the
+    // previous backend visible until then.
+    property bool frameShown: false
     anchors.fill: parent
     property url source
     property bool hasLib: background.hasLib
@@ -371,6 +374,7 @@ Item {
                     webItem.play();
                     webItem.pause();
                 }
+                webItem.frameShown = true;
                 background.sig_backendFirstFrame('QtWebEngine');
             }
         }
@@ -558,6 +562,12 @@ Item {
     function pause(){
         // Set status first
         web.paused = true;
+    }
+    // main.qml calls this when the backend becomes the outgoing layer of a
+    // handoff: background.* then describes the next wallpaper, so pin the
+    // options this one is showing instead of following them.
+    function freezeOptions() {
+        userPropsJson = userPropsJson;
     }
     function getMouseTarget() {
         web.activeFocusOnPress = true;

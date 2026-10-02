@@ -68,8 +68,16 @@ Rectangle {
     // opaque to the next maintainer. Splitting it makes the data flow
     // explicit: re-eval ⇒ value change ⇒ handler ⇒ async read ⇒ curOpt.
     property string workshopid: wallpaper.configuration.WallpaperWorkShopId
-    onWorkshopidChanged: {
-        pyext.read_wallpaper_config(workshopid).then((res) => { curOpt = res; });
+    // Deferred: switching sets WallpaperWorkShopId before WallpaperSource, and
+    // read_wallpaper_config resolves synchronously (Pyext's _makePromise), so
+    // an immediate read handed the NEW wallpaper's display mode / speed /
+    // user props to the backend still on screen, which then stretched or
+    // cropped until the handoff finished.  By the time this runs, applySource
+    // has frozen that backend as the outgoing layer (freezeOptions).
+    onWorkshopidChanged: Qt.callLater(background.readOptions)
+    function readOptions(wid) {
+        pyext.read_wallpaper_config(wid === undefined ? workshopid : wid)
+            .then((res) => { curOpt = res; });
     }
     function get_opt_value(key, def) {
         if(curOpt.hasOwnProperty(key))
@@ -204,13 +212,9 @@ Rectangle {
     }
 
     function applySource() {
-        // Ensure user props are loaded for the current wallpaper before loading backend.
-        // When both WallpaperWorkShopId and WallpaperSource change simultaneously,
-        // QML may evaluate source first, so workshopid/curOpt/userPropsJson could be stale.
+        // Options for the new wallpaper are read in readCurrentOptions(), once
+        // the old backend (if any) has been frozen as the outgoing layer.
         const wid = wallpaper.configuration.WallpaperWorkShopId;
-        if (wid) {
-            pyext.read_wallpaper_config(wid).then((res) => { curOpt = res; });
-        }
 
         const { path, type } = Common.unpackWallpaperSource(source);
         const path_changed = background.wallpaperPath !== path;
@@ -229,14 +233,32 @@ Rectangle {
         if(type_changed) wallpaperType = type;
         if(path_changed) wallpaperPath = path;
 
-        if(type_changed || is_infobackend || !source || web_wid_changed) {
+        // A different wallpaper always gets a fresh backend item, even of the
+        // same type, so it goes through the backendLoader handoff: the old one
+        // stays on screen until the new one draws, then fades out.  Swapping
+        // `source` on the live item gave a hard cut (and, for a cold scene, a
+        // few seconds of bare background) on scene->scene and video->video.
+        // A path change on the same workshop id (e.g. another page of the
+        // same web wallpaper) still swaps in place; folder videos carry no
+        // id, so for them any path change is a new wallpaper.
+        const other_wallpaper = path_changed && (!wid || background.backendWorkshopId !== wid);
+        if(type_changed || is_infobackend || !source || web_wid_changed || other_wallpaper) {
             loadBackend();
-        } else if(path_changed) {
-            backendLoader.item.source = path;
+        } else {
+            if(path_changed) backendLoader.item.source = path;
+            readCurrentOptions();
         }
         backendWorkshopId = wid;
 
         sourceCallback();
+    }
+
+    // When both WallpaperWorkShopId and WallpaperSource change simultaneously,
+    // QML may evaluate source first, so workshopid/curOpt could be stale; read
+    // the configuration value directly.
+    function readCurrentOptions() {
+        const wid = wallpaper.configuration.WallpaperWorkShopId;
+        if (wid) readOptions(wid);
     }
 
     onMouseInputChanged: {
@@ -529,18 +551,33 @@ Rectangle {
         anchors.fill: parent
         property var item: null
 
-        // Fade between wallpapers instead of hard-cutting. A playlist tick
-        // every 15 min looks brutal as a flash of background color; a
-        // 250ms opacity fade reads as intentional. opacity is bound to a
-        // simple flag the loader flips around the destroy+create dance.
-        // Gated to 0ms when the desktop has "Reduce animations" enabled
-        // (then the swap is an instant cut — preferred over a fade for
-        // a user who asked for less motion).
-        opacity: _fadeOpacity
-        Behavior on opacity { NumberAnimation { duration: background.reducedMotion ? 0 : 250 } }
-        property real _fadeOpacity: 1.0
+        // Handoff between backends: the backend already on screen stays
+        // (still playing, stacked above) until the new one reports its first
+        // frame (frameShown), then fades out over 250 ms.  A cold scene start
+        // can take seconds; fading the old one out right away showed the bare
+        // background colour and the desktop icons for all of that.  The fade
+        // is an instant cut when the desktop has "Reduce animations" enabled.
+        property var _outgoing: null
 
         signal loaded
+
+        Timer {
+            id: handoffTimeout
+            // Backends run their own load watchdog and swap in InfoShow on
+            // failure; this only guarantees the old layer never lingers.
+            interval: 25000
+            onTriggered: backendLoader.dropOutgoing()
+        }
+        NumberAnimation {
+            id: outgoingFade
+            property: "opacity"
+            to: 0
+            duration: background.reducedMotion ? 0 : 250
+            onFinished: {
+                if (target) target.destroy();
+                target = null;
+            }
+        }
 
         Component.onCompleted: {
             if(background.hasLib) {
@@ -550,26 +587,64 @@ Rectangle {
         }
         Component.onDestruction: {
             if(this.item) this.item.destroy();
+            if(this._outgoing) this._outgoing.destroy();
+        }
+        // Fade the outgoing backend out and destroy it.
+        function dropOutgoing() {
+            handoffTimeout.stop();
+            const old = this._outgoing;
+            this._outgoing = null;
+            if (!old) return;
+            if (outgoingFade.running) {
+                outgoingFade.stop();
+                if (outgoingFade.target) outgoingFade.target.destroy();
+            }
+            outgoingFade.target = old;
+            outgoingFade.start();
         }
         function load(url, properties) {
             const com = Qt.createComponent(url);
             if(com.status === Component.Ready) {
-                // Fade out, then swap on the next event-loop turn so the
-                // user sees a soft transition rather than the bg color
-                // flashing through.
-                backendLoader._fadeOpacity = 0.0;
-                if(this.item) this.item.destroy(100);
+                const prev = this.item;
                 this.item = null;
+                if (prev) {
+                    if (prev.frameShown === false) {
+                        // Never reached the screen (rapid switching): nothing
+                        // to keep; whatever is on screen stays the outgoing.
+                        prev.destroy();
+                    } else {
+                        if (this._outgoing) this._outgoing.destroy();
+                        // Keeps playing until the new one is on screen.
+                        this._outgoing = prev;
+                        // background.* now follows the next wallpaper; pin
+                        // what this one shows (fill mode, speed, user props).
+                        if (typeof prev.freezeOptions === "function")
+                            prev.freezeOptions();
+                    }
+                }
+                if (this._outgoing) this._outgoing.z = 1;
+                let created = null;
                 try {
-                    this.item = com.createObject(this, properties);
+                    created = com.createObject(this, properties);
                 } catch(e) {
                     this.loadInfoShow(e);
-                    backendLoader._fadeOpacity = 1.0;
                     return;
                 }
-                // Restore opacity after the new backend is mounted —
-                // Behavior on opacity animates it back in.
-                backendLoader._fadeOpacity = 1.0;
+                this.item = created;
+                if (created) {
+                    created.z = 0;
+                    if (created.frameShown === false) {
+                        created.frameShownChanged.connect(function() {
+                            if (backendLoader.item === created) backendLoader.dropOutgoing();
+                        });
+                        if (this._outgoing) handoffTimeout.restart();
+                    } else {
+                        // No frameShown (or already shown): cut over now.
+                        this.dropOutgoing();
+                    }
+                } else {
+                    this.dropOutgoing();
+                }
                 this.loaded();
             } else if(com.status == Component.Error) {
                 this.loadInfoShow(com.errorString());
@@ -661,8 +736,8 @@ Rectangle {
                 // only way it's ever set -- which also means it's frozen
                 // for that view's whole life. That's a feature, not just a
                 // side effect: the outgoing backend from a web-to-web swap
-                // stays alive for up to 100 ms (see backendLoader.load()'s
-                // destroy(100)), and without a fixed id it would keep
+                // stays alive until the new one draws and has faded out (see
+                // backendLoader's handoff), and without a fixed id it would keep
                 // tracking background.workshopid and follow it straight to
                 // the NEW wallpaper's profile during that window, instead
                 // of quietly finishing its own teardown.
@@ -707,6 +782,10 @@ Rectangle {
         // present as an error in journalctl filtering.
         console.log("load backend: "+qmlsource);
         backendLoader.load(qmlsource, properties);
+        // Options (display mode, user props, speed) for the new wallpaper go
+        // in after load() froze the outgoing backend, and before the source,
+        // so the C++ backend still receives USER_PROPS before SOURCE/LOAD_SCENE.
+        readCurrentOptions();
         backendLoader.item.source = background.wallpaperPath;
         sourceCallback();
     }

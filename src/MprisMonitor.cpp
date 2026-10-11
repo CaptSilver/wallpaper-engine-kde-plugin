@@ -108,6 +108,11 @@ int wekde::mprisPlayerRank(const QString& service, bool playing) {
     return (playing ? 2 : 0) + (service == browserIntegration ? 1 : 0);
 }
 
+bool wekde::mprisScanCandidateBetter(int rank, int index, int bestRank, int bestIndex) {
+    if (bestIndex < 0) return true;
+    return rank > bestRank || (rank == bestRank && index < bestIndex);
+}
+
 QString wekde::mprisEffectiveArtUrl(const QString& prevTrack, const QString& prevArt,
                                     const QString& newTrack, const QString& newArt) {
     if (newArt.isEmpty() && newTrack == prevTrack) return prevArt;
@@ -218,13 +223,9 @@ void MprisMonitor::findActivePlayer() {
                                 QDBusPendingReply<QVariant> statusReply = *sw2;
                                 const bool playing = statusReply.isValid() &&
                                                      statusReply.value().toString() == "Playing";
-                                // Highest mprisPlayerRank wins; among equal ranks the
-                                // lowest ListNames index does. Tracking by index keeps
-                                // this stable no matter what order the async replies
-                                // arrive in.
                                 const int  rank   = wekde::mprisPlayerRank(name, playing);
-                                const bool better = m_scanBestIndex < 0 || rank > m_scanBestRank ||
-                                                    (rank == m_scanBestRank && i < m_scanBestIndex);
+                                const bool better = wekde::mprisScanCandidateBetter(
+                                    rank, i, m_scanBestRank, m_scanBestIndex);
                                 if (better) {
                                     m_scanBestIndex = i;
                                     m_scanBest      = name;

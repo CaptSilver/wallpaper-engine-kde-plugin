@@ -80,6 +80,11 @@ private slots:
     void playerRank_browserIntegrationBeatsOtherPlayingPlayer();
     void playerRank_browserIntegrationBeatsOtherPausedPlayer();
     void playerRank_onlyTheExactBrowserIntegrationNameCounts();
+    void scanCandidate_firstCandidateAlwaysWins();
+    void scanCandidate_higherRankWins();
+    void scanCandidate_lowerRankLoses();
+    void scanCandidate_equalRankLowerIndexWins();
+    void scanCandidate_equalRankHigherIndexLoses();
     void handleNameOwnerChanged_browserIntegrationAppears_rescans();
     void classifyArt_nonUrlJunk();
 
@@ -1162,6 +1167,7 @@ void TestMprisColors::handleNameOwnerChanged_alreadyConnectedIgnoresOther() {
         QSKIP("could not establish an active MPRIS service for this test");
     QString first = m.activeService();
 
+    const quint64 genBefore = m.m_scanGeneration;
     QSignalSpy availableSpy(&m, &MprisMonitor::mediaAvailableChanged);
     // A second MPRIS service appearing while we already have one MUST NOT
     // switch — the connect branch is gated on `m_activeService.isEmpty()`.
@@ -1172,6 +1178,32 @@ void TestMprisColors::handleNameOwnerChanged_alreadyConnectedIgnoresOther() {
                Q_ARG(QString, ":1.50"));
     QCOMPARE(m.activeService(), first); // unchanged
     QCOMPARE(availableSpy.count(), 0);  // no mediaAvailableChanged
+    QCOMPARE(m.m_scanGeneration, genBefore); // and no rescan for an ordinary player
+}
+
+// findActivePlayer's fan-in: replies arrive in any order, so the winner must
+// depend only on rank and ListNames index.
+void TestMprisColors::scanCandidate_firstCandidateAlwaysWins() {
+    QVERIFY(wekde::mprisScanCandidateBetter(0, 5, /*bestRank*/ -1, /*bestIndex*/ -1));
+}
+
+void TestMprisColors::scanCandidate_higherRankWins() {
+    QVERIFY(wekde::mprisScanCandidateBetter(3, 5, 2, 0));
+}
+
+void TestMprisColors::scanCandidate_lowerRankLoses() {
+    QVERIFY(! wekde::mprisScanCandidateBetter(2, 0, 3, 5));
+    // The first ListNames entry is a real best-so-far, not "none yet".
+    QVERIFY(! wekde::mprisScanCandidateBetter(1, 3, 2, 0));
+}
+
+void TestMprisColors::scanCandidate_equalRankLowerIndexWins() {
+    QVERIFY(wekde::mprisScanCandidateBetter(2, 1, 2, 4));
+}
+
+void TestMprisColors::scanCandidate_equalRankHigherIndexLoses() {
+    QVERIFY(! wekde::mprisScanCandidateBetter(2, 4, 2, 4));
+    QVERIFY(! wekde::mprisScanCandidateBetter(2, 6, 2, 4));
 }
 
 // Firefox's own player can register before plasma-browser-integration's when

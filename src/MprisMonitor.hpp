@@ -60,6 +60,12 @@ MprisArtUrlKind classifyArtUrl(const QString& artUrl);
 // prefers it too.
 int mprisPlayerRank(const QString& service, bool playing);
 
+// findActivePlayer's fan-in step: whether a candidate with `rank` at ListNames
+// position `index` beats the best so far (`bestIndex` < 0 means none yet).
+// Higher rank wins; equal ranks go to the lower index, so the result does not
+// depend on the order the async PlaybackStatus replies arrive in.
+bool mprisScanCandidateBetter(int rank, int index, int bestRank, int bestIndex);
+
 // The art URL to act on for an incoming metadata update. `prevTrack` /
 // `newTrack` identify the track (see applyMetadata). An update for the same
 // track that carries no art keeps `prevArt`: plasma-browser-integration follows

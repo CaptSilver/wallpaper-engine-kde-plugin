@@ -50,6 +50,15 @@ enum class MprisArtUrlKind
 };
 MprisArtUrlKind classifyArtUrl(const QString& artUrl);
 
+// Preference among several MPRIS players; higher wins, equal ranks fall back to
+// D-Bus name order. A playing player always beats a paused one. Among equals,
+// plasma-browser-integration wins: a browser playing media also exposes its own
+// player for the same tab, and that one can carry a placeholder title and no
+// art (Flatpak Firefox reports "YouTube Music" and nothing else), while the
+// integration's copy has the real track and cover. Plasma's own media widget
+// prefers it too.
+int mprisPlayerRank(const QString& service, bool playing);
+
 // Convert MPRIS PlaybackStatus string to the int state the QML layer expects.
 // 0 = stopped, 1 = playing, 2 = paused, 0 for anything else.
 int toPlaybackState(const QString& status);
@@ -205,13 +214,12 @@ private:
     // findActivePlayer fan-out/fan-in: m_scanGeneration bumps on every scan so
     // late replies from a superseded scan are ignored; m_scanPending counts the
     // per-service PlaybackStatus probes still outstanding; m_scanBest holds the
-    // first-seen (or first "Playing") candidate; m_scanFoundPlaying short-
-    // circuits the rest once a playing player is seen.
+    // best candidate so far by mprisPlayerRank, then ListNames index.
     quint64 m_scanGeneration { 0 };
     int     m_scanPending { 0 };
     QString m_scanBest;
     int     m_scanBestIndex { -1 };
-    bool    m_scanFoundPlaying { false };
+    int     m_scanBestRank { -1 };
 
     QNetworkAccessManager m_nam;
 

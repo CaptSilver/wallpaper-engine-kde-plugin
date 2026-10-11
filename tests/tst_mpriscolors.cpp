@@ -75,6 +75,12 @@ private slots:
     void classifyArt_http();
     void classifyArt_https();
     void classifyArt_unknownScheme();
+    // player choice when a browser exposes two players for one tab
+    void playerRank_playingBeatsPausedBrowserIntegration();
+    void playerRank_browserIntegrationBeatsOtherPlayingPlayer();
+    void playerRank_browserIntegrationBeatsOtherPausedPlayer();
+    void playerRank_onlyTheExactBrowserIntegrationNameCounts();
+    void handleNameOwnerChanged_browserIntegrationAppears_rescans();
     void classifyArt_nonUrlJunk();
 
     // MprisMonitor signal behavior (private slots invoked via meta system)
@@ -408,6 +414,37 @@ void TestMprisColors::classifyArt_http() {
 void TestMprisColors::classifyArt_https() {
     QCOMPARE(wekde::classifyArtUrl("https://cdn.example/cover.jpg"), wekde::MprisArtUrlKind::Http);
 }
+// A browser playing media exposes two MPRIS players for the same tab: its own
+// (Flatpak Firefox: title "YouTube Music", no artist, no art) and
+// plasma-browser-integration's, which carries the real track metadata and a
+// cover. Picking by D-Bus name order chose whichever happened to come first.
+static const QString kBrowserIntegration =
+    QStringLiteral("org.mpris.MediaPlayer2.plasma-browser-integration");
+static const QString kFirefoxNative =
+    QStringLiteral("org.mpris.MediaPlayer2.firefox.instance_1_2076");
+
+void TestMprisColors::playerRank_playingBeatsPausedBrowserIntegration() {
+    QVERIFY(wekde::mprisPlayerRank(kFirefoxNative, true) >
+            wekde::mprisPlayerRank(kBrowserIntegration, false));
+}
+
+void TestMprisColors::playerRank_browserIntegrationBeatsOtherPlayingPlayer() {
+    QVERIFY(wekde::mprisPlayerRank(kBrowserIntegration, true) >
+            wekde::mprisPlayerRank(kFirefoxNative, true));
+}
+
+void TestMprisColors::playerRank_browserIntegrationBeatsOtherPausedPlayer() {
+    QVERIFY(wekde::mprisPlayerRank(kBrowserIntegration, false) >
+            wekde::mprisPlayerRank(kFirefoxNative, false));
+}
+
+void TestMprisColors::playerRank_onlyTheExactBrowserIntegrationNameCounts() {
+    const int plain = wekde::mprisPlayerRank(kFirefoxNative, true);
+    QCOMPARE(wekde::mprisPlayerRank(kBrowserIntegration + QStringLiteral(".extra"), true), plain);
+    QCOMPARE(wekde::mprisPlayerRank(QStringLiteral("org.mpris.MediaPlayer2.plasma-browser"), true),
+             plain);
+}
+
 void TestMprisColors::classifyArt_unknownScheme() {
     QCOMPARE(wekde::classifyArtUrl("ftp://server/file.png"), wekde::MprisArtUrlKind::Unknown);
 }
@@ -1127,6 +1164,21 @@ void TestMprisColors::handleNameOwnerChanged_alreadyConnectedIgnoresOther() {
                Q_ARG(QString, ":1.50"));
     QCOMPARE(m.activeService(), first); // unchanged
     QCOMPARE(availableSpy.count(), 0);  // no mediaAvailableChanged
+}
+
+// Firefox's own player can register before plasma-browser-integration's when
+// playback starts. Arriving second must not leave us on the metadata-poor one.
+void TestMprisColors::handleNameOwnerChanged_browserIntegrationAppears_rescans() {
+    wekde::MprisMonitor m;
+    if (! injectFakeService(m, kFirefoxNative))
+        QSKIP("could not establish an active MPRIS service for this test");
+    const quint64 genBefore = m.m_scanGeneration;
+    invokeSlot(&m,
+               "handleNameOwnerChanged",
+               Q_ARG(QString, kBrowserIntegration),
+               Q_ARG(QString, ""),
+               Q_ARG(QString, ":1.51"));
+    QVERIFY(m.m_scanGeneration > genBefore); // a fresh scan was started
 }
 
 void TestMprisColors::handlePropsChanged_changedArtUrl_reprocesses() {

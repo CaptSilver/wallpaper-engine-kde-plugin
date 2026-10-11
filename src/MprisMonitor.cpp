@@ -97,6 +97,12 @@ MprisMetadata wekde::parseMprisMetadata(const QVariantMap& meta) {
     return out;
 }
 
+int wekde::mprisPlayerRank(const QString& service, bool playing) {
+    static const QString browserIntegration =
+        QStringLiteral("org.mpris.MediaPlayer2.plasma-browser-integration");
+    return (playing ? 2 : 0) + (service == browserIntegration ? 1 : 0);
+}
+
 MprisArtUrlKind wekde::classifyArtUrl(const QString& artUrl) {
     if (artUrl.isEmpty()) return MprisArtUrlKind::Empty;
     QUrl url(artUrl);
@@ -161,7 +167,7 @@ void MprisMonitor::findActivePlayer() {
     const quint64 gen = ++m_scanGeneration;
     m_scanPending     = 0;
     m_scanBest.clear();
-    m_scanFoundPlaying = false;
+    m_scanBestRank = -1;
 
     QDBusMessage listMsg = QDBusMessage::createMethodCall(
         "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "ListNames");
@@ -201,20 +207,17 @@ void MprisMonitor::findActivePlayer() {
                                 QDBusPendingReply<QVariant> statusReply = *sw2;
                                 const bool playing = statusReply.isValid() &&
                                                      statusReply.value().toString() == "Playing";
-                                // Match the old synchronous preference exactly: the
-                                // lowest-ListNames-index "Playing" player wins; with
-                                // nothing playing, the lowest-index player wins. A
-                                // playing candidate always beats a non-playing one;
-                                // among equal playing-ness, the lower index wins.
-                                // Tracking by index keeps this stable no matter what
-                                // order the async replies arrive in.
-                                const bool better =
-                                    m_scanBestIndex < 0 || (playing && ! m_scanFoundPlaying) ||
-                                    (playing == m_scanFoundPlaying && i < m_scanBestIndex);
+                                // Highest mprisPlayerRank wins; among equal ranks the
+                                // lowest ListNames index does. Tracking by index keeps
+                                // this stable no matter what order the async replies
+                                // arrive in.
+                                const int  rank   = wekde::mprisPlayerRank(name, playing);
+                                const bool better = m_scanBestIndex < 0 || rank > m_scanBestRank ||
+                                                    (rank == m_scanBestRank && i < m_scanBestIndex);
                                 if (better) {
-                                    m_scanBestIndex    = i;
-                                    m_scanBest         = name;
-                                    m_scanFoundPlaying = playing;
+                                    m_scanBestIndex = i;
+                                    m_scanBest      = name;
+                                    m_scanBestRank  = rank;
                                 }
 
                                 if (--m_scanPending <= 0 && ! m_scanBest.isEmpty()) {
@@ -398,6 +401,13 @@ void MprisMonitor::handleNameOwnerChanged(const QString& name, const QString& ol
     if (! newOwner.isEmpty() && m_activeService.isEmpty()) {
         // New player appeared and we have no active one
         connectToPlayer(name);
+    } else if (! newOwner.isEmpty() && name != m_activeService &&
+               wekde::mprisPlayerRank(name, false) >
+                   wekde::mprisPlayerRank(m_activeService, false)) {
+        // A player preferred on name alone (plasma-browser-integration, which
+        // often registers just after the browser's own player): rescan so the
+        // ranking can move to it if it is playing.
+        findActivePlayer();
     } else if (name == m_activeService && newOwner.isEmpty()) {
         // Our active player vanished — try to find another
         disconnectFromPlayer();

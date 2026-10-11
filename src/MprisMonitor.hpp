@@ -36,6 +36,7 @@ struct MprisMetadata {
     QString albumArtist;
     QString genres;
     QString artUrl;
+    QString trackId;
     double  duration { 0 };
 };
 MprisMetadata parseMprisMetadata(const QVariantMap& meta);
@@ -58,6 +59,14 @@ MprisArtUrlKind classifyArtUrl(const QString& artUrl);
 // integration's copy has the real track and cover. Plasma's own media widget
 // prefers it too.
 int mprisPlayerRank(const QString& service, bool playing);
+
+// The art URL to act on for an incoming metadata update. `prevTrack` /
+// `newTrack` identify the track (see applyMetadata). An update for the same
+// track that carries no art keeps `prevArt`: plasma-browser-integration follows
+// every track's update with a second one that adds the album and drops
+// mpris:artUrl, which would otherwise clear the cover a second after it lands.
+QString mprisEffectiveArtUrl(const QString& prevTrack, const QString& prevArt,
+                             const QString& newTrack, const QString& newArt);
 
 // Convert MPRIS PlaybackStatus string to the int state the QML layer expects.
 // 0 = stopped, 1 = playing, 2 = paused, 0 for anything else.
@@ -191,6 +200,7 @@ private:
     bool            m_mediaAvailable { false };
     bool            m_engaged { false }; // true once D-Bus watch started
     QString         m_lastArtUrl;
+    QString         m_lastTrackKey;
     bool            m_artUrlEverProcessed { false };
     // Bumped on every art dispatch — all four URL kinds, not just the ones that
     // start background work — and on disconnect. An off-thread LocalFile decode

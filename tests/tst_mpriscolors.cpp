@@ -149,6 +149,14 @@ private slots:
     void handleNameOwnerChanged_alreadyConnectedIgnoresOther();
     // dedup gate fires again when artUrl actually changes.
     void handlePropsChanged_changedArtUrl_reprocesses();
+    // plasma-browser-integration follows each track's art update with a second
+    // update that adds the album and drops mpris:artUrl
+    void effectiveArt_sameTrackWithoutArtKeepsPrevious();
+    void effectiveArt_otherTrackWithoutArtClears();
+    void effectiveArt_sameTrackWithNewArtReplaces();
+    void effectiveArt_nothingBeforePassesThrough();
+    void parseMetadata_trackIdFromObjectPath();
+    void handlePropsChanged_sameTrackLosesArtUrl_keepsCover();
     // bplayonly / 'play' / 'stop' / 'next' / 'previous' direct-name aliases
     // (not just b-prefixed forms) round through invokeShortcut as well.
     void shortcut_canonicalNamesAlsoMap();
@@ -1179,6 +1187,75 @@ void TestMprisColors::handleNameOwnerChanged_browserIntegrationAppears_rescans()
                Q_ARG(QString, ""),
                Q_ARG(QString, ":1.51"));
     QVERIFY(m.m_scanGeneration > genBefore); // a fresh scan was started
+}
+
+void TestMprisColors::effectiveArt_sameTrackWithoutArtKeepsPrevious() {
+    QCOMPARE(wekde::mprisEffectiveArtUrl("t1", "file:///a.jpg", "t1", ""),
+             QString("file:///a.jpg"));
+}
+
+void TestMprisColors::effectiveArt_otherTrackWithoutArtClears() {
+    QCOMPARE(wekde::mprisEffectiveArtUrl("t1", "file:///a.jpg", "t2", ""), QString());
+}
+
+void TestMprisColors::effectiveArt_sameTrackWithNewArtReplaces() {
+    QCOMPARE(wekde::mprisEffectiveArtUrl("t1", "file:///a.jpg", "t1", "file:///b.jpg"),
+             QString("file:///b.jpg"));
+}
+
+void TestMprisColors::effectiveArt_nothingBeforePassesThrough() {
+    QCOMPARE(wekde::mprisEffectiveArtUrl("", "", "t1", ""), QString());
+    QCOMPARE(wekde::mprisEffectiveArtUrl("", "", "t1", "file:///a.jpg"), QString("file:///a.jpg"));
+}
+
+void TestMprisColors::parseMetadata_trackIdFromObjectPath() {
+    QVariantMap m;
+    m["mpris:trackid"] =
+        QVariant::fromValue(QDBusObjectPath("/org/kde/plasma/browser_integration/1337"));
+    QCOMPARE(wekde::parseMprisMetadata(m).trackId,
+             QString("/org/kde/plasma/browser_integration/1337"));
+}
+
+// Mirrors what plasma-browser-integration sends under Flatpak Firefox: each
+// track arrives as title+artist+artUrl, then about a second later as the same track
+// with the album added and no artUrl. Treating the second as "no art" made the
+// cover appear and vanish on every track change.
+void TestMprisColors::handlePropsChanged_sameTrackLosesArtUrl_keepsCover() {
+    QTemporaryFile a;
+    a.setAutoRemove(true);
+    QVERIFY(a.open());
+    QImage img(8, 8, QImage::Format_RGB32);
+    img.fill(Qt::yellow);
+    QVERIFY(img.save(a.fileName(), "PNG"));
+    a.close();
+
+    wekde::MprisMonitor m;
+    QSignalSpy          spy(&m, &wekde::MprisMonitor::thumbnailChanged);
+    auto                send = [&](const QVariantMap& meta) {
+        QVariantMap c;
+        c["Metadata"] = meta;
+        invokeSlot(&m,
+                   "handlePropertiesChanged",
+                   Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
+                   Q_ARG(QVariantMap, c),
+                   Q_ARG(QStringList, QStringList()));
+    };
+
+    send(
+        mkMeta("Paintress", { "Lorien Testard" }, 0, QUrl::fromLocalFile(a.fileName()).toString()));
+    QVERIFY(spy.wait(5000));
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.at(0).at(0).toBool(), true);
+
+    QVariantMap noArt    = mkMeta("Paintress", { "Lorien Testard" });
+    noArt["xesam:album"] = QStringLiteral("Clair Obscur: Expedition 33");
+    send(noArt);
+    QTest::qWait(300);
+    QCOMPARE(spy.count(), 1); // the cover stays
+
+    send(mkMeta("Undertow", { "Lorien Testard" })); // a different track without art
+    QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 2, 5000);
+    QCOMPARE(spy.at(1).at(0).toBool(), false);
 }
 
 void TestMprisColors::handlePropsChanged_changedArtUrl_reprocesses() {

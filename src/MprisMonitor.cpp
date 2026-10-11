@@ -1,6 +1,7 @@
 #include "MprisMonitor.hpp"
 
 #include <QDBusInterface>
+#include <QDBusObjectPath>
 #include <QDBusMessage>
 #include <QDBusPendingCall>
 #include <QDBusPendingCallWatcher>
@@ -93,6 +94,10 @@ MprisMetadata wekde::parseMprisMetadata(const QVariantMap& meta) {
     out.albumArtist     = meta.value("xesam:albumArtist").toStringList().join(", ");
     out.genres          = meta.value("xesam:genre").toStringList().join(", ");
     out.artUrl          = meta.value("mpris:artUrl").toString();
+    // An object path on the bus; plain-map callers (tests) may pass a string.
+    const QVariant trackId = meta.value("mpris:trackid");
+    out.trackId = trackId.canConvert<QDBusObjectPath>() ? trackId.value<QDBusObjectPath>().path()
+                                                        : trackId.toString();
     out.duration        = meta.value("mpris:length", 0).toLongLong() / 1e6; // µs → s
     return out;
 }
@@ -101,6 +106,12 @@ int wekde::mprisPlayerRank(const QString& service, bool playing) {
     static const QString browserIntegration =
         QStringLiteral("org.mpris.MediaPlayer2.plasma-browser-integration");
     return (playing ? 2 : 0) + (service == browserIntegration ? 1 : 0);
+}
+
+QString wekde::mprisEffectiveArtUrl(const QString& prevTrack, const QString& prevArt,
+                                    const QString& newTrack, const QString& newArt) {
+    if (newArt.isEmpty() && newTrack == prevTrack) return prevArt;
+    return newArt;
 }
 
 MprisArtUrlKind wekde::classifyArtUrl(const QString& artUrl) {
@@ -273,6 +284,7 @@ void MprisMonitor::disconnectFromPlayer() {
     // never updates. m_lastArtUrl + m_artUrlEverProcessed are bound to
     // the previous connection's lifetime, not the wallpaper's.
     m_lastArtUrl.clear();
+    m_lastTrackKey.clear();
     m_artUrlEverProcessed = false;
     // Art already in flight belongs to the player we are leaving: without this
     // a decode or cover fetch from player A repaints on top of player B.
@@ -299,10 +311,15 @@ void MprisMonitor::applyMetadata(const QVariantMap& meta) {
     auto md    = parseMprisMetadata(meta);
     m_duration = md.duration;
     emit propertiesChanged(md.title, md.artist, md.album, md.albumArtist, md.genres, m_duration);
-    if (md.artUrl != m_lastArtUrl || ! m_artUrlEverProcessed) {
-        m_lastArtUrl          = md.artUrl;
+    // plasma-browser-integration gives every track the constant trackid
+    // .../1337, so the title and artist are what tell its tracks apart.
+    const QString trackKey = md.trackId + QChar(0x1f) + md.title + QChar(0x1f) + md.artist;
+    const QString artUrl = mprisEffectiveArtUrl(m_lastTrackKey, m_lastArtUrl, trackKey, md.artUrl);
+    m_lastTrackKey       = trackKey;
+    if (artUrl != m_lastArtUrl || ! m_artUrlEverProcessed) {
+        m_lastArtUrl          = artUrl;
         m_artUrlEverProcessed = true;
-        processArtUrl(md.artUrl);
+        processArtUrl(artUrl);
     }
 }
 

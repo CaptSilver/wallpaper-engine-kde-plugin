@@ -330,3 +330,24 @@ export function badgeUpdated(manifestTs, seenVersion) {
     return seenVersion > 0 && manifestTs > seenVersion;
 }
 
+
+// The promise-like value Pyext's synchronous FileHelper calls return: then()
+// calls back before returning, like the code built on it expects. It lives
+// here, not on the Pyext QML object, because a real Promise that adopts it
+// calls then() later, from a posted job -- by which time the settings page
+// that made it may be gone (Plasma's wallpaper KCM builds the page, discards
+// it and builds it again on every open). A then() that needed the destroyed
+// page's QML context threw there, and Qt dereferences a null promise when a
+// thenable's then() throws (QV4::RejectWrapper), crashing the host process.
+export function syncThenable(value) {
+    return {
+        result: value,
+        then(onFulfilled) {
+            const next = typeof onFulfilled === 'function' ? onFulfilled(value) : undefined;
+            return syncThenable(next !== undefined ? next : value);
+        },
+        catch() {
+            return syncThenable(value);
+        },
+    };
+}

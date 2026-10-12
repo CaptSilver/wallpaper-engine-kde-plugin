@@ -1,4 +1,5 @@
 #include "GuiThreadOnce.hpp"
+#include "WallpaperHost.hpp"
 #include <mutex>
 #include <QQmlExtensionPlugin>
 #include <QQmlEngine>
@@ -182,9 +183,10 @@ private:
 #ifdef WEKDE_HAS_GLOBALACCEL
         // Register KGlobalAccel-bound actions.  Construct once per process
         // (qApp ownership ensures the KActionCollection lives as long as
-        // the host process).  KGlobalAccel dedupes by action id within the
-        // component name, so multi-plasmoid construction is harmless.
-        new wekde::WekShortcuts(qApp);
+        // the host process), and only in plasmashell: the actions drive the
+        // running wallpaper, which no settings-only host has.
+        if (wekde::HostsWallpapers(QCoreApplication::applicationName()))
+            new wekde::WekShortcuts(qApp);
 #endif
     }
 };

@@ -515,8 +515,10 @@ RowLayout {
                 anchors.rightMargin: anchors.leftMargin
                 spacing: 8
 
-                AnimatedImage { 
-                    id: animated_image; 
+                // Not a bare AnimatedImage: a preview.gif whose first frame
+                // fails to decode crashes Qt 6.12's (see PreviewAnimatedImage).
+                PreviewAnimatedImage {
+                    id: animated_image
                     Layout.topMargin: right_content.content_margin
                     // Ceiling, not a fixed size: a narrow dialog shrinks the
                     // thumbnail rather than pushing the pane out of the layout.
@@ -526,11 +528,9 @@ RowLayout {
                     Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
 
                     source: Common.getWpModelPreviewSource(right_content.wpmodel)
-                    sourceSize.width: right_content.image_size
+                    sourceWidth: right_content.image_size
                     fillMode: Image.PreserveAspectFit
                     cache: true
-                    asynchronous: true
-                    onStatusChanged: playing = (status == AnimatedImage.Ready)
                 }
 
                 Text {

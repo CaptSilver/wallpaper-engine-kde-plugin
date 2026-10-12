@@ -78,10 +78,10 @@ TestCase {
                   "WallpaperPage never took the dialog width");
     }
 
+    // The pane's preview is a PreviewAnimatedImage (decode-probed wrapper).
     function _findAnimatedPreview() {
         return _findFirstByPredicate(rc, n =>
-            n && typeof n.playing === "boolean" && typeof n.paused === "boolean"
-            && typeof n.sourceSize !== "undefined");
+            n && typeof n.sourceWidth === "number" && typeof n.firstFrameDecoded === "boolean");
     }
 
     function _findUserPropsGroup() {

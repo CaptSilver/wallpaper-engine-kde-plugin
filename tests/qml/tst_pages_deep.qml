@@ -2143,22 +2143,22 @@ TestCase {
             typeof c.wpmodel !== "undefined");
         verify(rc !== null, "right_content (image_size + wpmodel) not found");
 
-        // AnimatedImage is distinguished from plain Image by the playing
-        // + paused boolean pair. sourceSize is an attached size value.
+        // The pane's preview is a PreviewAnimatedImage: a decode-probed
+        // wrapper around AnimatedImage, found by its sourceWidth +
+        // firstFrameDecoded pair. Its probe Image and AnimatedImage both
+        // decode at sourceWidth.
         const anims = [];
         _walkChildren(rc, c =>
-            c && typeof c.playing === "boolean" &&
-            typeof c.paused === "boolean" &&
-            typeof c.sourceSize !== "undefined", anims);
+            c && typeof c.sourceWidth === "number" &&
+            typeof c.firstFrameDecoded === "boolean", anims);
         verify(anims.length >= 1,
-               "detail-pane AnimatedImage not reachable from right_content");
+               "detail-pane preview not reachable from right_content");
 
-        // Every AnimatedImage in the detail-pane subtree must have its
-        // sourceSize.width bound to right_content.image_size so decode
-        // is clamped to the on-screen render size.
+        // Its decode width must be right_content.image_size so decode is
+        // clamped to the on-screen render size.
         for (const img of anims) {
-            compare(img.sourceSize.width, rc.image_size,
-                    "detail-pane AnimatedImage sourceSize.width must equal " +
+            compare(img.sourceWidth, rc.image_size,
+                    "detail-pane preview sourceWidth must equal " +
                     "right_content.image_size (decode-clamp parity with WallpaperGrid)");
         }
     }

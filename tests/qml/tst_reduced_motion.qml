@@ -48,6 +48,16 @@ TestCase {
         return null;
     }
 
+    // The animated form is PreviewAnimatedImage, which only creates its inner
+    // AnimatedImage once the preview's first frame decodes -- these fixtures
+    // have no preview file, so look for the wrapper itself.
+    function _isAnimatedForm(n) {
+        if (!n || !n.toString) return false;
+        const t = n.toString();
+        return t.indexOf("PreviewAnimatedImage_QMLTYPE") === 0
+            || t.indexOf("QQuickAnimatedImage") === 0;
+    }
+
     function initTestCase() {
         const comp = Qt.createComponent("../../plugin/contents/ui/config.qml");
         verify(comp.status !== Component.Error, comp.errorString());
@@ -105,7 +115,7 @@ TestCase {
         const d = grid.view.itemAtIndex(0);
         verify(d);
         const isAnimated = _findFirstByPredicate(d, n =>
-            n && n.toString && n.toString().indexOf("QQuickAnimatedImage") === 0);
+            _isAnimatedForm(n));
         // staticPre's Image is NOT an AnimatedImage; if reducedMotion ⇒ static,
         // we must not find an AnimatedImage instance.
         compare(isAnimated, null);
@@ -126,7 +136,7 @@ TestCase {
         grid.animatedPreviewActive = true;
         const d = grid.view.itemAtIndex(0);
         tryVerify(() => _findFirstByPredicate(d, n =>
-            n && n.toString && n.toString().indexOf("QQuickAnimatedImage") === 0
+            _isAnimatedForm(n)
         ) != null, 2000, "AnimatedImage form never picked");
     }
 
@@ -146,7 +156,7 @@ TestCase {
         const d = grid.view.itemAtIndex(0);
         // No AnimatedImage when the user pref is off, regardless of reducedMotion.
         const isAnimated = _findFirstByPredicate(d, n =>
-            n && n.toString && n.toString().indexOf("QQuickAnimatedImage") === 0);
+            _isAnimatedForm(n));
         compare(isAnimated, null);
     }
 

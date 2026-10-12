@@ -9,7 +9,10 @@ import QtQuick
 // the restart recurses until the stack overflows, and one such file anywhere
 // in the library took down System Settings or plasmashell as soon as the
 // wallpaper page opened. A plain Image decodes that same first frame with the
-// same reader: it fails cleanly, and the preview stays static.
+// same reader: it fails cleanly, and the preview stays static. The same
+// recursion follows from a decode width below one pixel, which AnimatedImage
+// passes to the reader as a zero scale (an Image reads 0 as "natural size"),
+// so a tile not yet laid out stays static too.
 Item {
     id: root
 
@@ -26,6 +29,8 @@ Item {
     property url decodedSource
     readonly property bool firstFrameDecoded: probe.status === Image.Ready
                                               && decodedSource === source
+    // Whole pixels, as the image reader takes it; 0 until laid out.
+    readonly property int decodeWidth: Math.floor(sourceWidth)
     // The AnimatedImage, or null while (or because) the first frame has not
     // decoded. Tests read it; nothing else needs to.
     readonly property var animation: animated.item
@@ -34,7 +39,7 @@ Item {
         id: probe
         anchors.fill: parent
         source: root.source
-        sourceSize.width: root.sourceWidth
+        sourceSize.width: root.decodeWidth
         fillMode: root.fillMode
         clip: true
         cache: false
@@ -49,10 +54,10 @@ Item {
     Loader {
         id: animated
         anchors.fill: parent
-        active: root.firstFrameDecoded
+        active: root.firstFrameDecoded && root.decodeWidth >= 1
         sourceComponent: AnimatedImage {
             source: root.decodedSource
-            sourceSize.width: root.sourceWidth
+            sourceSize.width: root.decodeWidth
             fillMode: root.fillMode
             clip: true
             cache: root.cache

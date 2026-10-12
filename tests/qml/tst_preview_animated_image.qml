@@ -46,4 +46,26 @@ TestCase {
         tryVerify(() => p.probeStatus === Image.Error);
         compare(p.animation, null);
     }
+
+    // AnimatedImage reads sourceSize.width 0 as a scale size of zero, decodes
+    // nothing and recurses on Qt 6.12 just like a broken file; Image reads the
+    // same 0 as "natural size" and decodes fine. A tile laid out at zero width
+    // (before layout, or in a hidden page instance) must stay static.
+    function test_a_zero_width_preview_never_reaches_AnimatedImage() {
+        const p = createTemporaryObject(previewComp, tc,
+                                        { source: fixture("animated.gif"), width: 0 });
+        verify(p);
+        wait(300);
+        compare(p.animation, null);
+    }
+
+    function test_a_zero_width_preview_animates_once_it_has_a_width() {
+        const p = createTemporaryObject(previewComp, tc,
+                                        { source: fixture("animated.gif"), width: 0 });
+        wait(200);
+        compare(p.animation, null);
+        p.width = 64;
+        tryVerify(() => p.animation !== null && p.animation.status === Image.Ready);
+    }
+
 }

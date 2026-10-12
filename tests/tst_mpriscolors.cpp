@@ -1168,7 +1168,7 @@ void TestMprisColors::handleNameOwnerChanged_alreadyConnectedIgnoresOther() {
     QString first = m.activeService();
 
     const quint64 genBefore = m.m_scanGeneration;
-    QSignalSpy availableSpy(&m, &MprisMonitor::mediaAvailableChanged);
+    QSignalSpy    availableSpy(&m, &MprisMonitor::mediaAvailableChanged);
     // A second MPRIS service appearing while we already have one MUST NOT
     // switch — the connect branch is gated on `m_activeService.isEmpty()`.
     invokeSlot(&m,
@@ -1176,8 +1176,8 @@ void TestMprisColors::handleNameOwnerChanged_alreadyConnectedIgnoresOther() {
                Q_ARG(QString, "org.mpris.MediaPlayer2.second"),
                Q_ARG(QString, ""),
                Q_ARG(QString, ":1.50"));
-    QCOMPARE(m.activeService(), first); // unchanged
-    QCOMPARE(availableSpy.count(), 0);  // no mediaAvailableChanged
+    QCOMPARE(m.activeService(), first);      // unchanged
+    QCOMPARE(availableSpy.count(), 0);       // no mediaAvailableChanged
     QCOMPARE(m.m_scanGeneration, genBefore); // and no rescan for an ordinary player
 }
 

@@ -96,9 +96,9 @@ MprisMetadata wekde::parseMprisMetadata(const QVariantMap& meta) {
     out.artUrl          = meta.value("mpris:artUrl").toString();
     // An object path on the bus; plain-map callers (tests) may pass a string.
     const QVariant trackId = meta.value("mpris:trackid");
-    out.trackId = trackId.canConvert<QDBusObjectPath>() ? trackId.value<QDBusObjectPath>().path()
-                                                        : trackId.toString();
-    out.duration        = meta.value("mpris:length", 0).toLongLong() / 1e6; // µs → s
+    out.trackId  = trackId.canConvert<QDBusObjectPath>() ? trackId.value<QDBusObjectPath>().path()
+                                                         : trackId.toString();
+    out.duration = meta.value("mpris:length", 0).toLongLong() / 1e6; // µs → s
     return out;
 }
 
@@ -223,8 +223,8 @@ void MprisMonitor::findActivePlayer() {
                                 QDBusPendingReply<QVariant> statusReply = *sw2;
                                 const bool playing = statusReply.isValid() &&
                                                      statusReply.value().toString() == "Playing";
-                                const int  rank   = wekde::mprisPlayerRank(name, playing);
-                                const bool better = wekde::mprisScanCandidateBetter(
+                                const int  rank    = wekde::mprisPlayerRank(name, playing);
+                                const bool better  = wekde::mprisScanCandidateBetter(
                                     rank, i, m_scanBestRank, m_scanBestIndex);
                                 if (better) {
                                     m_scanBestIndex = i;

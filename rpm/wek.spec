@@ -98,10 +98,13 @@ BuildRequires: python3
 # anyway today, but only because plasma-workspace requires the `plasmashell`
 # capability that plasma-desktop happens to provide -- not a chain worth betting
 # the whole plugin on.  QtMultimedia is the video-backend fallback (main.xml
-# defaults VideoBackend to Mpv), so it stays weak.
+# defaults VideoBackend to Mpv), so it stays weak.  WindowModel imports
+# org.kde.kwindowsystem (Show Desktop state); openSUSE ships that module in
+# kf6-kwindowsystem-imports, which plasma6-workspace does not require.
 %if 0%{?suse_version}
 Requires: plasma6-workspace
 Requires: plasma5support6
+Requires: kf6-kwindowsystem-imports
 Requires: qt6-webchannel-imports
 Recommends: gstreamer-plugins-libav
 Recommends: qt6-multimedia-imports
@@ -110,6 +113,7 @@ Recommends: qt6-webengine-imports
 %if 0%{?mageia}
 Requires: plasma-workspace
 Requires: plasma5support
+Requires: kwindowsystem
 Requires: qtwebchannel6
 Recommends: gstreamer1.0-libav
 Recommends: qtmultimedia6
@@ -120,6 +124,7 @@ Recommends: qtwebengine6
 %else
 Requires: plasma-workspace
 Requires: plasma5support
+Requires: kf6-kwindowsystem
 Requires: mpv-libs
 Requires: lz4
 Requires: qt6-qtwebchannel

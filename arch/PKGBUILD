@@ -30,6 +30,8 @@ depends=(
     # wrap Plasma5Support.DataSource — without it the root item never creates and
     # the desktop draws no wallpaper.
     'plasma5support'
+    # QML import as well: WindowModel reads KWindowSystem.showingDesktop.
+    'kwindowsystem'
     'libplasma'
     'plasma-activities'
     'kconfig'

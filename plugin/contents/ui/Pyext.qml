@@ -105,6 +105,10 @@ Item {
         return _makePromise(bindings);
     }
 
+    function video_extensions() {
+        return fileHelper.videoExtensions();
+    }
+
     function scan_video_folder(path) {
         const list = fileHelper.scanVideoFolder(path);
         return _makePromise(list);

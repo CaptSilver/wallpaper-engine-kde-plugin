@@ -67,6 +67,10 @@ public:
     Q_INVOKABLE void         requestDirSize(const QString& path, int depth = 3);
     Q_INVOKABLE QVariantMap  getFolderList(const QString& path, const QVariantMap& opt = {});
     Q_INVOKABLE QVariantList scanVideoFolder(const QString& path);
+    // Lowercase suffixes scanVideoFolder accepts. The one definition: the
+    // settings file picker builds its video name filter from this, so the two
+    // cannot drift apart.
+    Q_INVOKABLE static QStringList videoExtensions();
 
     // Wallpaper config operations
     Q_INVOKABLE QVariantMap  readWallpaperConfig(const QString& id);

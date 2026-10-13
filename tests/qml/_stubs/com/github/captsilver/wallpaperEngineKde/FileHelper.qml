@@ -1,6 +1,6 @@
 // Test stub — see tests/qml/_stubs/README.md for contract.
 // Real source: src/FileHelper.hpp + src/FileHelper.cpp
-// Last contract review: 2026-09-09
+// Last contract review: 2026-10-12
 
 // Test stub for the C++ FileHelper QML type. Methods return canned values
 // or empty objects so production code can run through happy paths in tests.
@@ -10,6 +10,7 @@ QtObject {
     property var _readReturns: ""
     property var _patchedHtmlReturns: ""
     property var _scanVideoFolderReturns: []
+    property var _videoExtensionsReturns: ["mp4"]
     property var _wallpaperConfigReturns: ({})
 
     signal thumbnailReady(string videoPath, string outPath, bool ok)
@@ -68,6 +69,7 @@ QtObject {
     }
     function readActiveBindings(id)      { readActiveBindingsCount += 1; return []; }
     function scanVideoFolder(path)       { scanVideoFolderCount += 1; return _scanVideoFolderReturns; }
+    function videoExtensions()           { return _videoExtensionsReturns; }
     // Always reports success in tests. Real impl refuses paths outside the
     // user's cache root; tests that need to exercise the refusal path
     // should mock this directly.

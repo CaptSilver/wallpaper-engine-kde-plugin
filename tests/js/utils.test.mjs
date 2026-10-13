@@ -91,29 +91,36 @@ test('prettyBytes: negative numbers carry the sign', () => {
 });
 
 // ── fileTypeNameFilters: WE file-property fileType → Qt FileDialog filters
-test('fileTypeNameFilters: video maps to video extensions', () => {
-    const f = fileTypeNameFilters('video');
-    assert.equal(f.length, 2);
-    assert.match(f[0], /Video files/);
-    assert.match(f[0], /\*\.webm/);
-    assert.match(f[0], /\*\.mp4/);
-    assert.equal(f[f.length - 1], 'All files (*)');
+test('fileTypeNameFilters: video label is built from the injected list', () => {
+    assert.deepEqual(fileTypeNameFilters('video', ['zzz']),
+                     ['Video files (*.zzz)', 'All files (*)']);
+    assert.deepEqual(fileTypeNameFilters('video', ['mp4', 'mkv']),
+                     ['Video files (*.mp4 *.mkv)', 'All files (*)']);
+});
+
+test('fileTypeNameFilters: video without a list is all-files only', () => {
+    assert.deepEqual(fileTypeNameFilters('video', []), ['All files (*)']);
+    assert.deepEqual(fileTypeNameFilters('video'), ['All files (*)']);
+    assert.deepEqual(fileTypeNameFilters('video', null), ['All files (*)']);
+});
+
+test('fileTypeNameFilters: the video list does not leak into other types', () => {
+    assert.deepEqual(fileTypeNameFilters('image', ['zzz']), fileTypeNameFilters('image'));
+    assert.deepEqual(fileTypeNameFilters('xml', ['zzz']), ['All files (*)']);
 });
 
 test('fileTypeNameFilters: image maps to image extensions', () => {
     const f = fileTypeNameFilters('image');
-    assert.match(f[0], /Image files/);
-    assert.match(f[0], /\*\.png/);
-    assert.match(f[0], /\*\.jpg/);
-    assert.equal(f[f.length - 1], 'All files (*)');
+    assert.deepEqual(f, ['Image files (*.png *.jpg *.jpeg *.gif *.bmp *.webp *.tga)',
+                         'All files (*)']);
 });
 
 test('fileTypeNameFilters: sound and audio both map to audio extensions', () => {
     const fSound = fileTypeNameFilters('sound');
     const fAudio = fileTypeNameFilters('audio');
     assert.deepEqual(fSound, fAudio);
-    assert.match(fSound[0], /Audio files/);
-    assert.match(fSound[0], /\*\.ogg/);
+    assert.deepEqual(fSound, ['Audio files (*.ogg *.mp3 *.wav *.flac *.opus *.m4a)',
+                              'All files (*)']);
 });
 
 test('fileTypeNameFilters: unknown / missing → all-files only', () => {
@@ -125,7 +132,7 @@ test('fileTypeNameFilters: unknown / missing → all-files only', () => {
 });
 
 test('fileTypeNameFilters: case-insensitive match', () => {
-    assert.match(fileTypeNameFilters('VIDEO')[0], /Video files/);
+    assert.match(fileTypeNameFilters('VIDEO', ['mp4'])[0], /Video files/);
     assert.match(fileTypeNameFilters('Image')[0], /Image files/);
     assert.match(fileTypeNameFilters('Sound')[0], /Audio files/);
 });

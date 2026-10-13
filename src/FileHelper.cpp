@@ -748,10 +748,15 @@ void FileHelper::generateThumbnail(const QString& videoPath, const QString& outP
 #endif
 }
 
-QVariantList FileHelper::scanVideoFolder(const QString& path) {
+QStringList FileHelper::videoExtensions() {
     static const QStringList kExtensions = { "mp4", "mkv", "webm", "mov", "avi", "m4v" };
-    QVariantList             out;
-    QDir                     root(nativePath(path));
+    return kExtensions;
+}
+
+QVariantList FileHelper::scanVideoFolder(const QString& path) {
+    const QStringList extensions = videoExtensions();
+    QVariantList      out;
+    QDir              root(nativePath(path));
     if (! root.exists()) return out;
 
     // FollowSymlinks: users commonly curate their Videos folder with symlinks
@@ -765,7 +770,7 @@ QVariantList FileHelper::scanVideoFolder(const QString& path) {
     while (it.hasNext()) {
         const QString   full = it.next();
         const QFileInfo fi(full);
-        if (! kExtensions.contains(fi.suffix().toLower())) continue;
+        if (! extensions.contains(fi.suffix().toLower())) continue;
 
         QVariantMap entry;
         entry["path"]  = fi.absoluteFilePath();

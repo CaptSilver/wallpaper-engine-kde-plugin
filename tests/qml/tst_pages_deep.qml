@@ -2075,6 +2075,35 @@ TestCase {
         if (hit.row.destroy) hit.row.destroy();
     }
 
+    // The file picker's video filter comes from FileHelper's scanner list, so
+    // a list the helper reports must show up verbatim in the dialog.
+    function test_userPropFile_videoFilterComesFromFileHelper() {
+        const helper = _findFileHelper();
+        verify(helper !== null, "stub FileHelper must be reachable through Pyext");
+        const saved = helper._videoExtensionsReturns;
+        helper._videoExtensionsReturns = ["qqq"];
+        let hit = null;
+        // A failed assertion throws; restore the shared stub either way so later
+        // tests in this file don't inherit ["qqq"].
+        try {
+            const comps = _findAllComponents();
+            hit = _instantiateAndFindDialog(comps,
+                n => n && typeof n.selectedFile !== "undefined"
+                      && typeof n.accepted === "function");
+            verify(hit !== null, "user_prop_file must instantiate");
+            hit.row.fileType = "video";
+            hit.row.finish();
+            const filters = hit.dialog.nameFilters;
+            compare(filters.length, 2);
+            verify(filters[0].indexOf("*.qqq") >= 0, "filter: " + filters[0]);
+            verify(filters[0].indexOf("*.mp4") < 0, "filter: " + filters[0]);
+            compare(filters[1], "All files (*)");
+        } finally {
+            helper._videoExtensionsReturns = saved;
+            if (hit && hit.row.destroy) hit.row.destroy();
+        }
+    }
+
     function test_userPropDirectory_dialogAcceptedRunsBody() {
         const comps = _findAllComponents();
         const hit = _instantiateAndFindDialog(comps,

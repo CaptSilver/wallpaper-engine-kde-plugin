@@ -1706,6 +1706,36 @@ private slots:
         QVERIFY(! names.contains("c.txt"));
     }
 
+    void videoExtensions_drivesScanVideoFolder() {
+        const QStringList exts = FileHelper::videoExtensions();
+        QVERIFY(exts.contains("mp4"));
+        QVERIFY(exts.contains("mkv"));
+        QVERIFY(exts.contains("webm"));
+        QVERIFY(exts.contains("mov"));
+        QVERIFY(exts.contains("avi"));
+        QVERIFY(exts.contains("m4v"));
+
+        QTemporaryDir d;
+        QVERIFY(d.isValid());
+        QStringList expected;
+        for (const QString& ext : exts) {
+            for (const QString& name : { "lower." + ext, "UPPER." + ext.toUpper() }) {
+                QVERIFY(QFile::copy("/dev/null", d.filePath(name)));
+                expected << name;
+            }
+        }
+        QVERIFY(QFile::copy("/dev/null", d.filePath("c.txt")));
+        QVERIFY(QFile::copy("/dev/null", d.filePath("d.jpg")));
+
+        FileHelper   helper;
+        QVariantList result = helper.scanVideoFolder(d.path());
+        QStringList  names;
+        for (const auto& v : result) names << v.toMap().value("name").toString();
+        names.sort();
+        expected.sort();
+        QCOMPARE(names, expected);
+    }
+
     void scanVideoFolder_recurses() {
         QTemporaryDir d;
         QVERIFY(d.isValid());

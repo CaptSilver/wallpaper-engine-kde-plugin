@@ -1043,7 +1043,8 @@ RowLayout {
                 // "file:///" prefix the wallpaper itself prepends if it
                 // wants a URL).  `fileType` (set by onLoaded) drives the
                 // FileDialog name-filters; unknown/missing falls back to
-                // all-files so users are never blocked.
+                // all-files so users are never blocked.  The video list is
+                // FileHelper's, the same one the Videos-tab scan uses.
                 Component {
                     id: user_prop_file
                     Row {
@@ -1053,7 +1054,7 @@ RowLayout {
                         property string res_val: pathField.text
                         function finish() {
                             pathField.text = def_val;
-                            fileDlg.nameFilters = Utils.fileTypeNameFilters(fileType);
+                            fileDlg.nameFilters = Utils.fileTypeNameFilters(fileType, pyext.video_extensions());
                         }
                         TextField {
                             id: pathField

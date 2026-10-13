@@ -174,4 +174,19 @@ TestCase {
         }
         return null;
     }
+
+    // As the outgoing layer of a wallpaper handoff, the backend must keep its
+    // own mute while background.* moves on to the next wallpaper.
+    function test_freezeOptions_keeps_mute() {
+        background.mute = true;
+        const item = qmComp.createObject(tc);
+        const out = item.data.find(o => o && typeof o.muted !== "undefined"
+                                        && typeof o.volume !== "undefined");
+        verify(out !== undefined);
+        compare(out.muted, true);
+        item.freezeOptions();
+        background.mute = false;
+        compare(out.muted, true, "frozen backend followed the next wallpaper's mute");
+        item.destroy();
+    }
 }

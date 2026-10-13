@@ -1071,6 +1071,63 @@ check_mull_instrumentation() {
     fi
 }
 
+# How many first-party mutants Mull embedded in <bin>, or "unknown".  Mull's
+# frontend fixes the mutant set at compile time and stores it in the binary's
+# .mull_mutants section, one NUL-separated mutator:path:line:col:endline:endcol:
+# replacement record each.  A source that compares through Qt's overloaded
+# operators (calls, not built-in ops) contributes none, and the run-time "No
+# mutants found" that results is indistinguishable from a clean measurement
+# unless the section is read.  Records are filtered the way the report is: the
+# moc/autogen ignore plus the target's own excludePaths, and only paths under
+# this checkout count.  "unknown" (no objcopy, not an ELF, no section) must never
+# be treated as zero.
+first_party_mutant_count() {
+    local t="$1" bin="$2" leaf tmp excl n
+    command -v objcopy >/dev/null 2>&1 || { echo unknown; return; }
+    mkdir -p "$OUT_DIR"
+    tmp="$(mktemp "$OUT_DIR/mutants-XXXXXX")" || { echo unknown; return; }
+    # Callers run this in $( ), so an EXIT trap cleans up on interrupt too.
+    trap 'rm -f "$tmp" "$tmp.copy"' EXIT
+    # --dump-section, not -O binary --only-section: the latter drops a section
+    # that is not SEC_ALLOC and then succeeds with an empty file.  objcopy
+    # insists on writing a copy of the binary too; -j keeps that copy to the one
+    # section (3 MB instead of backend_scene_tests' 341 MB).
+    if ! objcopy -j .mull_mutants --dump-section .mull_mutants="$tmp" "$bin" "$tmp.copy" 2>/dev/null \
+            || [[ ! -s "$tmp" ]]; then
+        rm -f "$tmp" "$tmp.copy"; echo unknown; return
+    fi
+    rm -f "$tmp.copy"
+    mull_src_root_for "$t"
+    excl="$MOC_IGNORE"
+    if [[ -f "$_MULL_SRC_YML" ]]; then
+        excl+="$(awk '/^excludePaths:/ {on=1; next}
+                      on && /^[^ #]/ {on=0}
+                      on && /^[ \t]+-[ \t]/ {sub(/^[ \t]+-[ \t]+/, ""); printf "|%s", $0}' "$_MULL_SRC_YML")"
+    fi
+    leaf="$(basename "$PWD")"
+    n="$(tr '\0' '\n' < "$tmp" | cut -d: -f2 | grep -F -- "/$leaf/" | grep -Evc -- "$excl" || true)"
+    rm -f "$tmp"
+    echo "${n:-0}"
+}
+
+# Warn when <bin> embeds no first-party mutants, and keep $OUT_DIR/unmeasured.txt
+# in step with the answer so a sweep can tell "measured clean" from "nothing
+# measurable".  --no-wipe runs accumulate in one directory, so a target that is
+# measurable now has its stale line removed.
+note_unmeasured() {
+    local t="$1" bin="$2" n list="$OUT_DIR/unmeasured.txt"
+    n="$(first_party_mutant_count "$t" "$bin")"
+    mkdir -p "$OUT_DIR"
+    if [[ -f "$list" ]] && grep -qxF "$t" "$list"; then
+        grep -vxF "$t" "$list" > "$list.tmp" || true
+        mv "$list.tmp" "$list"
+    fi
+    if [[ "$n" == "0" ]]; then
+        warn "UNMEASURED: $t has no first-party mutants under the compiled mutator set — a clean run says nothing about its sources"
+        echo "$t" >> "$list"
+    fi
+}
+
 # run_mull_pass <target> <bin> <target_dir> <mull-config> <label> -- runs one
 # Mull invocation against <bin> under MULL_CONFIG=<mull-config>, normalising
 # whatever it reports into <target_dir>/{survivors,killed}.json.  Split out of
@@ -1117,7 +1174,11 @@ run_mull_pass() {
             # Mull's own message separates the two, so read it rather than
             # inferring from the missing file.
             if grep -qi 'No mutants found' "$target_dir/runner.log" 2>/dev/null; then
-                ok "$t$label: no mutants in scope for this diff — nothing to measure"
+                if [[ "$MODE" == "diff" ]]; then
+                    ok "$t$label: no mutants in scope for this diff — nothing to measure"
+                else
+                    ok "$t$label: no mutants in scope — nothing to measure"
+                fi
                 printf '[]\n' > "$target_dir/survivors.json"
                 printf '[]\n' > "$target_dir/killed.json"
                 ANY_REPORT=1
@@ -1200,6 +1261,7 @@ for t in "${TARGETS[@]}"; do
     fi
     ANY_BIN=1
     check_mull_instrumentation "$t" "$bin"
+    note_unmeasured "$t" "$bin"
 
     target_dir="$OUT_DIR/$t${OUT_SUFFIX:+-$OUT_SUFFIX}"
     step "mutating $t ($bin)"

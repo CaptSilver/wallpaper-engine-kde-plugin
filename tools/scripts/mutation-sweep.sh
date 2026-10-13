@@ -211,17 +211,27 @@ if ! is_done "parent"; then
     mapfile -t PARENT_TARGETS < <("$MUTATION" --list-targets | grep -vxF "$SUB_TARGET")
     [[ ${#PARENT_TARGETS[@]} -gt 0 ]] || fail "could not resolve the parent target list"
     parent_ok=0
+    unmeasured=()
     for pt in "${PARENT_TARGETS[@]}"; do
         printf '    %s\n' "$pt"
         # Logged, not discarded: sending this to /dev/null is what hid the run
         # above going for two hours without banking anything.
         MUTATION_SKIP_BUILD=1 "$MUTATION" --target "$pt" --no-strict --no-wipe \
             >> "$SWEEP/parent.log" 2>&1 || true
-        [[ -s "$OUT_DIR/$pt/survivors.json" ]] && parent_ok=$((parent_ok + 1))
+        # A target with no first-party mutants leaves a "[]" report too, so a
+        # non-empty survivors.json alone would count it as measured.
+        if [[ -f "$OUT_DIR/unmeasured.txt" ]] && grep -qxF "$pt" "$OUT_DIR/unmeasured.txt"; then
+            unmeasured+=("$pt")
+        elif [[ -s "$OUT_DIR/$pt/survivors.json" ]]; then
+            parent_ok=$((parent_ok + 1))
+        fi
     done
+    if [[ ${#unmeasured[@]} -gt 0 ]]; then
+        warn "unmeasured by construction (no first-party mutants, see $OUT_DIR/unmeasured.txt): ${unmeasured[*]}"
+    fi
     if [[ "$parent_ok" -gt 0 ]]; then
         echo parent >> "$DONE_FILE"
-        ok "parent targets measured ($parent_ok of ${#PARENT_TARGETS[@]} reported)"
+        ok "parent targets measured ($parent_ok of ${#PARENT_TARGETS[@]} reported, ${#unmeasured[@]} unmeasured by construction)"
     else
         warn "no parent target reported — see $SWEEP/parent.log"
     fi

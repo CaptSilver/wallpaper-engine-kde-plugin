@@ -963,6 +963,96 @@ out="$( cd "$root" && MUTATION_SKIP_BUILD=1 MULL_WORKERS=1 MULL_DIFF_BASE=no-suc
         STUB_REPORT_tst_filehelper="$(cap_body "$root")" "$GATE" --diff-only --strict 2>&1 )"; rc=$?
 check "an unresolvable MULL_DIFF_BASE exits 2, a usage error" "" "$rc" 2 "$out" "MULL_DIFF_BASE"
 
+# A binary can build, run and measure cleanly while holding no first-party
+#     mutants at all: Mull embeds the mutants at compile time, and code that
+#     compares through Qt's overloaded operators (calls, not built-in ops) gives
+#     it nothing to embed.  Mull then says "No mutants found", which the gate
+#     reports as a clean pass -- unmeasured and clean read the same.  The gate
+#     reads the binary's own .mull_mutants section to tell them apart.  Warn
+#     only: some glue classes legitimately have nothing mutable.
+unset MULL_DIFF_BASE
+if command -v objcopy >/dev/null 2>&1; then
+    # make_mutant_bin <path> <record...>: a copy of a real ELF carrying a
+    # .mull_mutants section of NUL-separated mutator:path:l:c:el:ec:replacement
+    # records, the layout Mull's frontend writes.
+    make_mutant_bin() {
+        local bin="$1" recs; shift
+        recs="$(mktemp -p "$(dirname "$bin")" recs-XXXXXX)"
+        printf '%s\0' "$@" > "$recs"
+        cp /bin/true "$bin" && chmod u+w "$bin"
+        objcopy --add-section .mull_mutants="$recs" \
+                --set-section-flags .mull_mutants=readonly,data "$bin"
+        rm -f "$recs"
+    }
+    glue_records() {  # records Mull embeds for a binary with no first-party mutants
+        local root="$1"
+        printf '%s\n' \
+            "cxx_eq_to_ne:$root/build/impl-mutation/tst_filehelper_autogen/ABC/moc_X.cpp:137:12:137:14:!=" \
+            "cxx_ge_to_gt:$root/tests/tst_filehelper.cpp:514:17:0:0:>"
+    }
+    src_record() { printf '%s\n' "cxx_eq_to_ne:$1/src/Foo.cpp:21:15:21:17:!="; }
+
+    root="$(make_root)"
+    mapfile -t recs < <(glue_records "$root")
+    make_mutant_bin "$root/build/impl-mutation/tst_filehelper" "${recs[@]}"
+    out="$(run_gate "$root" nomutants --target tst_filehelper --strict)"; rc=$?
+    check "a binary with only autogen and test mutants is flagged UNMEASURED" \
+          "" "$rc" 0 "$out" "UNMEASURED: tst_filehelper"
+    check "a full-mode run with no mutants does not say 'for this diff'" \
+          "" "$( grep -qi 'for this diff' <<<"$out" && echo 1 || echo 0 )" 0 "$out"
+    check "the unmeasured target is recorded in unmeasured.txt" \
+          "" "$( grep -qxF tst_filehelper "$root/build/impl-mutation/mull-out/unmeasured.txt" 2>/dev/null && echo 0 || echo 1 )" 0 ""
+
+    root="$(make_root)"
+    mapfile -t recs < <(glue_records "$root"; src_record "$root")
+    make_mutant_bin "$root/build/impl-mutation/tst_filehelper" "${recs[@]}"
+    out="$(run_gate "$root" nomutants --target tst_filehelper --strict)"; rc=$?
+    check "a binary with a first-party mutant is not flagged" \
+          "" "$rc" 0 "$out" "no mutants in scope"
+    check "no UNMEASURED marker for a binary that has first-party mutants" \
+          "" "$( grep -q 'UNMEASURED' <<<"$out" && echo 1 || echo 0 )" 0 "$out"
+    check "no unmeasured.txt entry for it either" \
+          "" "$( grep -qxF tst_filehelper "$root/build/impl-mutation/mull-out/unmeasured.txt" 2>/dev/null && echo 1 || echo 0 )" 0 ""
+
+    # Vendored and test records live outside the repo-owned tree and are what
+    # excludePaths removes; they must not make a binary look measured.
+    root="$(make_root)"
+    mapfile -t recs < <(glue_records "$root"
+        printf '%s\n' "cxx_add_to_sub:$root/src/backend_scene/third_party/kissfft/k.c:5:5:5:6:-")
+    make_mutant_bin "$root/build/impl-mutation/tst_filehelper" "${recs[@]}"
+    out="$(run_gate "$root" nomutants --target tst_filehelper --strict)"; rc=$?
+    check "a mutant in an excluded path does not count as first-party" \
+          "" "$rc" 0 "$out" "UNMEASURED: tst_filehelper"
+
+    # A diff-scoped run keeps the diff wording, and a binary with first-party
+    # mutants stays a plain pass there.
+    root="$(make_cap_root 1)"
+    mapfile -t recs < <(glue_records "$root"; src_record "$root")
+    make_mutant_bin "$root/build/impl-mutation/tst_filehelper" "${recs[@]}"
+    out="$( cd "$root" && MUTATION_SKIP_BUILD=1 MULL_WORKERS=1 STUB_REPORT=nomutants \
+            "$GATE" --diff-only --strict 2>&1 )"; rc=$?
+    check "a diff-only run with nothing mutable keeps the 'for this diff' wording" \
+          "" "$rc" 0 "$out" "for this diff"
+    check "a diff-only run on a binary with first-party mutants is not flagged" \
+          "" "$( grep -q 'UNMEASURED' <<<"$out" && echo 1 || echo 0 )" 0 "$out"
+else
+    printf '  skip  UNMEASURED cases: objcopy not installed\n'
+fi
+
+# A stand-in with no .mull_mutants section (or not an ELF at all) is "unknown",
+# never UNMEASURED.
+root="$(make_root)"
+out="$(run_gate "$root" nomutants --target tst_filehelper --strict)"; rc=$?
+check "a binary whose mutant section cannot be read is not flagged" \
+      "" "$( grep -q 'UNMEASURED' <<<"$out" && echo 1 || echo 0 )" 0 "$out"
+check "...and the run still passes" "" "$rc" 0 "$out" "no mutants"
+
+# The sweep counts a parent target as reported when it left a non-empty
+# survivors.json, which an unmeasured target's "[]" satisfies; it must read
+# unmeasured.txt and say so separately.
+check "the sweep reports unmeasured parent targets separately" \
+      "" "$( grep -q 'unmeasured.txt' "$REAL_ROOT/tools/scripts/mutation-sweep.sh" && grep -q 'unmeasured by construction' "$REAL_ROOT/tools/scripts/mutation-sweep.sh" && echo 0 || echo 1 )" 0 ""
+
 echo
 if [[ "$FAIL" -gt 0 ]]; then
     printf '%s%d passed, %d failed%s\n' "$RED" "$PASS" "$FAIL" "$RESET"

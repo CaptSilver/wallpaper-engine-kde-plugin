@@ -44,6 +44,22 @@ const DECLARED_MODULES = {
             arch: 'plasma5support',
         },
     },
+    // WindowModel reads KWindowSystem.showingDesktop, and WindowModel is
+    // instantiated unconditionally by main.qml, so a missing module means no
+    // wallpaper at all.  Fedora and Arch ship it in the same package as
+    // libKF6WindowSystem, which plasma-workspace links against; openSUSE splits
+    // it into kf6-kwindowsystem-imports, which no Plasma package requires, and
+    // Mageia into kwindowsystem, apart from lib64kf6windowsystem6.
+    'org.kde.kwindowsystem': {
+        strength: 'required',
+        packages: {
+            fedora: 'kf6-kwindowsystem',
+            opensuse: 'kf6-kwindowsystem-imports',
+            mageia: 'kwindowsystem',
+            debian: 'qml6-module-org-kde-kwindowsystem',
+            arch: 'kwindowsystem',
+        },
+    },
     // The web wallpaper backend talks to SafeWallpaperBridge over QWebChannel.
     // Nothing in the Plasma stack pulls it in on any distro checked.
     QtWebChannel: {

@@ -125,6 +125,8 @@ Item{
     function freezeOptions() {
         displayMode = displayMode;
         videoRate = videoRate;
+        player.mute = player.mute;
+        volumeFade.freeze();
     }
     // Called by main.qml once this backend has faded out, some time before
     // destroying it: mpv drops its video output off the render thread, so

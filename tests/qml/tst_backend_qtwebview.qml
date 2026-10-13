@@ -882,4 +882,19 @@ TestCase {
         verify(channel.registeredObjects[0] !== ctl,
             "the controller must never be registered on the WebChannel");
     }
+
+    // As the outgoing layer of a wallpaper handoff, the backend must keep its
+    // own mute while background.* moves on to the next wallpaper.
+    function test_freezeOptions_keeps_mute() {
+        background.mute = true;
+        const item = freshWebComp.createObject(web.parent);
+        const wev = item.data.find(o => o && typeof o.loadHtml === "function"
+                                        && typeof o.audioMuted !== "undefined");
+        verify(wev !== undefined);
+        compare(wev.audioMuted, true);
+        item.freezeOptions();
+        background.mute = false;
+        compare(wev.audioMuted, true, "frozen backend followed the next wallpaper's mute");
+        item.destroy();
+    }
 }

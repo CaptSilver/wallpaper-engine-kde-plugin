@@ -568,6 +568,7 @@ Item {
     // options this one is showing instead of following them.
     function freezeOptions() {
         userPropsJson = userPropsJson;
+        web.audioMuted = web.audioMuted;
     }
     function getMouseTarget() {
         web.activeFocusOnPress = true;

@@ -184,6 +184,13 @@ Rectangle {
     property string wallpaperPath
     property string wallpaperType
 
+    property bool _accentPending: false
+    function emitAccentColor() {
+        _accentPending = false;
+        if (wallpaper.hasOwnProperty('accentColor'))
+            wallpaper.accentColorChanged();
+    }
+
     signal sig_backendFirstFrame(string backname)
     // Declarative handler form on purpose: a `function onSig_backendFirstFrame()`
     // in a plain object body is only a method — QML auto-connects the `on…:`
@@ -191,8 +198,12 @@ Rectangle {
     // inside Connections).
     onSig_backendFirstFrame: (backname) => {
         console.log(`backend ${backname} first frame`);
-        if (wallpaper.hasOwnProperty('accentColor'))
-            wallpaper.accentColorChanged();
+        // Plasma samples the wallpaper when this fires; with an outgoing layer
+        // still on top it would read the old one, so wait for it to go.
+        if (backendLoader._outgoing || outgoingFade.running)
+            _accentPending = true;
+        else
+            emitAccentColor();
         // Record the manifest timestamp we loaded so the "Updated" badge
         // clears for this wallpaper. workshopManifest may be empty (Steam
         // library not configured, malformed .acf); a 0 there is not a version
@@ -584,6 +595,7 @@ Rectangle {
                     target.destroy();
                 }
                 target = null;
+                if (background._accentPending) background.emitAccentColor();
             }
         }
 

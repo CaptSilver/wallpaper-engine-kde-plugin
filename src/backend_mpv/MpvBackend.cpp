@@ -1,5 +1,6 @@
 #include "MpvBackend.hpp"
 
+#include <cstring>
 #include <QtGlobal>
 #include <QtCore/QObject>
 #include <QtCore/QDir>
@@ -124,6 +125,21 @@ int CreateMpvContex(mpv_handle* mpv, mpv_render_context** mpv_gl) {
 
 } // namespace
 
+// Unload the file without waiting on the core.  main.qml calls this on an
+// outgoing (already faded out) backend some time before destroying it: once
+// mpv has dropped its video output, ~MpvRender's mpv_render_context_free on
+// the Qt render thread no longer waits on the core — that wait froze every
+// plasmashell window for ~200 ms on each switch away from a video.
+void MpvObject::stopAsync() {
+    if (! m_mpv) return;
+    // Nothing on the GUI thread may touch this player again: the outgoing
+    // backend's status no longer matters, and event handling is where a
+    // synchronous call would wait on the busy core.
+    if (m_shared_mpv) m_shared_mpv->detachOwner();
+    const char* cmd[] = { "stop", nullptr };
+    mpv_command_async(m_mpv, 0, cmd);
+}
+
 bool MpvObject::command(const QVariant& params) {
     if (! m_mpv) {
         qWarning() << "MpvObject::command on uninitialized mpv (video backend unavailable)";
@@ -242,7 +258,15 @@ void MpvObject::onMpvEvents() {
         mpv_event* ev = mpv_wait_event(m_mpv, 0); // non-blocking
         if (ev->event_id == MPV_EVENT_NONE) break;
         if (ev->event_id == MPV_EVENT_PROPERTY_CHANGE) {
-            refreshStatus(getProperty("idle-active").toBool(), getProperty("pause").toBool());
+            const auto* prop = static_cast<const mpv_event_property*>(ev->data);
+            if (prop && prop->format == MPV_FORMAT_FLAG && prop->data) {
+                const bool value = *static_cast<const int*>(prop->data) != 0;
+                if (std::strcmp(prop->name, "idle-active") == 0)
+                    m_propIdle = value;
+                else if (std::strcmp(prop->name, "pause") == 0)
+                    m_propPaused = value;
+            }
+            refreshStatus(m_propIdle, m_propPaused);
         } else if (ev->event_id == MPV_EVENT_END_FILE) {
             // mpv signals demuxer/decoder failures via END_FILE with
             // reason=ERROR; other reasons (EOF on a non-looping source,
@@ -544,7 +568,7 @@ MpvObject::MpvObject(QQuickItem* parent)
     Q_EMIT initializedChanged();
 }
 
-void MpvHandle::beginShutdown() {
+void MpvHandle::detachOwner() {
     // Tell libmpv to stop calling our wakeup (best-effort: doesn't block any
     // in-flight callback). Then take the wakeup_mutex to serialise against
     // any callback currently dispatching; clearing owner under that lock
@@ -552,10 +576,12 @@ void MpvHandle::beginShutdown() {
     // The .so is dlopen'd into plasmashell — a dangling postEvent here
     // would crash the desktop.
     if (handle) mpv_set_wakeup_callback(handle, nullptr, nullptr);
-    {
-        QMutexLocker lock(&wakeup_mutex);
-        owner = nullptr;
-    }
+    QMutexLocker lock(&wakeup_mutex);
+    owner = nullptr;
+}
+
+void MpvHandle::beginShutdown() {
+    detachOwner();
     // mpv_create() can fail; there is no core to wind down then, and the ctor
     // has already warned that the video backend is unavailable.
     if (! handle) return;

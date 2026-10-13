@@ -128,6 +128,12 @@ Item{
         player.mute = player.mute;
         volumeFade.freeze();
     }
+    // Called by main.qml once this backend has faded out, some time before
+    // destroying it: mpv drops its video output off the render thread, so
+    // ~MpvRender no longer waits on the core there.
+    function prepareDestroy() {
+        player.stopAsync();
+    }
     function pause(){
         volumeFade.stop();
         pauseTimer.start();

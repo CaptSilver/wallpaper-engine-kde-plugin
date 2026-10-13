@@ -130,6 +130,8 @@ Item{
         displayMode = displayMode;
         videoRate = videoRate;
         player.mute = player.mute;
+        player.powerSaving = player.powerSaving;
+        player.maxFps = player.maxFps;
         volumeFade.freeze();
     }
     // Called by main.qml once this backend has faded out, some time before

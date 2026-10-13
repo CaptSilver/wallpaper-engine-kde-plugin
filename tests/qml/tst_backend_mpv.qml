@@ -291,6 +291,24 @@ TestCase {
         item.destroy();
     }
 
+    // Power saving is per-plugin, not per-wallpaper, but toggling it during
+    // a handoff must not reach a player that is already being stopped.
+    function test_freezeOptions_keeps_power_saving() {
+        background.fps = 24;
+        background.mpvPowerSaving = true;
+        const item = freshMpvComp.createObject(mpv.parent);
+        const p = item.data.find(o => o && typeof o.setProperty === "function"
+                                      && typeof o.command === "function");
+        compare(p.powerSaving, true);
+        compare(p.maxFps, 24);
+        item.freezeOptions();
+        background.mpvPowerSaving = false;
+        background.fps = 30;
+        compare(p.powerSaving, true, "frozen backend followed the power-saving switch");
+        compare(p.maxFps, 24, "frozen backend followed the Fps setting");
+        item.destroy();
+    }
+
     function test_prepareDestroy_stops_the_player_asynchronously() {
         const item = freshMpvComp.createObject(mpv.parent);
         const p = item.data.find(o => o && typeof o.stopAsync === "function");

@@ -588,12 +588,7 @@ Rectangle {
                 // Invisible now.  A backend that can wind down asynchronously
                 // (mpv) gets a moment to do so before its render-thread
                 // teardown, instead of stalling the scenegraph.
-                if (target && typeof target.prepareDestroy === "function") {
-                    target.prepareDestroy();
-                    target.destroy(400);
-                } else if (target) {
-                    target.destroy();
-                }
+                if (target) backendLoader.retire(target);
                 target = null;
                 if (background._accentPending) background.emitAccentColor();
             }
@@ -606,8 +601,20 @@ Rectangle {
             }
         }
         Component.onDestruction: {
-            if(this.item) this.item.destroy();
-            if(this._outgoing) this._outgoing.destroy();
+            if(this.item) this.retire(this.item);
+            if(this._outgoing) this.retire(this._outgoing);
+        }
+        // Every destroy of a backend goes through here.  One that can wind
+        // down asynchronously (mpv) is told to first, so its render-thread
+        // teardown does not stall the scenegraph; it then gets a moment
+        // before the destroy.
+        function retire(backend) {
+            if (typeof backend.prepareDestroy === "function") {
+                backend.prepareDestroy();
+                backend.destroy(400);
+            } else {
+                backend.destroy();
+            }
         }
         // Fade the outgoing backend out and destroy it.
         function dropOutgoing() {
@@ -617,7 +624,7 @@ Rectangle {
             if (!old) return;
             if (outgoingFade.running) {
                 outgoingFade.stop();
-                if (outgoingFade.target) outgoingFade.target.destroy();
+                if (outgoingFade.target) this.retire(outgoingFade.target);
             }
             outgoingFade.target = old;
             outgoingFade.start();
@@ -631,9 +638,9 @@ Rectangle {
                     if (prev.frameShown === false) {
                         // Never reached the screen (rapid switching): nothing
                         // to keep; whatever is on screen stays the outgoing.
-                        prev.destroy();
+                        this.retire(prev);
                     } else {
-                        if (this._outgoing) this._outgoing.destroy();
+                        if (this._outgoing) this.retire(this._outgoing);
                         // Keeps playing until the new one is on screen.
                         this._outgoing = prev;
                         // background.* now follows the next wallpaper; pin

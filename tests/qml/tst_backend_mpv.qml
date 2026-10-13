@@ -269,4 +269,13 @@ TestCase {
         compare(p.mute, true, "frozen backend followed the next wallpaper's mute");
         item.destroy();
     }
+
+    function test_prepareDestroy_stops_the_player_asynchronously() {
+        const item = freshMpvComp.createObject(mpv.parent);
+        const p = item.data.find(o => o && typeof o.stopAsync === "function");
+        compare(p.stopAsyncCount, 0);
+        item.prepareDestroy();
+        compare(p.stopAsyncCount, 1);
+        item.destroy();
+    }
 }

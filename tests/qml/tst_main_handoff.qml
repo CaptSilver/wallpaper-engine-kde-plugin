@@ -201,4 +201,75 @@ TestCase {
         compare(accentSpy.count, 2);
         rig.destroy();
     }
+
+    // A stand-in for a backend that winds down asynchronously (mpv): records
+    // every prepareDestroy() call under its tag.
+    property var prepared: []
+    Component {
+        id: asyncBackendComp
+        Item {
+            property string tag: ""
+            property bool frameShown: true
+            function prepareDestroy() { tc.prepared.push(tag); }
+        }
+    }
+    function _asyncBackend(loader, tag, shown) {
+        return asyncBackendComp.createObject(loader, { tag: tag, frameShown: shown });
+    }
+
+    function test_destroying_the_loader_prepares_both_backends() {
+        const rig = _mkRigWithScene("111");
+        const loader = _loader(rig);
+        loader.item = _asyncBackend(loader, "item", true);
+        loader._outgoing = _asyncBackend(loader, "outgoing", true);
+        tc.prepared = [];
+        rig.destroy();
+        tryVerify(() => tc.prepared.length === 2, 2000, "teardown destroyed a backend without prepareDestroy");
+        verify(tc.prepared.indexOf("item") >= 0 && tc.prepared.indexOf("outgoing") >= 0);
+    }
+
+    function test_cutting_a_running_fade_short_prepares_that_backend() {
+        const rig = _mkRigWithScene("111");
+        const loader = _loader(rig);
+        loader._outgoing = _asyncBackend(loader, "fading", true);
+        tc.prepared = [];
+        loader.dropOutgoing();
+        loader._outgoing = _asyncBackend(loader, "next", true);
+        loader.dropOutgoing();
+        verify(tc.prepared.indexOf("fading") >= 0, "interrupted fade destroyed its backend unprepared");
+        rig.destroy();
+    }
+
+    function test_a_backend_that_never_drew_is_prepared_before_it_is_dropped() {
+        const rig = _mkRigWithScene("111");
+        const loader = _loader(rig);
+        loader.item = _asyncBackend(loader, "undrawn", false);
+        tc.prepared = [];
+        _switchTo(rig, "222");
+        tryVerify(() => tc.prepared.indexOf("undrawn") >= 0, 2000,
+                  "undrawn backend destroyed without prepareDestroy");
+        rig.destroy();
+    }
+
+    function test_replacing_an_outgoing_backend_prepares_it() {
+        const rig = _mkRigWithScene("111");
+        const loader = _loader(rig);
+        loader._outgoing = _asyncBackend(loader, "stale", true);
+        loader.item = _asyncBackend(loader, "shown", true);
+        tc.prepared = [];
+        _switchTo(rig, "222");
+        tryVerify(() => tc.prepared.indexOf("stale") >= 0, 2000,
+                  "replaced outgoing backend destroyed without prepareDestroy");
+        rig.destroy();
+    }
+
+    function test_fade_end_prepares_the_outgoing_backend() {
+        const rig = _mkRigWithScene("111");
+        const loader = _loader(rig);
+        loader._outgoing = _asyncBackend(loader, "done", true);
+        tc.prepared = [];
+        loader.dropOutgoing();
+        tryVerify(() => tc.prepared.indexOf("done") >= 0, 2000);
+        rig.destroy();
+    }
 }

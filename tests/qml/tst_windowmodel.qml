@@ -289,8 +289,10 @@ TestCase {
         _settlePendingPlay();
         compare(wm.reqPause, false);
         // Toggling the state must schedule a re-decision by itself.
-        KWindowSystem.showingDesktop = false;
         const tt = _findTriggerTimer();
+        tt.stop();
+        verify(!tt.running);
+        KWindowSystem.showingDesktop = false;
         verify(tt.running);
         tt.triggered();
         compare(wm.reqPause, true);

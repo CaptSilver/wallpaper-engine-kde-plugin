@@ -1613,9 +1613,9 @@
     },
     {
       "file": "src/backend_scene/src/NormalMatrix.hpp",
-      "line": 23,
+      "line": 31,
       "mutator": "cxx_gt_to_ge",
-      "line_text": "std::abs(det) > 1e-12 ? Eigen::Matrix3d(linear.inverse().transpose()) : linear;"
+      "line_text": "if (std::abs(det) > 1e-12) {"
     },
     {
       "file": "src/backend_scene/src/Particle/ParticleEmitter.cpp",

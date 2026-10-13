@@ -890,6 +890,20 @@ else
     warn "tools/scripts/tests/test-build-corpus.sh missing or not executable — skipping"
 fi
 
+# ── 1f2. make-srpm submodule self-test ────────────────────────────────────────
+# make-srpm.sh must pack tracked edits without discarding them, refuse a dirty
+# submodule that is off its recorded commit, and warn about untracked files it
+# won't pack.  A tiny parent + submodule fixture with stub rpmbuild pins all of
+# it on the host.
+step "make-srpm submodule self-test"
+if [[ -x tools/scripts/tests/test-make-srpm-submodule.sh ]]; then
+    if ! tools/scripts/tests/test-make-srpm-submodule.sh; then
+        fail "make-srpm submodule self-test failed — make-srpm.sh may discard submodule edits or pack the wrong commit"
+    fi
+else
+    warn "tools/scripts/tests/test-make-srpm-submodule.sh missing or not executable — skipping"
+fi
+
 # ── 1g. -Werror full-tree wiring self-test ────────────────────────────────────
 # Same reasoning as 1b/1c/1d/1e/1f: the -Werror legs' BUILD_TESTS=ON flag and
 # the doctest/scenescript/wescene-renderer/standalone_view warning-flag

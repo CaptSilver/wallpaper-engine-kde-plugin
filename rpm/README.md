@@ -57,9 +57,12 @@ tar reads the working tree rather than HEAD, so a build from a dirty checkout ge
 appended to its version — the package should not claim to be a commit it isn't. COPR always builds
 a fresh clone and never sees this.
 
-You do not need to init submodules first — `make-srpm.sh` does it, recursively, every time. That
-is deliberate: `git checkout` never updates submodule worktrees, so a stale checkout would
-otherwise pack sources from the wrong commit without complaining.
+You do not need to init submodules first — `make-srpm.sh` runs `git submodule update --init
+--recursive` itself. That is deliberate: `git checkout` never updates submodule worktrees, so a
+stale checkout would otherwise pack sources from the wrong commit without complaining. The update
+is not forced, so uncommitted edits to tracked submodule files are packed (and tag the build
+`.dirty`), a submodule on a different commit than the gitlink is moved only if it is clean (with
+edits it is refused), and untracked files are listed as not packed.
 
 ## Setting up the COPR project
 
@@ -157,8 +160,8 @@ Two things not to rely on:
 - The checkout COPR runs after cloning does not refresh submodule worktrees, so building a tag
   whose gitlink differs from the default branch gets stale sources with no error.
 
-`make-srpm.sh` re-runs `git submodule update --init --force --recursive` itself rather than trust
-either one.
+`make-srpm.sh` re-runs `git submodule update --init --recursive` itself rather than trust either
+one. It leaves `--force` off so a local build does not revert submodule edits.
 
 ### Versioning
 

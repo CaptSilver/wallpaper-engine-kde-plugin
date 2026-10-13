@@ -151,16 +151,6 @@ if [[ "$newest" -gt "$commit_epoch" ]]; then
     echo "make-srpm.sh: --allow-skew given, publishing it anyway." >&2
 fi
 
-# tar reads the working tree, not HEAD, so uncommitted edits land in the
-# tarball under a version string that names a clean commit. COPR always builds
-# a fresh clone and never trips this; say so out loud when building locally
-# rather than shipping a package that misreports its own contents.
-if [[ -n "$(git status --porcelain --ignore-submodules=none 2>/dev/null)" ]]; then
-    version="${version}.dirty"
-    changelog_note="${changelog_note} (uncommitted local changes)"
-    echo "make-srpm.sh: working tree is dirty — tagging this build .dirty" >&2
-fi
-
 # --transform rewrites hard-link targets as well as member names, so a tracked
 # symlink would come out of the tarball pointing somewhere new.  There are none
 # today; fail loudly rather than ship a quietly broken archive if that changes.
@@ -173,13 +163,59 @@ fi
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-echo "==> ${NAME}-${version}"
-
 # The gitlink only records a SHA; a plain clone leaves the worktrees empty, and
-# `git checkout <tag>` does not refresh them either.  Force it every time.
-echo "==> fetching submodules (2 levels, 8 repos)"
-git submodule update --init --force --recursive
+# `git checkout <tag>` does not refresh them either, so the update has to run.
+# It must not run with --force: that is `checkout -f` in every submodule, which
+# silently reverts uncommitted edits to tracked files and detaches the branch
+# even when the commit already matches.  Plain update leaves a submodule that
+# sits on its recorded commit alone, clones an uninitialised one, and moves a
+# clean stale one.  A stale one holding edits is the case it would get wrong
+# without failing (a non-conflicting edit rides along onto a base it was never
+# written against), so refuse that up front.
+echo "==> fetching submodules"
+bad=0
+while read -r line; do
+    [[ -n "$line" ]] || continue
+    state="${line:0:1}"
+    sm_path="$(awk '{ print $2 }' <<<"${line:1}")"
+    case "$state" in
+        U)
+            echo "make-srpm.sh: ${sm_path} has merge conflicts" >&2
+            bad=1 ;;
+        +)
+            if [[ -n "$(git -C "$sm_path" status --porcelain --untracked-files=no --ignore-submodules=none 2>/dev/null)" ]]; then
+                echo "make-srpm.sh: ${sm_path} has uncommitted changes and sits on a commit other than the recorded gitlink." >&2
+                echo "make-srpm.sh: commit or stash them, or move ${sm_path} back to the recorded commit." >&2
+                bad=1
+            fi ;;
+    esac
+done < <(git submodule status --recursive)
+[[ "$bad" -eq 0 ]] || exit 1
+git submodule update --init --recursive
 
+# tar reads the working tree, not HEAD.  Tracked edits in the parent and in
+# submodules are packed; untracked files are not (the file list comes from the
+# index), so they do not tag the build either.  This runs after the submodule update so the tag describes what ends
+# up in the tarball, not the state before a stale submodule was moved.
+# COPR always builds a fresh clone and never trips this; say so out loud when
+# building locally rather than shipping a package that misreports its contents.
+if [[ -n "$(git status --porcelain --untracked-files=no --ignore-submodules=untracked 2>/dev/null)" ]]; then
+    version="${version}.dirty"
+    changelog_note="${changelog_note} (uncommitted local changes)"
+    echo "make-srpm.sh: working tree is dirty — tagging this build .dirty" >&2
+fi
+
+untracked="$(
+    git ls-files --others --exclude-standard
+    git submodule foreach --quiet --recursive \
+        'git ls-files --others --exclude-standard | sed "s|^|$displaypath/|"'
+)"
+if [[ -n "$untracked" ]]; then
+    echo "make-srpm.sh: untracked files will NOT be packed (git add them):" >&2
+    sed 's/^/  /' <<<"$untracked" >&2
+fi
+
+echo "==> ${NAME}-${version}"
 echo "==> packing source tarball"
 topdir="${NAME}-${version}"
 tarball="${outdir}/${topdir}.tar.gz"

@@ -17,10 +17,17 @@ Item {
 
     readonly property ListModel model: ListModel {}
 
-    // Generation counter — refresh() bumps it; only the latest scan's
-    // .then commits to the model. Prevents double-refresh races between
-    // the onFolderPathChanged auto-trigger and explicit caller refresh().
-    property int _refreshGen: 0
+    // Scan token — refresh() retires the previous one and destruction
+    // retires the current one; only a live token's .then commits to the
+    // model. Prevents double-refresh races between the onFolderPathChanged
+    // auto-trigger and explicit caller refresh(), and keeps continuations
+    // from a destroyed model off the model and pyext. Each
+    // continuation checks the token it captured rather than reading
+    // _scanToken, because `root` reads as null in closures that outlive the
+    // item.
+    property var _scanToken: ({ alive: true })
+
+    Component.onDestruction: _scanToken.alive = false
 
     // True while a folder scan is in progress. UI binds Rescan buttons +
     // BusyIndicators to this so the user gets feedback that a 5s-on-a-big-
@@ -59,7 +66,8 @@ Item {
     }
 
     function refresh() {
-        const gen = ++root._refreshGen;
+        root._scanToken.alive = false;
+        const token = root._scanToken = { alive: true };
         root.scanning = true;
         model.clear();
         if (! folderPath || ! pyext) {
@@ -68,7 +76,7 @@ Item {
         }
         return pyext.scan_video_folder(folderPath).then((list) => {
             // Stale scan — a newer refresh() superseded this one.
-            if (gen !== root._refreshGen) return;
+            if (! token.alive) return;
             model.clear();
             for (let i = 0; i < list.length; i++) {
                 const f = list[i];
@@ -99,8 +107,9 @@ Item {
             // committed — flip scanning back off so the UI re-enables.
             root.scanning = false;
             root.modelRefreshed();
-            _kickThumbnails(gen);
+            _kickThumbnails(token);
         }).catch((e) => {
+            if (! token.alive) return;
             root.scanning = false;
             console.warn("VideoListModel: scan failed", e);
             root.modelRefreshed();
@@ -114,7 +123,7 @@ Item {
     // workers (peaks CPU + RAM, and ffmpeg's own thread pool already
     // saturates the box per-file).
     readonly property int _thumbConcurrency: 4
-    function _kickThumbnails(gen) {
+    function _kickThumbnails(token) {
         if (! pyext || ! _localCacheRoot()) return;
         const queue = [];
         for (let i = 0; i < model.count; i++) {
@@ -128,14 +137,15 @@ Item {
         }
         let inflight = 0;
         function _pump() {
+            if (! token.alive) return;
             while (inflight < root._thumbConcurrency && queue.length > 0) {
                 const job = queue.shift();
                 inflight += 1;
                 pyext.generate_thumbnail(job.fullPath, job.out, 1.0).then((p) => {
                     inflight -= 1;
                     // Stale scan — model may have been cleared / repopulated.
-                    if (gen === root._refreshGen
-                        && job.idx < model.count
+                    if (! token.alive) return;
+                    if (job.idx < model.count
                         && model.get(job.idx).workshopid === job.wid) {
                         model.setProperty(job.idx, "preview", p);
                     }

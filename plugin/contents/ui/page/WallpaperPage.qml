@@ -418,8 +418,9 @@ RowLayout {
                 title: i18nc("@title:window steam library folder picker", "Select steamlibrary folder")
                 onAccepted: {
                     const path = Utils.trimCharR(wpDialog.selectedFolder.toString(), '/');
+                    // The new path reaches wpListModel through workshopDirs,
+                    // which rescans on its own.
                     cfg_SteamLibraryPath = path;
-                    return wpListModel.refresh();
                 }
             }
 

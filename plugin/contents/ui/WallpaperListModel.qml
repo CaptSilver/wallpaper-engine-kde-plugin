@@ -75,6 +75,22 @@ Item {
     property var playlists: {}
     property var folderModels: []
 
+    // Teardown guards. Once the model is destroyed, `root` reads as null
+    // inside the closures it left behind, so a guard cannot be written
+    // against a root property; every async continuation checks a token
+    // object it captured up front instead. _life covers the whole instance,
+    // _scan one refresh() (a newer refresh retires the previous token).
+    property var _life: ({ alive: true })
+    property var _scan: ({ alive: true })
+    // Bumped by every refresh() that starts, so a deferred refresh can tell
+    // whether another one already ran in the meantime.
+    property int _refreshSeq: 0
+
+    Component.onDestruction: {
+        _life.alive = false;
+        _scan.alive = false;
+    }
+
     // Look up an item by workshopid against the UNFILTERED source. The public
     // `model` ListModel only contains items that pass the active filter, so
     // callers that need to display or play wallpapers stored in a playlist
@@ -127,11 +143,12 @@ Item {
         el.updated = Utils.badgeUpdated(ts, seen);
     }
 
-    function loadPlaylists() {
+    function loadPlaylists(scan = root._scan) {
         // reset playlists property
         root.playlists = {};
     
         return root._readfile(Common.urlNative(globalConfigPath)).then(value => {
+            if (! scan.alive) return;
             var jsonData = Utils.parseJson(value);
             if (jsonData === null) {
                 console.warn("Failed to parse playlists config, skipping playlists");
@@ -141,6 +158,9 @@ Item {
             // refreshing entries in the filter model is not thread safe, so we need to lock it
             var filterModel = Common.filterModel;
             return filterModel.lock.lock().then(() => {
+                // The lock is held from here; the .then/.catch below release
+                // it on this early exit as well.
+                if (! scan.alive) return;
                 // remove playlists from the filterModel
                 var selectedPlaylists = new Set();
                 for(var i =0; i < filterModel.count; i++) {
@@ -196,7 +216,7 @@ Item {
         // byWorkshopId.size === model.length after every loadModel.
         property var byWorkshopId: new Map()
 
-        function loadModel(path, data) {
+        function loadModel(path, data, scan) {
             this.folderMapModel.set(path, data);
             this.model = [];
             this.byWorkshopId.clear();
@@ -206,9 +226,9 @@ Item {
                     this.byWorkshopId.set(el.workshopid, el);
                 });
             });
-            return filterToList(root.model, root.filterStr, this.model);
+            return filterToList(root.model, root.filterStr, this.model, scan);
         }
-        function filterToList(listModel, filterStr, data) {
+        function filterToList(listModel, filterStr, data, token) {
             const filterValues = Common.filterModel.getValueArray(filterStr);
             const filterstr = Common.filterModel.map((el, index) => {
                     return {
@@ -242,6 +262,7 @@ Item {
                 }
                 resolve();
             }).then(() => {
+                if (token && ! token.alive) return;
                 root.countNoFilter = this.model.length;
                 root.modelRefreshed();
             });
@@ -252,8 +273,12 @@ Item {
         if(!root.loadEnabled) return Promise.resolve(null);
         const p_list = [];
 
+        root._scan.alive = false;
+        const scan = root._scan = { alive: true };
+        root._refreshSeq += 1;
         root.scanning = true;
-        return loadPlaylists().then(() => {
+        return loadPlaylists(scan).then(() => {
+            if (! scan.alive) return;
             if (! pyext) {
                 root.scanning = false;
                 return Promise.resolve();
@@ -270,20 +295,21 @@ Item {
             });
             return new Promise((resolve, reject) => {
                 Promise.all(p_list).then(values => {
-                    return this.loadFolderLists(values);
+                    if (! scan.alive) return;
+                    return this.loadFolderLists(values, scan);
                 }).then(() => {
-                    root.scanning = false;
+                    if (scan.alive) root.scanning = false;
                     resolve();
                 }).catch(reason => {
                     console.error(reason)
-                    root.scanning = false;
+                    if (scan.alive) root.scanning = false;
                     resolve();
                 });
             });
         });
     }
 
-    function loadFolderLists(folders) {
+    function loadFolderLists(folders, scan = root._scan) {
         const proxyModel = []
         folders.forEach(folder => {
             if(!folder || !folder.items) return Promise.resolve();
@@ -304,7 +330,8 @@ Item {
             const plist = []
             proxyModel.forEach((el) => {
                 // as no allSettled, catch any error
-                const p = root._readfile(Common.urlNative(Common.getWpModelProjectPath(el))).then(value => {                    
+                const p = root._readfile(Common.urlNative(Common.getWpModelProjectPath(el))).then(value => {
+                        if (! scan.alive) return;
                         el.playlists = [];
                         root.loadItemFromJson(value, el);
                         Object.keys(root.playlists).forEach((key) => {
@@ -319,7 +346,8 @@ Item {
             });
             const path = this.folder;
             Promise.all(plist).then(value => {
-                folderWorker.loadModel(path, proxyModel).then(() => resolve());
+                if (! scan.alive) { resolve(); return; }
+                folderWorker.loadModel(path, proxyModel, scan).then(() => resolve());
             }).catch(reason => {
                 console.error(reason);
                 resolve();
@@ -363,10 +391,32 @@ Item {
         });
     }
 
-    onWorkshopDirsChanged: _attachWatchers()
+    // A new library path rescans, and so does the loadEnabled flip and the
+    // config path change that come with it. config.qml derives all three from
+    // cfg_SteamLibraryPath, and their change handlers run before every binding
+    // has settled (loadEnabled's fires ahead of globalConfigPath's), so a
+    // synchronous refresh() would read playlists from the old config path.
+    // Deferring one turn lets them all land; a refresh() that started in the
+    // meantime makes the kick redundant, so the group scans once.
+    function _scheduleRescan() {
+        const life = root._life;
+        const seq = root._refreshSeq;
+        Qt.callLater(() => {
+            if (life.alive && root.loadEnabled && root._refreshSeq === seq)
+                root.refresh();
+        });
+    }
+    onWorkshopDirsChanged: {
+        _attachWatchers();
+        _scheduleRescan();
+    }
+    onGlobalConfigPathChanged: _scheduleRescan()
     // Re-evaluate on the gate too: turning it off releases the watchers,
     // turning it back on re-attaches them for the current dirs.
-    onLoadEnabledChanged: _attachWatchers()
+    onLoadEnabledChanged: {
+        _attachWatchers();
+        _scheduleRescan();
+    }
 
     // Steam's atomic-download writes 2-3 directoryChanged events per subscribe
     // (creates dotfile, renames into place). 500 ms debounce coalesces.
@@ -387,19 +437,23 @@ Item {
     }
 
     Component.onCompleted: {
-        this.modelRefreshed.connect(function() { root._sourceRev = root._sourceRev + 1; });
-        this.filterStrChanged.connect(function() {
-            if(root.loadEnabled) {
-                return folderWorker.filterToList(root.model, root.filterStr, folderWorker.model)
+        const life = root._life;
+        this.modelRefreshed.connect(function() {
+            if(! life.alive) return;
+            root._sourceRev = root._sourceRev + 1;
+        });
+        const refilter = function() {
+            if(life.alive && root.loadEnabled) {
+                return folderWorker.filterToList(root.model, root.filterStr, folderWorker.model, life)
             }
             return Promise.resolve();
-        });
-        this.sortModeChanged.connect(this.filterStrChanged);
-        this.loadEnabledChanged.connect(this.refresh.bind(this));
+        };
+        this.filterStrChanged.connect(refilter);
+        this.sortModeChanged.connect(refilter);
 
-        const fc = this.readfile;
+        let fc = this.readfile;
         this.readfileChanged.connect(function() {
-            if(fc === root.readfile) return Promise.resolve();
+            if(! life.alive || fc === root.readfile) return Promise.resolve();
             return root.refresh().then(() => { fc = root.readfile; });
         });
         // Attach watchers AFTER the initial refresh kicks off; a subdir added

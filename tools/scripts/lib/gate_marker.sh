@@ -72,6 +72,8 @@ gate_commit_ids() {
 gate_marker_should_write() {
     local mode="$1" no_fuzz="$2" fuzz_degraded="$3" mrc="$4"
     [[ "$mode" == "full" && "$no_fuzz" == "0" && "$fuzz_degraded" == "0" ]] || return 1
+    # A moved diff base measured only part of what a push carries.
+    [[ -z "${MULL_DIFF_BASE:-}" ]] || return 1
     [[ "$mrc" == "0" || "$mrc" == "77" ]]
 }
 

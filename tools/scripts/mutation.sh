@@ -55,6 +55,10 @@
 #   across the selected targets exceed MULL_DIFF_MAX_LINES (default 400; 0 turns
 #   the cap off) the run exits 79 before building anything, so a long unpushed
 #   range doesn't cost an hour at push time.  Those lines are for a full run.
+#   MULL_DIFF_BASE=<ref> replaces origin/main as the base in both repos (it must
+#   resolve in each); MULL_DIFF_BASE=HEAD measures only the uncommitted change,
+#   which is what a gate run before each local commit wants.  Like every
+#   diff here it sees tracked files only, so `git add` new sources first.
 #
 # MOC ignore:
 #   Mutants in Qt-generated moc_*.cpp / *.moc / *_autogen/ files are dropped
@@ -160,6 +164,16 @@ while (( $# )); do
         *) echo "unknown arg: $1" >&2; exit 2 ;;
     esac
 done
+
+# A typo here must not quietly fall back to origin/main and measure a different
+# range than the caller asked for.
+if [[ "$MODE" == "diff" && -n "${MULL_DIFF_BASE:-}" ]]; then
+    for _r in . src/backend_scene; do
+        [[ -e "$_r/.git" ]] || continue
+        git -C "$_r" rev-parse --verify --quiet "${MULL_DIFF_BASE}^{commit}" >/dev/null || {
+            echo "MULL_DIFF_BASE=$MULL_DIFF_BASE does not resolve to a commit in $_r" >&2; exit 2; }
+    done
+fi
 
 # Aggregating an existing set of chunk reports means doing none of the work that
 # produced them: no build, no wipe, no runner.
@@ -403,14 +417,19 @@ mull_src_root_for() {
     fi
 }
 
-# The base ref a --diff-only run measures against inside <root>: origin/main,
-# else the previous commit.  Empty when neither exists.  Shared by the Mull
+# The base ref a --diff-only run measures against inside <root>: MULL_DIFF_BASE
+# when set (validated after argument parsing), else origin/main, else the
+# previous commit.  Empty when none exists.  Shared by the Mull
 # config and the diff-size cap so the two can't disagree about what "changed"
 # means.  Result goes in _MULL_DIFF_REF (not stdout) for the same subshell
 # reason as _MULL_SRC_YML.
 _MULL_DIFF_REF=""
 mull_diff_ref_for() {
     local root="$1" ref
+    if [[ -n "${MULL_DIFF_BASE:-}" ]]; then
+        _MULL_DIFF_REF="$(git -C "$root" rev-parse --verify --quiet "${MULL_DIFF_BASE}^{commit}" 2>/dev/null || true)"
+        return 0
+    fi
     ref="$(git -C "$root" rev-parse --verify --quiet origin/main 2>/dev/null || true)"
     [[ -z "$ref" ]] && ref="$(git -C "$root" rev-parse --verify --quiet HEAD~1 2>/dev/null || true)"
     _MULL_DIFF_REF="$ref"
@@ -490,12 +509,16 @@ elif [[ "$MODE" == "diff" ]]; then
     # measured nothing.  Note the HEAD~1 fallback already diffs against the
     # tree (no range), so only the three-dot path needed widening -- which is
     # why this stayed invisible in any checkout without an origin/main.
+    # MULL_DIFF_BASE diffs that base straight against the tree, the same range
+    # the size cap and Mull's own gitDiffRef filter read.
     CHANGED="$(
-        {
+        if [[ -n "${MULL_DIFF_BASE:-}" ]]; then
+            git diff --name-only "$MULL_DIFF_BASE" -- 2>/dev/null || true
+        else
             git diff --name-only origin/main...HEAD 2>/dev/null \
                 || git diff --name-only HEAD~1 2>/dev/null || true
             git diff --name-only HEAD 2>/dev/null || true
-        } | sort -u
+        fi | sort -u
     )"
     declare -A SEEN=()
     while IFS= read -r f; do

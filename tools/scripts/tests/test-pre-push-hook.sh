@@ -13,6 +13,9 @@
 # Exits 0 when every case passes, 1 otherwise.
 
 set -uo pipefail
+# preflight.sh runs this from whatever environment the gate was started in; the
+# cases pin these themselves, so an inherited value must not change their meaning.
+unset MULL_DIFF_BASE MUTATION_FATAL WEK_COVERAGE_IN_GATE COVERAGE_FATAL WEK_GATE_MAX_AGE_H WEK_GATE_FORCE
 
 REAL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 HOOK="$REAL_ROOT/tools/scripts/git-hooks/pre-push"
@@ -60,6 +63,7 @@ make_repo() {
 #!/usr/bin/env bash
 echo run >> "$(dirname "${BASH_SOURCE[0]}")/../../build/gate-runs"
 [[ "$(readlink /proc/self/fd/0)" == /dev/null ]] && echo detached >> "$(dirname "${BASH_SOURCE[0]}")/../../build/gate-stdin"
+echo "base=${MULL_DIFF_BASE:-}" >> "$(dirname "${BASH_SOURCE[0]}")/../../build/gate-env"
 exit "${STUB_GATE_RC:-0}"
 STUB
     chmod +x "$root/tools/scripts/preflight.sh" "$root/tools/scripts/git-hooks/pre-push"
@@ -88,6 +92,12 @@ out="$(run_hook "$root" "$(refline "$sha" "$ZERO")" X=1)"; rc=$?
 check "no marker: the gate runs once" "$(yes_if "$(runs "$root")" 1)" "$out"
 check "no marker: the gate's stdin is /dev/null" "$(yes_if "$(cat "$root/build/gate-stdin" 2>/dev/null)" detached)"
 check "the hook returns the gate's exit status" "$(yes_if "$(run_hook "$root" "$(refline "$sha" "$ZERO")" STUB_GATE_RC=3 >/dev/null; echo $?)" 3)"
+rm -f "$root/build/gate-runs"
+
+# A MULL_DIFF_BASE left exported from a pre-commit gate run would point the
+# push's mutation leg at an empty diff; the push must measure what it carries.
+run_hook "$root" "$(refline "$sha" "$ZERO")" MULL_DIFF_BASE=HEAD >/dev/null
+check "the gate a push runs never inherits MULL_DIFF_BASE" "$(yes_if "$(tail -1 "$root/build/gate-env" 2>/dev/null)" "base=")"
 rm -f "$root/build/gate-runs"
 
 # Matching marker -> skipped.

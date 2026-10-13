@@ -14,6 +14,9 @@
 # Exits 0 when every case passes, 1 otherwise.
 
 set -uo pipefail
+# preflight.sh runs this from whatever environment the gate was started in; the
+# cases pin these themselves, so an inherited value must not change their meaning.
+unset MULL_DIFF_BASE MUTATION_FATAL WEK_COVERAGE_IN_GATE COVERAGE_FATAL WEK_GATE_MAX_AGE_H WEK_GATE_FORCE
 
 REAL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 LIB="$REAL_ROOT/tools/scripts/lib/gate_marker.sh"
@@ -162,6 +165,7 @@ check "mutation produced no measurement (rc 78) -> no marker"         "$(yes_if 
 check "mutation skipped past the diff cap (rc 79) -> no marker"       "$(yes_if "$(sw full 0 0 79)" 1)"
 check "mutation found new survivors (rc 1) -> no marker"              "$(yes_if "$(sw full 0 0 1)" 1)"
 check "non-full mode (--no-build) -> no marker"                       "$(yes_if "$(sw test-only 0 0 0)" 1)"
+check "mutation measured from MULL_DIFF_BASE, not origin/main -> no marker" "$(yes_if "$(MULL_DIFF_BASE=HEAD sw full 0 0 0)" 1)"
 
 # 9. Matching rules the hook relies on: age, strictness, ring.
 root="$(make_repo)"
@@ -208,10 +212,10 @@ grep -q 'lib/gate_marker.sh' "$PREFLIGHT"; a=$?
 grep -q 'gate_marker_should_write' "$PREFLIGHT"; b=$?
 grep -q 'gate_marker_write' "$PREFLIGHT"; c=$?
 check "preflight.sh sources the lib and writes the marker through should_write" "$(yes_if "$a$b$c" 000)"
-sed -n '/Mutation gate (Mull --diff-only/,/^esac/p' "$PREFLIGHT" | grep -qE '^\s+79\)'; rc=$?
-check "preflight.sh maps mutation rc 79 to a warning" "$(yes_if "$rc" 0)"
-grep -E '^\s+79\)' "$PREFLIGHT" | grep -q 'fail '; rc=$?
-check "the rc 79 branch never fails the gate, even under MUTATION_FATAL=1" "$(yes_if "$rc" 1)"
+# What each rc means is pinned in test-mutation-rc.sh; here, only that the
+# mutation leg reads its rc through that mapping.
+sed -n '/Mutation gate (Mull --diff-only/,/^fi/p' "$PREFLIGHT" | grep -q 'mutation_rc_verdict "\$mrc"'; rc=$?
+check "preflight.sh reads the mutation rc through mutation_rc_verdict" "$(yes_if "$rc" 0)"
 grep -q 'FUZZ_DEGRADED=1' "$PREFLIGHT"; rc=$?
 check "preflight.sh flags a degraded fuzz run" "$(yes_if "$rc" 0)"
 

@@ -59,6 +59,8 @@
 #      MULL_DIFF_MAX_LINES=N caps the --diff-only mutation leg (default 400 changed
 #      lines; 0 = no cap).  Past it the leg is skipped with a warning (mutation.sh
 #      exit 79) and the lines are left to a full mutation run.
+#      MULL_DIFF_BASE=<ref> moves that leg's diff base off origin/main (HEAD =
+#      only the uncommitted change); such a run writes no pass marker.
 #
 # A complete default run (no --no-fuzz, full-length fuzz, mutation measured or
 # unavailable) that leaves the tree untouched writes build/.preflight-pass.json.
@@ -87,6 +89,7 @@ source "$_PF_DIR/lib/mem.sh"
 source "$_PF_DIR/lib/coverage_gate.sh"
 source "$_PF_DIR/lib/fuzz_corpus_budget.sh"
 source "$_PF_DIR/lib/gate_marker.sh"
+source "$_PF_DIR/lib/mutation_rc.sh"
 
 # Resolve to the parent repo's working tree even when invoked from inside the
 # `src/backend_scene` submodule.  Plain --show-toplevel would land us in the
@@ -925,6 +928,16 @@ else
     warn "tools/scripts/tests/test-pre-push-hook.sh missing or not executable — skipping"
 fi
 
+# ── 1j. Mutation exit-code self-test ──────────────────────────────────────────
+step "Mutation exit-code self-test"
+if [[ -x tools/scripts/tests/test-mutation-rc.sh ]]; then
+    if ! tools/scripts/tests/test-mutation-rc.sh; then
+        fail "mutation exit-code self-test failed — a run that measured nothing could read as a pass, or a skip as a finding"
+    fi
+else
+    warn "tools/scripts/tests/test-mutation-rc.sh missing or not executable — skipping"
+fi
+
 # ── 2. Build submodule (with tests) ───────────────────────────────────────────
 # Only force -G Ninja on fresh dirs; otherwise reuse the existing generator so
 # we don't fight with manual build dirs the user already configured.
@@ -1183,19 +1196,13 @@ fi
 if [[ "$MODE" == "full" ]]; then
     step "Mutation gate (Mull --diff-only --strict)"
     mrc=0
+    [[ -n "${MULL_DIFF_BASE:-}" ]] && warn "mutation leg measures from MULL_DIFF_BASE=$MULL_DIFF_BASE, not origin/main"
     tools/scripts/mutation.sh --diff-only --strict || mrc=$?
-    case "$mrc" in
-        0)  ok "mutation gate: no new surviving mutants vs baseline" ;;
-        77) ok "mutation gate skipped (Mull runner/build unavailable)" ;;
-        79) warn "mutation gate skipped: diff is past MULL_DIFF_MAX_LINES — measure it with a full mutation run (tools/scripts/mutation.sh --target <target>)" ;;
-        78) warn "mutation gate produced no measurement (see above) — no survivor diff was possible"
-            if [[ "${MUTATION_FATAL:-0}" == "1" ]]; then
-                fail "mutation gate could not measure — fix the run rather than treating it as a pass"
-            fi ;;
-        *)  if [[ "${MUTATION_FATAL:-0}" == "1" ]]; then
-                fail "mutation gate: new surviving mutant(s) — fix tests or run 'tools/scripts/mutation.sh --refresh-baseline'"
-            fi
-            warn "mutation gate: new surviving mutant(s) (non-fatal — set MUTATION_FATAL=1 to gate)" ;;
+    IFS=$'\t' read -r mlevel mmsg < <(mutation_rc_verdict "$mrc")
+    case "$mlevel" in
+        ok)   ok "$mmsg" ;;
+        warn) warn "$mmsg" ;;
+        *)    fail "$mmsg" ;;
     esac
 fi
 
@@ -1208,7 +1215,7 @@ if [[ "$MODE" == "full" ]]; then
     if [[ -z "$GATE_IDS_START" ]]; then
         warn "no pass marker: could not take tree ids at the start of the run"
     elif ! gate_marker_should_write "$MODE" "$NO_FUZZ" "$FUZZ_DEGRADED" "$mrc"; then
-        warn "no pass marker: this run did not measure everything (--no-fuzz, short or partial fuzz, or mutation unmeasured)"
+        warn "no pass marker: this run did not measure everything (--no-fuzz, short or partial fuzz, mutation unmeasured, or MULL_DIFF_BASE set)"
     else
         GATE_IDS_END="$(gate_ids 2>/dev/null)" || GATE_IDS_END=""
         if [[ "$GATE_IDS_END" != "$GATE_IDS_START" ]]; then

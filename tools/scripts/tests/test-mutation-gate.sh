@@ -17,6 +17,9 @@
 # Exits 0 when every case passes, 1 otherwise.
 
 set -uo pipefail
+# preflight.sh runs this from whatever environment the gate was started in; the
+# cases pin these themselves, so an inherited value must not change their meaning.
+unset MULL_DIFF_BASE MULL_DIFF_MAX_LINES MUTATION_FATAL
 
 REAL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 GATE="$REAL_ROOT/tools/scripts/mutation.sh"
@@ -935,6 +938,30 @@ out="$( cd "$root" && MUTATION_SKIP_BUILD=1 MULL_WORKERS=1 MULL_DIFF_MAX_LINES=1
 launched="$( [[ -f "$root/build/impl-mutation/mull-out/backend_scene_tests/observed-ulimit.txt" ]] && echo yes || echo no )"
 check "the submodule's own diff is sized against its own origin/main" "" "$rc" 79 "$out" "past the cap"
 check "a capped submodule target never launches the runner" "" "$launched" no ""
+
+# 35-37. MULL_DIFF_BASE moves the diff base off origin/main.  With commits
+#     piling up locally, MULL_DIFF_BASE=HEAD measures only the uncommitted
+#     change; the committed history past the cap must not count.
+root="$(make_cap_root 30)"
+printf 'int line_0(){return 7;}\n' >> "$root/src/FileHelper.cpp"
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 MULL_WORKERS=1 MULL_DIFF_MAX_LINES=10 MULL_DIFF_BASE=HEAD \
+        STUB_REPORT_tst_filehelper="$(cap_body "$root")" "$GATE" --diff-only --strict 2>&1 )"; rc=$?
+check "MULL_DIFF_BASE=HEAD sizes only the uncommitted change" "" "$rc" 1 "$out" "new surviving mutant"
+head_sha="$(git -C "$root" rev-parse HEAD)"
+cfg_ref="$(grep -h '^gitDiffRef:' "$root"/build/impl-mutation/mull-out/mull-tst_filehelper*.yml 2>/dev/null | head -1)"
+check "MULL_DIFF_BASE is the ref Mull's own diff filter gets" "" "$( [[ "$cfg_ref" == "gitDiffRef: $head_sha" ]] && echo 0 || echo 1 )" 0 "$cfg_ref"
+
+# Target selection reads the same range: a change that is already committed is
+# out of scope for MULL_DIFF_BASE=HEAD, so nothing is selected.
+root="$(make_cap_root 1)"
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 MULL_WORKERS=1 MULL_DIFF_BASE=HEAD \
+        STUB_REPORT_tst_filehelper="$(cap_body "$root")" "$GATE" --diff-only --strict 2>&1 )"; rc=$?
+check "MULL_DIFF_BASE=HEAD selects no target for an already-committed change" "" "$rc" 0 "$out" "no changed sources mapped"
+
+root="$(make_cap_root 1)"
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 MULL_WORKERS=1 MULL_DIFF_BASE=no-such-ref \
+        STUB_REPORT_tst_filehelper="$(cap_body "$root")" "$GATE" --diff-only --strict 2>&1 )"; rc=$?
+check "an unresolvable MULL_DIFF_BASE exits 2, a usage error" "" "$rc" 2 "$out" "MULL_DIFF_BASE"
 
 echo
 if [[ "$FAIL" -gt 0 ]]; then

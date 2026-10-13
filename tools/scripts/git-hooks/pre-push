@@ -22,6 +22,9 @@
 # Buffer the ref-list first; git closes its write end after sending it, so this
 # won't block.  The lines are "<local ref> <local sha> <remote ref> <remote sha>".
 refs="$(cat 2>/dev/null || true)"
+# A push is measured against what it carries.  MULL_DIFF_BASE=HEAD left exported
+# from a pre-commit gate run would point the mutation leg at an empty diff.
+unset MULL_DIFF_BASE
 top="$(git rev-parse --show-toplevel)"
 
 if [[ "${WEK_GATE_FORCE:-0}" != "1" && -f "$top/tools/scripts/lib/gate_marker.sh" ]]; then

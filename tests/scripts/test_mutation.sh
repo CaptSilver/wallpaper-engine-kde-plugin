@@ -11,6 +11,9 @@
 # No `set -e`: a test runner tallies failures and keeps going rather than dying
 # on the first one.
 set -uo pipefail
+# ctest inherits the environment the gate was started in; these cases pin the
+# diff range themselves, so an inherited override must not move it.
+unset MULL_DIFF_BASE MULL_DIFF_MAX_LINES
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 MUTATION="$REPO_ROOT/tools/scripts/mutation.sh"

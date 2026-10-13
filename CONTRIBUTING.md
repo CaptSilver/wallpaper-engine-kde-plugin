@@ -23,7 +23,7 @@ tools/scripts/preflight.sh
 
 The pre-push hook runs that same gate on every `git push`. It takes a few minutes and runs quietly — that's it working, not hanging — so resist the urge to reach for `--no-verify` on anything non-trivial. It catches real regressions.
 
-A full gate run that passes writes `build/.preflight-pass.json`, and the hook skips the gate for a push whose tree it already passed (same content, under 24 hours old). Edit anything and it runs again; `WEK_GATE_FORCE=1 git push` forces a rerun. The diff-only mutation step measures at most `MULL_DIFF_MAX_LINES` (default 400) changed lines against `origin/main`; a bigger range is skipped with a warning, so run `tools/scripts/mutation.sh --target <target>` for it.
+A full gate run that passes writes `build/.preflight-pass.json`, and the hook skips the gate for a push whose tree it already passed (same content, under 24 hours old). Edit anything and it runs again; `WEK_GATE_FORCE=1 git push` forces a rerun. The diff-only mutation step measures at most `MULL_DIFF_MAX_LINES` (default 400) changed lines against `origin/main`; a bigger range is skipped with a warning, so run `tools/scripts/mutation.sh --target <target>` for it. `MULL_DIFF_BASE=HEAD` measures only the uncommitted change instead, which suits a gate run before each local commit; such a run writes no pass marker, the pre-push hook ignores the variable, and new files must be `git add`ed first to be measured.
 
 One gotcha: the gate runs long enough that GitHub sometimes drops an idle SSH connection mid-push (you'll see exit 141). Set this once and it stops happening:
 

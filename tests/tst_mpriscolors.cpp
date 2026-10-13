@@ -30,6 +30,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <algorithm>
 #include <chrono>
 #include <thread>
 
@@ -74,6 +75,17 @@ private slots:
     void classifyArt_http();
     void classifyArt_https();
     void classifyArt_unknownScheme();
+    // player choice when a browser exposes two players for one tab
+    void playerRank_playingBeatsPausedBrowserIntegration();
+    void playerRank_browserIntegrationBeatsOtherPlayingPlayer();
+    void playerRank_browserIntegrationBeatsOtherPausedPlayer();
+    void playerRank_onlyTheExactBrowserIntegrationNameCounts();
+    void scanCandidate_firstCandidateAlwaysWins();
+    void scanCandidate_higherRankWins();
+    void scanCandidate_lowerRankLoses();
+    void scanCandidate_equalRankLowerIndexWins();
+    void scanCandidate_equalRankHigherIndexLoses();
+    void handleNameOwnerChanged_browserIntegrationAppears_rescans();
     void classifyArt_nonUrlJunk();
 
     // MprisMonitor signal behavior (private slots invoked via meta system)
@@ -95,6 +107,9 @@ private slots:
     void processArtUrl_destroyedMonitorGetsNoLateCallback();
     void handleNameOwnerChanged_nonMprisName_ignored();
     void handleNameOwnerChanged_mprisNameAppears_entersConnectBranch();
+    // A live connection's success trace must survive a normal plasmashell
+    // session, which filters the default logging category's debug output.
+    void connectToPlayer_logsViaNamedInfoCategory();
     void handlePropsChanged_metadataHttpArtUrl_createsRequest();
     void pollPosition_noActiveService_noSignals();
 
@@ -139,6 +154,14 @@ private slots:
     void handleNameOwnerChanged_alreadyConnectedIgnoresOther();
     // dedup gate fires again when artUrl actually changes.
     void handlePropsChanged_changedArtUrl_reprocesses();
+    // plasma-browser-integration follows each track's art update with a second
+    // update that adds the album and drops mpris:artUrl
+    void effectiveArt_sameTrackWithoutArtKeepsPrevious();
+    void effectiveArt_otherTrackWithoutArtClears();
+    void effectiveArt_sameTrackWithNewArtReplaces();
+    void effectiveArt_nothingBeforePassesThrough();
+    void parseMetadata_trackIdFromObjectPath();
+    void handlePropsChanged_sameTrackLosesArtUrl_keepsCover();
     // bplayonly / 'play' / 'stop' / 'next' / 'previous' direct-name aliases
     // (not just b-prefixed forms) round through invokeShortcut as well.
     void shortcut_canonicalNamesAlsoMap();
@@ -404,6 +427,37 @@ void TestMprisColors::classifyArt_http() {
 void TestMprisColors::classifyArt_https() {
     QCOMPARE(wekde::classifyArtUrl("https://cdn.example/cover.jpg"), wekde::MprisArtUrlKind::Http);
 }
+// A browser playing media exposes two MPRIS players for the same tab: its own
+// (Flatpak Firefox: title "YouTube Music", no artist, no art) and
+// plasma-browser-integration's, which carries the real track metadata and a
+// cover. Picking by D-Bus name order chose whichever happened to come first.
+static const QString kBrowserIntegration =
+    QStringLiteral("org.mpris.MediaPlayer2.plasma-browser-integration");
+static const QString kFirefoxNative =
+    QStringLiteral("org.mpris.MediaPlayer2.firefox.instance_1_2076");
+
+void TestMprisColors::playerRank_playingBeatsPausedBrowserIntegration() {
+    QVERIFY(wekde::mprisPlayerRank(kFirefoxNative, true) >
+            wekde::mprisPlayerRank(kBrowserIntegration, false));
+}
+
+void TestMprisColors::playerRank_browserIntegrationBeatsOtherPlayingPlayer() {
+    QVERIFY(wekde::mprisPlayerRank(kBrowserIntegration, true) >
+            wekde::mprisPlayerRank(kFirefoxNative, true));
+}
+
+void TestMprisColors::playerRank_browserIntegrationBeatsOtherPausedPlayer() {
+    QVERIFY(wekde::mprisPlayerRank(kBrowserIntegration, false) >
+            wekde::mprisPlayerRank(kFirefoxNative, false));
+}
+
+void TestMprisColors::playerRank_onlyTheExactBrowserIntegrationNameCounts() {
+    const int plain = wekde::mprisPlayerRank(kFirefoxNative, true);
+    QCOMPARE(wekde::mprisPlayerRank(kBrowserIntegration + QStringLiteral(".extra"), true), plain);
+    QCOMPARE(wekde::mprisPlayerRank(QStringLiteral("org.mpris.MediaPlayer2.plasma-browser"), true),
+             plain);
+}
+
 void TestMprisColors::classifyArt_unknownScheme() {
     QCOMPARE(wekde::classifyArtUrl("ftp://server/file.png"), wekde::MprisArtUrlKind::Unknown);
 }
@@ -749,6 +803,47 @@ void TestMprisColors::handleNameOwnerChanged_mprisNameAppears_entersConnectBranc
     QVERIFY(! m.activeService().isEmpty());
 }
 
+void TestMprisColors::connectToPlayer_logsViaNamedInfoCategory() {
+    // connectToPlayer's only trace of a successful connection used to go
+    // through the default logging category at debug severity — the exact
+    // combination plasmashell's runtime logging config filters out of a
+    // normal session, so the line never reached the journal. Pin it to a
+    // named category at Info level instead, the way the renderer's
+    // wekdeScene category already does.
+    struct Captured {
+        QtMsgType type;
+        QString   category;
+        QString   message;
+    };
+    static QVector<Captured> captured;
+    captured.clear();
+
+    QtMessageHandler previous = qInstallMessageHandler(
+        [](QtMsgType type, const QMessageLogContext& ctx, const QString& msg) {
+            captured.append({ type, QString::fromUtf8(ctx.category ? ctx.category : ""), msg });
+        });
+
+    {
+        MprisMonitor m;
+        invokeSlot(&m,
+                   "handleNameOwnerChanged",
+                   Q_ARG(QString, "org.mpris.MediaPlayer2.testconnectlog"),
+                   Q_ARG(QString, ""),
+                   Q_ARG(QString, ":1.123"));
+    }
+
+    qInstallMessageHandler(previous);
+
+    const auto connectedLine =
+        std::find_if(captured.begin(), captured.end(), [](const Captured& c) {
+            return c.message.contains("connected to");
+        });
+    QVERIFY2(connectedLine != captured.end(), "expected a 'connected to' trace line");
+    QCOMPARE(connectedLine->type, QtInfoMsg);
+    QVERIFY2(connectedLine->category != QLatin1String("default"),
+             "connection trace must use a named logging category, not the default one");
+}
+
 void TestMprisColors::handlePropsChanged_metadataHttpArtUrl_createsRequest() {
     MprisMonitor m;
     // http URL → processArtUrl enters the Http branch and fires an async
@@ -992,27 +1087,33 @@ void TestMprisColors::handleNameOwnerChanged_unrelatedServiceVanishes_noDisconne
 
 void TestMprisColors::decodeArt_networkError_returnsFalse() {
     QVariantList out;
+    QImage       outImg;
     QVERIFY(! wekde::decodeArtReplyBytes(
-        QByteArray("bytes that would otherwise decode"), true /*networkError*/, out));
+        QByteArray("bytes that would otherwise decode"), true /*networkError*/, out, outImg));
     QVERIFY(out.isEmpty());
+    QVERIFY(outImg.isNull());
 }
 
 void TestMprisColors::decodeArt_emptyBytes_returnsFalse() {
     QVariantList out;
-    QVERIFY(! wekde::decodeArtReplyBytes(QByteArray(), false, out));
+    QImage       outImg;
+    QVERIFY(! wekde::decodeArtReplyBytes(QByteArray(), false, out, outImg));
     QVERIFY(out.isEmpty());
+    QVERIFY(outImg.isNull());
 }
 
 void TestMprisColors::decodeArt_garbageBytes_returnsFalse() {
     QVariantList out;
+    QImage       outImg;
     // Explicit length must match the literal's byte count (incl. the embedded
     // \x00) — over-stating it reads past the .rodata string into the next
     // global (ASAN: global-buffer-overflow at QByteArray::QByteArray(const
     // char*, long long)).  The literal here is exactly 18 bytes:
     //   \x00 \xFF ' ' n o t - a n - i m a g e ' ' \x42 \x42
     QByteArray junk("\x00\xFF not-an-image \x42\x42", 18);
-    QVERIFY(! wekde::decodeArtReplyBytes(junk, false, out));
+    QVERIFY(! wekde::decodeArtReplyBytes(junk, false, out, outImg));
     QVERIFY(out.isEmpty());
+    QVERIFY(outImg.isNull());
 }
 
 void TestMprisColors::decodeArt_validPng_returnsTrueWith15Colors() {
@@ -1027,7 +1128,10 @@ void TestMprisColors::decodeArt_validPng_returnsTrueWith15Colors() {
     }
 
     QVariantList out;
-    QVERIFY(wekde::decodeArtReplyBytes(bytes, false, out));
+    QImage       outImg;
+    QVERIFY(wekde::decodeArtReplyBytes(bytes, false, out, outImg));
+    QVERIFY(! outImg.isNull());
+    QCOMPARE(outImg.width(), 16);
     QCOMPARE(out.size(), 15);
     // Primary should be close to magenta (R high, B high, G low).
     QVERIFY(out[0].toDouble() > 0.7); // R
@@ -1063,7 +1167,8 @@ void TestMprisColors::handleNameOwnerChanged_alreadyConnectedIgnoresOther() {
         QSKIP("could not establish an active MPRIS service for this test");
     QString first = m.activeService();
 
-    QSignalSpy availableSpy(&m, &MprisMonitor::mediaAvailableChanged);
+    const quint64 genBefore = m.m_scanGeneration;
+    QSignalSpy    availableSpy(&m, &MprisMonitor::mediaAvailableChanged);
     // A second MPRIS service appearing while we already have one MUST NOT
     // switch — the connect branch is gated on `m_activeService.isEmpty()`.
     invokeSlot(&m,
@@ -1071,8 +1176,118 @@ void TestMprisColors::handleNameOwnerChanged_alreadyConnectedIgnoresOther() {
                Q_ARG(QString, "org.mpris.MediaPlayer2.second"),
                Q_ARG(QString, ""),
                Q_ARG(QString, ":1.50"));
-    QCOMPARE(m.activeService(), first); // unchanged
-    QCOMPARE(availableSpy.count(), 0);  // no mediaAvailableChanged
+    QCOMPARE(m.activeService(), first);      // unchanged
+    QCOMPARE(availableSpy.count(), 0);       // no mediaAvailableChanged
+    QCOMPARE(m.m_scanGeneration, genBefore); // and no rescan for an ordinary player
+}
+
+// findActivePlayer's fan-in: replies arrive in any order, so the winner must
+// depend only on rank and ListNames index.
+void TestMprisColors::scanCandidate_firstCandidateAlwaysWins() {
+    QVERIFY(wekde::mprisScanCandidateBetter(0, 5, /*bestRank*/ -1, /*bestIndex*/ -1));
+}
+
+void TestMprisColors::scanCandidate_higherRankWins() {
+    QVERIFY(wekde::mprisScanCandidateBetter(3, 5, 2, 0));
+}
+
+void TestMprisColors::scanCandidate_lowerRankLoses() {
+    QVERIFY(! wekde::mprisScanCandidateBetter(2, 0, 3, 5));
+    // The first ListNames entry is a real best-so-far, not "none yet".
+    QVERIFY(! wekde::mprisScanCandidateBetter(1, 3, 2, 0));
+}
+
+void TestMprisColors::scanCandidate_equalRankLowerIndexWins() {
+    QVERIFY(wekde::mprisScanCandidateBetter(2, 1, 2, 4));
+}
+
+void TestMprisColors::scanCandidate_equalRankHigherIndexLoses() {
+    QVERIFY(! wekde::mprisScanCandidateBetter(2, 4, 2, 4));
+    QVERIFY(! wekde::mprisScanCandidateBetter(2, 6, 2, 4));
+}
+
+// Firefox's own player can register before plasma-browser-integration's when
+// playback starts. Arriving second must not leave us on the metadata-poor one.
+void TestMprisColors::handleNameOwnerChanged_browserIntegrationAppears_rescans() {
+    wekde::MprisMonitor m;
+    if (! injectFakeService(m, kFirefoxNative))
+        QSKIP("could not establish an active MPRIS service for this test");
+    const quint64 genBefore = m.m_scanGeneration;
+    invokeSlot(&m,
+               "handleNameOwnerChanged",
+               Q_ARG(QString, kBrowserIntegration),
+               Q_ARG(QString, ""),
+               Q_ARG(QString, ":1.51"));
+    QVERIFY(m.m_scanGeneration > genBefore); // a fresh scan was started
+}
+
+void TestMprisColors::effectiveArt_sameTrackWithoutArtKeepsPrevious() {
+    QCOMPARE(wekde::mprisEffectiveArtUrl("t1", "file:///a.jpg", "t1", ""),
+             QString("file:///a.jpg"));
+}
+
+void TestMprisColors::effectiveArt_otherTrackWithoutArtClears() {
+    QCOMPARE(wekde::mprisEffectiveArtUrl("t1", "file:///a.jpg", "t2", ""), QString());
+}
+
+void TestMprisColors::effectiveArt_sameTrackWithNewArtReplaces() {
+    QCOMPARE(wekde::mprisEffectiveArtUrl("t1", "file:///a.jpg", "t1", "file:///b.jpg"),
+             QString("file:///b.jpg"));
+}
+
+void TestMprisColors::effectiveArt_nothingBeforePassesThrough() {
+    QCOMPARE(wekde::mprisEffectiveArtUrl("", "", "t1", ""), QString());
+    QCOMPARE(wekde::mprisEffectiveArtUrl("", "", "t1", "file:///a.jpg"), QString("file:///a.jpg"));
+}
+
+void TestMprisColors::parseMetadata_trackIdFromObjectPath() {
+    QVariantMap m;
+    m["mpris:trackid"] =
+        QVariant::fromValue(QDBusObjectPath("/org/kde/plasma/browser_integration/1337"));
+    QCOMPARE(wekde::parseMprisMetadata(m).trackId,
+             QString("/org/kde/plasma/browser_integration/1337"));
+}
+
+// Mirrors what plasma-browser-integration sends under Flatpak Firefox: each
+// track arrives as title+artist+artUrl, then about a second later as the same track
+// with the album added and no artUrl. Treating the second as "no art" made the
+// cover appear and vanish on every track change.
+void TestMprisColors::handlePropsChanged_sameTrackLosesArtUrl_keepsCover() {
+    QTemporaryFile a;
+    a.setAutoRemove(true);
+    QVERIFY(a.open());
+    QImage img(8, 8, QImage::Format_RGB32);
+    img.fill(Qt::yellow);
+    QVERIFY(img.save(a.fileName(), "PNG"));
+    a.close();
+
+    wekde::MprisMonitor m;
+    QSignalSpy          spy(&m, &wekde::MprisMonitor::thumbnailChanged);
+    auto                send = [&](const QVariantMap& meta) {
+        QVariantMap c;
+        c["Metadata"] = meta;
+        invokeSlot(&m,
+                   "handlePropertiesChanged",
+                   Q_ARG(QString, "org.mpris.MediaPlayer2.Player"),
+                   Q_ARG(QVariantMap, c),
+                   Q_ARG(QStringList, QStringList()));
+    };
+
+    send(
+        mkMeta("Paintress", { "Lorien Testard" }, 0, QUrl::fromLocalFile(a.fileName()).toString()));
+    QVERIFY(spy.wait(5000));
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.at(0).at(0).toBool(), true);
+
+    QVariantMap noArt    = mkMeta("Paintress", { "Lorien Testard" });
+    noArt["xesam:album"] = QStringLiteral("Clair Obscur: Expedition 33");
+    send(noArt);
+    QTest::qWait(300);
+    QCOMPARE(spy.count(), 1); // the cover stays
+
+    send(mkMeta("Undertow", { "Lorien Testard" })); // a different track without art
+    QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 2, 5000);
+    QCOMPARE(spy.at(1).at(0).toBool(), false);
 }
 
 void TestMprisColors::handlePropsChanged_changedArtUrl_reprocesses() {
@@ -1387,13 +1602,15 @@ void TestMprisColors::processArtUrl_http_downloadsAndEmits() {
     QCOMPARE(spy.count(), 1);
     QCOMPARE(spy.last().at(0).toBool(), true);
     QCOMPARE(spy.last().at(1).toList().size(), 15);
+    const QImage decoded = spy.last().at(2).value<QImage>();
+    QVERIFY(! decoded.isNull());
+    QCOMPARE(decoded.width(), 8);
 }
 
 void TestMprisColors::processArtUrl_http_returnsGarbage_emitsThumbnailFalse() {
-    // Server replies with non-PNG bytes — exercise the decode-failure
-    // branch of onArtDownloaded (lines 318-319 of MprisMonitor.cpp:
-    // `emit thumbnailChanged(false, {});` when decodeArtReplyBytes returns
-    // false even after a successful HTTP fetch).
+    // Server replies with non-PNG bytes — exercise onArtDownloaded's
+    // decode-failure branch (decodeArtReplyBytes returns false even after a
+    // successful HTTP fetch, so the pool callback emits false/null instead).
     QByteArray junk("\x00\xFF this is definitely not an image \x42", 36);
 
     FakePngHttpServer server(junk);
@@ -1414,6 +1631,7 @@ void TestMprisColors::processArtUrl_http_returnsGarbage_emitsThumbnailFalse() {
     QVERIFY(spy.wait(5000));
     QCOMPARE(spy.count(), 1);
     QCOMPARE(spy.last().at(0).toBool(), false);
+    QVERIFY(spy.last().at(2).value<QImage>().isNull());
 }
 
 // Reach the private helper that previous tests used. Defined here so
@@ -1527,6 +1745,9 @@ void TestMprisColors::processArtUrl_localFile_emitsThumbnailAsync() {
     QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 5000);
     QCOMPARE(spy.at(0).at(0).toBool(), true);
     QCOMPARE(spy.at(0).at(1).toList().size(), 15);
+    const QImage decoded = spy.at(0).at(2).value<QImage>();
+    QVERIFY(! decoded.isNull());
+    QCOMPARE(decoded.width(), 16);
 }
 
 void TestMprisColors::processArtUrl_localFileMissing_emitsFalseAsync() {
@@ -1542,6 +1763,7 @@ void TestMprisColors::processArtUrl_localFileMissing_emitsFalseAsync() {
     QCOMPARE(spy.count(), 0);
     QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 5000);
     QCOMPARE(spy.at(0).at(0).toBool(), false);
+    QVERIFY(spy.at(0).at(2).value<QImage>().isNull());
 }
 
 void TestMprisColors::processArtUrl_supersededLocalDecode_dropsStaleResult() {

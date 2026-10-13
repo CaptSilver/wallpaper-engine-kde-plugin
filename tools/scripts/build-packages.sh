@@ -13,6 +13,11 @@
 #   tools/scripts/build-packages.sh --check          # provision deps for selected
 #                                              # targets; no build
 #   tools/scripts/build-packages.sh arch --check     # provision arch deps only
+#   WEK_RPM_RELEASE=2 tools/scripts/build-packages.sh rpm
+#                                              # RPM Release other than 1, so a
+#                                              # rebuild of the same commit gets
+#                                              # a new version rpm-ostree will
+#                                              # replace the installed one with
 #
 # Containers (auto-created if missing):
 #   fedora -> registry.fedoraproject.org/fedora-toolbox:latest
@@ -289,13 +294,17 @@ build_fedora() {
 
     # Build through the SRPM rather than against the checkout in place, so a
     # local RPM build exercises the same generator COPR's make_srpm step runs.
+    # Same rule make-srpm.sh --release applies; checked here so a bad value
+    # fails before the container starts.
+    [[ -z "${WEK_RPM_RELEASE:-}" || "$WEK_RPM_RELEASE" =~ ^[1-9][0-9]*$ ]] \
+        || fail "WEK_RPM_RELEASE must be a positive integer, got '$WEK_RPM_RELEASE'"
     distrobox enter "$FEDORA_BOX" -- bash -lc "
         set -euo pipefail
         TOP=/tmp/rpmbuild
         mkdir -p \$TOP/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
         rm -f \$TOP/RPMS/x86_64/wallpaper-engine-kde-plugin-qt6-*.rpm
         cd '$REPO_ROOT'
-        tools/scripts/make-srpm.sh --outdir \$TOP/SRPMS
+        tools/scripts/make-srpm.sh --outdir \$TOP/SRPMS ${WEK_RPM_RELEASE:+--release $WEK_RPM_RELEASE}
         rpmbuild \\
             --define='_topdir '\$TOP \\
             --rebuild \$TOP/SRPMS/wallpaper-engine-kde-plugin-qt6-*.src.rpm

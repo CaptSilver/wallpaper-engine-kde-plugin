@@ -36,6 +36,7 @@ struct MprisMetadata {
     QString albumArtist;
     QString genres;
     QString artUrl;
+    QString trackId;
     double  duration { 0 };
 };
 MprisMetadata parseMprisMetadata(const QVariantMap& meta);
@@ -50,6 +51,29 @@ enum class MprisArtUrlKind
 };
 MprisArtUrlKind classifyArtUrl(const QString& artUrl);
 
+// Preference among several MPRIS players; higher wins, equal ranks fall back to
+// D-Bus name order. A playing player always beats a paused one. Among equals,
+// plasma-browser-integration wins: a browser playing media also exposes its own
+// player for the same tab, and that one can carry a placeholder title and no
+// art (Flatpak Firefox reports "YouTube Music" and nothing else), while the
+// integration's copy has the real track and cover. Plasma's own media widget
+// prefers it too.
+int mprisPlayerRank(const QString& service, bool playing);
+
+// findActivePlayer's fan-in step: whether a candidate with `rank` at ListNames
+// position `index` beats the best so far (`bestIndex` < 0 means none yet).
+// Higher rank wins; equal ranks go to the lower index, so the result does not
+// depend on the order the async PlaybackStatus replies arrive in.
+bool mprisScanCandidateBetter(int rank, int index, int bestRank, int bestIndex);
+
+// The art URL to act on for an incoming metadata update. `prevTrack` /
+// `newTrack` identify the track (see applyMetadata). An update for the same
+// track that carries no art keeps `prevArt`: plasma-browser-integration follows
+// every track's update with a second one that adds the album and drops
+// mpris:artUrl, which would otherwise clear the cover a second after it lands.
+QString mprisEffectiveArtUrl(const QString& prevTrack, const QString& prevArt,
+                             const QString& newTrack, const QString& newArt);
+
 // Convert MPRIS PlaybackStatus string to the int state the QML layer expects.
 // 0 = stopped, 1 = playing, 2 = paused, 0 for anything else.
 int toPlaybackState(const QString& status);
@@ -63,12 +87,15 @@ int toPlaybackState(const QString& status);
 // without the DBus session.
 QString mapShortcutToMpris(const QString& name);
 
-// Decode the bytes from an MPRIS artUrl HTTP fetch into a flat color list.
-// Returns true + fills `outColors` (15 floats) when the payload decoded into
-// a valid QImage; returns false + clears `outColors` for network errors,
-// empty payloads, and undecodable bytes.  Pure helper — no QObject / DBus
-// dependency, directly unit-testable without spinning up QNetworkAccessManager.
-bool decodeArtReplyBytes(const QByteArray& data, bool networkError, QVariantList& outColors);
+// Decode the bytes from an MPRIS artUrl HTTP fetch into a flat color list
+// plus the decoded image itself. Returns true + fills `outColors` (15
+// floats) and `outImage` when the payload decoded into a valid QImage;
+// returns false + clears `outColors` and leaves `outImage` null for network
+// errors, empty payloads, and undecodable bytes.  Pure helper — no QObject /
+// DBus dependency, directly unit-testable without spinning up
+// QNetworkAccessManager.
+bool decodeArtReplyBytes(const QByteArray& data, bool networkError, QVariantList& outColors,
+                         QImage& outImage);
 
 class MprisMonitor : public QQuickItem {
     Q_OBJECT
@@ -123,7 +150,7 @@ signals:
     // a separate timeline tick).  0.0 when unknown.
     void propertiesChanged(const QString& title, const QString& artist, const QString& albumTitle,
                            const QString& albumArtist, const QString& genres, double duration);
-    void thumbnailChanged(bool hasThumbnail, const QVariantList& colors);
+    void thumbnailChanged(bool hasThumbnail, const QVariantList& colors, const QImage& image);
     // `state` mirrors playbackStateChanged (0=stopped 1=playing 2=paused) so
     // SceneScript can read event.state from the timeline event without
     // synchronizing against the separate playbackStateChanged signal.
@@ -179,6 +206,7 @@ private:
     bool            m_mediaAvailable { false };
     bool            m_engaged { false }; // true once D-Bus watch started
     QString         m_lastArtUrl;
+    QString         m_lastTrackKey;
     bool            m_artUrlEverProcessed { false };
     // Bumped on every art dispatch — all four URL kinds, not just the ones that
     // start background work — and on disconnect. An off-thread LocalFile decode
@@ -202,13 +230,12 @@ private:
     // findActivePlayer fan-out/fan-in: m_scanGeneration bumps on every scan so
     // late replies from a superseded scan are ignored; m_scanPending counts the
     // per-service PlaybackStatus probes still outstanding; m_scanBest holds the
-    // first-seen (or first "Playing") candidate; m_scanFoundPlaying short-
-    // circuits the rest once a playing player is seen.
+    // best candidate so far by mprisPlayerRank, then ListNames index.
     quint64 m_scanGeneration { 0 };
     int     m_scanPending { 0 };
     QString m_scanBest;
     int     m_scanBestIndex { -1 };
-    bool    m_scanFoundPlaying { false };
+    int     m_scanBestRank { -1 };
 
     QNetworkAccessManager m_nam;
 

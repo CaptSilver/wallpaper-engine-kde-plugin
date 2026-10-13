@@ -665,7 +665,10 @@ Flickable {
                 function refreshCacheSize() {
                     if (!pyext || !cachePath) return;
                     pyext.get_dir_size(cachePath).then(res => {
-                        shaderCacheItem.cacheSize = Utils.prettyBytes(res);
+                        // The walk can outlive this page (the wallpaper KCM
+                        // builds a page, discards it and builds another).
+                        if (shaderCacheItem)
+                            shaderCacheItem.cacheSize = Utils.prettyBytes(res);
                     }).catch(reason => console.error(reason));
                 }
                 onCachePathChanged: refreshCacheSize()

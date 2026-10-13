@@ -1,6 +1,8 @@
 import QtQuick 2.0
 import com.github.captsilver.wallpaperEngineKde 1.2
 
+import "js/utils.mjs" as Utils
+
 // FileHelper wrapper with Promise-like API for backwards compatibility
 Item {
     id: root
@@ -37,20 +39,11 @@ Item {
         }
     }
 
-    // Promise-like wrapper for synchronous calls
+    // Promise-like wrapper for synchronous calls. Utils.syncThenable, not a
+    // function of this object: a Promise can adopt the value after this Pyext
+    // is destroyed (see utils.mjs).
     function _makePromise(value) {
-        return {
-            result: value,
-            then: function(callback) {
-                const res = callback(value);
-                // Return chainable promise
-                return _makePromise(res !== undefined ? res : value);
-            },
-            catch: function(callback) {
-                // No-op for synchronous calls (errors would throw immediately)
-                return _makePromise(value);
-            }
-        };
+        return Utils.syncThenable(value);
     }
 
     function qwebChannelSource() {

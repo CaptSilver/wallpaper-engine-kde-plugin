@@ -140,7 +140,7 @@
     </entry>
     <entry name="SystemAudioCapture" type="Bool">
       <label>System Audio Capture</label>
-      <default>false</default>
+      <default>true</default>
     </entry>
     <entry name="VideoFolderPath" type="Path">
       <label>Plain video wallpapers folder</label>

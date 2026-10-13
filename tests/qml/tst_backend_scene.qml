@@ -121,9 +121,11 @@ TestCase {
         const player = _findScenePlayer();
         thumbSpy.target = player;
         thumbSpy.clear();
-        mpris.thumbnailChanged(true, [Qt.rgba(1,0,0,1)]);
+        const image = { fake: "image-payload" };
+        mpris.thumbnailChanged(true, [Qt.rgba(1,0,0,1)], image);
         compare(thumbSpy.count, 1);
         compare(thumbSpy.signalArguments[0][0], true);
+        compare(thumbSpy.signalArguments[0][2], image);
     }
 
     function test_mprisTimelineForwardsToPlayer() {

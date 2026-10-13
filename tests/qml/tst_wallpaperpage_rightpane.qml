@@ -78,10 +78,10 @@ TestCase {
                   "WallpaperPage never took the dialog width");
     }
 
+    // The pane's preview is a PreviewAnimatedImage (decode-probed wrapper).
     function _findAnimatedPreview() {
         return _findFirstByPredicate(rc, n =>
-            n && typeof n.playing === "boolean" && typeof n.paused === "boolean"
-            && typeof n.sourceSize !== "undefined");
+            n && typeof n.sourceWidth === "number" && typeof n.firstFrameDecoded === "boolean");
     }
 
     function _findUserPropsGroup() {
@@ -156,6 +156,68 @@ TestCase {
         const img = _findAnimatedPreview();
         verify(img !== null, "detail-pane preview not found");
         compare(img.width, rc.image_size);
+    }
+
+    // Wallpaper Engine gates some properties on another property's live
+    // value ("condition": "mediavisualizer.value == true"). Real-world
+    // wallpapers rely on this to keep dozens of sub-options collapsed behind
+    // one parent switch — without it every row shows flat, all the time.
+    function test_conditionGatedRowHiddenUntilControllingPropertyIsTrue() {
+        _sizeDialog(defaultPageWidth);
+        const upg = _findUserPropsGroup();
+        verify(upg !== null, "User Properties group not built");
+        upg.propChanges = {};
+        upg.propDefaults = { mediavisualizer: false };
+        upg.userProperties = [
+            { key: "mediavisualizer", text: "Media Visualizer", type: "bool", value: false },
+            { key: "albumname", text: "Album Name", type: "bool", value: false,
+              condition: "mediavisualizer.value == true" }
+        ];
+
+        const repeater = _findFirstByPredicate(page, n => n && n.objectName === "userPropsRepeater");
+        verify(repeater !== null, "userPropsRepeater not found");
+        tryVerify(() => repeater.count === 2, 2000, "repeater did not build both rows");
+
+        const parentRow = repeater.itemAt(0);
+        const gatedRow = repeater.itemAt(1);
+        verify(parentRow !== null && gatedRow !== null, "row delegates not created");
+        verify(parentRow.visible, "an unconditioned row must stay visible");
+        tryVerify(() => !gatedRow.visible, 2000,
+                  "gated row must be hidden while its condition is false");
+
+        // Flip the controlling property the same way the switch's
+        // onRes_valChanged -> savePropChange path does, without going
+        // through the pyext disk write (workshopid is unset in this test).
+        upg.propChanges = { mediavisualizer: true };
+        tryVerify(() => gatedRow.visible, 2000,
+                  "gated row must appear once its condition's controlling property flips true");
+
+        upg.propChanges = {};
+        upg.propDefaults = {};
+    }
+
+    // A condition our safe evaluator doesn't understand (no eval, so no
+    // method calls, assignments, etc.) must fail open — the row stays
+    // visible rather than silently disappearing on an unrelated wallpaper.
+    function test_unparseableConditionFailsOpenRowStaysVisible() {
+        _sizeDialog(defaultPageWidth);
+        const upg = _findUserPropsGroup();
+        verify(upg !== null, "User Properties group not built");
+        upg.propChanges = {};
+        upg.propDefaults = {};
+        upg.userProperties = [
+            { key: "weird", text: "Weird", type: "bool", value: false,
+              condition: "ruleset.value.split('/')[0].includes('0')" }
+        ];
+
+        const repeater = _findFirstByPredicate(page, n => n && n.objectName === "userPropsRepeater");
+        verify(repeater !== null, "userPropsRepeater not found");
+        tryVerify(() => repeater.count === 1, 2000, "repeater did not build the row");
+        const row = repeater.itemAt(0);
+        verify(row !== null, "row delegate not created");
+        verify(row.visible, "a condition outside our grammar must fail open, not hide the row");
+
+        upg.userProperties = [];
     }
 
     function test_activePlaylistBannerShowsFilteredLibraryLabel() {

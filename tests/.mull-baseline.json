@@ -329,199 +329,175 @@
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 153,
+      "line": 183,
       "mutator": "cxx_pre_inc_to_pre_dec",
       "line_text": "const quint64 gen = ++m_scanGeneration;"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 166,
+      "line": 196,
       "mutator": "cxx_ne_to_eq",
       "line_text": "if (gen != m_scanGeneration) return; // superseded by a newer scan"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 192,
+      "line": 211,
+      "mutator": "cxx_lt_to_ge",
+      "line_text": "for (int i = 0; i < players.size(); ++i) {"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 222,
       "mutator": "cxx_ne_to_eq",
       "line_text": "if (gen != m_scanGeneration) return; // superseded"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 204,
-      "mutator": "cxx_lt_to_ge",
-      "line_text": "m_scanBestIndex < 0 || (playing && ! m_scanFoundPlaying) ||"
-    },
-    {
-      "file": "src/MprisMonitor.cpp",
-      "line": 204,
-      "mutator": "cxx_lt_to_le",
-      "line_text": "m_scanBestIndex < 0 || (playing && ! m_scanFoundPlaying) ||"
-    },
-    {
-      "file": "src/MprisMonitor.cpp",
-      "line": 205,
-      "mutator": "cxx_eq_to_ne",
-      "line_text": "(playing == m_scanFoundPlaying && i < m_scanBestIndex);"
-    },
-    {
-      "file": "src/MprisMonitor.cpp",
-      "line": 205,
-      "mutator": "cxx_lt_to_ge",
-      "line_text": "(playing == m_scanFoundPlaying && i < m_scanBestIndex);"
-    },
-    {
-      "file": "src/MprisMonitor.cpp",
-      "line": 205,
-      "mutator": "cxx_lt_to_le",
-      "line_text": "(playing == m_scanFoundPlaying && i < m_scanBestIndex);"
-    },
-    {
-      "file": "src/MprisMonitor.cpp",
-      "line": 212,
+      "line": 235,
       "mutator": "cxx_le_to_gt",
       "line_text": "if (--m_scanPending <= 0 && ! m_scanBest.isEmpty()) {"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 212,
+      "line": 235,
       "mutator": "cxx_le_to_lt",
       "line_text": "if (--m_scanPending <= 0 && ! m_scanBest.isEmpty()) {"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 280,
+      "line": 304,
       "mutator": "cxx_eq_to_ne",
       "line_text": "if (state == 1)"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 354,
+      "line": 383,
       "mutator": "cxx_div_to_mul",
       "line_text": "m_lastPosition = v.toLongLong() / 1e6;"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 425,
+      "line": 451,
+      "mutator": "cxx_div_to_mul",
+      "line_text": "m_lastPosition = reply.value().toLongLong() / 1e6;"
+    },
+    {
+      "file": "src/MprisMonitor.cpp",
+      "line": 461,
       "mutator": "cxx_pre_inc_to_pre_dec",
       "line_text": "const quint64 gen = ++m_artGeneration;"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 519,
+      "line": 573,
       "mutator": "cxx_lt_to_le",
       "line_text": "for (int y = 0; y < small.height(); y++) {"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 520,
+      "line": 574,
       "mutator": "cxx_lt_to_le",
       "line_text": "for (int x = 0; x < small.width(); x++) {"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 525,
+      "line": 579,
       "mutator": "cxx_div_to_mul",
       "line_text": "int hBucket = (h < 0) ? 0 : (h * 6 / 360);"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 525,
+      "line": 579,
       "mutator": "cxx_lt_to_ge",
       "line_text": "int hBucket = (h < 0) ? 0 : (h * 6 / 360);"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 525,
+      "line": 579,
       "mutator": "cxx_lt_to_le",
       "line_text": "int hBucket = (h < 0) ? 0 : (h * 6 / 360);"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 525,
+      "line": 579,
       "mutator": "cxx_mul_to_div",
       "line_text": "int hBucket = (h < 0) ? 0 : (h * 6 / 360);"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 528,
+      "line": 582,
       "mutator": "cxx_mul_to_div",
       "line_text": "double lum = 0.299 * r + 0.587 * g + 0.114 * b;"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 529,
+      "line": 583,
       "mutator": "cxx_lt_to_ge",
       "line_text": "int bBucket = (lum < 0.33) ? 0 : (lum < 0.66) ? 1 : 2;"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 529,
+      "line": 583,
       "mutator": "cxx_lt_to_ge",
       "line_text": "int bBucket = (lum < 0.33) ? 0 : (lum < 0.66) ? 1 : 2;"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 529,
+      "line": 583,
       "mutator": "cxx_lt_to_le",
       "line_text": "int bBucket = (lum < 0.33) ? 0 : (lum < 0.66) ? 1 : 2;"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 529,
+      "line": 583,
       "mutator": "cxx_lt_to_le",
       "line_text": "int bBucket = (lum < 0.33) ? 0 : (lum < 0.66) ? 1 : 2;"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 530,
+      "line": 584,
       "mutator": "cxx_mul_to_div",
       "line_text": "int idx = hBucket * 3 + bBucket;"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 540,
+      "line": 594,
       "mutator": "cxx_lt_to_le",
       "line_text": "for (int i = 0; i < 18; i++) order[i] = i;"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 564,
+      "line": 618,
       "mutator": "cxx_gt_to_ge",
       "line_text": "double text[3] = { primLum > 0.5 ? 0.0 : 1.0,"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 565,
+      "line": 619,
       "mutator": "cxx_gt_to_ge",
       "line_text": "primLum > 0.5 ? 0.0 : 1.0,"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 566,
+      "line": 620,
       "mutator": "cxx_gt_to_ge",
       "line_text": "primLum > 0.5 ? 0.0 : 1.0 };"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 571,
-      "mutator": "cxx_lt_to_le",
-      "line_text": "for (int i = 0; i < 18; i++) {"
-    },
-    {
-      "file": "src/MprisMonitor.cpp",
-      "line": 572,
+      "line": 626,
       "mutator": "cxx_eq_to_ne",
       "line_text": "if (bins[i].count == 0) continue;"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 576,
+      "line": 630,
       "mutator": "cxx_mul_to_div",
       "line_text": "double dist = dr * dr + dg * dg + db * db;"
     },
     {
       "file": "src/MprisMonitor.cpp",
-      "line": 577,
+      "line": 631,
       "mutator": "cxx_gt_to_ge",
       "line_text": "if (dist > maxDist) {"
     },

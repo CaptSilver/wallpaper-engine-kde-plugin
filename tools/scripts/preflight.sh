@@ -56,10 +56,19 @@
 # build/impl-d10 / build/impl-oracle) and do not run the normal build/test/fuzz flow.
 #
 # Env: FUZZ_SECS=N overrides per-target fuzz duration (default 20; 7 targets ≈ 2.3 min).
+#      MULL_DIFF_MAX_LINES=N caps the --diff-only mutation leg (default 400 changed
+#      lines; 0 = no cap).  Past it the leg is skipped with a warning (mutation.sh
+#      exit 79) and the lines are left to a full mutation run.
+#
+# A complete default run (no --no-fuzz, full-length fuzz, mutation measured or
+# unavailable) that leaves the tree untouched writes build/.preflight-pass.json.
+# The pre-push hook skips this gate for a pushed commit whose tree is recorded
+# there (24 h, exact tree).  WEK_GATE_FORCE=1 on the push reruns it anyway.
 #
 # Auto-runs on `git push` if hooks are installed:
 #   git config core.hooksPath tools/scripts/git-hooks   # enable
 #   git push --no-verify                          # skip once
+#   WEK_GATE_FORCE=1 git push                     # rerun even if the tree already passed
 #   git config --unset core.hooksPath             # disable
 #
 # Distrobox bootstrap:
@@ -77,6 +86,7 @@ _PF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_PF_DIR/lib/mem.sh"
 source "$_PF_DIR/lib/coverage_gate.sh"
 source "$_PF_DIR/lib/fuzz_corpus_budget.sh"
+source "$_PF_DIR/lib/gate_marker.sh"
 
 # Resolve to the parent repo's working tree even when invoked from inside the
 # `src/backend_scene` submodule.  Plain --show-toplevel would land us in the
@@ -106,7 +116,7 @@ for arg in "$@"; do
         --render-smoke) MODE=render-smoke ;;
         --render-oracle) MODE=render-oracle ;;
         -h|--help)
-            sed -n '2,63p' "$0"
+            sed -n '2,73p' "$0"
             exit 0
             ;;
         *) echo "unknown flag: $arg" >&2; exit 2 ;;
@@ -740,6 +750,16 @@ if [[ "$MODE" == "render-oracle" ]]; then
 fi
 
 # ── 1. Lint: clang-format ─────────────────────────────────────────────────────
+# Pass marker: remember what the tree looked like when the gate started, so a
+# marker is only written if nothing changed while it ran.  FUZZ_DEGRADED is set
+# by the fuzz leg when it measured less than a full default run would.
+FUZZ_DEGRADED=0
+mrc=0
+GATE_IDS_START=""
+if [[ "$MODE" == "full" ]]; then
+    GATE_IDS_START="$(gate_ids 2>/dev/null)" || GATE_IDS_START=""
+fi
+
 step "Lint (clang-format)"
 # Route clang-format through the distrobox (DBOX_PREFIX) exactly like the builds
 # below, so the container's clang-format is used whether preflight runs from the
@@ -880,6 +900,29 @@ if [[ -x tools/scripts/tests/test-werror-full-tree.sh ]]; then
     fi
 else
     warn "tools/scripts/tests/test-werror-full-tree.sh missing or not executable — skipping"
+fi
+
+# ── 1h. Pass-marker self-test ─────────────────────────────────────────────────
+# The pre-push hook trusts build/.preflight-pass.json to skip this whole gate, so
+# the tree id behind it (working tree, not HEAD) and the refusal rules for
+# partial runs are pinned against synthetic repos before anything relies on them.
+step "Pass-marker self-test"
+if [[ -x tools/scripts/tests/test-gate-marker.sh ]]; then
+    if ! tools/scripts/tests/test-gate-marker.sh; then
+        fail "pass-marker self-test failed — gate_marker.sh or its preflight wiring is broken, a stale marker could skip the push gate"
+    fi
+else
+    warn "tools/scripts/tests/test-gate-marker.sh missing or not executable — skipping"
+fi
+
+# ── 1i. Pre-push hook self-test ───────────────────────────────────────────────
+step "Pre-push hook self-test"
+if [[ -x tools/scripts/tests/test-pre-push-hook.sh ]]; then
+    if ! tools/scripts/tests/test-pre-push-hook.sh; then
+        fail "pre-push hook self-test failed — the hook skips (or runs) the gate when it should not"
+    fi
+else
+    warn "tools/scripts/tests/test-pre-push-hook.sh missing or not executable — skipping"
 fi
 
 # ── 2. Build submodule (with tests) ───────────────────────────────────────────
@@ -1039,6 +1082,8 @@ ok "scenescript_tests: ASAN+UBSAN clean"
 # Findings (crash/oom/timeout/leak) under build/sub/fuzz-crashes/ fail the gate.
 if [[ "$NO_FUZZ" == "0" ]]; then
     FUZZ_SECS="${FUZZ_SECS:-20}"
+    # A shorter smoke than the default is a weaker gate; it must not earn a marker.
+    (( FUZZ_SECS < 20 )) && FUZZ_DEGRADED=1
     FUZZ_TARGETS=(WPMdlParser WPPkgFs WPTexImageParser
                   WPShaderParser WPShaderCompile WPSceneParser
                   WPParticleParser WPSoundParser WPJsonParse)
@@ -1066,6 +1111,7 @@ if [[ "$NO_FUZZ" == "0" ]]; then
         binary="build/sub/src/Test/fuzz_$target"
         if [[ ! -x "$binary" ]]; then
             warn "fuzz_$target not built — skipping"
+            FUZZ_DEGRADED=1
             continue
         fi
         corpus="build/sub/fuzz-corpus-$target"
@@ -1125,6 +1171,9 @@ if [[ "$MODE" == "full" && "${WEK_COVERAGE_IN_GATE:-0}" == "1" ]]; then
 fi
 
 # ── 8. Mutation gate (Mull --diff-only --strict) — opt-in-to-fatal ───────────
+# Exit 79 = the diff is past MULL_DIFF_MAX_LINES, so nothing was measured; it is
+# a warning even under MUTATION_FATAL=1 (the lines belong to a full run), but it
+# keeps this run from earning a pass marker.
 # mutation.sh RAM-bounds its worker count + build -j (tools/scripts/lib/mem.sh)
 # so it no longer OOMs alongside the other legs, and fast-exits 0 when the diff
 # maps no covered source (no build).  Non-fatal during soft-launch; set
@@ -1138,6 +1187,7 @@ if [[ "$MODE" == "full" ]]; then
     case "$mrc" in
         0)  ok "mutation gate: no new surviving mutants vs baseline" ;;
         77) ok "mutation gate skipped (Mull runner/build unavailable)" ;;
+        79) warn "mutation gate skipped: diff is past MULL_DIFF_MAX_LINES — measure it with a full mutation run (tools/scripts/mutation.sh --target <target>)" ;;
         78) warn "mutation gate produced no measurement (see above) — no survivor diff was possible"
             if [[ "${MUTATION_FATAL:-0}" == "1" ]]; then
                 fail "mutation gate could not measure — fix the run rather than treating it as a pass"
@@ -1147,6 +1197,31 @@ if [[ "$MODE" == "full" ]]; then
             fi
             warn "mutation gate: new surviving mutant(s) (non-fatal — set MUTATION_FATAL=1 to gate)" ;;
     esac
+fi
+
+# ── Pass marker ──────────────────────────────────────────────────────────────
+# Record this tree as passed so the pre-push hook can skip an identical rerun.
+# Only a complete run on an untouched tree qualifies: the ids must be the same
+# at the end as at the start, or an edit landed mid-run and the gate vouched for
+# a tree that no longer exists.
+if [[ "$MODE" == "full" ]]; then
+    if [[ -z "$GATE_IDS_START" ]]; then
+        warn "no pass marker: could not take tree ids at the start of the run"
+    elif ! gate_marker_should_write "$MODE" "$NO_FUZZ" "$FUZZ_DEGRADED" "$mrc"; then
+        warn "no pass marker: this run did not measure everything (--no-fuzz, short or partial fuzz, or mutation unmeasured)"
+    else
+        GATE_IDS_END="$(gate_ids 2>/dev/null)" || GATE_IDS_END=""
+        if [[ "$GATE_IDS_END" != "$GATE_IDS_START" ]]; then
+            warn "no pass marker: the tree changed while the gate ran"
+        else
+            read -r _gate_p _gate_s <<<"$GATE_IDS_END"
+            if gate_marker_write "$_gate_p" "$_gate_s"; then
+                ok "pass marker written: $GATE_MARKER_FILE (tree ${_gate_p:0:10})"
+            else
+                warn "no pass marker: could not write $GATE_MARKER_FILE"
+            fi
+        fi
+    fi
 fi
 
 # Reaching here means every gate above passed (set -e exits non-zero earlier

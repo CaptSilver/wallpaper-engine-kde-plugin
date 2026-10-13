@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# Pre-push hook: runs tools/scripts/preflight.sh.
-# Skip on a single push with: git push --no-verify
+# Pre-push hook: runs tools/scripts/preflight.sh, unless the pushed commit's tree
+# is one a full gate run already passed (build/.preflight-pass.json, written by
+# preflight.sh; see lib/gate_marker.sh).  A marker is exact-tree only, expires
+# after WEK_GATE_MAX_AGE_H hours (default 24) and must be at least as strict as
+# the current MUTATION_FATAL / WEK_COVERAGE_IN_GATE.
+# Rerun anyway with:           WEK_GATE_FORCE=1 git push
+# Skip on a single push with:  git push --no-verify
 # Disable entirely with:       git config --unset core.hooksPath
 
 # The 141-on-a-passing-gate abort: the gate takes minutes, during which git's
@@ -12,8 +17,34 @@
 #
 # Independently, detach the gate from git's hook stdin (the push ref-list):
 # preflight drives every step through `distrobox enter` (podman exec
-# --interactive), which would otherwise attach to that pipe.  Drain it (git
-# closes its write end after sending the ref-list, so this won't block) and run
+# --interactive), which would otherwise attach to that pipe.  Drain it and run
 # the gate with stdin from /dev/null.
-cat >/dev/null 2>&1 || true
-exec "$(git rev-parse --show-toplevel)/tools/scripts/preflight.sh" </dev/null
+# Buffer the ref-list first; git closes its write end after sending it, so this
+# won't block.  The lines are "<local ref> <local sha> <remote ref> <remote sha>".
+refs="$(cat 2>/dev/null || true)"
+top="$(git rev-parse --show-toplevel)"
+
+if [[ "${WEK_GATE_FORCE:-0}" != "1" && -f "$top/tools/scripts/lib/gate_marker.sh" ]]; then
+    cd "$top"
+    source tools/scripts/lib/gate_marker.sh
+    pushed=0
+    covered=1
+    while read -r _lref lsha _rref _rsha; do
+        [[ -z "${lsha:-}" ]] && continue
+        # A delete pushes no commit, so there is nothing to verify.
+        [[ "$lsha" =~ ^0+$ ]] && continue
+        pushed=$((pushed + 1))
+        gate_marker_matches "$lsha" || { covered=0; break; }
+    done <<< "$refs"
+    if [[ "$pushed" -gt 0 && "$covered" == "1" ]]; then
+        echo "pre-push: gate already passed for tree $GATE_MATCH_TREE ($GATE_MATCH_AGE) — skipping; WEK_GATE_FORCE=1 to rerun"
+        exit 0
+    fi
+    # Every line was a delete: nothing to gate.  An empty list is not evidence
+    # of anything, so it falls through to the gate.
+    if [[ "$pushed" -eq 0 && -n "${refs//[[:space:]]/}" ]]; then
+        exit 0
+    fi
+fi
+
+exec "$top/tools/scripts/preflight.sh" </dev/null

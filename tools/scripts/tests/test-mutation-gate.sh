@@ -845,6 +845,97 @@ else
     FAIL=$((FAIL + 1))
 fi
 
+# 30-34. A diff-only run's cost scales with the lines changed since origin/main,
+#     not with the push: 50 unpushed commits turned the per-push gate into two
+#     20-minute Mull passes.  Past MULL_DIFF_MAX_LINES the gate must say so and
+#     exit 79 -- a code preflight reports as a warning even under
+#     MUTATION_FATAL=1, unlike 78 -- before building or launching the runner.
+# make_cap_root <n-lines-added-to-FileHelper.cpp> [<n-lines-in-added-file>]:
+# a root with origin/main at a one-line FileHelper.cpp and one commit on top.
+make_cap_root() {
+    local root n_edit="$1" n_new="${2:-0}"
+    root="$(make_root)"
+    mkdir -p "$root/src"
+    printf 'int f(){return 0;}\n' > "$root/src/FileHelper.cpp"
+    git -C "$root" -c user.email=t@t -c user.name=t add src/FileHelper.cpp
+    git -C "$root" -c user.email=t@t -c user.name=t commit -q -m base
+    git -C "$root" update-ref refs/remotes/origin/main HEAD
+    python3 -c "print('\n'.join(f'int line_{i}(){{return {i};}}' for i in range($n_edit)))" \
+        > "$root/src/FileHelper.cpp"
+    if [[ "$n_new" -gt 0 ]]; then
+        python3 -c "print('\n'.join(f'int added_{i}(){{return {i};}}' for i in range($n_new)))" \
+            > "$root/src/NewHelper.cpp"
+        git -C "$root" add src/NewHelper.cpp
+    fi
+    git -C "$root" add src/FileHelper.cpp
+    git -C "$root" -c user.email=t@t -c user.name=t commit -q -m edits
+    printf '%s' "$root"
+}
+cap_body() { report_json "$1" "src/FileHelper.cpp:1:cxx_eq_to_ne"; }
+
+root="$(make_cap_root 30)"
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 MULL_WORKERS=1 MULL_DIFF_MAX_LINES=10 \
+        STUB_REPORT_tst_filehelper="$(cap_body "$root")" "$GATE" --diff-only --strict 2>&1 )"; rc=$?
+launched="$( [[ -f "$root/build/impl-mutation/mull-out/tst_filehelper/observed-ulimit.txt" ]] && echo yes || echo no )"
+check "a diff past MULL_DIFF_MAX_LINES exits 79 and says it is past the cap" "" "$rc" 79 "$out" "past the cap"
+check "a diff past the cap never launches the runner" "" "$launched" no ""
+
+root="$(make_cap_root 30)"
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 MULL_WORKERS=1 MULL_DIFF_MAX_LINES=100 \
+        STUB_REPORT_tst_filehelper="$(cap_body "$root")" "$GATE" --diff-only --strict 2>&1 )"; rc=$?
+launched="$( [[ -f "$root/build/impl-mutation/mull-out/tst_filehelper/observed-ulimit.txt" ]] && echo yes || echo no )"
+check "a diff under the cap still runs Mull and reports its survivors" "" "$rc" 1 "$out" "new surviving mutant"
+check "a diff under the cap launches the runner" "" "$launched" yes ""
+
+# One edited line plus a 30-line new file: only the added-files pass is large,
+# so a cap that sized the gitDiffRef pass alone would let it through.
+root="$(make_cap_root 1 30)"
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 MULL_WORKERS=1 MULL_DIFF_MAX_LINES=10 \
+        STUB_REPORT_tst_filehelper="$(cap_body "$root")" "$GATE" --diff-only --strict 2>&1 )"; rc=$?
+check "lines in a newly added file count toward the cap" "" "$rc" 79 "$out" "past the cap"
+
+# Test sources are excluded from mutation (tests/mull.yml), so a push that
+# carries a lot of new test code must not trip the cap on lines Mull never
+# touches.
+root="$(make_cap_root 1)"
+mkdir -p "$root/tests"
+python3 -c "print('\n'.join(f'void t_{i}(){{}}' for i in range(60)))" > "$root/tests/tst_filehelper.cpp"
+git -C "$root" add tests/tst_filehelper.cpp
+git -C "$root" -c user.email=t@t -c user.name=t commit -q -m tests
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 MULL_WORKERS=1 MULL_DIFF_MAX_LINES=10 \
+        STUB_REPORT_tst_filehelper="$(cap_body "$root")" "$GATE" --diff-only --strict 2>&1 )"; rc=$?
+launched="$( [[ -f "$root/build/impl-mutation/mull-out/tst_filehelper/observed-ulimit.txt" ]] && echo yes || echo no )"
+check "test-source lines do not count toward the cap" "" "$rc" 1 "$out" "new surviving mutant"
+check "a diff whose bulk is test code still launches the runner" "" "$launched" yes ""
+
+root="$(make_cap_root 30)"
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 MULL_WORKERS=1 MULL_DIFF_MAX_LINES=0 \
+        STUB_REPORT_tst_filehelper="$(cap_body "$root")" "$GATE" --diff-only --strict 2>&1 )"; rc=$?
+check "MULL_DIFF_MAX_LINES=0 lifts the cap" "" "$rc" 1 "$out" "new surviving mutant"
+
+# The submodule is its own repo with its own origin/main, so its diff is sized
+# against that ref, not the parent's.
+root="$(make_root)"
+gitp() { git -C "$root" -c user.email=t@t -c user.name=t "$@"; }
+gits() { git -C "$root/src/backend_scene" -c user.email=t@t -c user.name=t "$@"; }
+gits init -q
+mkdir -p "$root/src/backend_scene/src"
+printf 'int g(){return 0;}\n' > "$root/src/backend_scene/src/Big.cpp"
+gits add -A; gits commit -q -m base
+gits update-ref refs/remotes/origin/main HEAD
+gitp add src/backend_scene 2>/dev/null; gitp commit -q -m base-gitlink
+gitp update-ref refs/remotes/origin/main HEAD
+python3 -c "print('\n'.join(f'int line_{i}(){{return {i};}}' for i in range(30)))" \
+    > "$root/src/backend_scene/src/Big.cpp"
+gits add -A; gits commit -q -m edits
+gitp add src/backend_scene 2>/dev/null; gitp commit -q -m bump-gitlink
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 MULL_WORKERS=1 MULL_DIFF_MAX_LINES=10 \
+        STUB_REPORT_backend_scene_tests="$(report_json "$root" "src/backend_scene/src/Big.cpp:1:cxx_eq_to_ne")" \
+        "$GATE" --diff-only --strict 2>&1 )"; rc=$?
+launched="$( [[ -f "$root/build/impl-mutation/mull-out/backend_scene_tests/observed-ulimit.txt" ]] && echo yes || echo no )"
+check "the submodule's own diff is sized against its own origin/main" "" "$rc" 79 "$out" "past the cap"
+check "a capped submodule target never launches the runner" "" "$launched" no ""
+
 echo
 if [[ "$FAIL" -gt 0 ]]; then
     printf '%s%d passed, %d failed%s\n' "$RED" "$PASS" "$FAIL" "$RESET"

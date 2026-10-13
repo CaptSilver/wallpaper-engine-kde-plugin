@@ -49,6 +49,13 @@
 #   includePaths (no gitDiffRef), reported into a second directory that
 #   aggregates alongside the primary pass.  Skipped when nothing was added.
 #
+# Diff size cap:
+#   --diff-only costs roughly one Mull pass per changed line, measured against
+#   origin/main (each repo against its own).  When the lines added since that base
+#   across the selected targets exceed MULL_DIFF_MAX_LINES (default 400; 0 turns
+#   the cap off) the run exits 79 before building anything, so a long unpushed
+#   range doesn't cost an hour at push time.  Those lines are for a full run.
+#
 # MOC ignore:
 #   Mutants in Qt-generated moc_*.cpp / *.moc / *_autogen/ files are dropped
 #   from the survivor set during normalisation — Qt autogen churn would
@@ -68,7 +75,9 @@
 #
 # Exit codes: 0=clean / 1=new survivors (a --migrate-baseline orphan, or a
 #             first-party TU built without Mull's instrumentation) / 2=arg error /
-#             77=runner or build unavailable / 78=no target produced a report.
+#             77=runner or build unavailable / 78=no target produced a report /
+#             79=--diff-only skipped: more than MULL_DIFF_MAX_LINES (default 400) changed
+#             lines, nothing was measured (0 disables the cap).
 set -euo pipefail
 
 # Shared RAM-aware parallelism helper (resolved before the cd below, since it is
@@ -367,6 +376,102 @@ if [[ "$LIST_SOURCES" == "1" ]]; then
     exit 0
 fi
 
+# ── Diff-size helpers (defined ahead of target selection: the cap check runs
+# before the build, and the config/added-files code further down shares them) ──
+MULL_TU_EXCLUDE_RE='(^|/)third_party/|(^|/)src/Test/'
+
+# Which committed mull.yml a target's config derives from, and the project
+# root to run git/Mull operations against for it -- the
+# backend_scene_tests-vs-everything-else branch mull_config_for() and
+# mull_added_files_config_for() both need, factored out here so the two can't
+# quietly diverge on which target maps to which paths.  Writes into
+# _MULL_SRC_YML/_MULL_SRC_ROOT rather than returning via stdout, for the same
+# subshell reason _MULL_CFG_PATH exists below.
+_MULL_SRC_YML=""
+_MULL_SRC_ROOT=""
+mull_src_root_for() {
+    local t="$1"
+    if [[ "$t" == "backend_scene_tests" ]]; then
+        _MULL_SRC_YML="$PWD/src/backend_scene/mull.yml"
+        _MULL_SRC_ROOT="$PWD/src/backend_scene"
+    else
+        # Parent binaries link submodule sources, so they need the exclusions
+        # just as much: without a config they mutate kissfft and vog/sha1, which
+        # is where ~98 of the committed baseline's entries came from.
+        _MULL_SRC_YML="$PWD/tests/mull.yml"
+        _MULL_SRC_ROOT="$PWD"
+    fi
+}
+
+# The base ref a --diff-only run measures against inside <root>: origin/main,
+# else the previous commit.  Empty when neither exists.  Shared by the Mull
+# config and the diff-size cap so the two can't disagree about what "changed"
+# means.  Result goes in _MULL_DIFF_REF (not stdout) for the same subshell
+# reason as _MULL_SRC_YML.
+_MULL_DIFF_REF=""
+mull_diff_ref_for() {
+    local root="$1" ref
+    ref="$(git -C "$root" rev-parse --verify --quiet origin/main 2>/dev/null || true)"
+    [[ -z "$ref" ]] && ref="$(git -C "$root" rev-parse --verify --quiet HEAD~1 2>/dev/null || true)"
+    _MULL_DIFF_REF="$ref"
+}
+
+# Whether target t plausibly compiles first-party file f.  For a parent test
+# binary this reuses SRC_TO_TARGETS -- the same tests/CMakeLists.txt-derived
+# map the diff-only target-selection loop above already trusts for "which
+# targets does this changed file touch", companion-header inference and all
+# (FileHelper.hpp counts wherever FileHelper.cpp does).  Submodule paths
+# aren't in that map at all (mutation_targets.py only reads the parent's
+# tests/CMakeLists.txt), so backend_scene_tests keeps the same coarse "every
+# submodule path counts" policy the target-selection loop already applies to
+# it, rather than reading zero targets here and silently dropping the file.
+#
+# A file with NO entry in SRC_TO_TARGETS at all -- a genuinely new file that
+# isn't wired into any add_executable() yet, or a header the sibling-header
+# heuristic doesn't pair up -- counts for every target rather than none: the
+# map only ever narrows a KNOWN, already-mapped file to the targets that
+# actually compile it, it never becomes grounds to drop an unknown file from
+# every target's measurement (that would just resurrect the added-files
+# pass's original blind spot from the other direction).
+_mull_target_compiles() {
+    local t="$1" f="$2"
+    [[ "$t" == "backend_scene_tests" ]] && return 0
+    [[ -z "${SRC_TO_TARGETS[$f]:-}" ]] && return 0
+    local mapped
+    for mapped in ${SRC_TO_TARGETS[$f]:-}; do
+        [[ "$mapped" == "$t" ]] && return 0
+    done
+    return 1
+}
+
+# Lines added since the diff base across the first-party sources target t
+# compiles, in that target's own repo (the submodule has its own origin/main).
+# This is the cost proxy for BOTH Mull passes: the gitDiffRef pass mutates the
+# changed lines, and the added-files pass mutates every line of a file that did
+# not exist at the base -- which `git diff <ref>` reports as all-added.  Deleted
+# lines cost nothing, so only the added column counts.  Result in _MULL_DIFF_LINES.
+_MULL_DIFF_LINES=0
+mull_diff_lines_for() {
+    local t="$1" root ref adds _del f total=0
+    mull_src_root_for "$t"
+    root="$_MULL_SRC_ROOT"
+    mull_diff_ref_for "$root"
+    ref="$_MULL_DIFF_REF"
+    _MULL_DIFF_LINES=0
+    [[ -z "$ref" ]] && return 0
+    while IFS=$'\t' read -r adds _del f; do
+        [[ "$adds" =~ ^[0-9]+$ ]] || continue          # binary files report "-"
+        [[ "$f" =~ \.(cpp|cc|cxx|h|hpp)$ ]] || continue
+        [[ "$f" =~ $MULL_TU_EXCLUDE_RE ]] && continue
+        # tests/mull.yml excludes the parent's own test sources, so Mull never
+        # mutates them; counting them would cap a push for lines it won't measure.
+        [[ "$t" != "backend_scene_tests" && "$f" =~ ^tests/ ]] && continue
+        _mull_target_compiles "$t" "$f" || continue
+        total=$((total + adds))
+    done < <(git -C "$root" diff --no-renames --numstat "$ref" -- . 2>/dev/null)
+    _MULL_DIFF_LINES="$total"
+}
+
 TARGETS=()
 if [[ -n "$TARGET" ]]; then
     TARGETS=("$TARGET")
@@ -417,6 +522,27 @@ else
     TARGETS=("${ALL_TARGETS[@]}")
 fi
 step "targets: ${TARGETS[*]}"
+
+# A diff-only run costs about a Mull pass per changed line, and "changed" is
+# measured against origin/main, so one push of a long unpushed range can mean
+# an hour of mutation.  Past the cap, say so and stop before the (also slow)
+# build: the unmeasured lines belong to a full sweep, and exit 79 lets
+# preflight warn instead of failing the push over a measurement it skipped.
+MULL_DIFF_MAX_LINES="${MULL_DIFF_MAX_LINES:-400}"
+if [[ "$MODE" == "diff" && "$AGGREGATE_ONLY" != "1" && "$MULL_DIFF_MAX_LINES" != "0" ]]; then
+    _cap_total=0
+    _cap_detail=""
+    for t in "${TARGETS[@]}"; do
+        mull_diff_lines_for "$t"
+        _cap_total=$((_cap_total + _MULL_DIFF_LINES))
+        _cap_detail+=" $t=$_MULL_DIFF_LINES"
+    done
+    if (( _cap_total > MULL_DIFF_MAX_LINES )); then
+        warn "diff-only mutation is past the cap ($_cap_total changed lines > MULL_DIFF_MAX_LINES=$MULL_DIFF_MAX_LINES;$_cap_detail) — not measuring"
+        warn "measure these lines with the full run: tools/scripts/mutation.sh --target <target>, or tools/scripts/mutation-sweep.sh; raise MULL_DIFF_MAX_LINES to force it here (0 = no cap)"
+        exit 79
+    fi
+fi
 
 # ── Build only what's needed ─────────────────────────────────────────────────
 # Bound the instrumented build's own parallelism by available RAM: a -g clang
@@ -745,29 +871,6 @@ MULL_NINJA_BIN="${MULL_NINJA_BIN:-ninja}"
 # call, including the early-return paths, so a target that doesn't reach the
 # diff branch (a full sweep, or one with no mull.yml) never leaves a previous
 # target's config/ref lying around for the next one to misread.
-# Which committed mull.yml a target's config derives from, and the project
-# root to run git/Mull operations against for it -- the
-# backend_scene_tests-vs-everything-else branch mull_config_for() and
-# mull_added_files_config_for() both need, factored out here so the two can't
-# quietly diverge on which target maps to which paths.  Writes into
-# _MULL_SRC_YML/_MULL_SRC_ROOT rather than returning via stdout, for the same
-# subshell reason _MULL_CFG_PATH exists below.
-_MULL_SRC_YML=""
-_MULL_SRC_ROOT=""
-mull_src_root_for() {
-    local t="$1"
-    if [[ "$t" == "backend_scene_tests" ]]; then
-        _MULL_SRC_YML="$PWD/src/backend_scene/mull.yml"
-        _MULL_SRC_ROOT="$PWD/src/backend_scene"
-    else
-        # Parent binaries link submodule sources, so they need the exclusions
-        # just as much: without a config they mutate kissfft and vog/sha1, which
-        # is where ~98 of the committed baseline's entries came from.
-        _MULL_SRC_YML="$PWD/tests/mull.yml"
-        _MULL_SRC_ROOT="$PWD"
-    fi
-}
-
 _MULL_CFG_PATH=""
 _MULL_CFG_ROOT=""
 _MULL_CFG_REF=""
@@ -786,9 +889,9 @@ mull_config_for() {
     # Diff base, resolved inside the submodule -- it has its own history, so the
     # parent's range says nothing about which submodule lines changed.
     ref=""
-    [[ "$MODE" == "diff" ]] && ref="$(git -C "$root" rev-parse --verify --quiet origin/main 2>/dev/null || true)"
     if [[ "$MODE" == "diff" ]]; then
-        [[ -z "$ref" ]] && ref="$(git -C "$root" rev-parse --verify --quiet HEAD~1 2>/dev/null || true)"
+        mull_diff_ref_for "$root"
+        ref="$_MULL_DIFF_REF"
         [[ -z "$ref" ]] && { _MULL_CFG_PATH="$src"; return 0; }
     fi
     _MULL_CFG_REF="$ref"
@@ -813,34 +916,6 @@ mull_config_for() {
 # nothing else.
 _mull_regex_escape() {
     printf '%s' "$1" | sed -e 's/[.[\*^$()+?{}|\\]/\\&/g'
-}
-
-# Whether target t plausibly compiles first-party file f.  For a parent test
-# binary this reuses SRC_TO_TARGETS -- the same tests/CMakeLists.txt-derived
-# map the diff-only target-selection loop above already trusts for "which
-# targets does this changed file touch", companion-header inference and all
-# (FileHelper.hpp counts wherever FileHelper.cpp does).  Submodule paths
-# aren't in that map at all (mutation_targets.py only reads the parent's
-# tests/CMakeLists.txt), so backend_scene_tests keeps the same coarse "every
-# submodule path counts" policy the target-selection loop already applies to
-# it, rather than reading zero targets here and silently dropping the file.
-#
-# A file with NO entry in SRC_TO_TARGETS at all -- a genuinely new file that
-# isn't wired into any add_executable() yet, or a header the sibling-header
-# heuristic doesn't pair up -- counts for every target rather than none: the
-# map only ever narrows a KNOWN, already-mapped file to the targets that
-# actually compile it, it never becomes grounds to drop an unknown file from
-# every target's measurement (that would just resurrect the added-files
-# pass's original blind spot from the other direction).
-_mull_target_compiles() {
-    local t="$1" f="$2"
-    [[ "$t" == "backend_scene_tests" ]] && return 0
-    [[ -z "${SRC_TO_TARGETS[$f]:-}" ]] && return 0
-    local mapped
-    for mapped in ${SRC_TO_TARGETS[$f]:-}; do
-        [[ "$mapped" == "$t" ]] && return 0
-    done
-    return 1
 }
 
 # A file added since the diff base is invisible to Mull's own git filter:
@@ -918,7 +993,6 @@ mull_added_files_config_for() {
 # recurrence the way this one was originally found: ask ninja for the
 # target's own compile commands (resolved transitively through every static
 # library it links) and look for a first-party TU with no -fpass-plugin.
-MULL_TU_EXCLUDE_RE='(^|/)third_party/|(^|/)src/Test/'
 
 # Pulls the argument to -c out of one ninja compile-command line, robust to a
 # path containing a space: ninja quotes such an argument (double or single

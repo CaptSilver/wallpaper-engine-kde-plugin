@@ -413,6 +413,10 @@ QtObject {
             stop: () => {
                 timer.volumeFade = 0.0;
                 timer.stop();
+            },
+            // Stop following the volume binding; keep the current target.
+            freeze: () => {
+                timer.volume = timer.volume;
             }
         };
     }

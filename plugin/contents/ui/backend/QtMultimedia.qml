@@ -118,6 +118,8 @@ Item{
     function freezeOptions() {
         displayMode = displayMode;
         player.playbackRate = player.playbackRate;
+        audioOut.muted = audioOut.muted;
+        volumeFade.freeze();
     }
     function getMouseTarget() {
     }

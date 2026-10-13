@@ -125,6 +125,8 @@ Item{
     function freezeOptions() {
         displayMode = displayMode;
         videoRate = videoRate;
+        player.mute = player.mute;
+        volumeFade.freeze();
     }
     function pause(){
         volumeFade.stop();

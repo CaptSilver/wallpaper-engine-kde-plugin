@@ -266,6 +266,9 @@ Item{
         displayMode = displayMode;
         userPropsJson = userPropsJson;
         player.speed = player.speed;
+        player.postprocessingOverride = player.postprocessingOverride;
+        player.muted = player.muted;
+        volumeFade.freeze();
     }
     function getMouseTarget() {
         return Qt.binding(function() { return player; })

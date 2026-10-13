@@ -82,6 +82,10 @@
       <label>Power-saving video playback: cheap scaling, frames at the video's own rate, capped at the Fps setting</label>
       <default>false</default>
     </entry>
+    <entry name="VerboseLogging" type="Bool">
+      <label>Verbose logging</label>
+      <default>false</default>
+    </entry>
     <entry name="MouseInput" type="Bool">
       <label>Mouse Input</label>
       <default>true</default>

@@ -42,6 +42,7 @@ Item {
         "UserPaused":          false,
         "MpvStats":            false,
         "MpvPowerSaving":      false,
+        "VerboseLogging":      false,
         "MouseInput":          false,
         "AnimatedPreview":     false,
         "Fps":                 30,

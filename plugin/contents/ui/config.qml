@@ -44,6 +44,7 @@ ColumnLayout {
     property alias  cfg_Volume:              settingPage.cfg_Volume
     property alias  cfg_MpvStats:            settingPage.cfg_MpvStats
     property alias  cfg_MpvPowerSaving:      settingPage.cfg_MpvPowerSaving
+    property alias  cfg_VerboseLogging:      settingPage.cfg_VerboseLogging
     property alias  cfg_Speed:               settingPage.cfg_Speed
     property alias  cfg_MuteAudio:           settingPage.cfg_MuteAudio
     property alias  cfg_MouseInput:          settingPage.cfg_MouseInput

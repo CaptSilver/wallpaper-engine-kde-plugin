@@ -20,6 +20,7 @@ Flickable {
     property alias cfg_Volume: sliderVol.value
     property alias cfg_MpvStats: ckbox_mpvStats.checked
     property alias cfg_MpvPowerSaving: ckbox_mpvPowerSaving.checked
+    property alias cfg_VerboseLogging: ckbox_verboseLogging.checked
     property alias cfg_Speed: spin_speed.dValue
     property alias cfg_MuteAudio: ckbox_muteAudio.checked
     property alias cfg_MouseInput: ckbox_mouseInput.checked
@@ -468,6 +469,17 @@ Flickable {
                              && cfg_AnimatedPreview
                     type: Kirigami.MessageType.Information
                     text: i18nc("@info reduced motion hint banner", "Reduced motion is enabled system-wide. Consider disabling Animated Preview for less motion in this plugin.")
+                }
+            }
+
+            OptionItem {
+                text: i18nc("@label settings option", "Verbose logging")
+                text_color: Kirigami.Theme.textColor
+                icon: '../../images/information-outline.svg'
+                actor: Switch {
+                    id: ckbox_verboseLogging
+                    ToolTip.visible: hovered
+                    ToolTip.text: i18nc("@info:tooltip", "Write detailed renderer messages to the system journal. Turn it on when reporting a bug, then off again.")
                 }
             }
        }

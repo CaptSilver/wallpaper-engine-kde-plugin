@@ -30,6 +30,14 @@ QtObject {
     // pause source fired and what it decided, without a real journal.
     property var pauseTransitionLog: []
 
+    // Records every setVerboseLogging() call (the real one flips the
+    // renderer's INFO log gate) so a test can assert what main.qml passed.
+    property var verboseLoggingLog: []
+
+    function setVerboseLogging(enabled) {
+        verboseLoggingLog.push(!!enabled);
+    }
+
     function lastError() {
         return nextLastError;
     }

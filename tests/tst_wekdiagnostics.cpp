@@ -8,7 +8,9 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QUrl>
+#include <unistd.h>
 #include "../src/WekDiagnostics.hpp"
+#include "Utils/Logging.h"
 #include "TestGettextLocale.h"
 #include "TestSandbox.h"
 
@@ -484,6 +486,72 @@ WallpaperWorkShopId=1234567
         WekDiagnostics diag;
         QTest::ignoreMessage(QtInfoMsg, QRegularExpression("screensaver.*pause"));
         diag.logPauseTransition(QStringLiteral("screensaver"), /*playing=*/false);
+    }
+
+    // Any WEKDE_ switch can turn INFO on (the renderer's list grows with its
+    // diagnostics), so clear them all rather than naming a few.
+    static void clearWekdeEnv() {
+        QList<QByteArray> names;
+        for (char** e = environ; *e != nullptr; ++e) {
+            const QByteArray entry(*e);
+            if (entry.startsWith("WEKDE_")) names << entry.left(entry.indexOf('='));
+        }
+        for (const auto& name : names) qunsetenv(name.constData());
+    }
+
+    // The settings switch drives the renderer's INFO gate.  Turning it off
+    // must hand control back to the environment, not force INFO off under
+    // someone who started plasmashell with WEKDE_LOG_INFO=1.
+    void testSetVerboseLogging_followsTheSwitchWithoutEnv() {
+        clearWekdeEnv();
+        WekDiagnostics diag;
+        diag.setVerboseLogging(true);
+        QVERIFY(wallpaper::LogInfoEnabled());
+        diag.setVerboseLogging(false);
+        QVERIFY(! wallpaper::LogInfoEnabled());
+    }
+
+    void testSetVerboseLogging_offKeepsInfoThatTheEnvironmentTurnedOn() {
+        clearWekdeEnv();
+        qputenv("WEKDE_LOG_INFO", "1");
+        WekDiagnostics diag;
+        diag.setVerboseLogging(false);
+        QVERIFY(wallpaper::LogInfoEnabled());
+        qunsetenv("WEKDE_LOG_INFO");
+        diag.setVerboseLogging(false);
+        QVERIFY(! wallpaper::LogInfoEnabled());
+    }
+
+    // Every screen has its own WekDiagnostics but the INFO gate is one flag
+    // per process, so the switch is an OR across live instances.
+    void testSetVerboseLogging_isAnOrAcrossInstances() {
+        clearWekdeEnv();
+        auto* a = new WekDiagnostics;
+        auto  b = std::make_unique<WekDiagnostics>();
+        a->setVerboseLogging(true);
+        b->setVerboseLogging(false);
+        QVERIFY(wallpaper::LogInfoEnabled());
+        delete a;
+        QVERIFY(! wallpaper::LogInfoEnabled());
+
+        b->setVerboseLogging(true);
+        {
+            WekDiagnostics neverVoted;
+            neverVoted.setVerboseLogging(false);
+        }
+        QVERIFY(wallpaper::LogInfoEnabled());
+        b->setVerboseLogging(false);
+        QVERIFY(! wallpaper::LogInfoEnabled());
+    }
+
+    void testSetVerboseLogging_destroyingTheOnlyVoterTurnsInfoOff() {
+        clearWekdeEnv();
+        {
+            WekDiagnostics a;
+            a.setVerboseLogging(true);
+            QVERIFY(wallpaper::LogInfoEnabled());
+        }
+        QVERIFY(! wallpaper::LogInfoEnabled());
     }
 };
 

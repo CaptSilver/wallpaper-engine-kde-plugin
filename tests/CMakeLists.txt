@@ -667,12 +667,18 @@ add_custom_command(OUTPUT "${_diag_i18n_fixture_mo}"
     VERBATIM)
 add_custom_target(wek_diag_i18n_test_fixture DEPENDS "${_diag_i18n_fixture_mo}")
 
+# setVerboseLogging() flips the renderer's INFO switch, so the test binary
+# carries the renderer's Logging.cpp (and Sha.cpp, which it calls) directly.
 add_executable(tst_wekdiagnostics
     tst_wekdiagnostics.cpp
-    ${WEKDE_SRC_DIR}/WekDiagnostics.cpp)
+    ${WEKDE_SRC_DIR}/WekDiagnostics.cpp
+    ${WEKDE_SRC_DIR}/backend_scene/src/Utils/Logging.cpp
+    ${WEKDE_SRC_DIR}/backend_scene/src/Utils/Sha.cpp)
 add_dependencies(tst_wekdiagnostics wek_diag_i18n_test_fixture)
 target_include_directories(tst_wekdiagnostics PRIVATE ${WEKDE_SRC_DIR}
-    ${WEKDE_RENDERER_HEADER_DIRS})
+    ${WEKDE_RENDERER_HEADER_DIRS}
+    ${WEKDE_SRC_DIR}/backend_scene/src/Utils/include/Utils
+    ${WEKDE_SRC_DIR}/backend_scene/third_party)
 target_link_libraries(tst_wekdiagnostics PRIVATE Qt6::Test Qt6::Core KF6::I18n)
 target_compile_definitions(tst_wekdiagnostics PRIVATE
     WEK_VERSION="testbuild"

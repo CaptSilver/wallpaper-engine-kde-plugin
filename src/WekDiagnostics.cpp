@@ -1,5 +1,6 @@
 #include "WekDiagnostics.hpp"
 #include "CachePaths.hpp"
+#include "Utils/Logging.h"
 #include <KLocalizedString>
 #include <QDateTime>
 #include <QDir>
@@ -12,6 +13,7 @@
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <algorithm>
+#include <cstdlib>
 
 #ifndef WEK_VERSION
 #    define WEK_VERSION "unknown"
@@ -26,6 +28,34 @@ WekDiagnostics::WekDiagnostics(QObject* parent): QObject(parent) {}
 
 void WekDiagnostics::logPauseTransition(const QString& source, bool playing) {
     qCInfo(lcWekPause) << source << (playing ? "play" : "pause");
+}
+
+namespace
+{
+// Live instances whose switch is on; GUI thread only.
+int g_verboseVotes = 0;
+
+void applyVerboseLogging() {
+    const bool fromEnv = wallpaper::LogInfoEnabledFromEnv([](const char* name) -> const char* {
+        return std::getenv(name);
+    });
+    wallpaper::SetLogInfoEnabled(g_verboseVotes > 0 || fromEnv);
+}
+} // namespace
+
+WekDiagnostics::~WekDiagnostics() {
+    if (m_verboseVote) {
+        --g_verboseVotes;
+        applyVerboseLogging();
+    }
+}
+
+void WekDiagnostics::setVerboseLogging(bool enabled) {
+    if (enabled != m_verboseVote) {
+        m_verboseVote = enabled;
+        g_verboseVotes += enabled ? 1 : -1;
+    }
+    applyVerboseLogging();
 }
 
 QString WekDiagnostics::saveBundle() {

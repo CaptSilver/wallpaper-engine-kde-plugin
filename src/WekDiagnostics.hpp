@@ -24,6 +24,7 @@ class WekDiagnostics : public QObject {
     Q_OBJECT
 public:
     explicit WekDiagnostics(QObject* parent = nullptr);
+    ~WekDiagnostics() override;
 
     // Synchronous (~3-5 seconds total — journalctl tail is the slow part).
     // Returns the absolute path to the created bundle, or empty string on
@@ -47,6 +48,13 @@ public:
     // `playing` is that source's own resulting request, true for play,
     // false for pause.
     Q_INVOKABLE void logPauseTransition(const QString& source, bool playing);
+
+    // Settings-page "Verbose logging" switch: turns the renderer's INFO log
+    // lines on or off at runtime. The INFO gate is one flag per process but
+    // each screen has its own instance, so the result is an OR across all
+    // live instances' switches and the environment (WEKDE_LOG_INFO and
+    // friends). An instance's vote is withdrawn when it is destroyed.
+    Q_INVOKABLE void setVerboseLogging(bool enabled);
 
     // Test hooks — exposed for tst_wekdiagnostics; not part of the
     // production QML API.
@@ -74,6 +82,7 @@ private:
     bool           pack(const QString& outPath, const QMap<QString, QByteArray>& files);
 
     QString m_lastError;
+    bool    m_verboseVote = false;
 };
 
 } // namespace wekde

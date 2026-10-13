@@ -32,6 +32,7 @@ Rectangle {
     property bool   animatedPreview: wallpaper.configuration.AnimatedPreview
     property bool   mpvStats: wallpaper.configuration.MpvStats
     property bool   mpvPowerSaving: wallpaper.configuration.MpvPowerSaving
+    property bool   verboseLogging: wallpaper.configuration.VerboseLogging
 
     property string videoFolderPath: wallpaper.configuration.VideoFolderPath
     property int    cacheQuotaMB: wallpaper.configuration.CacheQuotaMB
@@ -272,6 +273,8 @@ Rectangle {
         const wid = wallpaper.configuration.WallpaperWorkShopId;
         if (wid) readOptions(wid);
     }
+
+    onVerboseLoggingChanged: diagnostics.setVerboseLogging(verboseLogging)
 
     onMouseInputChanged: {
         if(this.mouseInput) {
@@ -855,6 +858,8 @@ Rectangle {
     }
 
     Component.onCompleted: {
+        diagnostics.setVerboseLogging(verboseLogging);
+
         // hasLib capability probe — see the property declaration above for
         // why this lives here instead of as a binding.
         hasLib = Common.checklib_wallpaper(background);

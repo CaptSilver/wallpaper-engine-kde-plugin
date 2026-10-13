@@ -153,6 +153,10 @@ private slots:
     void beginShutdown_quitsCoreWithoutWaitingOnIt();
     void stopAsync_detachesEventsAndReturnsImmediately();
     void stopAsync_uninitializedOrRepeated_isSafe();
+    void powerSaving_setsFastOptions_andRestoresPrevious();
+    void powerSaving_defaultOff_leavesOptionsAlone();
+    void frameCapDelayMs_table();
+    void maxFps_negativeClampsToUncapped();
     void beginShutdown_neverInitializedCore_doesNotWarn();
     void beginShutdown_healthyCore_doesNotWarn();
     void beginShutdown_quitRejectedByChokedCore_warns();
@@ -853,6 +857,62 @@ void TestMpvBackend::stopAsync_uninitializedOrRepeated_isSafe() {
     obj->stopAsync();
     obj->stopAsync(); // idempotent: detach twice, second async stop is a no-op
     obj.reset();      // and the normal teardown still runs afterwards
+}
+
+// MpvPowerSaving flips a fixed set of mpv options (the built-in `fast`
+// profile plus video-sync=audio) and must put back exactly what was there,
+// since mpv's own defaults for them differ between versions.
+void TestMpvBackend::powerSaving_setsFastOptions_andRestoresPrevious() {
+    auto obj = makeObject();
+    QVERIFY(obj->initialized());
+    QMap<QString, QString> before;
+    for (const auto& [name, value] : MpvObject::powerSavingOptions())
+        before[name] = obj->getProperty(QString::fromLatin1(name)).toString();
+
+    QSignalSpy spy(obj.get(), &MpvObject::powerSavingChanged);
+    obj->setPowerSaving(true);
+    QCOMPARE(spy.count(), 1);
+    QVERIFY(obj->powerSaving());
+    QCOMPARE(obj->getProperty("video-sync").toString(), QStringLiteral("audio"));
+    QCOMPARE(obj->getProperty("scale").toString(), QStringLiteral("bilinear"));
+    QCOMPARE(obj->getProperty("dscale").toString(), QStringLiteral("bilinear"));
+
+    obj->setPowerSaving(true); // no-op, no second signal
+    QCOMPARE(spy.count(), 1);
+
+    obj->setPowerSaving(false);
+    QCOMPARE(spy.count(), 2);
+    for (const auto& [name, value] : MpvObject::powerSavingOptions())
+        QCOMPARE(obj->getProperty(QString::fromLatin1(name)).toString(), before[name]);
+    // The constructor's own choice survives a round trip.
+    QCOMPARE(obj->getProperty("video-sync").toString(), QStringLiteral("display-resample"));
+}
+
+void TestMpvBackend::powerSaving_defaultOff_leavesOptionsAlone() {
+    auto obj = makeObject();
+    QVERIFY(! obj->powerSaving());
+    QCOMPARE(obj->maxFps(), 0);
+    QCOMPARE(obj->getProperty("video-sync").toString(), QStringLiteral("display-resample"));
+}
+
+void TestMpvBackend::frameCapDelayMs_table() {
+    QCOMPARE(MpvObject::frameCapDelayMs(0, 0), 0); // uncapped: always now
+    QCOMPARE(MpvObject::frameCapDelayMs(-5, 3), 0);
+    QCOMPARE(MpvObject::frameCapDelayMs(30, 0), 33); // right after a draw: hold
+    QCOMPARE(MpvObject::frameCapDelayMs(30, 20), 13);
+    QCOMPARE(MpvObject::frameCapDelayMs(30, 33), 0); // interval elapsed: draw
+    QCOMPARE(MpvObject::frameCapDelayMs(30, 500), 0);
+    QCOMPARE(MpvObject::frameCapDelayMs(24, 10), 31);
+}
+
+void TestMpvBackend::maxFps_negativeClampsToUncapped() {
+    auto       obj = makeObject();
+    QSignalSpy spy(obj.get(), &MpvObject::maxFpsChanged);
+    obj->setMaxFps(30);
+    QCOMPARE(obj->maxFps(), 30);
+    obj->setMaxFps(-1);
+    QCOMPARE(obj->maxFps(), 0);
+    QCOMPARE(spy.count(), 2);
 }
 
 #include "tst_mpvbackend.moc"

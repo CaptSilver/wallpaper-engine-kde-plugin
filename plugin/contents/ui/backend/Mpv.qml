@@ -66,6 +66,10 @@ Item{
         anchors.fill: parent
         mute: background.mute
         volume: 0
+        // Opt-in power saving: cheap scalers, the video's own frame rate, and
+        // at most as many redraws per second as scenes get (Fps setting).
+        powerSaving: background.mpvPowerSaving
+        maxFps: background.mpvPowerSaving ? background.fps : 0
         Connections {
             ignoreUnknownSignals: true
             function onFirstFrame() {
@@ -126,6 +130,8 @@ Item{
         displayMode = displayMode;
         videoRate = videoRate;
         player.mute = player.mute;
+        player.powerSaving = player.powerSaving;
+        player.maxFps = player.maxFps;
         volumeFade.freeze();
     }
     // Called by main.qml once this backend has faded out, some time before

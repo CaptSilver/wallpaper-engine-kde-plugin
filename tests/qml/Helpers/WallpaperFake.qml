@@ -41,6 +41,7 @@ Item {
         "NoRandomWhilePaused": false,
         "UserPaused":          false,
         "MpvStats":            false,
+        "MpvPowerSaving":      false,
         "MouseInput":          false,
         "AnimatedPreview":     false,
         "Fps":                 30,

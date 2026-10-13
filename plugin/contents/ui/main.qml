@@ -319,10 +319,10 @@ Rectangle {
         if(background.Window) {
             let hookParent = null;
             // Plasma 5: MouseEventListener → QQuickGridView
-            const screenArea = Common.findItem(Window.contentItem, "MouseEventListener");
-            if(screenArea !== null) {
-                hookParent = Common.findItem(screenArea, "QQuickGridView");
-            }
+//            const screenArea = Common.findItem(Window.contentItem, "MouseEventListener");
+//            if(screenArea !== null) {
+//                hookParent = Common.findItem(screenArea, "QQuickGridView");
+//            }
             // Plasma 6: AppletsLayout (desktop widget/icon area)
             if(hookParent === null) {
                 hookParent = Common.findItem(Window.contentItem, "AppletsLayout");

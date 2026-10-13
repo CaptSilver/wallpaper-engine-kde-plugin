@@ -188,19 +188,15 @@ KCM.GridView {
 
             Component {
                 id: animatedPre
-                AnimatedImage {
+                // Not a bare AnimatedImage: a preview.gif whose first frame
+                // fails to decode crashes Qt 6.12's (see PreviewAnimatedImage).
+                PreviewAnimatedImage {
                     anchors.fill: parent
                     source: Common.getWpModelPreviewSource(model);
-                    sourceSize.width: parent.width
+                    sourceWidth: parent.width
                     fillMode: Image.PreserveAspectCrop
-                    clip: true
                     cache: false
-                    asynchronous: true
-                    smooth: true
-                    visible: true
-                    paused: false
                     onVisibleChanged: paused = !visible
-                    onStatusChanged: playing = (status == AnimatedImage.Ready)
                 }
             }
 

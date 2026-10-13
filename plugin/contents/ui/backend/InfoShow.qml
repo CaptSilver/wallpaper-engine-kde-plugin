@@ -13,6 +13,8 @@ import ".."
 
 Item {
     id: infoItem
+    // Static pane: counts as shown immediately (see main.qml handoff).
+    property bool frameShown: true
     anchors.fill: parent
     property string info: "error"
     property string type: "unknown"

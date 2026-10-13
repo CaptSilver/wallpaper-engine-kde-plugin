@@ -111,6 +111,11 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 # time, and RELRO+now+noexecstack at link.
 target_compile_options(${PROJECT_NAME} PRIVATE ${wek_warn_opts} ${wek_harden_opts})
 target_link_options(${PROJECT_NAME} PRIVATE ${wek_harden_link_opts})
+# Qt unloads a QML plugin when the engine that imported it is torn down (System
+# Settings closing the wallpaper page). Threads this plugin starts -- PulseAudio
+# capture, file-scan pools -- can still be running code from it then, so keep
+# the library mapped for the life of the process.
+target_link_options(${PROJECT_NAME} PRIVATE -Wl,-z,nodelete)
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_VISIBILITY_PRESET hidden)
 set_target_properties(${PROJECT_NAME}
                        PROPERTIES LINK_FLAGS "-Wl,--exclude-libs,ALL")

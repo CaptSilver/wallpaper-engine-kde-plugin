@@ -1,3 +1,6 @@
+#include "GuiThreadOnce.hpp"
+#include "WallpaperHost.hpp"
+#include <mutex>
 #include <QQmlExtensionPlugin>
 #include <QQmlEngine>
 #include <QCoreApplication>
@@ -101,36 +104,9 @@ public:
     void registerTypes(const char* uri) override {
         if (strcmp(uri, "com.github.captsilver.wallpaperEngineKde") != 0) return;
 
-        // Register with KCrash so DrKonqi catches crashes in this plugin
-        // .so.  plasmashell already registers (KCrash::initialize() is
-        // idempotent), so this is just defensive in case the plugin is
-        // dlopen'd before plasmashell has run init.
-        //
-        // KF6 6.x removed setApplicationProductName / setApplicationVersion /
-        // setBugAddress from the KCrash namespace; the equivalent metadata
-        // is now sourced from KAboutData::applicationData().  Plasmashell
-        // already sets that for the running shell, so DrKonqi still has
-        // enough to surface a useful crash report.  If we ever ship a
-        // standalone wallpaper-host process this is where we'd set up a
-        // KAboutData for it.
-        KCrash::initialize();
-
-        qputenv("QML_XHR_ALLOW_FILE_READ", "1");
-        // Allow web wallpapers to make cross-origin requests (XHR/fetch).
-        // Wallpaper Engine (Windows) uses CEF with --disable-web-security;
-        // many workshop wallpapers rely on this for weather/API calls.
-        {
-            QByteArray flags = qgetenv("QTWEBENGINE_CHROMIUM_FLAGS");
-            if (! flags.contains("--disable-web-security")) {
-                if (! flags.isEmpty()) flags.append(' ');
-                flags.append("--disable-web-security");
-                qputenv("QTWEBENGINE_CHROMIUM_FLAGS", flags);
-            }
-        }
         qmlRegisterType<wekde::PluginInfo>(uri, WPVer[0], WPVer[1], "PluginInfo");
         qmlRegisterType<wekde::MouseGrabber>(uri, WPVer[0], WPVer[1], "MouseGrabber");
         qmlRegisterType<scenebackend::SceneObject>(uri, WPVer[0], WPVer[1], "SceneViewer");
-        std::setlocale(LC_NUMERIC, "C");
         qmlRegisterType<mpv::MpvObject>(uri, WPVer[0], WPVer[1], "Mpv");
         qmlRegisterType<wekde::TTYSwitchMonitor>(uri, WPVer[0], WPVer[1], "TTYSwitchMonitor");
         qmlRegisterType<wekde::ScreenSaverMonitor>(uri, WPVer[0], WPVer[1], "ScreenSaverMonitor");
@@ -159,21 +135,59 @@ public:
         qmlRegisterType<wekde::WekNotifier>(uri, WPVer[0], WPVer[1], "WekNotifier");
         qmlRegisterType<wekde::WekDiagnostics>(uri, WPVer[0], WPVer[1], "WekDiagnostics");
         qmlRegisterType<wekde::ActivityHelper>(uri, WPVer[0], WPVer[1], "ActivityHelper");
-
-#ifdef WEKDE_HAS_GLOBALACCEL
-        // Register KGlobalAccel-bound actions.  Construct once per process
-        // (qApp ownership ensures the KActionCollection lives as long as
-        // the host process).  KGlobalAccel dedupes by action id within the
-        // component name, so multi-plasmoid construction is harmless.
-        static auto* shortcuts = new wekde::WekShortcuts(qApp);
-        Q_UNUSED(shortcuts);
-#endif
     }
 
     void initializeEngine(QQmlEngine* engine, const char* uri) override {
         QQmlExtensionPlugin::initializeEngine(engine, uri);
         if (strcmp(uri, "com.github.captsilver.wallpaperEngineKde") != 0) return;
+        // registerTypes only registers types: Qt may call it on its QML
+        // type-loader thread (an asynchronous import, as System Settings
+        // does), where process-wide setup created QObjects parented to qApp
+        // from the wrong thread. Qt hands initializeEngine to the engine's
+        // thread; RunOnceOnGuiThread keeps the setup there regardless.
+        static std::once_flag processSetup;
+        wekde::RunOnceOnGuiThread(processSetup, setUpProcess);
         purgeStaleQmlCacheOnce();
+    }
+
+private:
+    static void setUpProcess() {
+        // Register with KCrash so DrKonqi catches crashes in this plugin
+        // .so.  plasmashell already registers (KCrash::initialize() is
+        // idempotent), so this is just defensive in case the plugin is
+        // dlopen'd before plasmashell has run init.
+        //
+        // KF6 6.x removed setApplicationProductName / setApplicationVersion /
+        // setBugAddress from the KCrash namespace; the equivalent metadata
+        // is now sourced from KAboutData::applicationData().  Plasmashell
+        // already sets that for the running shell, so DrKonqi still has
+        // enough to surface a useful crash report.  If we ever ship a
+        // standalone wallpaper-host process this is where we'd set up a
+        // KAboutData for it.
+        KCrash::initialize();
+
+        qputenv("QML_XHR_ALLOW_FILE_READ", "1");
+        // Allow web wallpapers to make cross-origin requests (XHR/fetch).
+        // Wallpaper Engine (Windows) uses CEF with --disable-web-security;
+        // many workshop wallpapers rely on this for weather/API calls.
+        {
+            QByteArray flags = qgetenv("QTWEBENGINE_CHROMIUM_FLAGS");
+            if (! flags.contains("--disable-web-security")) {
+                if (! flags.isEmpty()) flags.append(' ');
+                flags.append("--disable-web-security");
+                qputenv("QTWEBENGINE_CHROMIUM_FLAGS", flags);
+            }
+        }
+        // mpv refuses to start under a non-C LC_NUMERIC.
+        std::setlocale(LC_NUMERIC, "C");
+#ifdef WEKDE_HAS_GLOBALACCEL
+        // Register KGlobalAccel-bound actions.  Construct once per process
+        // (qApp ownership ensures the KActionCollection lives as long as
+        // the host process), and only in plasmashell: the actions drive the
+        // running wallpaper, which no settings-only host has.
+        if (wekde::HostsWallpapers(QCoreApplication::applicationName()))
+            new wekde::WekShortcuts(qApp);
+#endif
     }
 };
 

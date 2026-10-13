@@ -56,7 +56,7 @@ Item {
         "CustomConf":          "",
         "HdrOutput":           false,
         "PostProcessing":      "",
-        "SystemAudioCapture":  false,
+        "SystemAudioCapture":  true,      // matches main.xml default
         "VideoFolderPath":     "",
         "ActivePlaylistId":    "",
         "CurrentItemIndex":    0,

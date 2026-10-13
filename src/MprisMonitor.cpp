@@ -1,6 +1,7 @@
 #include "MprisMonitor.hpp"
 
 #include <QDBusInterface>
+#include <QDBusObjectPath>
 #include <QDBusMessage>
 #include <QDBusPendingCall>
 #include <QDBusPendingCallWatcher>
@@ -13,11 +14,19 @@
 #include <QSet>
 #include <QUrl>
 #include <QDebug>
+#include <QLoggingCategory>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 
 using namespace wekde;
+
+// Qt's default logging category disables debug-level output out of the box
+// (isDebugEnabled() is false with no rules file or QT_LOGGING_RULES set at
+// all) — a bare qDebug() connection trace never reaches the journal in a
+// normal plasmashell session. Route it through a named category at Info
+// level instead, the way the renderer's wekdeScene category already does.
+Q_LOGGING_CATEGORY(lcWekMpris, "wekde.mpris")
 
 static const char* MPRIS_PREFIX    = "org.mpris.MediaPlayer2.";
 static const char* MPRIS_PATH      = "/org/mpris/MediaPlayer2";
@@ -85,8 +94,29 @@ MprisMetadata wekde::parseMprisMetadata(const QVariantMap& meta) {
     out.albumArtist     = meta.value("xesam:albumArtist").toStringList().join(", ");
     out.genres          = meta.value("xesam:genre").toStringList().join(", ");
     out.artUrl          = meta.value("mpris:artUrl").toString();
-    out.duration        = meta.value("mpris:length", 0).toLongLong() / 1e6; // µs → s
+    // An object path on the bus; plain-map callers (tests) may pass a string.
+    const QVariant trackId = meta.value("mpris:trackid");
+    out.trackId  = trackId.canConvert<QDBusObjectPath>() ? trackId.value<QDBusObjectPath>().path()
+                                                         : trackId.toString();
+    out.duration = meta.value("mpris:length", 0).toLongLong() / 1e6; // µs → s
     return out;
+}
+
+int wekde::mprisPlayerRank(const QString& service, bool playing) {
+    static const QString browserIntegration =
+        QStringLiteral("org.mpris.MediaPlayer2.plasma-browser-integration");
+    return (playing ? 2 : 0) + (service == browserIntegration ? 1 : 0);
+}
+
+bool wekde::mprisScanCandidateBetter(int rank, int index, int bestRank, int bestIndex) {
+    if (bestIndex < 0) return true;
+    return rank > bestRank || (rank == bestRank && index < bestIndex);
+}
+
+QString wekde::mprisEffectiveArtUrl(const QString& prevTrack, const QString& prevArt,
+                                    const QString& newTrack, const QString& newArt) {
+    if (newArt.isEmpty() && newTrack == prevTrack) return prevArt;
+    return newArt;
 }
 
 MprisArtUrlKind wekde::classifyArtUrl(const QString& artUrl) {
@@ -153,7 +183,7 @@ void MprisMonitor::findActivePlayer() {
     const quint64 gen = ++m_scanGeneration;
     m_scanPending     = 0;
     m_scanBest.clear();
-    m_scanFoundPlaying = false;
+    m_scanBestRank = -1;
 
     QDBusMessage listMsg = QDBusMessage::createMethodCall(
         "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "ListNames");
@@ -193,20 +223,13 @@ void MprisMonitor::findActivePlayer() {
                                 QDBusPendingReply<QVariant> statusReply = *sw2;
                                 const bool playing = statusReply.isValid() &&
                                                      statusReply.value().toString() == "Playing";
-                                // Match the old synchronous preference exactly: the
-                                // lowest-ListNames-index "Playing" player wins; with
-                                // nothing playing, the lowest-index player wins. A
-                                // playing candidate always beats a non-playing one;
-                                // among equal playing-ness, the lower index wins.
-                                // Tracking by index keeps this stable no matter what
-                                // order the async replies arrive in.
-                                const bool better =
-                                    m_scanBestIndex < 0 || (playing && ! m_scanFoundPlaying) ||
-                                    (playing == m_scanFoundPlaying && i < m_scanBestIndex);
+                                const int  rank    = wekde::mprisPlayerRank(name, playing);
+                                const bool better  = wekde::mprisScanCandidateBetter(
+                                    rank, i, m_scanBestRank, m_scanBestIndex);
                                 if (better) {
-                                    m_scanBestIndex    = i;
-                                    m_scanBest         = name;
-                                    m_scanFoundPlaying = playing;
+                                    m_scanBestIndex = i;
+                                    m_scanBest      = name;
+                                    m_scanBestRank  = rank;
                                 }
 
                                 if (--m_scanPending <= 0 && ! m_scanBest.isEmpty()) {
@@ -233,7 +256,7 @@ void MprisMonitor::connectToPlayer(const QString& service) {
     emit mediaAvailableChanged(true);
 
     fetchAllProperties();
-    qDebug() << "MprisMonitor: connected to" << service;
+    qCInfo(lcWekMpris) << "MprisMonitor: connected to" << service;
 }
 
 void MprisMonitor::disconnectFromPlayer() {
@@ -262,6 +285,7 @@ void MprisMonitor::disconnectFromPlayer() {
     // never updates. m_lastArtUrl + m_artUrlEverProcessed are bound to
     // the previous connection's lifetime, not the wallpaper's.
     m_lastArtUrl.clear();
+    m_lastTrackKey.clear();
     m_artUrlEverProcessed = false;
     // Art already in flight belongs to the player we are leaving: without this
     // a decode or cover fetch from player A repaints on top of player B.
@@ -288,10 +312,15 @@ void MprisMonitor::applyMetadata(const QVariantMap& meta) {
     auto md    = parseMprisMetadata(meta);
     m_duration = md.duration;
     emit propertiesChanged(md.title, md.artist, md.album, md.albumArtist, md.genres, m_duration);
-    if (md.artUrl != m_lastArtUrl || ! m_artUrlEverProcessed) {
-        m_lastArtUrl          = md.artUrl;
+    // plasma-browser-integration gives every track the constant trackid
+    // .../1337, so the title and artist are what tell its tracks apart.
+    const QString trackKey = md.trackId + QChar(0x1f) + md.title + QChar(0x1f) + md.artist;
+    const QString artUrl = mprisEffectiveArtUrl(m_lastTrackKey, m_lastArtUrl, trackKey, md.artUrl);
+    m_lastTrackKey       = trackKey;
+    if (artUrl != m_lastArtUrl || ! m_artUrlEverProcessed) {
+        m_lastArtUrl          = artUrl;
         m_artUrlEverProcessed = true;
-        processArtUrl(md.artUrl);
+        processArtUrl(artUrl);
     }
 }
 
@@ -390,6 +419,13 @@ void MprisMonitor::handleNameOwnerChanged(const QString& name, const QString& ol
     if (! newOwner.isEmpty() && m_activeService.isEmpty()) {
         // New player appeared and we have no active one
         connectToPlayer(name);
+    } else if (! newOwner.isEmpty() && name != m_activeService &&
+               wekde::mprisPlayerRank(name, false) >
+                   wekde::mprisPlayerRank(m_activeService, false)) {
+        // A player preferred on name alone (plasma-browser-integration, which
+        // often registers just after the browser's own player): rescan so the
+        // ranking can move to it if it is playing.
+        findActivePlayer();
     } else if (name == m_activeService && newOwner.isEmpty()) {
         // Our active player vanished — try to find another
         disconnectFromPlayer();
@@ -437,7 +473,7 @@ void MprisMonitor::processArtUrl(const QString& artUrl) {
     const quint64 gen = supersedeArt();
     switch (classifyArtUrl(artUrl)) {
     case MprisArtUrlKind::Empty:
-    case MprisArtUrlKind::Unknown: emit thumbnailChanged(false, {}); return;
+    case MprisArtUrlKind::Unknown: emit thumbnailChanged(false, {}, QImage()); return;
     case MprisArtUrlKind::LocalFile: {
         const QString localPath = QUrl(artUrl).toLocalFile();
         m_pool.start([this, localPath, gen]() {
@@ -447,7 +483,7 @@ void MprisMonitor::processArtUrl(const QString& artUrl) {
                     this,
                     [this, gen]() {
                         if (gen != m_artGeneration) return; // superseded by a newer cover
-                        emit thumbnailChanged(false, {});
+                        emit thumbnailChanged(false, {}, QImage());
                     },
                     Qt::QueuedConnection);
                 return;
@@ -456,9 +492,9 @@ void MprisMonitor::processArtUrl(const QString& artUrl) {
             const QVariantList colors = wekde::extractDominantColors(img);
             QMetaObject::invokeMethod(
                 this,
-                [this, gen, colors]() {
+                [this, gen, colors, img]() {
                     if (gen != m_artGeneration) return; // superseded by a newer cover
-                    emit thumbnailChanged(true, colors);
+                    emit thumbnailChanged(true, colors, img);
                 },
                 Qt::QueuedConnection);
         });
@@ -477,14 +513,16 @@ void MprisMonitor::processArtUrl(const QString& artUrl) {
     }
 }
 
-bool wekde::decodeArtReplyBytes(const QByteArray& data, bool networkError,
-                                QVariantList& outColors) {
+bool wekde::decodeArtReplyBytes(const QByteArray& data, bool networkError, QVariantList& outColors,
+                                QImage& outImage) {
     outColors.clear();
+    outImage = QImage();
     if (networkError) return false;
     QImage img;
     img.loadFromData(data);
     if (img.isNull()) return false;
     outColors = extractDominantColors(img);
+    outImage  = std::move(img);
     return true;
 }
 
@@ -494,14 +532,30 @@ void MprisMonitor::onArtDownloaded() {
     reply->deleteLater();
     // Dropped, not painted: this cover was superseded (newer track, or the
     // player went away) while the fetch was still out.
-    if (reply->property(ART_GEN_PROPERTY).toULongLong() != m_artGeneration) return;
+    const quint64 gen = m_artGeneration;
+    if (reply->property(ART_GEN_PROPERTY).toULongLong() != gen) return;
 
-    QVariantList colors;
-    if (decodeArtReplyBytes(reply->readAll(), reply->error() != QNetworkReply::NoError, colors)) {
-        emit thumbnailChanged(true, colors);
-    } else {
-        emit thumbnailChanged(false, {});
-    }
+    // Decode off the compositor thread, matching the LocalFile branch above
+    // — a large/slow-to-decode cover from a remote server shouldn't stall the
+    // GUI thread any more than a local one would.
+    const QByteArray bytes        = reply->readAll();
+    const bool       networkError = reply->error() != QNetworkReply::NoError;
+    m_pool.start([this, bytes, networkError, gen]() {
+        QVariantList colors;
+        QImage       img;
+        const bool   ok = decodeArtReplyBytes(bytes, networkError, colors, img);
+        QMetaObject::invokeMethod(
+            this,
+            [this, gen, ok, colors, img]() {
+                if (gen != m_artGeneration) return; // superseded by a newer cover
+                if (ok) {
+                    emit thumbnailChanged(true, colors, img);
+                } else {
+                    emit thumbnailChanged(false, {}, QImage());
+                }
+            },
+            Qt::QueuedConnection);
+    });
 }
 
 QVariantList wekde::extractDominantColors(const QImage& img) {

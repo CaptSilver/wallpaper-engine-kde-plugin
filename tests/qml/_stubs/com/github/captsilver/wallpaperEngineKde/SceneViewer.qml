@@ -35,7 +35,7 @@ Item {
     // arities mirror the C++ SceneObject::media*Changed Q_INVOKABLEs and the
     // production routes in plugin/contents/ui/backend/Scene.qml.
     signal mediaPropertiesChanged(string title, string artist, string albumTitle, string albumArtist, var genres, var duration)
-    signal mediaThumbnailChanged(bool hasThumbnail, var colors)
+    signal mediaThumbnailChanged(bool hasThumbnail, var colors, var image)
     signal mediaTimelineChanged(var position, var duration, int state)
     signal mediaStatusChanged(bool enabled)
     signal videoDecodeFailed(string summary)

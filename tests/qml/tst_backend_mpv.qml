@@ -274,4 +274,29 @@ TestCase {
         // The message text is whatever the Connections handler composed —
         // we only assert that the routing happened.
     }
+
+    Component { id: freshMpvComp; Backend.Mpv { source: "stub://frozen.mp4" } }
+
+    // As the outgoing layer of a wallpaper handoff, the backend must keep its
+    // own mute while background.* moves on to the next wallpaper.
+    function test_freezeOptions_keeps_mute() {
+        background.mute = true;
+        const item = freshMpvComp.createObject(mpv.parent);
+        const p = item.data.find(o => o && typeof o.setProperty === "function"
+                                      && typeof o.command === "function");
+        compare(p.mute, true);
+        item.freezeOptions();
+        background.mute = false;
+        compare(p.mute, true, "frozen backend followed the next wallpaper's mute");
+        item.destroy();
+    }
+
+    function test_prepareDestroy_stops_the_player_asynchronously() {
+        const item = freshMpvComp.createObject(mpv.parent);
+        const p = item.data.find(o => o && typeof o.stopAsync === "function");
+        compare(p.stopAsyncCount, 0);
+        item.prepareDestroy();
+        compare(p.stopAsyncCount, 1);
+        item.destroy();
+    }
 }

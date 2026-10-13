@@ -151,6 +151,8 @@ private slots:
 
     // Teardown must not park a thread on the mpv core.
     void beginShutdown_quitsCoreWithoutWaitingOnIt();
+    void stopAsync_detachesEventsAndReturnsImmediately();
+    void stopAsync_uninitializedOrRepeated_isSafe();
     void powerSaving_setsFastOptions_andRestoresPrevious();
     void powerSaving_defaultOff_leavesOptionsAlone();
     void frameCapDelayMs_table();
@@ -813,6 +815,50 @@ void TestMpvBackend::beginShutdown_quitRejectedByChokedCore_warns() {
 }
 
 QTEST_MAIN(TestMpvBackend)
+// stopAsync() is what main.qml calls on a video backend that has faded out,
+// ~400 ms before destroying it.  It must not wait on the core (that wait, in
+// ~MpvRender on the Qt render thread, froze every plasmashell window for
+// ~200 ms per switch away from a video), and nothing on the GUI thread may
+// react to that player's events any more.
+void TestMpvBackend::stopAsync_detachesEventsAndReturnsImmediately() {
+    // Control, then the real case: an observed-property event after the
+    // cache says Playing re-derives the status from the event values (the
+    // idle player reports idle-active), which is a transition -- so it emits
+    // exactly when events still reach the object.
+    for (const bool detach : { false, true }) {
+        auto obj = makeObject();
+        QVERIFY(obj->initialized());
+        QTest::qWait(100); // drain the events mpv_observe_property queues up front
+        QVERIFY(obj->refreshStatus(false, false));
+        QCOMPARE(obj->status(), MpvObject::Playing);
+        QSignalSpy spy(obj.get(), &MpvObject::statusChanged);
+
+        if (detach) {
+            QElapsedTimer t;
+            t.start();
+            obj->stopAsync();
+            QVERIFY2(t.elapsed() < 50, "stopAsync waited on the mpv core");
+        }
+        obj->setProperty(QStringLiteral("pause"), true);
+        QTest::qWait(150);
+
+        if (detach) {
+            QCOMPARE(spy.count(), 0);
+            QCOMPARE(obj->status(), MpvObject::Playing); // nothing re-derived it
+        } else {
+            QCOMPARE(spy.count(), 1);
+            QCOMPARE(obj->status(), MpvObject::Stopped);
+        }
+    }
+}
+
+void TestMpvBackend::stopAsync_uninitializedOrRepeated_isSafe() {
+    auto obj = std::make_unique<MpvObject>();
+    obj->stopAsync();
+    obj->stopAsync(); // idempotent: detach twice, second async stop is a no-op
+    obj.reset();      // and the normal teardown still runs afterwards
+}
+
 // MpvPowerSaving flips a fixed set of mpv options (the built-in `fast`
 // profile plus video-sync=audio) and must put back exactly what was there,
 // since mpv's own defaults for them differ between versions.

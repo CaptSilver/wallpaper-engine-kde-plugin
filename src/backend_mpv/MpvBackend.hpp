@@ -41,6 +41,8 @@ struct MpvHandle {
     // client.h names this as *the* asynchronous-destruction path: run "quit",
     // then react to MPV_EVENT_SHUTDOWN.
     void beginShutdown();
+    // First half of beginShutdown: stop delivering mpv events to the owner.
+    void detachOwner();
 
     // Wakeup callback indirection. The callback runs on an arbitrary mpv
     // player thread; without this hop it would deref a destroyed MpvObject
@@ -144,6 +146,8 @@ public slots:
     void play();
     void pause();
     void stop();
+    // Fire-and-forget `stop` for a backend about to be destroyed; see .cpp.
+    void stopAsync();
 
     bool     command(const QVariant& params);
     bool     setProperty(const QString& name, const QVariant& value);
@@ -189,7 +193,12 @@ private:
     // Last status surfaced via statusChanged(); the diff anchor so the signal
     // fires once per real transition rather than per observed-property event.
     Status m_lastStatus { Stopped };
-    bool   m_inited_ok { false }; // set once mpv_initialize() succeeds
+    // Last observed "idle-active" / "pause" values, taken from the property
+    // events themselves (a synchronous mpv_get_property on the GUI thread
+    // blocks while the core is busy, e.g. tearing its video output down).
+    bool m_propIdle { true };
+    bool m_propPaused { false };
+    bool m_inited_ok { false }; // set once mpv_initialize() succeeds
 
     // powerSaving: the values its options had before it was switched on, so
     // switching it off restores exactly those (mpv's defaults vary by version).

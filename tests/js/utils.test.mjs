@@ -12,6 +12,7 @@ import {
     fileTypeNameFilters,
     formatPropertyLabel,
     badgeUpdated,
+    evaluateCondition,
 } from '../../plugin/contents/ui/js/utils.mjs';
 
 test('parseJson: valid JSON shapes', () => {
@@ -165,6 +166,17 @@ test('formatPropertyLabel: localization prefix wins over HTML strip', () => {
                  '<b>nope</b>');
 });
 
+test('formatPropertyLabel: U+3164 Hangul filler is stripped', () => {
+    // Wallpaper Engine authors use U+3164 (HANGUL FILLER) as fake
+    // indentation in the editor. It's category Lo, not Zs, so JS's \s
+    // doesn't match it and it survives the whitespace collapse untouched.
+    assert.equal(
+        formatPropertyLabel('ㅤ<b><small>Album Name</small></b>', 'k'),
+        'Album Name');
+    // Also strip it mid-string and collapse the space left behind.
+    assert.equal(formatPropertyLabel('AlbumㅤName', 'k'), 'Album Name');
+});
+
 // badgeUpdated — the "Updated since you last loaded it" dot predicate,
 // extracted from WallpaperListModel.loadItemFromJson. A wallpaper badges
 // ONLY if the user has loaded it before (seenVersion > 0) and Steam has
@@ -187,4 +199,152 @@ test('badgeUpdated: loaded and unchanged does not badge', () => {
 test('badgeUpdated: loaded but manifest older or missing does not badge', () => {
     assert.equal(badgeUpdated(1500000000, 1600000000), false); // older manifest
     assert.equal(badgeUpdated(0, 1600000000), false);          // no manifest entry
+});
+
+// evaluateCondition — project.json gates some properties on another
+// property's live value ("condition": "mediavisualizer.value == true"). The
+// grammar below was read out of the real Workshop corpus (1081 project.json
+// files under 431960/), not guessed: ==, !=, <, >, <=, >=, &&, ||, unary !,
+// parens, true/false/number/'string' literals and `name.value` references,
+// all written with inconsistent spacing. `resolve` stands in for
+// WallpaperPage's live property lookup (propChanges/propConfig, keyed by
+// name) — plain object literal here since only the value matters.
+test('evaluateCondition: no condition means always visible', () => {
+    assert.equal(evaluateCondition('', () => { throw new Error('must not resolve'); }), true);
+    assert.equal(evaluateCondition(undefined, () => { throw new Error('must not resolve'); }), true);
+    assert.equal(evaluateCondition(null, () => { throw new Error('must not resolve'); }), true);
+    assert.equal(evaluateCondition('   ', () => { throw new Error('must not resolve'); }), true);
+});
+
+test('evaluateCondition: simple equality against a boolean literal', () => {
+    const resolve = name => ({ mediavisualizer: true })[name];
+    assert.equal(evaluateCondition('mediavisualizer.value == true', resolve), true);
+    assert.equal(evaluateCondition('mediavisualizer.value == false', resolve), false);
+});
+
+test('evaluateCondition: numeric equality (combo option index)', () => {
+    const resolve = name => ({ type1: 2 })[name];
+    assert.equal(evaluateCondition('type1.value == 2', resolve), true);
+    assert.equal(evaluateCondition('type1.value == 3', resolve), false);
+});
+
+test('evaluateCondition: compound && requires every clause true', () => {
+    // This wallpaper's real "Album Name" row condition.
+    const resolve = name => ({ mediavisualizer: true, albumname: false })[name];
+    assert.equal(evaluateCondition('mediavisualizer.value == true && albumname.value == true', resolve), false);
+    const resolveBoth = name => ({ mediavisualizer: true, albumname: true })[name];
+    assert.equal(evaluateCondition('mediavisualizer.value == true && albumname.value == true', resolveBoth), true);
+});
+
+test('evaluateCondition: compound || is satisfied by either clause', () => {
+    const resolve = name => ({ backgroundSource: 'image' })[name];
+    assert.equal(evaluateCondition("backgroundSource.value == '' || backgroundSource.value == 'image'", resolve), true);
+    assert.equal(evaluateCondition("backgroundSource.value == '' || backgroundSource.value == 'video'", resolve), false);
+});
+
+test('evaluateCondition: a THIRD ||-chained clause is still parsed, not left dangling', () => {
+    // Real corpus condition. This does NOT prove every clause gets
+    // evaluated: a naive `left = Boolean(left) || Boolean(parseAnd())` fold
+    // would skip parsing the third clause once the first two already made
+    // `left` true (JS's `||` short-circuits the right-hand `parseAnd()`
+    // call), leaving its tokens unconsumed and falling into the "trailing
+    // tokens" catch, which fails OPEN to true. But `||` is monotonic — an
+    // earlier clause is only true when the real answer is also true — so
+    // that fail-open value happens to match the correct one in every case
+    // this expression can produce. This test only proves the OR path
+    // returns the right answer, not that it does so by genuinely evaluating
+    // every clause; see the && test below for the case that tells the two
+    // apart.
+    const resolve = name => ({ colormode: 2 })[name];
+    assert.equal(
+        evaluateCondition('colormode.value == 0 || colormode.value == 1 || colormode.value == 2', resolve),
+        true);
+    const resolveNoMatch = name => ({ colormode: 9 })[name];
+    assert.equal(
+        evaluateCondition('colormode.value == 0 || colormode.value == 1 || colormode.value == 2', resolveNoMatch),
+        false);
+});
+
+test('evaluateCondition: a THIRD &&-chained clause is genuinely evaluated when the first clause is false', () => {
+    // Real corpus condition (nested App Dock toggles). Unlike the OR case
+    // above, && only skips its right-hand clause when the LEFT side is
+    // already false — which is exactly the case where the real answer is
+    // also false, so a naive `left = Boolean(left) && Boolean(parseComparison())`
+    // fold would short-circuit past the remaining clauses' tokens, hit the
+    // "trailing tokens" catch, and fail OPEN to true: the wrong answer. This
+    // is the shape that actually distinguishes a genuinely-evaluated chain
+    // from a short-circuited one.
+    const expr = 'appdocksettings.value == true && appdockenabled.value == true && appdockautohide.value == true';
+    const resolveFirstFalse = name => ({ appdocksettings: false, appdockenabled: true, appdockautohide: true })[name];
+    assert.equal(evaluateCondition(expr, resolveFirstFalse), false);
+    const resolveAllTrue = name => ({ appdocksettings: true, appdockenabled: true, appdockautohide: true })[name];
+    assert.equal(evaluateCondition(expr, resolveAllTrue), true);
+});
+
+test('evaluateCondition: unary negation, bare and parenthesized', () => {
+    assert.equal(evaluateCondition('!audio_wireframe.value', () => false), true);
+    assert.equal(evaluateCondition('!audio_wireframe.value', () => true), false);
+    const resolve = name => ({ a: false, b: false, c: false })[name];
+    assert.equal(evaluateCondition('!(a.value || b.value || c.value)', resolve), true);
+    const resolveOne = name => ({ a: false, b: true, c: false })[name];
+    assert.equal(evaluateCondition('!(a.value || b.value || c.value)', resolveOne), false);
+});
+
+test('evaluateCondition: negation binds tighter than comparison', () => {
+    // Real corpus condition "!dibu.value==0" parses as (!dibu.value) == 0,
+    // matching JS operator precedence, not !(dibu.value==0).
+    assert.equal(evaluateCondition('!dibu.value==0', () => true), true);
+    assert.equal(evaluateCondition('!dibu.value==0', () => false), false);
+});
+
+test('evaluateCondition: relational and inequality operators', () => {
+    const resolve = (key, value) => name => ({ [key]: value })[name];
+    assert.equal(evaluateCondition('col2Count.value >= 3', resolve('col2Count', 3)), true);
+    assert.equal(evaluateCondition('col2Count.value >= 3', resolve('col2Count', 2)), false);
+    assert.equal(evaluateCondition('audioreactivebokeh.value < 5', resolve('audioreactivebokeh', 4)), true);
+    assert.equal(evaluateCondition('clock.value != 4', resolve('clock', 4)), false);
+    assert.equal(evaluateCondition('clock.value != 4', resolve('clock', 3)), true);
+});
+
+test('evaluateCondition: a string-stored combo value compares loosely against a numeric literal', () => {
+    // Real corpus: combo properties store their `value` as a STRING
+    // ('"1"', '"2"', ...) even though sibling rows gate on it with a
+    // NUMBER literal ("type1.value == 2"). == (not ===) is required for
+    // this to work — WE itself relies on this coercion.
+    const resolve = value => name => ({ type1: value })[name];
+    assert.equal(evaluateCondition('type1.value == 2', resolve('1')), false);
+    assert.equal(evaluateCondition('type1.value == 2', resolve('2')), true);
+    assert.equal(evaluateCondition('type1.value == 3', resolve('3')), true);
+});
+
+test('evaluateCondition: whitespace around operators is optional', () => {
+    // Real corpus: "effects.value == true &&darken.value == true" (no space
+    // before the second clause) and "bgaudiobars.value==1" (no spaces at all).
+    const resolve = name => ({ effects: true, darken: true })[name];
+    assert.equal(evaluateCondition('effects.value == true &&darken.value == true', resolve), true);
+    assert.equal(evaluateCondition('bgaudiobars.value==1', () => 1), true);
+});
+
+test('evaluateCondition: a bare "=" typo is read as equality', () => {
+    // Real corpus condition "raineffects.value=true" — single '=', not '=='.
+    assert.equal(evaluateCondition('raineffects.value=true', () => true), true);
+    assert.equal(evaluateCondition('raineffects.value=true', () => false), false);
+});
+
+test('evaluateCondition: unsupported expressions fail open (row stays visible)', () => {
+    // The WE-editor "self-mutating label text" hack (abuses `condition` for
+    // a ternary that assigns to another property's `.text`) and a method
+    // chain are both real corpus entries; neither is a boolean condition we
+    // can safely evaluate without eval(), so both must not hide the row and
+    // must not throw.
+    assert.equal(
+        evaluateCondition(
+            "background_enable.value ? background_enable.text = background_enable.text.replace('a','b') : false",
+            () => true),
+        true);
+    assert.equal(
+        evaluateCondition("ruleset.value.split('/')[0].includes('0')", () => 'a/b'),
+        true);
+    // Unterminated string / garbage input must not throw either.
+    assert.equal(evaluateCondition("broken.value == 'unterminated", () => 'x'), true);
 });

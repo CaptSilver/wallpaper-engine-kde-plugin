@@ -180,6 +180,28 @@ add_test(NAME tst_plugininfo COMMAND tst_plugininfo -v2)
 set_tests_properties(tst_plugininfo PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+# ── GUI-thread one-shot (plugin process setup) ───────────────────────────────
+add_executable(tst_guithreadonce
+    tst_guithreadonce.cpp
+    ${WEKDE_SRC_DIR}/GuiThreadOnce.hpp
+)
+target_include_directories(tst_guithreadonce PRIVATE ${WEKDE_SRC_DIR})
+target_link_libraries(tst_guithreadonce PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_guithreadonce COMMAND tst_guithreadonce -v2)
+set_tests_properties(tst_guithreadonce PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# ── Which host process the plugin runs in ────────────────────────────────────
+add_executable(tst_wallpaperhost
+    tst_wallpaperhost.cpp
+    ${WEKDE_SRC_DIR}/WallpaperHost.hpp
+)
+target_include_directories(tst_wallpaperhost PRIVATE ${WEKDE_SRC_DIR})
+target_link_libraries(tst_wallpaperhost PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME tst_wallpaperhost COMMAND tst_wallpaperhost -v2)
+set_tests_properties(tst_wallpaperhost PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
 # ── MprisMonitor color extraction tests ───────────────────────────────────────
 find_package(Qt6 COMPONENTS Gui Network DBus Quick QUIET)
 if(Qt6Gui_FOUND AND Qt6Quick_FOUND)
@@ -1016,7 +1038,7 @@ set(_wek_all_test_targets
     tst_thumbnail_grabber tst_webaudio tst_activityhelper
     tst_playlist_manager tst_main_integration tst_fakewallpaper_ownership tst_ttyswitchmonitor
     tst_safewallpaperbridge tst_safewallpaperbridgecontroller tst_weburlinterceptor
-    tst_webprofileregistry tst_qmlcachepurge
+    tst_webprofileregistry tst_qmlcachepurge tst_guithreadonce tst_wallpaperhost
     tst_screensavermonitor
     tst_wekcontrol tst_wekshortcuts tst_weknotifier tst_wekdiagnostics)
 

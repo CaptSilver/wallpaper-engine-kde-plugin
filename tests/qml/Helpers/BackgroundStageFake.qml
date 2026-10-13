@@ -19,7 +19,7 @@ Rectangle {
     property int    presentMode:        0       // Auto (matches main.xml default)
     property bool   hdrOutput:          false
     property string postProcessing:     ""
-    property bool   systemAudioCapture: false
+    property bool   systemAudioCapture: true // matches main.xml default
     property string nowBackend:         ""
 
     signal sig_backendFirstFrame(string name)

@@ -11,7 +11,7 @@ QtObject {
     // Production wrappers connect on these:
     signal playbackStateChanged(int state)
     signal propertiesChanged(string title, string artist, string albumTitle, string albumArtist, var genres, var duration)
-    signal thumbnailChanged(bool hasThumbnail, var colors)
+    signal thumbnailChanged(bool hasThumbnail, var colors, var image)
     signal timelineChanged(var position, var duration, int state)
     // Mirrors the real NOTIFY signal, argument included. The matching
     // `mediaAvailable` property can't live here too — QML would auto-generate

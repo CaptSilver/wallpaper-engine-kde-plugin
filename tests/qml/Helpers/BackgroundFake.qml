@@ -20,7 +20,7 @@ QtObject {
     property bool   mpvPowerSaving: false
     property bool   hdrOutput:   false
     property string postProcessing: ""    // empty = wallpaper-default; matches main.qml
-    property bool   systemAudioCapture: false
+    property bool   systemAudioCapture: true // matches main.xml default
     property bool   hasLib:      true
     property string source:      ""
     property string wallpaperPath: ""

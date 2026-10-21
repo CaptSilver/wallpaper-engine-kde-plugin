@@ -26,9 +26,13 @@ refs="$(cat 2>/dev/null || true)"
 # from a pre-commit gate run would point the mutation leg at an empty diff.
 unset MULL_DIFF_BASE
 top="$(git rev-parse --show-toplevel)"
+# Git exports its repository context to hooks.  The gate creates fixture
+# repositories; they must not inherit this worktree's GIT_DIR or index.
+mapfile -t repository_environment < <(git rev-parse --local-env-vars)
+unset "${repository_environment[@]}"
+cd "$top" || exit 1
 
 if [[ "${WEK_GATE_FORCE:-0}" != "1" && -f "$top/tools/scripts/lib/gate_marker.sh" ]]; then
-    cd "$top"
     source tools/scripts/lib/gate_marker.sh
     pushed=0
     covered=1

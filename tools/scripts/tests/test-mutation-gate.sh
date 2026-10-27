@@ -1002,6 +1002,12 @@ if command -v objcopy >/dev/null 2>&1; then
           "" "$( grep -qi 'for this diff' <<<"$out" && echo 1 || echo 0 )" 0 "$out"
     check "the unmeasured target is recorded in unmeasured.txt" \
           "" "$( grep -qxF tst_filehelper "$root/build/impl-mutation/mull-out/unmeasured.txt" 2>/dev/null && echo 0 || echo 1 )" 0 ""
+    # The probe's cleanup trap runs when its $( ) subshell exits, after the
+    # function's locals are gone; under set -u a trap that names them errors out.
+    check "the mutant-count probe's cleanup trap leaves no shell error" \
+          "" "$( grep -q 'unbound variable' <<<"$out" && echo 1 || echo 0 )" 0 "$out"
+    check "the mutant-count probe leaves no dump files behind" \
+          "" "$( compgen -G "$root/build/impl-mutation/mull-out/mutants-*" >/dev/null && echo 1 || echo 0 )" 0 ""
 
     root="$(make_root)"
     mapfile -t recs < <(glue_records "$root"; src_record "$root")

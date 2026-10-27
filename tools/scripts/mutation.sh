@@ -1082,12 +1082,15 @@ check_mull_instrumentation() {
 # this checkout count.  "unknown" (no objcopy, not an ELF, no section) must never
 # be treated as zero.
 first_party_mutant_count() {
-    local t="$1" bin="$2" leaf tmp excl n
+    local t="$1" bin="$2" leaf tmp excl n cleanup
     command -v objcopy >/dev/null 2>&1 || { echo unknown; return; }
     mkdir -p "$OUT_DIR"
     tmp="$(mktemp "$OUT_DIR/mutants-XXXXXX")" || { echo unknown; return; }
-    # Callers run this in $( ), so an EXIT trap cleans up on interrupt too.
-    trap 'rm -f "$tmp" "$tmp.copy"' EXIT
+    # Callers run this in $( ), so an EXIT trap cleans up on interrupt too.  The
+    # trap fires after this function returns and its locals are gone, so bake
+    # the paths in now rather than naming $tmp (set -u: "unbound variable").
+    printf -v cleanup 'rm -f %q %q' "$tmp" "$tmp.copy"
+    trap "$cleanup" EXIT
     # --dump-section, not -O binary --only-section: the latter drops a section
     # that is not SEC_ALLOC and then succeeds with an empty file.  objcopy
     # insists on writing a copy of the binary too; -j keeps that copy to the one

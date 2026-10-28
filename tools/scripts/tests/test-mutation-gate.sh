@@ -59,6 +59,14 @@ done
 if [[ -n "$dir" ]]; then
     mkdir -p "$dir"
     ulimit -Sv > "$dir/observed-ulimit.txt" 2>/dev/null || echo unlimited > "$dir/observed-ulimit.txt"
+    # And the environment the test binary would inherit, for the cases that
+    # pin what reaches a target's tests (GPU opt-in, headless Qt).
+    {
+        echo "WEK_GPU_TESTS=${WEK_GPU_TESTS-<unset>}"
+        echo "QT_QPA_PLATFORM=${QT_QPA_PLATFORM-<unset>}"
+        echo "DISPLAY=${DISPLAY-<unset>}"
+        echo "WAYLAND_DISPLAY=${WAYLAND_DISPLAY-<unset>}"
+    } > "$dir/observed-env.txt"
 fi
 # A per-target body wins over the shared one, so a case can give two targets
 # different results for the same mutant -- which is the only way to see whether
@@ -142,8 +150,10 @@ make_root() {
     # Stand-in test binaries: the gate only checks they are executable.
     printf '#!/bin/sh\nexit 0\n' > "$root/build/impl-mutation/tst_filehelper"
     printf '#!/bin/sh\nexit 0\n' > "$root/build/impl-mutation-sub/src/Test/backend_scene_tests"
+    printf '#!/bin/sh\nexit 0\n' > "$root/build/impl-mutation-sub/src/Test/scenescript_tests"
     chmod +x "$root/build/impl-mutation/tst_filehelper" \
-             "$root/build/impl-mutation-sub/src/Test/backend_scene_tests"
+             "$root/build/impl-mutation-sub/src/Test/backend_scene_tests" \
+             "$root/build/impl-mutation-sub/src/Test/scenescript_tests"
     # Both configs, because every target now resolves one and the gate refuses
     # to mutate a target it cannot configure.
     cp "$REAL_ROOT/src/backend_scene/mull.yml" "$root/src/backend_scene/mull.yml"
@@ -1058,6 +1068,56 @@ check "...and the run still passes" "" "$rc" 0 "$out" "no mutants"
 # unmeasured.txt and say so separately.
 check "the sweep reports unmeasured parent targets separately" \
       "" "$( grep -q 'unmeasured.txt' "$REAL_ROOT/tools/scripts/mutation-sweep.sh" && grep -q 'unmeasured by construction' "$REAL_ROOT/tools/scripts/mutation-sweep.sh" && echo 0 || echo 1 )" 0 ""
+
+# scenescript_tests is the only binary that builds the submodule's qml_helper/
+# sources (glExtra.cpp, SceneBackend.cpp), so it is a mutation target of its
+# own.  Its GL tests need a real GPU and run only with WEK_GPU_TESTS=1, which
+# the gate sets for it; it also needs headless Qt and no live display.
+check "scenescript_tests is a mutation target" \
+      "" "$( cd "$(make_root)" && MUTATION_SKIP_BUILD=1 "$GATE" --list-targets 2>/dev/null | grep -qx scenescript_tests && echo 0 || echo 1 )" 0 ""
+
+make_qml_helper_root() {  # a parent + submodule pair whose submodule change sits in qml_helper/
+    local root; root="$(make_root)"
+    git -C "$root/src/backend_scene" init -q
+    mkdir -p "$root/src/backend_scene/qml_helper"
+    printf 'int g(){return 0;}\n' > "$root/src/backend_scene/qml_helper/glExtra.cpp"
+    git -C "$root/src/backend_scene" add -A
+    git -C "$root/src/backend_scene" -c user.email=t@t -c user.name=t commit -q -m base
+    git -C "$root/src/backend_scene" update-ref refs/remotes/origin/main HEAD
+    git -C "$root" add src/backend_scene 2>/dev/null
+    git -C "$root" -c user.email=t@t -c user.name=t commit -q -m base-gitlink
+    git -C "$root" update-ref refs/remotes/origin/main HEAD
+    printf 'int g(){return 1 == 2;}\n' > "$root/src/backend_scene/qml_helper/glExtra.cpp"
+    git -C "$root/src/backend_scene" add -A
+    git -C "$root/src/backend_scene" -c user.email=t@t -c user.name=t commit -q -m edit
+    git -C "$root" add src/backend_scene 2>/dev/null
+    git -C "$root" -c user.email=t@t -c user.name=t commit -q -m bump
+    printf '%s' "$root"
+}
+root="$(make_qml_helper_root)"
+out="$( cd "$root" && env -u DISPLAY -u WAYLAND_DISPLAY DISPLAY=:9 WAYLAND_DISPLAY=wayland-9 \
+        MUTATION_SKIP_BUILD=1 MULL_WORKERS=1 STUB_REPORT=nomutants \
+        "$GATE" --diff-only --strict 2>&1 )"; rc=$?
+ss_dir="$root/build/impl-mutation/mull-out/scenescript_tests"
+check "a qml_helper change in the submodule mutates scenescript_tests" \
+      "" "$( [[ -f "$ss_dir/observed-ulimit.txt" ]] && echo 0 || echo 1 )" 0 "$out"
+ss_env="$(cat "$ss_dir/observed-env.txt" 2>/dev/null)"
+check "scenescript_tests runs with its GPU tests opted in" \
+      "" "$( grep -qx 'WEK_GPU_TESTS=1' <<<"$ss_env" && echo 0 || echo 1 )" 0 "$ss_env"
+check "scenescript_tests runs headless, without the live display" \
+      "" "$( grep -qx 'QT_QPA_PLATFORM=offscreen' <<<"$ss_env" \
+             && grep -qx 'DISPLAY=<unset>' <<<"$ss_env" \
+             && grep -qx 'WAYLAND_DISPLAY=<unset>' <<<"$ss_env" && echo 0 || echo 1 )" 0 "$ss_env"
+bs_env="$(cat "$root/build/impl-mutation/mull-out/backend_scene_tests/observed-env.txt" 2>/dev/null)"
+check "backend_scene_tests is not given the GPU opt-in" \
+      "" "$( grep -qx 'WEK_GPU_TESTS=1' <<<"$bs_env" && echo 1 || echo 0 )" 0 "$bs_env"
+
+root="$(make_qml_helper_root)"
+out="$( cd "$root" && MUTATION_SKIP_BUILD=1 MULL_WORKERS=1 STUB_REPORT=nomutants \
+        STUB_REPORT_scenescript_tests="$(report_json "$root" "src/backend_scene/qml_helper/glExtra.cpp:1:cxx_eq_to_ne")" \
+        "$GATE" --diff-only --strict 2>&1 )"; rc=$?
+check "a survivor scenescript_tests reports fails the gate like any other" \
+      "" "$rc" 1 "$out" "qml_helper/glExtra.cpp"
 
 # Mull's frontend embeds mutants at compile time, from the MULL_CONFIG it sees
 # then; the runner can only narrow that set.  Before the submodule build was

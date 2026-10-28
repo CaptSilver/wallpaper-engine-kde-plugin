@@ -101,12 +101,18 @@ BUILD_SUB="build/impl-mutation-sub"
 OUT_DIR="$BUILD/mull-out"
 BASELINE="tests/.mull-baseline.json"
 
-# Per-target build dir resolver — parent binaries live in $BUILD, the single
-# submodule mutation-instrumented binary lives under $BUILD_SUB/src/Test/.
+# The submodule's mutation targets.  backend_scene_tests covers src/; the
+# qml_helper/ sources (glExtra.cpp, SceneBackend.cpp) are built only into
+# scenescript_tests.
+SUB_TARGETS=(backend_scene_tests scenescript_tests)
+is_sub_target() { [[ "$1" == "backend_scene_tests" || "$1" == "scenescript_tests" ]]; }
+
+# Per-target build dir resolver — parent binaries live in $BUILD, the
+# submodule's mutation-instrumented binaries under $BUILD_SUB/src/Test/.
 bin_path() {
     local t="$1"
     case "$t" in
-        backend_scene_tests) echo "$BUILD_SUB/src/Test/$t" ;;
+        backend_scene_tests|scenescript_tests) echo "$BUILD_SUB/src/Test/$t" ;;
         *) echo "$BUILD/$t" ;;
     esac
 }
@@ -116,7 +122,7 @@ bin_path() {
 mull_build_root_for() {
     local t="$1"
     case "$t" in
-        backend_scene_tests) echo "$BUILD_SUB" ;;
+        backend_scene_tests|scenescript_tests) echo "$BUILD_SUB" ;;
         *) echo "$BUILD" ;;
     esac
 }
@@ -361,7 +367,7 @@ if ! ALL_TARGETS_TXT="$(python3 "$MUTATION_TARGETS_PY" "$MUTATION_CMAKELISTS" --
     fail "mutation_targets.py failed to parse $MUTATION_CMAKELISTS"
 fi
 mapfile -t ALL_TARGETS <<< "$ALL_TARGETS_TXT"
-ALL_TARGETS+=(backend_scene_tests)  # submodule target; not in tests/CMakeLists.txt at all
+ALL_TARGETS+=("${SUB_TARGETS[@]}")  # submodule targets; not in tests/CMakeLists.txt at all
 
 # Captured into a variable, not piped in through a process substitution: a
 # crash in there leaves SRC_TO_TARGETS empty without tripping `set -e`, and an
@@ -407,7 +413,7 @@ _MULL_SRC_YML=""
 _MULL_SRC_ROOT=""
 mull_src_root_for() {
     local t="$1"
-    if [[ "$t" == "backend_scene_tests" ]]; then
+    if is_sub_target "$t"; then
         _MULL_SRC_YML="$PWD/src/backend_scene/mull.yml"
         _MULL_SRC_ROOT="$PWD/src/backend_scene"
     else
@@ -456,7 +462,7 @@ mull_diff_ref_for() {
 # pass's original blind spot from the other direction).
 _mull_target_compiles() {
     local t="$1" f="$2"
-    [[ "$t" == "backend_scene_tests" ]] && return 0
+    is_sub_target "$t" && return 0
     [[ -z "${SRC_TO_TARGETS[$f]:-}" ]] && return 0
     local mapped
     for mapped in ${SRC_TO_TARGETS[$f]:-}; do
@@ -486,7 +492,7 @@ mull_diff_lines_for() {
         [[ "$f" =~ $MULL_TU_EXCLUDE_RE ]] && continue
         # tests/mull.yml excludes the parent's own test sources, so Mull never
         # mutates them; counting them would cap a push for lines it won't measure.
-        [[ "$t" != "backend_scene_tests" && "$f" =~ ^tests/ ]] && continue
+        ! is_sub_target "$t" && [[ "$f" =~ ^tests/ ]] && continue
         _mull_target_compiles "$t" "$f" || continue
         total=$((total + adds))
     done < <(git -C "$root" diff --no-renames --numstat "$ref" -- . 2>/dev/null)
@@ -538,6 +544,17 @@ elif [[ "$MODE" == "diff" ]]; then
             SEEN[backend_scene_tests]=1
         fi
     done <<< "$CHANGED"
+    # The parent's diff shows only the gitlink, never the submodule's own paths,
+    # so whether qml_helper/ changed is read from the submodule's diff against
+    # its own base, the one its line cap and Mull's gitDiffRef use.
+    if [[ -n "${SEEN[backend_scene_tests]:-}" && -e src/backend_scene/.git ]]; then
+        mull_diff_ref_for "$PWD/src/backend_scene"
+        if [[ -n "$_MULL_DIFF_REF" ]] \
+            && git -C src/backend_scene diff --name-only "$_MULL_DIFF_REF" -- qml_helper 2>/dev/null \
+                | grep -q .; then
+            SEEN[scenescript_tests]=1
+        fi
+    fi
     TARGETS=("${!SEEN[@]}")
     if [[ ${#TARGETS[@]} -eq 0 ]]; then
         ok "no changed sources mapped to mutation targets — exit 0"
@@ -577,10 +594,7 @@ MULL_BUILD_JOBS="${MULL_BUILD_JOBS:-$(mem_bounded_jobs "${MULL_BUILD_MB:-1536}")
 NEED_PARENT=0
 NEED_SUB=0
 for t in "${TARGETS[@]}"; do
-    case "$t" in
-        backend_scene_tests) NEED_SUB=1 ;;
-        *) NEED_PARENT=1 ;;
-    esac
+    if is_sub_target "$t"; then NEED_SUB=1; else NEED_PARENT=1; fi
 done
 
 # Testability seam, and useful when you know the instrumented binaries are
@@ -607,24 +621,28 @@ if [[ "$NEED_PARENT" == "1" ]]; then
 fi
 
 if [[ "$NEED_SUB" == "1" ]]; then
-    step "Configure + build submodule (backend_scene_tests only) with -DMUTATION_TESTING=ON"
+    SUB_BUILD=()
+    for t in "${TARGETS[@]}"; do is_sub_target "$t" && SUB_BUILD+=("$t"); done
+    step "Configure + build submodule (${SUB_BUILD[*]}) with -DMUTATION_TESTING=ON"
     if [[ ! -f "$BUILD_SUB/CMakeCache.txt" ]]; then
         dbox "CC=/usr/bin/clang CXX=/usr/bin/clang++ \
               cmake -B $BUILD_SUB -S src/backend_scene -G Ninja \
                     -DBUILD_TESTS=ON -DMUTATION_TESTING=ON -DCMAKE_BUILD_TYPE=Debug" \
             || fail "mutation configure failed (submodule)"
     fi
-    dbox "cmake --build $BUILD_SUB --target backend_scene_tests -j$MULL_BUILD_JOBS" \
+    dbox "cmake --build $BUILD_SUB --target ${SUB_BUILD[*]} -j$MULL_BUILD_JOBS" \
         || fail "mutation build failed (submodule)"
     ok "submodule mutation build complete"
     # Without src/backend_scene/mull.yml at compile time the frontend embeds
     # only cxx_default, and every bitwise/logical line would read as having
     # nothing to mutate.  That is less measured than claimed, not a pass.
-    if ! mull_frontend_config_reached "$BUILD_SUB/src/Test/backend_scene_tests"; then
-        printf '\n%sFAIL:%s %s\n' "$RED" "$RESET" \
-            "backend_scene_tests carries no bitwise/logical mutant: the Mull frontend never read src/backend_scene/mull.yml (see cmake/WekMullInstrument.cmake); reconfigure $BUILD_SUB" >&2
-        exit 78
-    fi
+    for t in "${SUB_BUILD[@]}"; do
+        if ! mull_frontend_config_reached "$BUILD_SUB/src/Test/$t"; then
+            printf '\n%sFAIL:%s %s\n' "$RED" "$RESET" \
+                "$t carries no bitwise/logical mutant: the Mull frontend never read src/backend_scene/mull.yml (see cmake/WekMullInstrument.cmake); reconfigure $BUILD_SUB" >&2
+            exit 78
+        fi
+    done
     ok "Mull frontend read src/backend_scene/mull.yml (bitwise/logical mutants embedded)"
 fi
 
@@ -1170,6 +1188,13 @@ run_mull_pass() {
         # for our purposes is most of them, since killed mutants ARE the success
         # case).  Cuts per-mutant overhead by ~5x.
         if ! ( ulimit -v $((MULL_MUTANT_AS_MB * 1024))
+               # scenescript_tests' GL tests need a real GPU and only run when
+               # opted in; it also needs headless Qt and must not reach the
+               # live desktop.
+               if [[ "$t" == "scenescript_tests" ]]; then
+                   export WEK_GPU_TESTS=1 QT_QPA_PLATFORM=offscreen
+                   unset DISPLAY WAYLAND_DISPLAY
+               fi
                exec "$RUNNER" --workers "$MULL_WORKERS" \
                        --timeout "$MULL_TIMEOUT_MS" \
                        --minimum-timeout "$MULL_MIN_TIMEOUT_MS" \

@@ -341,7 +341,7 @@ if [[ "$MODE" == "sanitize" ]]; then
         *)
             # ASAN/UBSAN (and any address/undefined combo).  FATAL: the submodule
             # doctest suites are audited clean under address+undefined (see
-            # tools/scripts/lsan.supp for the one confirmed system-library leak
+            # tools/scripts/lsan.supp for verified system-library allocations
             # they suppress).  The parent ctest suite now runs under the same
             # leak detection, reusing ${asan_opts}/${lsan_opts} below instead of
             # its own process-wide override.  One of its 26 targets still needs
@@ -374,11 +374,11 @@ if [[ "$MODE" == "sanitize" ]]; then
             # parsers' long-lived caches -- but ASAN_OPTIONS is process-wide,
             # so it silenced leak detection for everything the binary links,
             # including a real system-library leak inside libmpv/libdrm (see
-            # lsan.supp). Leak detection now stays ON; the one confirmed leak
-            # is suppressed by name instead, so a future, unrelated leak still
+            # lsan.supp). Leak detection stays ON; verified external allocations
+            # are suppressed by name, so a future, unrelated leak still
             # fails this leg. halt_on_error=1 + exit on the first finding so
             # the gate fails loudly.
-            asan_opts="halt_on_error=1:print_stacktrace=1"
+            asan_opts="detect_leaks=1:halt_on_error=1:print_stacktrace=1"
             ubsan_opts="halt_on_error=1:print_stacktrace=1"
             lsan_opts="suppressions=${_PF_DIR}/lsan.supp"
 
@@ -866,10 +866,10 @@ fi
 # wiring is plain text, not a function, so nothing else would catch
 # detect_leaks=0 creeping back in or a call site losing its suppressions file
 # except actually reading the ASAN gate's own multi-minute output -- this pins
-# the wiring in a fraction of a second instead.
+# the wiring and real sanitizer failure propagation with a small fixture instead.
 step "LSan-suppressions self-test"
 if [[ -x tools/scripts/tests/test-lsan-suppressions.sh ]]; then
-    if ! tools/scripts/tests/test-lsan-suppressions.sh; then
+    if ! dbox "tools/scripts/tests/test-lsan-suppressions.sh"; then
         fail "LSan suppressions self-test failed — preflight.sh's ASAN_OPTIONS/LSAN_OPTIONS wiring or tools/scripts/lsan.supp has drifted, fix it before trusting the ASAN gate's leak detection"
     fi
 else
@@ -1063,10 +1063,15 @@ fi
 # The parsers + scene runtime are the highest-risk untrusted-input surface and
 # are audited clean under address+undefined sanitizers.  Gate every push on
 # them so an ASAN heap/UAF or UBSAN find blocks the push instead of slipping
-# in unobserved.  Leak detection stays ON (see tools/scripts/lsan.supp for the
-# one confirmed system-library leak it suppresses by name — libmpv/libdrm's
-# mpv_render_context_create, not first-party code); halt_on_error=1 so the
-# first finding fails the leg.  Fresh build dir (build/asan-gate) reused on
+# in unobserved. Leak detection stays ON except in the isolated real-GPU
+# lifetime suite: NVIDIA EGL/GBM retains allocations after correct teardown,
+# with some frames unloaded before LSan runs (see issue #41). Broad DBus or
+# allocator suppressions would hide unrelated leaks. Run that suite separately
+# with ASAN/UBSAN still fatal; first-party leaks there remain a diagnostic gap.
+# --sanitize=address,undefined retains the full-suite leak diagnostic.
+# Fontconfig config-loading shutdown state is narrowly suppressed in lsan.supp.
+# halt_on_error=1 means the first finding fails the leg. Fresh build dir
+# (build/asan-gate) reused on
 # repeat runs; BUILD_FUZZERS=OFF so the fuzzers' own -fsanitize=fuzzer flags
 # don't double-instrument.  The wider parent-tests + full-suite sanitizer run
 # is still advisory via --sanitize=address,undefined (parent QML / mpv tests
@@ -1086,13 +1091,20 @@ if [[ "$MODE" != "test-only" ]]; then
 fi
 
 step "Run backend_scene_tests under ASAN+UBSAN (gate)"
-gate_asan_opts="halt_on_error=1:print_stacktrace=1"
+gate_asan_opts="detect_leaks=1:halt_on_error=1:print_stacktrace=1"
 gate_ubsan_opts="halt_on_error=1:print_stacktrace=1"
 gate_lsan_opts="suppressions=${_PF_DIR}/lsan.supp"
+gate_gpu_suite='HWVideoTextureDecoder GPU buffer lifetime'
 dbox "ASAN_OPTIONS='${gate_asan_opts}' UBSAN_OPTIONS='${gate_ubsan_opts}' LSAN_OPTIONS='${gate_lsan_opts}' \
-      ./build/asan-gate/src/Test/backend_scene_tests" \
+      ./build/asan-gate/src/Test/backend_scene_tests --test-suite-exclude='${gate_gpu_suite}'" \
     || fail "backend_scene_tests: sanitizer finding (ASAN/UBSAN) — investigate then re-run"
-ok "backend_scene_tests: ASAN+UBSAN clean"
+ok "backend_scene_tests: ASAN+UBSAN+LSan clean (except real-GPU suite below)"
+
+step "Run real-GPU lifetime suite under ASAN+UBSAN (external shutdown leaks not gated)"
+dbox "ASAN_OPTIONS='${gate_asan_opts}:detect_leaks=0' UBSAN_OPTIONS='${gate_ubsan_opts}' LSAN_OPTIONS='${gate_lsan_opts}' \
+      ./build/asan-gate/src/Test/backend_scene_tests --test-suite='${gate_gpu_suite}'" \
+    || fail "GPU lifetime suite: sanitizer finding (ASAN/UBSAN) or test failure"
+ok "GPU lifetime suite: ASAN+UBSAN clean (LSan diagnostic: --sanitize=address,undefined)"
 
 step "Run scenescript_tests under ASAN+UBSAN (gate)"
 dbox "ASAN_OPTIONS='${gate_asan_opts}' UBSAN_OPTIONS='${gate_ubsan_opts}' LSAN_OPTIONS='${gate_lsan_opts}' \

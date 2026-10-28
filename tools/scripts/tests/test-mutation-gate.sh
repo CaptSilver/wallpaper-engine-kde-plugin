@@ -1059,6 +1059,38 @@ check "...and the run still passes" "" "$rc" 0 "$out" "no mutants"
 check "the sweep reports unmeasured parent targets separately" \
       "" "$( grep -q 'unmeasured.txt' "$REAL_ROOT/tools/scripts/mutation-sweep.sh" && grep -q 'unmeasured by construction' "$REAL_ROOT/tools/scripts/mutation-sweep.sh" && echo 0 || echo 1 )" 0 ""
 
+# Mull's frontend embeds mutants at compile time, from the MULL_CONFIG it sees
+# then; the runner can only narrow that set.  Before the submodule build was
+# given src/backend_scene/mull.yml at compile time, no bitwise or logical
+# mutant existed in backend_scene_tests whatever the file listed, and the gate
+# could not tell.  mull_frontend_config_reached is how it tells now.
+MULL_FRONTEND_LIB="$REAL_ROOT/tools/scripts/lib/mull_frontend.sh"
+[[ -f "$MULL_FRONTEND_LIB" ]] && source "$MULL_FRONTEND_LIB"
+fdir="$(mktemp -d)"; TMPS+=("$fdir")
+printf 'junk\0cxx_and_to_or:/x/src/a.hpp:3:4:3:5\0more' > "$fdir/bitwise.bin"
+printf 'junk\0cxx_remove_negation:/x/src/a.hpp:3:4:3:5\0' > "$fdir/logical.bin"
+printf 'junk\0cxx_eq_to_ne:/x/src/a.hpp:3:4:3:5\0cxx_lt_to_le:/x/a:1:1:1:2\0' > "$fdir/default.bin"
+frontend_rc() { mull_frontend_config_reached "$1" >/dev/null 2>&1; echo $?; }
+check "a binary carrying a bitwise mutant shows the frontend read the config" \
+      "" "$(frontend_rc "$fdir/bitwise.bin")" 0 ""
+check "a binary carrying a logical mutant shows it too" \
+      "" "$(frontend_rc "$fdir/logical.bin")" 0 ""
+check "a binary with only default-family mutants means the config never reached it" \
+      "" "$(frontend_rc "$fdir/default.bin")" 1 ""
+check "a missing binary is not taken as proof" \
+      "" "$(frontend_rc "$fdir/absent.bin")" 1 ""
+check "the committed submodule mull.yml asks the frontend for the families the check looks for" \
+      "" "$( grep -qE '^\s*-\s*cxx_bitwise\s*$' "$REAL_ROOT/src/backend_scene/mull.yml" \
+             && grep -qE '^\s*-\s*cxx_logical\s*$' "$REAL_ROOT/src/backend_scene/mull.yml" \
+             && grep -qE '^\s*-\s*cxx_default\s*$' "$REAL_ROOT/src/backend_scene/mull.yml" \
+             && echo 0 || echo 1 )" 0 ""
+check "the submodule's instrumented targets compile with that mull.yml as MULL_CONFIG" \
+      "" "$( grep -q 'MULL_CONFIG=' "$REAL_ROOT/src/backend_scene/cmake/WekMullInstrument.cmake" \
+             && grep -q 'COMPILER_LAUNCHER' "$REAL_ROOT/src/backend_scene/cmake/WekMullInstrument.cmake" \
+             && echo 0 || echo 1 )" 0 ""
+check "mutation.sh fails a submodule build whose frontend never saw the config" \
+      "" "$( grep -q 'mull_frontend_config_reached' "$GATE" && echo 0 || echo 1 )" 0 ""
+
 echo
 if [[ "$FAIL" -gt 0 ]]; then
     printf '%s%d passed, %d failed%s\n' "$RED" "$PASS" "$FAIL" "$RESET"

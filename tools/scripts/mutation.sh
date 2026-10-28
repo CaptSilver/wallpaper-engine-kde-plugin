@@ -79,7 +79,8 @@
 #
 # Exit codes: 0=clean / 1=new survivors (a --migrate-baseline orphan, or a
 #             first-party TU built without Mull's instrumentation) / 2=arg error /
-#             77=runner or build unavailable / 78=no target produced a report /
+#             77=runner or build unavailable / 78=no target produced a report, or
+#             the submodule build's Mull frontend never read its mull.yml /
 #             79=--diff-only skipped: more than MULL_DIFF_MAX_LINES (default 400) changed
 #             lines, nothing was measured (0 disables the cap).
 set -euo pipefail
@@ -88,6 +89,7 @@ set -euo pipefail
 # addressed relative to this script, not the working tree).
 _MUT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_MUT_DIR/lib/mem.sh"
+source "$_MUT_DIR/lib/mull_frontend.sh"
 
 # Resolve to the parent repo's working tree even when invoked from inside the
 # `src/backend_scene` submodule (mirrors tools/scripts/preflight.sh).
@@ -615,6 +617,15 @@ if [[ "$NEED_SUB" == "1" ]]; then
     dbox "cmake --build $BUILD_SUB --target backend_scene_tests -j$MULL_BUILD_JOBS" \
         || fail "mutation build failed (submodule)"
     ok "submodule mutation build complete"
+    # Without src/backend_scene/mull.yml at compile time the frontend embeds
+    # only cxx_default, and every bitwise/logical line would read as having
+    # nothing to mutate.  That is less measured than claimed, not a pass.
+    if ! mull_frontend_config_reached "$BUILD_SUB/src/Test/backend_scene_tests"; then
+        printf '\n%sFAIL:%s %s\n' "$RED" "$RESET" \
+            "backend_scene_tests carries no bitwise/logical mutant: the Mull frontend never read src/backend_scene/mull.yml (see cmake/WekMullInstrument.cmake); reconfigure $BUILD_SUB" >&2
+        exit 78
+    fi
+    ok "Mull frontend read src/backend_scene/mull.yml (bitwise/logical mutants embedded)"
 fi
 
 # ── Discover the mull-runner ─────────────────────────────────────────────────

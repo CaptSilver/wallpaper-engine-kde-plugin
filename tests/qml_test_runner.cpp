@@ -14,6 +14,7 @@
 // harness, matching how production actually gets its bindings, not in
 // restoring an import nothing else uses.
 #include "TestSandbox.h"
+#include "QmlTestStubs.h"
 
 #include <KLocalizedContext>
 #include <QQmlContext>
@@ -22,15 +23,14 @@
 
 class I18nQuickTestSetup : public QObject {
     Q_OBJECT
+    QmlTestStubs stubs;
 
 public slots:
-    // Suites that end up on a real plugin type -- the installed module can
-    // win over the stubs on the import path -- write through QStandardPaths
-    // (PlaylistManager persists playlists.json). Give the whole run its own
-    // HOME in Qt's test mode so those writes never reach the user's config.
+    // Keep QStandardPaths writes isolated even if a suite uses a real type.
     void applicationAvailable() { wek::test_sandbox::enableIsolated(); }
 
     void qmlEngineAvailable(QQmlEngine* engine) {
+        engine->addUrlInterceptor(&stubs);
         // Production (corebindingsplugin.so) installs KLocalizedQmlContext,
         // not this class -- KLocalizedContext has been deprecated in its
         // favour since KF 6.8. We still use the deprecated one here: it

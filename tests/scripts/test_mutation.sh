@@ -82,6 +82,7 @@ make_gitrepo() { # <dir> <file...>
         git init -q
         git config user.email t@example.com
         git config user.name test
+        git config commit.gpgsign false
         for f in "$@"; do mkdir -p "$(dirname "$f")"; echo v1 > "$f"; done
         echo base > BASEFILE
         git add -A && git commit -qm base

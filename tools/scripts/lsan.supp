@@ -22,3 +22,14 @@
 # and CreateMpvContex() (MpvBackend.cpp). Confirmed via backend_scene_tests'
 # "a destroyed decoder holds no dma-buf from the frames it rendered" case.
 leak:mpv_render_context_create
+
+# Fontconfig 2.18.3 retains 895 B / 9 allocations from parsing its implicit
+# global configuration. A library-only FcConfigSubstitute(NULL, ...) probe
+# reproduces this after destroying the request pattern; 100 calls retain the
+# same amount. FcFini clears it, but a Plasma plugin does not own global state.
+# Match config loading, not all FcPattern allocations or first-party callers.
+# This also excludes config-parser allocations if a caller leaks an explicitly
+# owned FcConfig; ordinary request/match-pattern leaks remain detectable.
+# See issue #41. No DBus/NVIDIA suppression: unloaded frames cannot be matched
+# reliably without also hiding allocations unrelated to the verified driver.
+leak:FcConfigParseAndLoad

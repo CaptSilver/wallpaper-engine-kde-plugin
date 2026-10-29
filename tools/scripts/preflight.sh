@@ -1063,16 +1063,16 @@ fi
 # The parsers + scene runtime are the highest-risk untrusted-input surface and
 # are audited clean under address+undefined sanitizers.  Gate every push on
 # them so an ASAN heap/UAF or UBSAN find blocks the push instead of slipping
-# in unobserved. Leak detection stays ON except in the isolated real-GPU
-# lifetime suite: NVIDIA EGL/GBM retains allocations after correct teardown,
+# in unobserved. Leak detection stays ON. The real-GPU lifetime suite reports
+# NVIDIA EGL/GBM allocations retained after correct teardown,
 # with some frames unloaded before LSan runs (see issue #41). Broad DBus or
 # allocator suppressions would hide unrelated leaks. Run that suite separately
-# with ASAN/UBSAN still fatal; first-party leaks there remain a diagnostic gap.
+# with nonfatal LSan reports; ASAN/UBSAN remain fatal. First-party GPU leaks
+# are also visible but nonfatal; LSan cannot distinguish their ownership.
 # --sanitize=address,undefined retains the full-suite leak diagnostic.
 # Fontconfig config-loading shutdown state is narrowly suppressed in lsan.supp.
-# halt_on_error=1 means the first finding fails the leg. Fresh build dir
-# (build/asan-gate) reused on
-# repeat runs; BUILD_FUZZERS=OFF so the fuzzers' own -fsanitize=fuzzer flags
+# Memory/UB findings fail the leg. Fresh build dir (build/asan-gate) reused
+# on repeat runs; BUILD_FUZZERS=OFF so the fuzzers' own -fsanitize=fuzzer flags
 # don't double-instrument.  The wider parent-tests + full-suite sanitizer run
 # is still advisory via --sanitize=address,undefined (parent QML / mpv tests
 # not yet audited clean).
@@ -1101,10 +1101,12 @@ dbox "ASAN_OPTIONS='${gate_asan_opts}' UBSAN_OPTIONS='${gate_ubsan_opts}' LSAN_O
 ok "backend_scene_tests: ASAN+UBSAN+LSan clean (except real-GPU suite below)"
 
 step "Run real-GPU lifetime suite under ASAN+UBSAN (external shutdown leaks not gated)"
-dbox "ASAN_OPTIONS='${gate_asan_opts}:detect_leaks=0' UBSAN_OPTIONS='${gate_ubsan_opts}' LSAN_OPTIONS='${gate_lsan_opts}' \
+# Integrated LSan exitcode=0 also changes ASAN/UBSAN fatal exit codes.
+# Abort on memory/UB errors so only leak reports may return success.
+dbox "ASAN_OPTIONS='${gate_asan_opts}:abort_on_error=1' UBSAN_OPTIONS='${gate_ubsan_opts}:abort_on_error=1' LSAN_OPTIONS='${gate_lsan_opts}:exitcode=0' \
       ./build/asan-gate/src/Test/backend_scene_tests --test-suite='${gate_gpu_suite}'" \
     || fail "GPU lifetime suite: sanitizer finding (ASAN/UBSAN) or test failure"
-ok "GPU lifetime suite: ASAN+UBSAN clean (LSan diagnostic: --sanitize=address,undefined)"
+ok "GPU lifetime suite: memory safety checks passed (all LSan leak reports are nonfatal)"
 
 step "Run scenescript_tests under ASAN+UBSAN (gate)"
 dbox "ASAN_OPTIONS='${gate_asan_opts}' UBSAN_OPTIONS='${gate_ubsan_opts}' LSAN_OPTIONS='${gate_lsan_opts}' \

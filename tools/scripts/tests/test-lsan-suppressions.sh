@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Static wiring checks plus real ASAN/UBSAN/LSan regressions for the default
-# gate. Only the isolated real-GPU suite omits LSan; the opt-in sanitizer leg
-# retains full-suite leak diagnostics. Run in the gate's compiler environment.
+# gate. Only the isolated real-GPU suite makes leaks nonfatal; every suite
+# retains LSan reports. Run in the gate's compiler environment.
 
 set -uo pipefail
 
@@ -130,11 +130,12 @@ __attribute__((noinline)) static void leak() {
     REQUIRE((p != nullptr));
     asm volatile("" : : "r"(p) : "memory");
 }
-__attribute__((noinline)) static void fault() {
+__attribute__((noinline)) static void fault(bool outOfBounds = false) {
     auto* p = static_cast<volatile char*>(std::malloc(8));
     REQUIRE((p != nullptr));
-    std::free(const_cast<char*>(p));
-    *p = 1;
+    if (!outOfBounds) std::free(const_cast<char*>(p));
+    p[outOfBounds ? 8 : 0] = 1;
+    if (outOfBounds) std::free(const_cast<char*>(p));
 }
 static void overflow() {
     volatile int n = INT_MAX;
@@ -144,8 +145,9 @@ TEST_SUITE("CPU") {
     TEST_CASE("first-party memory and ownership") {
         if (mode("cpu-leak")) leak();
         if (mode("cpu-asan")) fault();
+        if (mode("cpu-oob")) fault(true);
         if (mode("cpu-ubsan")) overflow();
-        if (mode("font")) {
+        if (mode("font") || mode("pattern-leak")) {
             auto* p = FcPatternCreate();
             REQUIRE((p != nullptr));
             FcPatternAddString(p, FC_FAMILY, reinterpret_cast<const FcChar8*>("sans-serif"));
@@ -161,9 +163,11 @@ TEST_SUITE("CPU") {
     }
 }
 TEST_SUITE("HWVideoTextureDecoder GPU buffer lifetime") {
-    TEST_CASE("external shutdown allocation") {
+    TEST_CASE("shutdown allocation remains visible") {
+        // First-party GPU leaks are also visible but nonfatal in this process.
         leak();
         if (mode("gpu-asan")) fault();
+        if (mode("gpu-oob")) fault(true);
         if (mode("gpu-ubsan")) overflow();
         REQUIRE_FALSE(mode("gpu-assert"));
     }
@@ -191,14 +195,15 @@ chmod +x "$probe_dir/build/asan-gate/src/Test/scenescript_tests"
 } > "$probe_dir/run.sh"
 # Pin env options via the production block; inherited sanitizer variables must
 # not turn off a fault or inject an unrelated suppression.
-for scenario in clean font cpu-leak pattern-leak cpu-asan cpu-ubsan gpu-asan gpu-ubsan gpu-assert scene-leak; do
+for scenario in clean font gpu-leak cpu-leak pattern-leak cpu-asan cpu-oob cpu-ubsan gpu-asan gpu-oob gpu-ubsan gpu-assert scene-leak; do
     rc=0
     (cd "$probe_dir" && SANITIZER_PROBE="$scenario" bash run.sh) > "$probe_dir/$scenario.log" 2>&1 || rc=$?
     ok=0
     case "$scenario" in
-        clean|font) [[ "$rc" -eq 0 ]] && ok=1 ;;
+        clean|font|gpu-leak) [[ "$rc" -eq 0 ]] && grep -q 'LeakSanitizer: detected memory leaks' "$probe_dir/$scenario.log" && ok=1 ;;
         cpu-leak|pattern-leak|scene-leak) [[ "$rc" -ne 0 ]] && grep -q 'LeakSanitizer' "$probe_dir/$scenario.log" && ok=1 ;;
         *-asan) [[ "$rc" -ne 0 ]] && grep -q 'heap-use-after-free' "$probe_dir/$scenario.log" && ok=1 ;;
+        *-oob) [[ "$rc" -ne 0 ]] && grep -q 'heap-buffer-overflow' "$probe_dir/$scenario.log" && ok=1 ;;
         *-ubsan) [[ "$rc" -ne 0 ]] && grep -q 'signed integer overflow' "$probe_dir/$scenario.log" && ok=1 ;;
         gpu-assert) [[ "$rc" -ne 0 ]] && grep -q 'REQUIRE_FALSE' "$probe_dir/$scenario.log" && ok=1 ;;
     esac

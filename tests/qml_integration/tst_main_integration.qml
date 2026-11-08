@@ -12,6 +12,17 @@ TestCase {
 
     Item { id: host; anchors.fill: parent }
 
+    function test_mixed_imports_use_stubs() {
+        for (const version of ["", " 1.2"]) {
+            const object = Qt.createQmlObject(
+                'import QtQuick; import com.github.captsilver.wallpaperEngineKde' +
+                version + '; WekDiagnostics {}', host);
+            // Present only on the stub; native diagnostics must never run here.
+            compare(object.nextBundlePath, "/tmp/wekde-stub-diag.tar.gz");
+            object.destroy();
+        }
+    }
+
     function _find(node, pred) {
         if (!node) return null;
         const buckets = [node.children || [], node.data || []];
@@ -40,7 +51,7 @@ TestCase {
 
     function _mkMain(w, h) {
         const comp = Qt.createComponent("../../plugin/contents/ui/main.qml");
-        compare(comp.status, Component.Ready);
+        compare(comp.status, Component.Ready, comp.errorString());
         const m = comp.createObject(host, { width: w, height: h });
         verify(m !== null);
         return m;

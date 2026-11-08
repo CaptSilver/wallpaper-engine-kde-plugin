@@ -617,7 +617,7 @@ if(KF6Notifications_FOUND AND Qt6DBus_FOUND)
         KF6::Notifications
         KF6::I18n)
     target_compile_definitions(tst_weknotifier PRIVATE
-        WEK_SOURCE_DIR="${CMAKE_SOURCE_DIR}/.."
+        WEK_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/.."
         TRANSLATION_DOMAIN="${WEK_TRANSLATION_DOMAIN}")
     if(COVERAGE)
         target_compile_options(tst_weknotifier PRIVATE ${_cov_compile_flags})
@@ -839,6 +839,8 @@ find_package(Qt6 6.7 COMPONENTS QuickTest Qml QUIET)
 find_package(KF6I18n QUIET)
 if(Qt6QuickTest_FOUND AND Qt6Qml_FOUND AND KF6I18n_FOUND)
     add_executable(wek_qml_test_runner qml_test_runner.cpp)
+    target_compile_definitions(wek_qml_test_runner PRIVATE
+        WEK_QML_STUB_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml/_stubs/com/github/captsilver/wallpaperEngineKde")
     target_link_libraries(wek_qml_test_runner PRIVATE Qt6::QuickTest Qt6::Qml KF6::I18n)
     set(QML_TEST_RUNNER "$<TARGET_FILE:wek_qml_test_runner>")
 
@@ -977,10 +979,11 @@ if(Qt6QuickTest_FOUND AND Qt6Qml_FOUND AND Qt6Quick_FOUND)
         "${CMAKE_CURRENT_SOURCE_DIR}/qml_integration"
         "${_e2e_gen_dir}")
     target_compile_definitions(tst_main_integration PRIVATE
+        WEK_QML_STUB_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml/_stubs/com/github/captsilver/wallpaperEngineKde"
         WEKDE_REPO_DIR="${_wekde_repo_root_e2e}"
         QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml_integration")
     target_link_libraries(tst_main_integration PRIVATE
-        Qt6::QuickTest Qt6::Qml Qt6::Quick)
+        Qt6::QuickTest Qt6::Qml Qt6::Quick KF6::I18n)
     add_test(NAME tst_main_integration COMMAND tst_main_integration)
     set_tests_properties(tst_main_integration PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

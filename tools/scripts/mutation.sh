@@ -34,11 +34,10 @@
 # Builds (two trees, parallel):
 #   - Parent:    build/impl-mutation/      with -DMUTATION_TESTING=ON over tests/
 #   - Submodule: build/impl-mutation-sub/  with -DBUILD_TESTS=ON -DMUTATION_TESTING=ON
-#                over src/backend_scene/.  Only backend_scene_tests is mutation-
-#                instrumented (wek_apply_mull_instrumentation() in
-#                src/backend_scene/cmake/WekMullInstrument.cmake, called on the
-#                test executable AND every first-party library it links);
-#                scenescript_tests is excluded.
+#                over src/backend_scene/.  backend_scene_tests and scenescript_tests
+#                are mutation-instrumented (wek_apply_mull_instrumentation() in
+#                src/backend_scene/cmake/WekMullInstrument.cmake, called on each
+#                test executable AND every first-party library it links).
 #
 # Diff mode and added files:
 #   Mull's own gitDiffRef filter finds no delta for a path absent from the

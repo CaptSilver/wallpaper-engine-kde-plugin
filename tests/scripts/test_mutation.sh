@@ -192,6 +192,12 @@ below_floor() { # <test name> <what> <count> <floor>
     return 0
 }
 
+# --list-targets also prints the submodule's targets (mutation.sh's SUB_TARGETS),
+# which live in src/backend_scene's CMake, not tests/CMakeLists.txt.
+parent_targets() {
+    WEK_IN_CI=1 "$MUTATION" --list-targets | grep -vxE 'backend_scene_tests|scenescript_tests'
+}
+
 test_targets_complete() {
     local name="mutation.sh --list-targets matches every -fpass-plugin target in tests/CMakeLists.txt"
     local truth listed diff
@@ -199,7 +205,7 @@ test_targets_complete() {
         | grep -oE 'target_compile_options\(tst_[a-zA-Z_]+' \
         | sed 's/target_compile_options(//' | sort -u)
     below_floor "$name" "instrumented targets" "$(grep -c . <<< "$truth")" "$TARGET_FLOOR" && return
-    listed=$(WEK_IN_CI=1 "$MUTATION" --list-targets | grep -v '^backend_scene_tests$' | sort -u)
+    listed=$(parent_targets | sort -u)
     diff=$(comm -3 <(printf '%s\n' "$truth") <(printf '%s\n' "$listed"))
     [[ -z "$diff" ]] && pass "$name" || failure "$name" "mismatch: $diff"
 }
@@ -208,7 +214,7 @@ test_targets_complete
 test_src_map_complete() {
     local name="mutation.sh --list-sources covers every src/*.cpp compiled into an instrumented target"
     local instrumented truth listed diff
-    instrumented=$(WEK_IN_CI=1 "$MUTATION" --list-targets | grep -v '^backend_scene_tests$')
+    instrumented=$(parent_targets)
     truth=$(
         while IFS= read -r t; do
             awk -v target="$t" '

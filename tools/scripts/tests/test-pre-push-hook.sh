@@ -64,6 +64,9 @@ make_repo() {
 echo run >> "$(dirname "${BASH_SOURCE[0]}")/../../build/gate-runs"
 [[ "$(readlink /proc/self/fd/0)" == /dev/null ]] && echo detached >> "$(dirname "${BASH_SOURCE[0]}")/../../build/gate-stdin"
 echo "base=${MULL_DIFF_BASE:-}" >> "$(dirname "${BASH_SOURCE[0]}")/../../build/gate-env"
+if [[ -n ${STUB_FOREIGN_REPO:-} ]]; then
+    git -C "$STUB_FOREIGN_REPO" rev-parse --absolute-git-dir > "$(dirname "${BASH_SOURCE[0]}")/../../build/gate-foreign-dir"
+fi
 exit "${STUB_GATE_RC:-0}"
 STUB
     chmod +x "$root/tools/scripts/preflight.sh" "$root/tools/scripts/git-hooks/pre-push"
@@ -155,6 +158,21 @@ check "a delete push exits 0 without running the gate" "$(yes_if "$rc$(runs "$ro
 # Empty ref list (nothing to push) is not evidence of a pass: stay conservative.
 run_hook "$root" "" X=1 >/dev/null
 check "an empty ref list still runs the gate" "$(yes_if "$(runs "$root")" 1)"
+
+# A real linked-worktree hook receives GIT_DIR from Git.  The gate's fixture
+# repositories must resolve their own Git context, not the pushed worktree's.
+linked="$(mktemp -d /tmp/wek-hook-linked-XXXXXX)"
+foreign="$(mktemp -d /tmp/wek-hook-foreign-XXXXXX)"
+TMPS+=("$linked" "$foreign")
+git -C "$root" worktree add -q --detach "$linked" HEAD
+git -C "$foreign" init -q
+mkdir -p "$linked/build"
+out="$(cd "$linked" && printf '%s' "$(refline "$sha2" "$ZERO")" |
+    STUB_FOREIGN_REPO="$foreign" WEK_GATE_FORCE=1 \
+    git -c core.hooksPath=tools/scripts/git-hooks hook run pre-push 2>&1)"; rc=$?
+check "a real linked-worktree hook runs the gate once" "$(yes_if "$rc$(runs "$linked")" 01)" "$out"
+check "the gate can resolve a foreign repository independently" \
+    "$(yes_if "$(cat "$linked/build/gate-foreign-dir" 2>/dev/null)" "$foreign/.git")" "$out"
 
 echo
 if [[ "$FAIL" -gt 0 ]]; then

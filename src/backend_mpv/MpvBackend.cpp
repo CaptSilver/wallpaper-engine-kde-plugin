@@ -28,6 +28,7 @@
 #include <clocale>
 #include <array>
 #include <cstdlib>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <qobjectdefs.h>
@@ -64,17 +65,30 @@ namespace
 
 void on_mpv_redraw(void* ctx);
 
+// libmpv 0.40.0-0.41.x leak one GL fence per rendered frame through the render API
+// (mpv-player/mpv#17217, fixed upstream by f74adc424 after 0.41.0): every
+// mpv_render_context_render() ends in a glFenceSync that only the swap path, which the render
+// API never runs, waits on and deletes.  On NVIDIA each fence is ~5 KiB of driver heap, so a
+// few video wallpapers grow plasmashell by gigabytes per hour.  mpv skips a null fence, so give
+// it a glFenceSync that creates none; it has to be a real function, because mpv refuses to
+// initialise a GL 3.2+ context without one.  mpv's only other fence user is direct rendering into
+// persistently mapped buffers, which needs MPV_RENDER_PARAM_ADVANCED_CONTROL: never pass that
+// while this stub is in place.
+GLsync QOPENGLF_APIENTRY noFenceSync(GLenum, GLbitfield) { return nullptr; }
+
 void* get_proc_address_mpv(void* ctx, const char* name) {
     Q_UNUSED(ctx)
 
     QOpenGLContext* glctx = QOpenGLContext::currentContext();
     if (! glctx) return nullptr;
 
+    if (std::strcmp(name, "glFenceSync") == 0) return reinterpret_cast<void*>(&noFenceSync);
     return reinterpret_cast<void*>(glctx->getProcAddress(QByteArray(name)));
 }
 
 int CreateMpvContex(mpv_handle* mpv, mpv_render_context** mpv_gl) {
     mpv_opengl_init_params gl_init_params { get_proc_address_mpv, nullptr };
+    // No MPV_RENDER_PARAM_ADVANCED_CONTROL here: noFenceSync depends on its absence.
     mpv_render_param       params[] { { MPV_RENDER_PARAM_API_TYPE,
                                         const_cast<char*>(MPV_RENDER_API_TYPE_OPENGL) },
                                       { MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &gl_init_params },
